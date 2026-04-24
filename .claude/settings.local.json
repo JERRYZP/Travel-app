@@ -9,7 +9,17 @@
       "Bash(git log)",
       "Bash(npm start)",
       "Bash(npx expo install *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(gh auth *)",
+      "WebFetch(domain:github.com)",
+      "Bash(gh repo *)",
+      "Bash(git count-objects *)",
+      "Bash(git rm *)",
+      "Bash(git reset *)",
+      "Bash(a.md)"
     ]
   }
 }

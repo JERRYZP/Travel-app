@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Production
+build/
+
+# Environment files
+.env*.local
+
+# IDE and editor files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea
+*.swp
+*.swo
+*~
+
+# Expo
+.expo/
+expo-env.d.ts
+
+# Mobile build artifacts
+/ios/Pods/
+/ios/Podfile.lock
+/android/app/build/
+/android/build/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Claude workspace settings
+.claude/mcp-servers.json
+
+# Large image assets - exclude only the photo dump files, not project assets
+# Keep: UI mockups, product screenshots, design assets
+# Exclude: Camera roll exports, screenshots, IMG_* files
+Travel-app/竞品资料/IMG_*
+Travel-app/竞品资料/ScreenShot*
+Travel-app/产品分析/*.png
