@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:gemini.google.com)",
+      "WebSearch",
+      "Bash(git status)",
+      "Bash(git add .)",
+      "Bash(git commit -m *)",
+      "Bash(git log)",
+      "Bash(npm start)",
+      "Bash(npx expo install *)",
+      "Bash(git add *)"
+    ]
+  }
+}
