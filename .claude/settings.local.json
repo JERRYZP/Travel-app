@@ -19,7 +19,10 @@
       "Bash(git count-objects *)",
       "Bash(git rm *)",
       "Bash(git reset *)",
-      "Bash(a.md)"
-    ]
+      "Bash(a.md)",
+      "Skill(update-config)",
+      "Bash(git config *)"
+    ],
+    "defaultMode": "acceptEdits"
   }
 }
