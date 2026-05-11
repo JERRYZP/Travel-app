@@ -1,0 +1,34 @@
+@import './miniprogram_npm/@vant/weapp/common/index.wxss';
+
+page {
+  --primary-color: #1989fa;
+  --danger-color: #ee0a24;
+  --warning-color: #ff976a;
+  --success-color: #07c160;
+  --text-color: #323233;
+  --text-color-secondary: #646566;
+  --background-color: #f7f8fa;
+  --border-color: #ebedf0;
+
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica,
+    Segoe UI, Arial, Roboto, 'PingFang SC', 'miui', 'Hiragino Sans GB',
+    'Microsoft Yahei', sans-serif;
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
+.container {
+  padding: 24rpx;
+}
+
+.card {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+
+.difficulty-easy { color: var(--success-color); }
+.difficulty-medium { color: var(--warning-color); }
+.difficulty-hard { color: var(--danger-color); }

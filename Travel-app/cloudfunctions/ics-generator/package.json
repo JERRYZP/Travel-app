@@ -1,0 +1,9 @@
+{
+  "name": "ics-generator",
+  "version": "1.0.0",
+  "description": "生成 .ics 日历文件云函数",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

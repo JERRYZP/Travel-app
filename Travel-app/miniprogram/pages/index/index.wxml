@@ -1,0 +1,88 @@
+<view class="container">
+  <!-- 筛选区 -->
+  <view class="filter-bar">
+    <van-field
+      value="{{ searchKeyword }}"
+      placeholder="搜索景点"
+      left-icon="search"
+      bind:change="onSearchChange"
+      custom-class="search-field"
+    />
+    <scroll-view scroll-x class="category-scroll">
+      <view class="filter-item {{ activeCategory === 'all' ? 'active' : '' }}" data-key="all" bindtap="onCategoryChange">全部</view>
+      <view class="filter-item {{ activeCategory === 'museum' ? 'active' : '' }}" data-key="museum" bindtap="onCategoryChange">博物馆</view>
+      <view class="filter-item {{ activeCategory === 'park' ? 'active' : '' }}" data-key="park" bindtap="onCategoryChange">公园</view>
+      <view class="filter-item {{ activeCategory === 'heritage' ? 'active' : '' }}" data-key="heritage" bindtap="onCategoryChange">古迹</view>
+    </scroll-view>
+  </view>
+
+  <!-- 紧急放票栏 -->
+  <van-notice-bar
+    wx:if="{{ false }}"
+    text="故宫 3 分钟前刚补放了 5 月 3 日的少量余票"
+    left-icon="volume-o"
+    color="#ee0a24"
+    background="#fffbe8"
+    scrollable
+  />
+
+  <!-- 景点列表 -->
+  <van-loading wx:if="{{ loading }}" size="24px" vertical>加载中...</van-loading>
+
+  <block wx:if="{{ !loading }}">
+    <view wx:if="{{ spots.length === 0 }}" class="empty-state">
+      <van-empty description="暂无景点数据" />
+    </view>
+
+    <view
+      wx:for="{{ spots }}"
+      wx:key="spotId"
+      class="spot-card card"
+      data-id="{{ item.spotId }}"
+      bindtap="goToDetail"
+    >
+      <view class="spot-header">
+        <text class="spot-name">{{ item.name }}</text>
+        <van-tag type="{{ item.difficultyScore > 4 ? 'danger' : item.difficultyScore > 2 ? 'warning' : 'success' }}">
+          {{ item.difficultyScore > 4 ? '极难约' : item.difficultyScore > 2 ? '较难约' : '易约' }}
+        </van-tag>
+      </view>
+
+      <view class="spot-meta">
+        <text class="spot-category">{{ item.category }}</text>
+        <text class="spot-location">{{ item.locationText || '北京市' }}</text>
+      </view>
+
+      <view class="spot-status">
+        <view class="status-item">
+          <text class="status-label">最早可约</text>
+          <text class="status-value highlight">{{ item.earliestDate || '2026-05-20' }}</text>
+        </view>
+        <view class="status-item">
+          <text class="status-label">下次放票</text>
+          <text class="status-value">{{ item.nextRelease || '今晚 20:00' }}</text>
+        </view>
+      </view>
+
+      <view class="spot-actions">
+        <van-button
+          size="small"
+          type="primary"
+          plain
+          data-id="{{ item.spotId }}"
+          catchtap="toggleFavorite"
+        >
+          关注
+        </van-button>
+        <van-button
+          size="small"
+          type="primary"
+          data-id="{{ item.spotId }}"
+          catchtap="goToDetail"
+        >
+          设置提醒
+        </van-button>
+      </view>
+    </view>
+  </block>
+</view>

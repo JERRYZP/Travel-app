@@ -1,0 +1,9 @@
+{
+  "name": "scraper",
+  "version": "1.0.0",
+  "description": "景点数据抓取云函数",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

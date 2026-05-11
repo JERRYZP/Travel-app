@@ -1,0 +1,82 @@
+.user-card {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+
+.avatar {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 50%;
+}
+
+.nickname {
+  font-size: 36rpx;
+  font-weight: 600;
+}
+
+.login-btn {
+  background: none;
+  border: none;
+  color: #1989fa;
+  font-size: 32rpx;
+}
+
+.section-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  margin-bottom: 16rpx;
+  padding-left: 16rpx;
+  border-left: 8rpx solid #1989fa;
+}
+
+.fav-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #ebedf0;
+}
+
+.fav-item:last-child {
+  border-bottom: none;
+}
+
+.fav-name {
+  font-size: 28rpx;
+  color: #323233;
+}
+
+.fav-status {
+  font-size: 24rpx;
+}
+
+.status-green { color: #07c160; }
+.status-gray { color: #969799; }
+
+.sub-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #ebedf0;
+}
+
+.sub-item:last-child {
+  border-bottom: none;
+}
+
+.sub-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.sub-spot {
+  font-size: 28rpx;
+  color: #323233;
+}
+
+.sub-date {
+  font-size: 24rpx;
+  color: #969799;
+}

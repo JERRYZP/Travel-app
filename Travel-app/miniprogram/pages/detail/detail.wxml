@@ -1,0 +1,43 @@
+<view class="container">
+  <van-loading wx:if="{{ loading }}" size="24px" vertical>加载中...</van-loading>
+
+  <block wx:if="{{ !loading && spot }}">
+    <!-- 头部信息 -->
+    <view class="card">
+      <text class="spot-name">{{ spot.name }}</text>
+      <view class="spot-tags">
+        <van-tag type="primary">{{ spot.category }}</van-tag>
+        <van-tag type="danger" wx:if="{{ spot.difficultyScore > 4 }}">极难约</van-tag>
+      </view>
+      <text class="spot-location">{{ spot.locationText }}</text>
+    </view>
+
+    <!-- 规则翻译 -->
+    <view class="card">
+      <view class="section-title">预约规则</view>
+      <van-cell-group border="{{ false }}">
+        <van-cell title="预约周期" icon="calendar-o" value="提前 {{ spot.advanceDays || 7 }} 天" />
+        <van-cell title="放票时间" icon="clock-o" value="{{ spot.releaseTime || '20:00' }}" />
+        <van-cell title="证件要求" icon="idcard" value="{{ spot.idRequirement || '身份证原件' }}" />
+      </van-cell-group>
+    </view>
+
+    <!-- 提醒设置 -->
+    <view class="card">
+      <view class="section-title">设置提醒</view>
+      <van-cell title="选择出行日期" is-link bind:click="showCalendar" value="{{ targetDate || '请选择' }}" />
+      <van-cell title="微信订阅消息" center>
+        <van-switch checked="{{ channels.wxMsg }}" size="24px" bind:change="onChannelChange" data-key="wxMsg" />
+      </van-cell>
+      <van-cell title="同步手机日历" center>
+        <van-switch checked="{{ channels.calendar }}" size="24px" bind:change="onChannelChange" data-key="calendar" />
+      </van-cell>
+      <van-button type="primary" block round custom-class="save-btn" bind:click="saveReminder">保存提醒</van-button>
+    </view>
+
+    <!-- 跳转入口 -->
+    <view class="card">
+      <van-button type="info" block round bind:click="jumpToOfficial">立即预约</van-button>
+    </view>
+  </block>
+</view>

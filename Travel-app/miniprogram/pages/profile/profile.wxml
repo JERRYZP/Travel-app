@@ -1,0 +1,37 @@
+<view class="container">
+  <!-- 用户信息 -->
+  <view class="user-card card">
+    <block wx:if="{{ userInfo }}">
+      <image class="avatar" src="{{ userInfo.avatarUrl }}" mode="aspectFill" />
+      <text class="nickname">{{ userInfo.nickName }}</text>
+    </block>
+    <block wx:else>
+      <button class="login-btn" open-type="getUserInfo" bindgetuserinfo="onGetUserInfo">点击登录</button>
+    </block>
+  </view>
+
+  <!-- 我的关注 -->
+  <view class="card" wx:if="{{ favorites.length > 0 }}">
+    <view class="section-title">我的关注</view>
+    <view wx:for="{{ favorites }}" wx:key="spotId" class="fav-item" bindtap="goToDetail" data-id="{{ item.spotId }}">
+      <text class="fav-name">{{ item.name }}</text>
+      <text class="fav-status {{ item.status === 'available' ? 'status-green' : 'status-gray' }}">
+        {{ item.statusText }}
+      </text>
+    </view>
+  </view>
+
+  <!-- 我的提醒 -->
+  <view class="card" wx:if="{{ subscriptions.length > 0 }}">
+    <view class="section-title">我的提醒</view>
+    <view wx:for="{{ subscriptions }}" wx:key="_id" class="sub-item">
+      <view class="sub-info">
+        <text class="sub-spot">{{ item.spotName }}</text>
+        <text class="sub-date">{{ item.targetDate }}</text>
+      </view>
+      <van-button size="mini" plain type="danger" data-id="{{ item._id }}" catchtap="cancelSubscription">取消</van-button>
+    </view>
+  </view>
+
+  <van-empty wx:if="{{ !loading && favorites.length === 0 && subscriptions.length === 0 }}" description="暂无关注或提醒" />
+</view>

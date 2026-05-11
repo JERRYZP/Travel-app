@@ -1,0 +1,40 @@
+.entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+
+.entry-name {
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.entry-channels {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.channel-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx;
+  background: #f7f8fa;
+  border-radius: 12rpx;
+}
+
+.channel-item.primary {
+  background: #eaf2ff;
+}
+
+.channel-name {
+  font-size: 28rpx;
+  color: #323233;
+}
+
+.channel-rate {
+  font-size: 22rpx;
+  color: #969799;
+}

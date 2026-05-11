@@ -1,0 +1,58 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/detail/detail",
+    "pages/booking/booking",
+    "pages/profile/profile"
+  ],
+  "window": {
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#fff",
+    "navigationBarTitleText": "景点预约提醒",
+    "navigationBarTextStyle": "black"
+  },
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#1989fa",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页",
+        "iconPath": "images/tabbar/home.png",
+        "selectedIconPath": "images/tabbar/home-active.png"
+      },
+      {
+        "pagePath": "pages/booking/booking",
+        "text": "预约中心",
+        "iconPath": "images/tabbar/booking.png",
+        "selectedIconPath": "images/tabbar/booking-active.png"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "我的",
+        "iconPath": "images/tabbar/profile.png",
+        "selectedIconPath": "images/tabbar/profile-active.png"
+      }
+    ]
+  },
+  "usingComponents": {
+    "van-button": "@vant/weapp/button/index",
+    "van-cell": "@vant/weapp/cell/index",
+    "van-cell-group": "@vant/weapp/cell-group/index",
+    "van-icon": "@vant/weapp/icon/index",
+    "van-tag": "@vant/weapp/tag/index",
+    "van-card": "@vant/weapp/card/index",
+    "van-dialog": "@vant/weapp/dialog/index",
+    "van-toast": "@vant/weapp/toast/index",
+    "van-empty": "@vant/weapp/empty/index",
+    "van-loading": "@vant/weapp/loading/index",
+    "van-count-down": "@vant/weapp/count-down/index",
+    "van-calendar": "@vant/weapp/calendar/index",
+    "van-switch": "@vant/weapp/switch/index",
+    "van-field": "@vant/weapp/field/index",
+    "van-notice-bar": "@vant/weapp/notice-bar/index"
+  },
+  "sitemapLocation": "sitemap.json"
+}
