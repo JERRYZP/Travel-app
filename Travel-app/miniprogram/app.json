@@ -2,7 +2,6 @@
   "pages": [
     "pages/index/index",
     "pages/detail/detail",
-    "pages/booking/booking",
     "pages/profile/profile"
   ],
   "window": {
@@ -22,12 +21,6 @@
         "text": "首页",
         "iconPath": "images/tabbar/home.png",
         "selectedIconPath": "images/tabbar/home-active.png"
-      },
-      {
-        "pagePath": "pages/booking/booking",
-        "text": "预约中心",
-        "iconPath": "images/tabbar/booking.png",
-        "selectedIconPath": "images/tabbar/booking-active.png"
       },
       {
         "pagePath": "pages/profile/profile",

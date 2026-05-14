@@ -4,9 +4,6 @@ Page({
   data: {
     spots: [],
     loading: true,
-    activeCategory: 'all',
-    activeDifficulty: 'all',
-    searchKeyword: '',
   },
 
   onLoad() {
@@ -26,23 +23,15 @@ Page({
         name: 'spots',
         data: { action: 'list' },
       });
-      this.setData({ spots: result.data || [], loading: false });
+      if (result.success) {
+        this.setData({ spots: result.data, loading: false });
+      } else {
+        this.setData({ loading: false });
+      }
     } catch (err) {
       console.error('获取景点列表失败', err);
       this.setData({ loading: false });
     }
-  },
-
-  onSearchChange(e) {
-    this.setData({ searchKeyword: e.detail });
-  },
-
-  onCategoryChange(e) {
-    this.setData({ activeCategory: e.currentTarget.dataset.key });
-  },
-
-  onDifficultyChange(e) {
-    this.setData({ activeDifficulty: e.currentTarget.dataset.key });
   },
 
   goToDetail(e) {
@@ -50,8 +39,18 @@ Page({
     wx.navigateTo({ url: `/pages/detail/detail?id=${id}` });
   },
 
-  toggleFavorite(e) {
+  async toggleFavorite(e) {
     const { id } = e.currentTarget.dataset;
-    // TODO: 调用云函数更新收藏状态
+    try {
+      const { result } = await wx.cloud.callFunction({
+        name: 'spots',
+        data: { action: 'toggleFavorite', spotId: id },
+      });
+      if (result.success) {
+        this.fetchSpots();
+      }
+    } catch (err) {
+      console.error('收藏操作失败', err);
+    }
   },
 });

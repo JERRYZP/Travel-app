@@ -14,18 +14,22 @@ Travel-app/
 │   ├── pages/
 │   │   ├── index/            # 首页 - 北京预约大盘
 │   │   ├── detail/           # 景点详情页
-│   │   ├── booking/          # 预约中心（入口汇总）
 │   │   └── profile/          # 我的
 │   ├── components/           # 自定义组件
 │   ├── utils/                # 工具函数
 │   └── images/               # 图片资源
 ├── cloudfunctions/           # 云函数
-│   ├── scraper/              # 数据抓取
+│   ├── scraper/              # 数据抓取（定时+放票后验证）
 │   ├── notifier/             # 提醒推送
-│   ├── spots/                # 景点数据查询
+│   ├── spots/                # 景点数据查询+实时状态计算
 │   └── ics-generator/        # .ics 日历文件生成
+├── data/                     # 数据文件
+│   ├── spots.json            # 景点基础信息表（10个北京热门景点）
+│   ├── rules.json            # 景点预约规则表（含closedDays/releaseFrequency等结构化字段）
+│   └── scraping-plan.md      # 数据抓取技术方案
 ├── 产品文档.md
-└── V1功能规划.md
+├── V1功能规划.md
+└── V1.1产品规划.md
 ```
 
 ## 指令集

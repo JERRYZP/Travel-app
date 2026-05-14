@@ -1,30 +1,8 @@
 <view class="container">
-  <!-- 筛选区 -->
-  <view class="filter-bar">
-    <van-field
-      value="{{ searchKeyword }}"
-      placeholder="搜索景点"
-      left-icon="search"
-      bind:change="onSearchChange"
-      custom-class="search-field"
-    />
-    <scroll-view scroll-x class="category-scroll">
-      <view class="filter-item {{ activeCategory === 'all' ? 'active' : '' }}" data-key="all" bindtap="onCategoryChange">全部</view>
-      <view class="filter-item {{ activeCategory === 'museum' ? 'active' : '' }}" data-key="museum" bindtap="onCategoryChange">博物馆</view>
-      <view class="filter-item {{ activeCategory === 'park' ? 'active' : '' }}" data-key="park" bindtap="onCategoryChange">公园</view>
-      <view class="filter-item {{ activeCategory === 'heritage' ? 'active' : '' }}" data-key="heritage" bindtap="onCategoryChange">古迹</view>
-    </scroll-view>
+  <!-- 城市切换区（V1 仅北京） -->
+  <view class="city-bar">
+    <text class="city-name">北京</text>
   </view>
-
-  <!-- 紧急放票栏 -->
-  <van-notice-bar
-    wx:if="{{ false }}"
-    text="故宫 3 分钟前刚补放了 5 月 3 日的少量余票"
-    left-icon="volume-o"
-    color="#ee0a24"
-    background="#fffbe8"
-    scrollable
-  />
 
   <!-- 景点列表 -->
   <van-loading wx:if="{{ loading }}" size="24px" vertical>加载中...</van-loading>
