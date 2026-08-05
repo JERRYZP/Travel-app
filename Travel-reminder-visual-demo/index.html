@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>京游有期 - 预约提醒 Demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="phone-shell" aria-label="京游有期 H5 demo">
+      <section class="app-screen">
+        <div class="status-bar">
+          <span>9:41</span>
+          <span>5G 100%</span>
+        </div>
+
+        <section id="view-home" class="view view-active">
+          <header class="home-hero">
+            <div class="hero-copy">
+              <p class="eyebrow">北京预约提醒</p>
+              <h1>京游有期</h1>
+              <p>把热门景点的放票日、闭馆日和提醒时间，收进一张清楚的行程表。</p>
+            </div>
+            <button class="icon-button" id="refreshBtn" type="button" aria-label="刷新预约状态">
+              <span class="icon-refresh"></span>
+            </button>
+          </header>
+
+          <section class="urgent-strip" aria-label="紧急放票提醒">
+            <span class="pulse-dot"></span>
+            <p><strong>国博</strong> 今日 17:00 放出 6 月 3 日名额，建议提前 5 分钟进入。</p>
+          </section>
+
+          <section class="filter-row" aria-label="筛选">
+            <button class="chip is-active" type="button" data-filter="all">全部</button>
+            <button class="chip" type="button" data-filter="hard">难约</button>
+            <button class="chip" type="button" data-filter="soon">今日放票</button>
+            <button class="chip" type="button" data-filter="free">免费预约</button>
+          </section>
+
+          <section class="summary-grid" aria-label="今日概览">
+            <article>
+              <span>今日放票</span>
+              <strong id="todayCount">3</strong>
+            </article>
+            <article>
+              <span>已关注</span>
+              <strong id="followCount">4</strong>
+            </article>
+            <article>
+              <span>最近提醒</span>
+              <strong>16:55</strong>
+            </article>
+          </section>
+
+          <section class="section-head">
+            <div>
+              <p>提醒大盘</p>
+              <h2>先看什么时候该出手</h2>
+            </div>
+            <span id="lastUpdated">刚刚同步</span>
+          </section>
+
+          <section id="attractionList" class="attraction-list" aria-label="景点预约状态列表"></section>
+        </section>
+
+        <section id="view-mine" class="view">
+          <header class="mine-header">
+            <div>
+              <p class="eyebrow">我的提醒</p>
+              <h1>ZP 的北京行程</h1>
+            </div>
+            <div class="avatar">ZP</div>
+          </header>
+
+          <section class="today-panel">
+            <div class="panel-title">
+              <span>今日时间轴</span>
+              <strong>3 条</strong>
+            </div>
+            <div id="timeline" class="timeline"></div>
+          </section>
+
+          <section class="traveler-card">
+            <div class="panel-title">
+              <span>一键代填信息卡</span>
+              <strong>本地假数据</strong>
+            </div>
+            <div class="traveler-row">
+              <div>
+                <p>常用游客</p>
+                <h2>赵小京</h2>
+              </div>
+              <button class="secondary-button" type="button" id="copyIdBtn">复制证件号</button>
+            </div>
+            <dl class="info-list">
+              <div>
+                <dt>证件号</dt>
+                <dd>110101********1234</dd>
+              </div>
+              <div>
+                <dt>手机号</dt>
+                <dd>138****2026</dd>
+              </div>
+            </dl>
+            <p class="privacy-note">仅作视觉 demo 展示；正式版应默认本地加密，不上传服务器。</p>
+          </section>
+
+          <section class="follow-panel">
+            <div class="panel-title">
+              <span>我的关注</span>
+              <strong id="mineFollowCount">4 个</strong>
+            </div>
+            <div id="followList" class="follow-list"></div>
+          </section>
+        </section>
+
+        <section id="detailView" class="detail-view" aria-hidden="true">
+          <div class="detail-card">
+            <button class="ghost-back" type="button" id="closeDetail">返回</button>
+            <div id="detailContent"></div>
+          </div>
+        </section>
+
+        <section id="toast" class="toast" role="status" aria-live="polite"></section>
+
+        <nav class="tab-bar" aria-label="底部导航">
+          <button class="tab-item is-active" type="button" data-tab="home">
+            <span class="tab-icon icon-bell"></span>
+            <span>提醒</span>
+          </button>
+          <button class="tab-item" type="button" data-tab="mine">
+            <span class="tab-icon icon-user"></span>
+            <span>我的</span>
+          </button>
+        </nav>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
