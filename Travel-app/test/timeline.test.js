@@ -1,0 +1,82 @@
+/**
+ * 时间线交叉积测试（TIMELINE-RULE-001/003/005 改版后）
+ * 用真实 data/*.json 验证。运行：node test/timeline.test.js
+ */
+const TL = require('../cloudfunctions/reminder/lib/timeline.js');
+const time = require('../cloudfunctions/reminder/lib/time.js');
+const { EventSelectStatus, ReleaseStatus } = require('../cloudfunctions/reminder/lib/schema.js');
+
+const spots = require('../data/spots.json').spots;
+const rules = require('../data/rules.json').rules;
+const rm = {}; rules.forEach(r => { rm[r.spotId] = r; });
+const sm = {}; spots.forEach(s => { sm[s.spotId] = s; });
+
+let fail = 0;
+const eq = (a, b, m) => {
+  const ok = String(a) === String(b);
+  if (!ok) { fail += 1; console.log('FAIL', m, '\n  got :', a, '\n  want:', b); }
+  else console.log('ok  ', m, '=', a);
+};
+
+const trip = { startDate: '2026-05-31', endDate: '2026-06-04' }; // 5天，6/1 是周一
+
+console.log('--- 交叉积总数 ---');
+const all = spots.flatMap(s => TL.buildEvents(s, rm[s.spotId], trip));
+const closedMon = rules.filter(r => (r.closedDays || []).includes('monday')).length;
+eq(closedMon, 6, '6 个景点周一闭馆');
+eq(all.length, 10 * 5 - 6, '总事件 = 10×5−6');
+eq(all.length, 44, '实际 44 条');
+
+console.log('\n--- 故宫：周一闭馆，5 天里 4 条 ---');
+const gg = TL.buildEvents(sm.gugong, rm.gugong, trip);
+eq(gg.length, 4, '故宫 4 条');
+eq(gg.map(e => e.visitDate).join(','), '2026-05-31,2026-06-02,2026-06-03,2026-06-04', '跳过 6/1');
+eq(gg.map(e => e.releaseDateStr).join(','), '2026-05-24,2026-05-26,2026-05-27,2026-05-28', '各自提前 7 天');
+eq(gg.every(e => time.formatHourMinute(e.releaseAt) === '20:00'), true, '全部 20:00 放票');
+
+console.log('\n--- 八达岭：不闭馆 5 条，提前 10 天 ---');
+const bd = TL.buildEvents(sm.badaling, rm.badaling, trip);
+eq(bd.length, 5, '八达岭 5 条');
+eq(bd[0].releaseDateStr, '2026-05-21', '5/31 票提前 10 天');
+eq(bd[4].releaseDateStr, '2026-05-25', '6/4 票提前 10 天');
+eq(time.formatHourMinute(bd[0].releaseAt), '00:00', '00:00 放票');
+
+console.log('\n--- 出发日视图：6/1 只剩 4 个景点 ---');
+const byDep = TL.groupByDeparture(all);
+eq(byDep.length, 5, '5 个日期 Tab');
+eq(byDep.map(g => g.count).join(','), '10,4,10,10,10', '各 Tab 事件数');
+eq(byDep[1].key, '2026-06-01', '第 2 个 Tab 是 6/1');
+eq(byDep[1].label, '6月1日 (周一)', 'Tab 标签');
+console.log('   6/1 可约:', byDep[1].events.map(e => e.spotName).join('、'));
+eq(byDep[1].events.every(e => !(rm[e.spotId].closedDays || []).includes('monday')), true, '6/1 无闭馆景点');
+eq(byDep[0].events.every((e, i, a) => i === 0 || a[i - 1].releaseAt <= e.releaseAt), true, '组内 releaseAt 升序');
+
+console.log('\n--- 景点视图：故宫 Tab 显示 4 天 ---');
+const bySpot = TL.groupBySpot(all);
+eq(bySpot.length, 10, '10 个景点 Tab');
+const ggTab = bySpot.find(g => g.key === 'gugong');
+eq(ggTab.count, 4, '故宫 Tab 4 条');
+eq(ggTab.label, '故宫博物院', 'Tab 标签用景点名');
+console.log('   故宫各日放票:', ggTab.events.map(e => `${e.releaseDateStr} ${e.releaseTimeStr}`).join(' | '));
+
+console.log('\n--- 每个 Tab 独立 scrollIndex（UI-006）---');
+eq(typeof byDep[0].scrollIndex, 'number', '出发日 Tab 有 scrollIndex');
+eq(typeof ggTab.scrollIndex, 'number', '景点 Tab 有 scrollIndex');
+
+console.log('\n--- 全闭馆景点不生成事件（TIMELINE-RULE-005）---');
+const monOnly = { startDate: '2026-06-01', endDate: '2026-06-01' };
+eq(TL.buildEvents(sm.gugong, rm.gugong, monOnly).length, 0, '仅周一行程 → 故宫 0 条');
+eq(TL.buildEvents(sm.badaling, rm.badaling, monOnly).length, 1, '八达岭 1 条');
+
+console.log('\n--- 按钮态（TIMELINE-RULE-004 / STATE-003）---');
+const future = { releaseAt: new Date(Date.now() + 86400000) };
+const past = { releaseAt: new Date(Date.now() - 86400000) };
+eq(TL.resolveStatus(future, {}), EventSelectStatus.SELECTABLE, '未放票 → SELECTABLE');
+eq(TL.resolveStatus(future, { inCart: true }), EventSelectStatus.IN_CART, '在清单 → IN_CART');
+eq(TL.resolveStatus(future, { task: { backendStatus: 'WAITING' } }), EventSelectStatus.WAITING, '已提交 → WAITING');
+eq(TL.resolveStatus(past, {}), EventSelectStatus.BOOKABLE, '已放票 → BOOKABLE');
+eq(TL.resolveStatus(past, { releaseStatus: ReleaseStatus.FULL }), EventSelectStatus.FULL, '约满 → FULL');
+eq(TL.buttonOf(EventSelectStatus.FULL).enabled, false, '已约满置灰');
+
+console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
+process.exit(fail ? 1 : 0);

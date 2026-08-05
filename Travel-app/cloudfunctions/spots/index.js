@@ -1,195 +1,285 @@
+/**
+ * spots 云函数 —— 景点查询与放票状态实时计算
+ *
+ * 新形态职责已收窄：只负责景点数据与实时放票状态。
+ * 原 toggleFavorite / profile 两个 action 随「收藏」功能一并移除
+ * （新 IA 无收藏入口，产品文档第四册无 favorites 集合）。
+ */
+
 const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
+const _ = db.command;
 
-// 计算放票状态
-function computeReleaseStatus(rule) {
-  const now = new Date();
-  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const todayName = dayNames[now.getDay()];
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+const COLLECTIONS = {
+  SPOTS: 'spots',
+  RELEASE_RULES: 'release_rules', // 原 rules
+  SEARCH_HISTORY: 'search_history',
+};
 
-  // 今天闭馆 → 不放票
-  if (rule.closedDays && rule.closedDays.includes(todayName)) {
-    return 'no-release-today';
-  }
+/** ENUM-005 实时放票状态 */
+const ReleaseStatus = {
+  NOT_RELEASED: 'NOT_RELEASED',
+  BOOKABLE: 'BOOKABLE',
+  FULL: 'FULL',
+};
+
+const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
+const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const SEARCH_HISTORY_MAX = 10; // SEARCH-RULE-002
+
+/**
+ * 北京时间各部分。云函数运行在 UTC，必须平移后再读取（TIME-RULE-001）。
+ */
+function beijingParts(date = new Date()) {
+  const shifted = new Date(date.getTime() + BEIJING_OFFSET_MS);
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+    hour: shifted.getUTCHours(),
+    minute: shifted.getUTCMinutes(),
+    dayName: DAY_NAMES[shifted.getUTCDay()],
+  };
+}
+
+function toDateStr(date = new Date()) {
+  const p = beijingParts(date);
+  return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+}
+
+function addDaysStr(dateStr, days) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const base = Date.UTC(y, m - 1, d) + days * 86400000;
+  const nd = new Date(base);
+  return `${nd.getUTCFullYear()}-${String(nd.getUTCMonth() + 1).padStart(2, '0')}-${String(nd.getUTCDate()).padStart(2, '0')}`;
+}
+
+function dayNameOfStr(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return DAY_NAMES[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+}
+
+/** ENUM-006 / TAG-RULE-001 难度标签的唯一真身 */
+function computeDifficultyLabel(score) {
+  if (score >= 4) return { key: 'EXTREME', text: '极难约', color: 'red' };
+  if (score === 3) return { key: 'NORMAL', text: '较难约', color: 'orange' };
+  return { key: 'EASY', text: '容易约', color: 'green' };
+}
+
+/**
+ * 今日放票是否已开始（按北京时间比较，修正了原实现用 UTC 小时的时区 bug）
+ */
+function computeReleaseStatus(rule, now = new Date()) {
+  if (!rule || !rule.releaseTime) return ReleaseStatus.NOT_RELEASED;
+
+  const p = beijingParts(now);
+  // 今天闭馆 → 今日不放票
+  if ((rule.closedDays || []).includes(p.dayName)) return ReleaseStatus.NOT_RELEASED;
 
   const [h, m] = rule.releaseTime.split(':').map(Number);
+  const nowMinutes = p.hour * 60 + p.minute;
   const releaseMinutes = h * 60 + m;
 
-  if (currentMinutes < releaseMinutes) {
-    return 'before';
-  }
-  return 'after';
+  if (nowMinutes < releaseMinutes) return ReleaseStatus.NOT_RELEASED;
+  // 已过放票时刻：真实「是否约满」需 scraper 支持，V1 统一按可约返回
+  return ReleaseStatus.BOOKABLE;
 }
 
-// 计算最早可约日期
-function computeEarliestDate(rule) {
+/**
+ * 最早可约日期 = 今天 + advanceDays，落在闭馆日则顺延
+ */
+function computeEarliestDate(rule, now = new Date()) {
+  if (!rule || !rule.advanceDays) return null;
+  let target = addDaysStr(toDateStr(now), rule.advanceDays);
+  for (let i = 0; i < 7; i += 1) {
+    if (!(rule.closedDays || []).includes(dayNameOfStr(target))) break;
+    target = addDaysStr(target, 1);
+  }
+  return target;
+}
+
+/** 组装景点卡（PAGE-001 网格 / PAGE-003 列表共用） */
+function buildCard(spot, rule, now) {
+  const status = computeReleaseStatus(rule, now);
+  return {
+    spotId: spot.spotId,
+    name: spot.name,
+    category: spot.category,
+    district: spot.district,
+    difficultyScore: spot.difficultyScore,
+    difficultyLabel: computeDifficultyLabel(spot.difficultyScore),
+    popularityScore: spot.popularityScore,
+    // TAG-RULE-001 核心标签：只回答「什么时候抢、难不难抢」
+    tags: rule ? [`提前${rule.advanceDays}天放票`, `每日${rule.releaseTime}放票`] : [],
+    advanceDays: rule ? rule.advanceDays : null,
+    releaseTime: rule ? rule.releaseTime : null,
+    closedDays: rule ? (rule.closedDays || []) : [],
+    releaseStatus: status,
+    earliestDate: computeEarliestDate(rule, now),
+    officialAppid: spot.officialAppid || '',
+    officialPath: spot.officialPath || '',
+    officialWebUrl: spot.officialWebUrl || '',
+    // scraper 未上线，「已约满」无法判定
+    stale: status === ReleaseStatus.BOOKABLE,
+  };
+}
+
+/** SEARCH-RULE-001 本地模糊匹配：名称 / 别名 / 拼音前缀 */
+function matchSpot(spot, keyword) {
+  const kw = String(keyword || '').trim().toLowerCase();
+  if (!kw) return false;
+  const candidates = [
+    spot.name,
+    ...(spot.aliases || []),
+    spot.pinyin || '',
+    spot.pinyinInitials || '',
+    spot.spotId,
+  ].filter(Boolean).map(s => String(s).toLowerCase());
+  return candidates.some(c => c.includes(kw) || c.startsWith(kw));
+}
+
+async function loadAll() {
+  const [spotsRes, rulesRes] = await Promise.all([
+    db.collection(COLLECTIONS.SPOTS).limit(200).get(),
+    db.collection(COLLECTIONS.RELEASE_RULES).limit(200).get(),
+  ]);
+  const ruleMap = {};
+  (rulesRes.data || []).forEach(r => { ruleMap[r.spotId] = r; });
+  return { spots: spotsRes.data || [], ruleMap };
+}
+
+exports.main = async (event) => {
+  const { action, spotId, spotIds, keyword } = event || {};
+  const { OPENID } = cloud.getWXContext();
   const now = new Date();
-  const target = new Date(now);
-  target.setDate(target.getDate() + rule.advanceDays);
 
-  // 如果可约日期落在闭馆日，顺延一天
-  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  if (rule.closedDays && rule.closedDays.includes(dayNames[target.getDay()])) {
-    target.setDate(target.getDate() + 1);
-  }
-
-  return formatDate(target);
-}
-
-function formatDate(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function getDifficultyLabel(score) {
-  if (score >= 4) return { text: '极难约', color: 'red' };
-  if (score >= 3) return { text: '较难约', color: 'orange' };
-  return { text: '易约', color: 'yellow' };
-}
-
-exports.main = async (event, context) => {
-  const { action, spotId } = event;
-
-  if (action === 'list') {
-    try {
-      const { OPENID } = cloud.getWXContext();
-      const spotsRes = await db.collection('spots').get();
-      const rulesRes = await db.collection('rules').get();
-      const favsRes = await db.collection('favorites')
-        .where({ userId: OPENID })
-        .orderBy('favoritedAt', 'desc')
-        .get();
-
-      const favSpotIds = new Set(favsRes.data.map(f => f.spotId));
-      const rulesMap = {};
-      rulesRes.data.forEach(r => { rulesMap[r.spotId] = r; });
-
-      const favorites = [];
-      const others = [];
-
-      spotsRes.data.forEach(spot => {
-        const rule = rulesMap[spot.spotId] || {};
-        const status = rule.advanceDays ? computeReleaseStatus(rule) : 'no-release-today';
-        const earliestDate = rule.advanceDays ? computeEarliestDate(rule) : '暂无数据';
-        const difficulty = computeDifficultyLabel(spot.difficultyScore);
-
-        const card = {
-          spotId: spot.spotId,
-          name: spot.name,
-          category: spot.category,
-          district: spot.district,
-          difficultyScore: spot.difficultyScore,
-          difficultyLabel: difficulty,
-          earliestDate,
-          releaseTime: rule.releaseTime || '',
-          releaseStatus: status,
-          isFavored: favSpotIds.has(spot.spotId),
-          officialAppid: spot.officialAppid,
-          officialPath: spot.officialPath,
-          officialWebUrl: spot.officialWebUrl,
-        };
-
-        if (card.isFavored) {
-          favorites.push(card);
-        } else {
-          others.push(card);
-        }
-      });
-
-      // 收藏置顶，按收藏时间倒序（已在查询中排序，保持顺序即可）
-      return { success: true, data: [...favorites, ...others] };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }
-
-  if (action === 'detail') {
-    try {
-      const spotRes = await db.collection('spots').where({ spotId }).get();
-      const ruleRes = await db.collection('rules').where({ spotId }).get();
-      const spot = spotRes.data[0] || null;
-      const rule = ruleRes.data[0] || null;
-
-      if (!spot) return { success: false, error: '景点不存在' };
-
-      const releaseStatus = rule ? computeReleaseStatus(rule) : null;
-      const earliestDate = rule ? computeEarliestDate(rule) : null;
-
-      return {
-        success: true,
-        data: {
-          ...spot,
-          rule,
-          releaseStatus,
-          earliestDate,
-        },
-      };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }
-
-  if (action === 'toggleFavorite') {
-    const { OPENID } = cloud.getWXContext();
-    if (!OPENID) return { success: false, error: '未登录' };
-
-    try {
-      const exist = await db.collection('favorites')
-        .where({ userId: OPENID, spotId })
-        .get();
-
-      if (exist.data.length > 0) {
-        await db.collection('favorites').doc(exist.data[0]._id).remove();
-        return { success: true, isFavored: false };
-      } else {
-        await db.collection('favorites').add({
-          data: {
-            userId: OPENID,
-            spotId,
-            favoritedAt: new Date(),
-          },
-        });
-        return { success: true, isFavored: true };
+  try {
+    switch (action) {
+      /** PAGE-001 热门景点网格 / PAGE-003 热门列表，SORT-RULE-001 按 popularityScore 降序 */
+      case 'list': {
+        const { spots, ruleMap } = await loadAll();
+        const cards = spots
+          .map(s => buildCard(s, ruleMap[s.spotId], now))
+          .sort((a, b) => (b.popularityScore || 0) - (a.popularityScore || 0));
+        return { success: true, data: cards };
       }
-    } catch (err) {
-      return { success: false, error: err.message };
+
+      /** PAGE-002 景点信息弹窗 */
+      case 'detail': {
+        if (!spotId) return { success: false, error: '缺少 spotId', errorCode: 1010 };
+        const [spotRes, ruleRes] = await Promise.all([
+          db.collection(COLLECTIONS.SPOTS).where({ spotId }).get(),
+          db.collection(COLLECTIONS.RELEASE_RULES).where({ spotId }).get(),
+        ]);
+        const spot = (spotRes.data || [])[0];
+        if (!spot) return { success: false, error: '景点不存在', errorCode: 1001 };
+        const rule = (ruleRes.data || [])[0] || null;
+
+        // PAGE-002 预约方式列表：SORT-RULE-001 按直达率排序，缺失渠道不显示空行
+        const entries = [];
+        if (spot.officialAppid) {
+          entries.push({ type: 'MINIPROGRAM', label: '官方小程序', appid: spot.officialAppid, path: spot.officialPath || '', hint: '点击直接跳转官方小程序预约' });
+        }
+        if (spot.officialAccount) {
+          entries.push({ type: 'OFFICIAL_ACCOUNT', label: '微信公众号', value: spot.officialAccount, hint: '点击参与预约 → 填写信息 → 预约成功' });
+        }
+        if (spot.officialWebUrl) {
+          entries.push({ type: 'WEB', label: '景区官网', url: spot.officialWebUrl, hint: '在浏览器中打开官网预约' });
+        }
+
+        return {
+          success: true,
+          data: {
+            ...buildCard(spot, rule, now),
+            address: spot.address,
+            location: spot.location,
+            entries,
+            // 预约注意事项（折叠展开），取自 release_rules
+            bookingTips: rule ? rule.bookingTips : '',
+            openTime: rule ? rule.openTime : '',
+            ticketPrice: rule ? rule.ticketPrice : '',
+            idRequirement: rule ? rule.idRequirement : '',
+            ageLimit: rule ? rule.ageLimit : '',
+          },
+        };
+      }
+
+      /** 批量取卡片（PAGE-003 已选景点行、PAGE-005 行程摘要用） */
+      case 'batch': {
+        if (!Array.isArray(spotIds) || spotIds.length === 0) return { success: true, data: [] };
+        const [spotsRes, rulesRes] = await Promise.all([
+          db.collection(COLLECTIONS.SPOTS).where({ spotId: _.in(spotIds) }).get(),
+          db.collection(COLLECTIONS.RELEASE_RULES).where({ spotId: _.in(spotIds) }).get(),
+        ]);
+        const ruleMap = {};
+        (rulesRes.data || []).forEach(r => { ruleMap[r.spotId] = r; });
+        return {
+          success: true,
+          data: (spotsRes.data || []).map(s => buildCard(s, ruleMap[s.spotId], now)),
+        };
+      }
+
+      /** PAGE-004 搜索态，SEARCH-RULE-001 本地匹配（V1 景点库仅 10 条，全量拉取后内存过滤） */
+      case 'search': {
+        if (!keyword || !String(keyword).trim()) return { success: true, data: [], history: [] };
+        const { spots, ruleMap } = await loadAll();
+        const hits = spots
+          .filter(s => matchSpot(s, keyword))
+          .map(s => buildCard(s, ruleMap[s.spotId], now))
+          .sort((a, b) => (b.popularityScore || 0) - (a.popularityScore || 0));
+
+        // SEARCH-RULE-002 写入历史：去重、最多 10 条、最新在前
+        if (OPENID) {
+          const kw = String(keyword).trim();
+          const exist = await db.collection(COLLECTIONS.SEARCH_HISTORY)
+            .where({ userId: OPENID, keyword: kw }).get();
+          for (const h of (exist.data || [])) {
+            await db.collection(COLLECTIONS.SEARCH_HISTORY).doc(h._id).remove();
+          }
+          await db.collection(COLLECTIONS.SEARCH_HISTORY).add({
+            data: { userId: OPENID, keyword: kw, searchedAt: now },
+          });
+          const allRes = await db.collection(COLLECTIONS.SEARCH_HISTORY)
+            .where({ userId: OPENID }).orderBy('searchedAt', 'desc').get();
+          const overflow = (allRes.data || []).slice(SEARCH_HISTORY_MAX);
+          for (const o of overflow) {
+            await db.collection(COLLECTIONS.SEARCH_HISTORY).doc(o._id).remove();
+          }
+        }
+
+        return { success: true, data: hits };
+      }
+
+      /** PAGE-003 历史搜索 tag 行 */
+      case 'searchHistory': {
+        if (!OPENID) return { success: true, data: [] };
+        const res = await db.collection(COLLECTIONS.SEARCH_HISTORY)
+          .where({ userId: OPENID })
+          .orderBy('searchedAt', 'desc')
+          .limit(SEARCH_HISTORY_MAX)
+          .get();
+        return { success: true, data: (res.data || []).map(h => h.keyword) };
+      }
+
+      /** SEARCH-RULE-002 仅支持整组清空 */
+      case 'clearSearchHistory': {
+        if (!OPENID) return { success: false, error: '未登录', errorCode: 1000 };
+        const res = await db.collection(COLLECTIONS.SEARCH_HISTORY)
+          .where({ userId: OPENID }).remove();
+        return { success: true, removed: res.stats ? res.stats.removed : 0 };
+      }
+
+      default:
+        return { success: false, error: 'unknown action', errorCode: 1099 };
     }
+  } catch (err) {
+    console.error(`[spots] action=${action} failed`, err);
+    return { success: false, error: err.message, errorCode: 1500 };
   }
+};
 
-  if (action === 'profile') {
-    const { OPENID } = cloud.getWXContext();
-    try {
-      const subs = await db.collection('subscriptions').where({ userId: OPENID }).get();
-      const favs = await db.collection('favorites')
-        .where({ userId: OPENID })
-        .orderBy('favoritedAt', 'desc')
-        .get();
-
-      // 关联景点名称
-      const spotsRes = await db.collection('spots').get();
-      const spotsMap = {};
-      spotsRes.data.forEach(s => { spotsMap[s.spotId] = s; });
-
-      const favorites = favs.data.map(f => ({
-        ...f,
-        name: spotsMap[f.spotId] ? spotsMap[f.spotId].name : '未知景点',
-        statusText: spotsMap[f.spotId] ? '正常' : '未知',
-      }));
-
-      const subscriptions = subs.data.map(s => ({
-        ...s,
-        spotName: spotsMap[s.spotId] ? spotsMap[s.spotId].name : '未知景点',
-      }));
-
-      return { success: true, subscriptions, favorites };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }
-
-  return { success: false, message: 'unknown action' };
+exports._internal = {
+  computeReleaseStatus, computeEarliestDate, computeDifficultyLabel,
+  buildCard, matchSpot, beijingParts, toDateStr, dayNameOfStr,
 };

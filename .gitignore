@@ -52,3 +52,7 @@ Travel-app/竞品资料/IMG_*
 Travel-app/竞品资料/ScreenShot*
 Travel-app/产品分析/*.png
 Travel-app/**/.DS_Store
+# Claude Code CLI local data (skills installed via `claude` shouldn't pollute the repo)
+.claude/skills/
+.claude/settings.local.json
+skills-lock.json
