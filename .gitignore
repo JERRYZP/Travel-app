@@ -56,3 +56,13 @@ Travel-app/**/.DS_Store
 .claude/skills/
 .claude/settings.local.json
 skills-lock.json
+
+# Non-Travel projects — kept on disk, excluded from this repo
+.agents/
+bead-curtain-text/
+clap-dashboard/
+coin-flip/
+dashboard-review/
+repayment-h5/
+rwa-financial/
+rwa-ops/
