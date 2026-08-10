@@ -1,82 +1,40 @@
-.user-card {
-  display: flex;
-  align-items: center;
-  gap: 24rpx;
+.navbar { position: fixed; top: 0; left: 0; right: 0; z-index: 90; background: var(--color-page); }
+.navbar-content { display: flex; align-items: center; justify-content: center; position: relative; }
+.navbar-title { font-size: 30rpx; font-weight: 600; color: var(--color-ink); }
+
+.page-body { padding: 24rpx 30rpx 160rpx; }
+
+/* 用户信息 */
+.profile-header {
+  display: flex; align-items: center; gap: 24rpx;
+  padding: 32rpx 24rpx; margin-bottom: 32rpx;
+}
+.profile-avatar {
+  width: 120rpx; height: 120rpx; border-radius: 60rpx;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.profile-info { display: flex; flex-direction: column; gap: 12rpx; }
+.profile-name { font-size: 32rpx; font-weight: 600; color: var(--color-ink); }
+.profile-tag {
+  display: inline-block; width: fit-content;
+  padding: 4rpx 16rpx; background: var(--color-cream);
+  border: 1rpx solid var(--color-border); border-radius: 8rpx;
+  font-size: 22rpx; color: var(--color-text);
 }
 
-.avatar {
-  width: 120rpx;
-  height: 120rpx;
-  border-radius: 50%;
+/* 设置卡片 */
+.setting-card {
+  background: var(--color-surface); border-radius: 24rpx;
+  box-shadow: var(--shadow-card); padding: 0 24rpx;
+  margin-bottom: 24rpx;
 }
-
-.nickname {
-  font-size: 36rpx;
-  font-weight: 600;
+.setting-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 28rpx 0; border-bottom: 1rpx solid var(--color-border);
 }
-
-.login-btn {
-  background: none;
-  border: none;
-  color: #1989fa;
-  font-size: 32rpx;
-}
-
-.section-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  margin-bottom: 16rpx;
-  padding-left: 16rpx;
-  border-left: 8rpx solid #1989fa;
-}
-
-.fav-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20rpx 0;
-  border-bottom: 1rpx solid #ebedf0;
-}
-
-.fav-item:last-child {
-  border-bottom: none;
-}
-
-.fav-name {
-  font-size: 28rpx;
-  color: #323233;
-}
-
-.fav-status {
-  font-size: 24rpx;
-}
-
-.status-green { color: #07c160; }
-.status-gray { color: #969799; }
-
-.sub-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20rpx 0;
-  border-bottom: 1rpx solid #ebedf0;
-}
-
-.sub-item:last-child {
-  border-bottom: none;
-}
-
-.sub-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.sub-spot {
-  font-size: 28rpx;
-  color: #323233;
-}
-
-.sub-date {
-  font-size: 24rpx;
-  color: #969799;
-}
+.setting-row:last-child { border-bottom: none; }
+.setting-row-label { font-size: 28rpx; color: var(--color-ink); }
+.setting-row-right { display: flex; align-items: center; gap: 8rpx; }
+.setting-row-hint { font-size: 24rpx; color: var(--color-muted); }
+.setting-row-hint-highlight { color: var(--color-primary); }

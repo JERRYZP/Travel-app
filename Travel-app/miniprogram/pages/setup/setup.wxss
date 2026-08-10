@@ -1,0 +1,38 @@
+.navbar { position: fixed; top: 0; left: 0; right: 0; z-index: 90; background: var(--color-page); }
+.navbar-content { display: flex; align-items: center; padding-left: 20rpx; position: relative; }
+.navbar-back { width: 60rpx; height: 60rpx; display: flex; align-items: center; justify-content: center; }
+.navbar-title { position: absolute; left: 50%; transform: translateX(-50%); font-size: 30rpx; font-weight: 600; color: var(--color-ink); }
+
+.page-body { padding: 24rpx 30rpx 120rpx; }
+
+.section-label { display: block; font-size: 28rpx; font-weight: 600; color: var(--color-ink); margin-bottom: 16rpx; margin-top: 24rpx; }
+.section-label:first-child { margin-top: 0; }
+
+.setting-card { background: var(--color-surface); border-radius: 24rpx; box-shadow: var(--shadow-card); padding: 0 24rpx; }
+.setting-row { display: flex; align-items: center; justify-content: space-between; padding: 28rpx 0; border-bottom: 1rpx solid var(--color-border); }
+.setting-row:last-child { border-bottom: none; }
+.setting-row-left { display: flex; align-items: center; gap: 16rpx; }
+.setting-row-info { display: flex; flex-direction: column; gap: 4rpx; }
+.setting-row-label { font-size: 28rpx; color: var(--color-ink); }
+.setting-row-label-disabled { color: var(--color-placeholder); }
+.setting-row-hint { font-size: 22rpx; color: var(--color-text); }
+.setting-row-coming { font-size: 24rpx; color: var(--color-placeholder); }
+.setting-row-disabled { opacity: 0.6; }
+
+.checkbox {
+  width: 40rpx; height: 40rpx; border-radius: 8rpx;
+  border: 2rpx solid var(--color-border);
+  display: flex; align-items: center; justify-content: center;
+}
+.checkbox.checked { background: var(--color-primary); border-color: var(--color-primary); }
+
+.offset-options { display: flex; gap: 32rpx; }
+.offset-option { display: flex; align-items: center; gap: 12rpx; font-size: 26rpx; color: var(--color-ink); }
+
+.submit-btn {
+  display: flex; align-items: center; justify-content: center; gap: 10rpx;
+  height: 88rpx; background: var(--color-primary); border-radius: 24rpx;
+  color: #fff; font-size: 28rpx; font-weight: 600; margin-top: 48rpx;
+  box-shadow: 0 4rpx 12rpx rgba(192,71,42,0.2);
+}
+.submit-btn.disabled { opacity: 0.6; }

@@ -1,0 +1,15 @@
+// 放票时间标签格式化（WXS，供 wxml 直接调用）
+// 输入 releaseTime：字符串 "20:00" 或数组 ["20:00","21:00"]
+// 输出："20:00" 或 "20:00、21:00"（调用处再拼 "放票" 后缀）
+// 设计：单时间直接返回；多时间用顿号连接。releaseTime 为空时返回空串。
+var releaseTimes = function (t) {
+  if (!t) return '';
+  if (typeof t === 'object') {
+    return t.join('、');
+  }
+  return t;
+};
+
+module.exports = {
+  releaseTimes: releaseTimes
+};

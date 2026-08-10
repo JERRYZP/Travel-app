@@ -1,60 +1,74 @@
 const app = getApp();
+const api = require('../../utils/api.js');
 
 Page({
   data: {
-    userInfo: null,
-    subscriptions: [],
-    favorites: [],
-    loading: true,
+    statusBarHeight: 20,
+    navBarHeight: 44,
+    user: null,
+    badge: 0,
   },
 
   onLoad() {
-    this.setData({ userInfo: app.globalData.userInfo });
-    this.fetchProfileData();
+    const g = app.globalData;
+    this.setData({ statusBarHeight: g.statusBarHeight, navBarHeight: g.navBarHeight });
   },
 
-  async fetchProfileData() {
-    this.setData({ loading: true });
-    try {
-      const { result } = await wx.cloud.callFunction({
-        name: 'spots',
-        data: { action: 'profile' },
-      });
+  onShow() {
+    this.loadUser();
+    this.loadBadge();
+  },
+
+  loadUser() {
+    api.reminder.user.profile().then(res => {
+      this.setData({ user: res.user });
+    }).catch(() => {
       this.setData({
-        subscriptions: result.subscriptions || [],
-        favorites: result.favorites || [],
-        loading: false,
+        user: {
+          nickname: '游客',
+          avatarUrl: '',
+          memberLevel: 'NORMAL',
+          points: 0,
+        },
       });
-    } catch (err) {
-      console.error('获取个人数据失败', err);
-      this.setData({ loading: false });
-    }
+    });
   },
 
-  onGetUserInfo(e) {
-    const { userInfo } = e.detail;
-    if (userInfo) {
-      this.setData({ userInfo });
-      app.globalData.userInfo = userInfo;
-    }
+  loadBadge() {
+    api.reminder.task.badge().then(res => {
+      this.setData({ badge: res.badge || 0 });
+    }).catch(() => {});
   },
 
-  goToDetail(e) {
-    const { id } = e.currentTarget.dataset;
-    wx.navigateTo({ url: `/pages/detail/detail?id=${id}` });
+  onNotifySettings() {
+    wx.openSetting({
+      success: res => {
+        if (res.authSetting['scope.subscribeMessage']) {
+          wx.showToast({ title: '通知已开启', icon: 'none' });
+        }
+      },
+    });
   },
 
-  async cancelSubscription(e) {
-    const { id } = e.currentTarget.dataset;
-    try {
-      await wx.cloud.callFunction({
-        name: 'notifier',
-        data: { action: 'cancel', subscriptionId: id },
-      });
-      wx.showToast({ title: '已取消', icon: 'success' });
-      this.fetchProfileData();
-    } catch (err) {
-      wx.showToast({ title: '操作失败', icon: 'none' });
-    }
+  onGuide() {
+    wx.showToast({ title: '攻略即将上线', icon: 'none' });
+  },
+
+  onFeedback() {
+    wx.showToast({ title: '感谢反馈', icon: 'none' });
+  },
+
+  onReportError() {
+    wx.showModal({
+      title: '信息纠错',
+      content: '发现景点信息有误？请描述问题，我们会尽快核实。',
+      editable: true,
+      placeholderText: '请输入问题描述',
+      success: res => {
+        if (res.confirm) {
+          wx.showToast({ title: '感谢反馈，我们会尽快核实', icon: 'none' });
+        }
+      },
+    });
   },
 });

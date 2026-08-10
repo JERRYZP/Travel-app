@@ -21,11 +21,12 @@ const eq = (a, b, m) => {
 const trip = { startDate: '2026-05-31', endDate: '2026-06-04' }; // 5天，6/1 是周一
 
 console.log('--- 交叉积总数 ---');
-const all = spots.flatMap(s => TL.buildEvents(s, rm[s.spotId], trip));
+// 时间线只对需预约景点生成（B 层免预约由 generate() 层排除）
+const reserveSpots = spots.filter(s => s.reservationRequired !== false);
+const all = reserveSpots.flatMap(s => TL.buildEvents(s, rm[s.spotId], trip));
 const closedMon = rules.filter(r => (r.closedDays || []).includes('monday')).length;
-eq(closedMon, 6, '6 个景点周一闭馆');
-eq(all.length, 10 * 5 - 6, '总事件 = 10×5−6');
-eq(all.length, 44, '实际 44 条');
+eq(closedMon, 17, '17 个景点周一闭馆（含 B 层，共 26 条规则）');
+eq(all.length, 79, '总事件 = 12 个仅周一闭馆×4 + 考古馆/天文馆(周一+周二闭馆)×3×2 + 5 个不闭馆×5 = 79');
 
 console.log('\n--- 故宫：周一闭馆，5 天里 4 条 ---');
 const gg = TL.buildEvents(sm.gugong, rm.gugong, trip);
@@ -34,17 +35,17 @@ eq(gg.map(e => e.visitDate).join(','), '2026-05-31,2026-06-02,2026-06-03,2026-06
 eq(gg.map(e => e.releaseDateStr).join(','), '2026-05-24,2026-05-26,2026-05-27,2026-05-28', '各自提前 7 天');
 eq(gg.every(e => time.formatHourMinute(e.releaseAt) === '20:00'), true, '全部 20:00 放票');
 
-console.log('\n--- 八达岭：不闭馆 5 条，提前 10 天 ---');
-const bd = TL.buildEvents(sm.badaling, rm.badaling, trip);
-eq(bd.length, 5, '八达岭 5 条');
-eq(bd[0].releaseDateStr, '2026-05-21', '5/31 票提前 10 天');
-eq(bd[4].releaseDateStr, '2026-05-25', '6/4 票提前 10 天');
-eq(time.formatHourMinute(bd[0].releaseAt), '00:00', '00:00 放票');
+console.log('\n--- 清华：不闭馆 5 条，提前 7 天 08:00 ---');
+const th = TL.buildEvents(sm.tsinghua, rm.tsinghua, trip);
+eq(th.length, 5, '清华 5 条');
+eq(th[0].releaseDateStr, '2026-05-24', '5/31 票提前 7 天');
+eq(th[4].releaseDateStr, '2026-05-28', '6/4 票提前 7 天');
+eq(time.formatHourMinute(th[0].releaseAt), '08:00', '08:00 放票');
 
-console.log('\n--- 出发日视图：6/1 只剩 4 个景点 ---');
+console.log('\n--- 出发日视图：6/1 只剩 3 个景点（8 个周一闭馆）---');
 const byDep = TL.groupByDeparture(all);
 eq(byDep.length, 5, '5 个日期 Tab');
-eq(byDep.map(g => g.count).join(','), '10,4,10,10,10', '各 Tab 事件数');
+eq(byDep.map(g => g.count).join(','), '19,5,17,19,19', '各 Tab 事件数（6/1 周一 14 个闭馆剩 5；6/2 考古馆/天文馆周二闭馆剩 17）');
 eq(byDep[1].key, '2026-06-01', '第 2 个 Tab 是 6/1');
 eq(byDep[1].label, '6月1日 (周一)', 'Tab 标签');
 console.log('   6/1 可约:', byDep[1].events.map(e => e.spotName).join('、'));
@@ -53,7 +54,7 @@ eq(byDep[0].events.every((e, i, a) => i === 0 || a[i - 1].releaseAt <= e.release
 
 console.log('\n--- 景点视图：故宫 Tab 显示 4 天 ---');
 const bySpot = TL.groupBySpot(all);
-eq(bySpot.length, 10, '10 个景点 Tab');
+eq(bySpot.length, 19, '19 个需预约景点 Tab');
 const ggTab = bySpot.find(g => g.key === 'gugong');
 eq(ggTab.count, 4, '故宫 Tab 4 条');
 eq(ggTab.label, '故宫博物院', 'Tab 标签用景点名');

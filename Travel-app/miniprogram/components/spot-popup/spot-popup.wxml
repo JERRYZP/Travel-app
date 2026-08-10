@@ -1,0 +1,108 @@
+<wxs module="fmt" src="../../utils/format.wxs"></wxs>
+<view wx:if="{{show}}" class="popup-mask" bindtap="onMaskTap" catchtouchmove="onSheetTap">
+  <view class="popup-sheet" catchtap="onSheetTap">
+
+    <block wx:if="{{loading}}">
+      <view class="popup-loading">
+        <van-loading size="40rpx" color="#B8904A" />
+      </view>
+    </block>
+
+    <block wx:elif="{{spot}}">
+      <!-- 头部：缩略图 + 名称/难度 + 核心标签 -->
+      <view class="popup-header">
+        <image class="popup-spot-img" src="/images/spots/{{spot.spotId}}.jpg" mode="aspectFill" />
+        <view class="popup-header-info">
+          <view class="popup-name-row">
+            <text class="popup-spot-name">{{spot.name}}</text>
+            <view wx:if="{{spot.reservationRequired}}" class="popup-diff-tag diff-{{spot.difficultyLabel.key}}">
+              {{spot.difficultyLabel.text}}
+            </view>
+          </view>
+          <view class="popup-tag-row">
+            <block wx:if="{{spot.reservationRequired}}">
+              <view class="popup-core-tag">提前{{spot.advanceDays}}天</view>
+              <view class="popup-core-tag">每日{{fmt.releaseTimes(spot.releaseTime)}}点放票</view>
+            </block>
+            <block wx:else>
+              <view class="popup-core-tag">无需预约</view>
+            </block>
+          </view>
+        </view>
+      </view>
+
+      <!-- 预约方式（B 层免预约 → 购票 / 入园方式） -->
+      <view class="popup-section-title">{{spot.reservationRequired ? '预约方式' : '购票 / 入园方式'}}</view>
+      <view class="popup-entries">
+        <view
+          wx:for="{{spot.entries}}"
+          wx:key="type"
+          class="popup-entry"
+          bindtap="onEntryTap"
+          data-entry="{{item}}"
+        >
+          <view class="popup-entry-icon">
+            <svg-icon name="{{item.type === 'OFFICIAL_ACCOUNT' ? 'wechat' : item.type === 'WEB' ? 'globe' : 'miniprogram'}}" size="32px" />
+          </view>
+          <view class="popup-entry-body">
+            <view class="popup-entry-label-row">
+              <text class="popup-entry-label">{{item.label}}</text>
+              <view class="popup-entry-badge">{{spot.reservationRequired ? '预约方式' : '购票方式'}}{{index + 1}}</view>
+            </view>
+            <text class="popup-entry-hint">{{spot.reservationRequired ? item.hint : '点击打开官方购票 / 入园渠道'}}</text>
+          </view>
+          <view class="popup-entry-actions">
+            <text
+              wx:if="{{item.type === 'WEB' && item.url}}"
+              class="popup-entry-copy"
+              catchtap="onCopyEntry"
+              data-entry="{{item}}"
+            >复制链接</text>
+            <view class="popup-entry-btn {{item.type === 'OFFICIAL_ACCOUNT' ? 'btn-account' : 'btn-link'}}">
+              {{item.type === 'OFFICIAL_ACCOUNT' ? '查看二维码' : '打开链接'}}
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 公众号二维码弹层 -->
+      <view wx:if="{{showQr && qrSpot}}" class="qr-mask" catchtap="closeQr" catchtouchmove="noop">
+        <view class="qr-card" catchtap="noop">
+          <text class="qr-title">{{qrSpot.name}}</text>
+          <text class="qr-subtitle">长按识别二维码，关注公众号后参与预约</text>
+          <image class="qr-img" src="{{qrSpot.qrCode}}" mode="aspectFit" show-menu-by-longpress />
+          <view class="qr-close" bindtap="closeQr">关闭</view>
+        </view>
+      </view>
+
+      <!-- 预约注意事项 -->
+      <view class="popup-tips" bindtap="toggleTips">
+        <text class="popup-tips-title">{{spot.reservationRequired ? '预约注意事项' : '游玩信息'}}</text>
+        <van-icon name="{{tipsExpanded ? 'arrow-up' : 'arrow-down'}}" size="14px" color="#B8904A" />
+      </view>
+      <view wx:if="{{tipsExpanded}}" class="popup-tips-body">
+        <text>{{spot.bookingTips}}</text>
+        <view wx:if="{{spot.openTime}}" class="popup-tips-row">
+          <text class="popup-tips-label">开放时间</text>
+          <text>{{spot.openTime}}</text>
+        </view>
+        <view wx:if="{{spot.ticketPrice}}" class="popup-tips-row">
+          <text class="popup-tips-label">票价</text>
+          <text>{{spot.ticketPrice}}</text>
+        </view>
+        <view wx:if="{{spot.idRequirement}}" class="popup-tips-row">
+          <text class="popup-tips-label">证件要求</text>
+          <text>{{spot.idRequirement}}</text>
+        </view>
+        <view wx:if="{{spot.closedDaysLabel}}" class="popup-tips-row">
+          <text class="popup-tips-label">闭馆日</text>
+          <text>{{spot.closedDaysLabel}}</text>
+        </view>
+        <view wx:if="{{spot.ageLimit}}" class="popup-tips-row">
+          <text class="popup-tips-label">优惠政策</text>
+          <text>{{spot.ageLimit}}</text>
+        </view>
+      </view>
+    </block>
+  </view>
+</view>

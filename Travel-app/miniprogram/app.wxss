@@ -1,34 +1,62 @@
-@import './miniprogram_npm/@vant/weapp/common/index.wxss';
-
+/* ===== Design Tokens (figma_design.md) ===== */
 page {
-  --primary-color: #1989fa;
-  --danger-color: #ee0a24;
-  --warning-color: #ff976a;
-  --success-color: #07c160;
-  --text-color: #323233;
-  --text-color-secondary: #646566;
-  --background-color: #f7f8fa;
-  --border-color: #ebedf0;
+  --color-page: #F8F3EA;
+  --color-surface: #FFFEFB;
+  --color-primary: #C0472A;
+  --color-primary-soft: #EAA091;
+  --color-ink: #4A2D23;
+  --color-text: #7A5540;
+  --color-muted: #B8904A;
+  --color-placeholder: #DBCDBB;
+  --color-border: #EDE0C8;
+  --color-cream: #EDE5D2;
 
-  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica,
-    Segoe UI, Arial, Roboto, 'PingFang SC', 'miui', 'Hiragino Sans GB',
-    'Microsoft Yahei', sans-serif;
-  background-color: var(--background-color);
-  color: var(--text-color);
+  /* difficulty labels */
+  --diff-extreme-bg: #F5DDD5;
+  --diff-extreme-text: #C0472A;
+  --diff-normal-bg: #F2E4C0;
+  --diff-normal-text: #C26B0C;
+  --diff-easy-bg: #D8EAD8;
+  --diff-easy-text: #4A7C59;
+
+  /* shadows */
+  --shadow-card: 0 2rpx 8rpx rgba(100,60,20,0.08);
+  --shadow-input: 0 2rpx 16rpx rgba(100,60,20,0.08);
+  --shadow-tabbar: 0 4rpx 12rpx rgba(100,60,20,0.10);
+
+  background-color: var(--color-page);
+  color: var(--color-ink);
+  font-family: 'PingFang SC', sans-serif;
+  font-size: 28rpx;
+  line-height: 1.5;
 }
 
-.container {
-  padding: 24rpx;
+/* ===== Global Utilities ===== */
+.page-container {
+  min-height: 100vh;
+  background-color: var(--color-page);
+  padding-bottom: 120rpx;
+  box-sizing: border-box;
+}
+
+.section-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 16rpx;
 }
 
 .card {
-  background: #fff;
-  border-radius: 16rpx;
+  background: var(--color-surface);
+  border-radius: 24rpx;
+  box-shadow: var(--shadow-card);
   padding: 24rpx;
-  margin-bottom: 24rpx;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
 }
 
-.difficulty-easy { color: var(--success-color); }
-.difficulty-medium { color: var(--warning-color); }
-.difficulty-hard { color: var(--danger-color); }
+.text-primary { color: var(--color-primary); }
+.text-ink { color: var(--color-ink); }
+.text-muted { color: var(--color-muted); }
+.text-placeholder { color: var(--color-placeholder); }
+
+/* hide scrollbar */
+::-webkit-scrollbar { display: none; }

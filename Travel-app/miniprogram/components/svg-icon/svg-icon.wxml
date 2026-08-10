@@ -1,0 +1,6 @@
+<image
+  class="svg-icon"
+  src="/images/icons/{{name}}.svg"
+  mode="aspectFit"
+  style="width: {{size}}; height: {{size}};{{rotate ? 'transform: rotate(' + rotate + 'deg);' : ''}}"
+/>

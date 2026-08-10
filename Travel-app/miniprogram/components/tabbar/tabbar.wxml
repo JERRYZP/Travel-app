@@ -1,0 +1,15 @@
+<view class="tabbar">
+  <view class="tabbar-item {{active === 'home' ? 'active' : ''}}" bindtap="onTap" data-tab="home">
+    <view class="tabbar-icon-wrap">
+      <svg-icon name="{{active === 'home' ? 'reminder-active' : 'reminder'}}" size="22px" />
+      <view wx:if="{{badge > 0}}" class="tabbar-badge">{{badge > 99 ? '99+' : badge}}</view>
+    </view>
+    <text class="tabbar-label" style="color: {{active === 'home' ? '#C0472A' : '#B09878'}}">提醒</text>
+  </view>
+  <view class="tabbar-item {{active === 'profile' ? 'active' : ''}}" bindtap="onTap" data-tab="profile">
+    <view class="tabbar-icon-wrap">
+      <svg-icon name="{{active === 'profile' ? 'profile-active' : 'profile'}}" size="22px" />
+    </view>
+    <text class="tabbar-label" style="color: {{active === 'profile' ? '#C0472A' : '#B09878'}}">我的</text>
+  </view>
+</view>

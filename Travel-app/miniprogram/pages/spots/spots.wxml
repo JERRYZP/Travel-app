@@ -1,0 +1,159 @@
+<wxs module="fmt" src="../../utils/format.wxs"></wxs>
+<!-- 自定义导航栏 -->
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack">
+      <svg-icon name="back" size="18px" />
+    </view>
+    <text class="navbar-title">想去景点</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view class="page-body">
+  <!-- 搜索框 -->
+  <view class="search-bar">
+    <view class="search-input-wrap">
+      <svg-icon name="search" size="16px" />
+      <input
+        class="search-input"
+        placeholder="搜索景点名称"
+        placeholder-class="search-placeholder"
+        value="{{keyword}}"
+        focus="{{inputFocus}}"
+        bindfocus="onSearchFocus"
+        bindinput="onSearchInput"
+        confirm-type="search"
+        bindconfirm="onSearchSubmit"
+      />
+      <view wx:if="{{keyword}}" class="search-clear" bindtap="onClearKeyword">
+        <svg-icon name="close" size="16px" />
+      </view>
+    </view>
+    <view wx:if="{{searchMode}}" class="search-cancel" bindtap="onSearchCancel">取消</view>
+  </view>
+
+  <!-- ===== 搜索态 ===== -->
+  <block wx:if="{{searchMode}}">
+    <view wx:if="{{searching}}" class="loading-wrap">
+      <van-loading size="40rpx" color="#B8904A" />
+    </view>
+    <view wx:elif="{{searchResults.length > 0}}" class="spot-grid">
+     <view wx:for="{{searchResults}}" wx:key="spotId" class="spot-card">
+        <image class="spot-card-img" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" bindtap="onSpotNameTap" data-id="{{item.spotId}}" />
+       <view class="spot-card-body">
+          <view class="spot-card-title">
+            <text class="spot-card-name" bindtap="onSpotNameTap" data-id="{{item.spotId}}">{{item.name}}</text>
+            <view wx:if="{{item.reservationRequired}}" class="spot-card-diff diff-{{item.difficultyLabel.key}}">{{item.difficultyLabel.text}}</view>
+          </view>
+          <view class="spot-card-tags">
+            <block wx:if="{{item.reservationRequired}}">
+              <text class="spot-card-tag">提前{{item.advanceDays}}天</text>
+              <text class="spot-card-tag">{{fmt.releaseTimes(item.releaseTime)}}放票</text>
+            </block>
+            <block wx:else>
+              <text class="spot-card-tag card-desc">{{item.cardDesc}}</text>
+            </block>
+          </view>
+        </view>
+        <view wx:if="{{item.reservationRequired}}"
+          class="spot-card-select {{item.selected ? 'selected' : ''}}"
+          bindtap="onSpotToggle"
+          data-id="{{item.spotId}}"
+          data-spot="{{item}}"
+        >
+         <svg-icon wx:if="{{item.selected}}" name="check" size="12px" />
+          <svg-icon wx:else name="plus" size="12px" />
+         <text>{{item.selected ? '已选' : '选择'}}</text>
+       </view>
+       <view wx:else class="spot-card-nobook">无需预约</view>
+     </view>
+   </view>
+   <view wx:elif="{{hasSearched}}" class="empty-state">
+      <text>没有找到相关景点，换个词试试</text>
+    </view>
+    <!-- 搜索历史：激活搜索框且尚未搜索时展示，无历史则隐藏 -->
+    <view wx:elif="{{history.length > 0}}" class="history-section">
+      <view class="history-header">
+        <text class="history-title">历史搜索</text>
+        <view class="history-clear" bindtap="onClearHistory">
+          <svg-icon name="trash" size="14px" />
+        </view>
+      </view>
+      <view class="history-tags">
+        <view wx:for="{{history}}" wx:key="*this" class="history-tag" bindtap="onHistoryTap" data-kw="{{item}}">{{item}}</view>
+      </view>
+    </view>
+  </block>
+
+  <!-- ===== 列表态 ===== -->
+  <block wx:else>
+    <!-- 已选景点 -->
+    <view wx:if="{{selectedSpots.length > 0}}" class="selected-section card">
+      <view class="selected-header">
+        <text class="selected-title">已选景点 ({{selectedSpots.length}})</text>
+        <view class="selected-clear" bindtap="onClearSelected">
+          <svg-icon name="trash" size="14px" />
+          <text>清空</text>
+        </view>
+      </view>
+      <scroll-view scroll-x class="selected-scroll">
+        <view wx:for="{{selectedSpots}}" wx:key="spotId" class="selected-card">
+          <image class="selected-card-img" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" />
+          <text class="selected-card-name">{{item.name}}</text>
+          <view class="selected-card-x" bindtap="onRemoveSelected" data-id="{{item.spotId}}">
+            <svg-icon name="close-white" size="10px" />
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <!-- 热门景点 -->
+    <view class="hot-section">
+      <view class="hot-header">
+        <view class="hot-header-left">
+          <svg-icon name="fire" size="14px" />
+          <text class="hot-header-title">热门景点</text>
+        </view>
+        <view class="hot-shuffle" bindtap="onShuffle">
+          <svg-icon name="refresh" size="12px" />
+          <text>换一批</text>
+        </view>
+      </view>
+      <view class="spot-grid">
+       <view wx:for="{{hotSpots}}" wx:key="spotId" class="spot-card">
+          <image class="spot-card-img" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" bindtap="onSpotNameTap" data-id="{{item.spotId}}" />
+         <view class="spot-card-body">
+            <view class="spot-card-title">
+              <text class="spot-card-name" bindtap="onSpotNameTap" data-id="{{item.spotId}}">{{item.name}}</text>
+              <view wx:if="{{item.reservationRequired}}" class="spot-card-diff diff-{{item.difficultyLabel.key}}">{{item.difficultyLabel.text}}</view>
+            </view>
+            <view class="spot-card-tags">
+              <block wx:if="{{item.reservationRequired}}">
+                <text class="spot-card-tag">提前{{item.advanceDays}}天</text>
+                <text class="spot-card-tag">{{fmt.releaseTimes(item.releaseTime)}}放票</text>
+              </block>
+              <block wx:else>
+                <text class="spot-card-tag card-desc">{{item.cardDesc}}</text>
+              </block>
+            </view>
+          </view>
+          <view wx:if="{{item.reservationRequired}}"
+            class="spot-card-select {{item.selected ? 'selected' : ''}}"
+            bindtap="onSpotToggle"
+            data-id="{{item.spotId}}"
+            data-spot="{{item}}"
+          >
+           <svg-icon wx:if="{{item.selected}}" name="check" size="12px" />
+            <svg-icon wx:else name="plus" size="12px" />
+           <text>{{item.selected ? '已选' : '选择'}}</text>
+         </view>
+         <view wx:else class="spot-card-nobook">无需预约</view>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>
+
+<spot-popup show="{{showSpotPopup}}" spot-id="{{popupSpotId}}" bind:close="onSpotPopupClose" />

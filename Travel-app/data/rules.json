@@ -5,42 +5,51 @@
       "advanceDays": 7,
       "releaseTime": "20:00",
       "releaseFrequency": "daily",
-      "closedDays": ["monday"],
+      "closedDays": [
+        "monday"
+      ],
       "isRolling": false,
-      "bookingTips": "需提前7天预约，每日20:00放票；每个证件每个入院日限订1张；上午场最迟12:00检票，下午场最早11:00检票",
+      "bookingTips": "每个证件每个入院日限订1张；分上午场和下午场，上午场最迟12:00检票，下午场最早11:00检票；珍宝馆和钟表馆需另购票",
       "openTime": "08:30-17:00（16:10停止入场），周一闭馆（法定节假日除外）",
       "ticketPrice": "旺季60元/人，淡季40元/人；珍宝馆10元，钟表馆10元",
       "idRequirement": "中国大陆观众凭身份证原件，外籍观众凭护照",
       "ageLimit": "未满18周岁中国公民免费，但需预约；60周岁以上（含）老年人旺季30元，淡季20元",
-      "lastCheckedDate": null
+      "lastCheckedDate": null,
+      "specialNotice": "【临时公告】故宫博物院2026年8月15日至8月17日因设备检修，珍宝馆及钟表馆暂停开放，其余区域正常参观"
     },
     {
       "spotId": "tiananmen-chenglou",
       "advanceDays": 7,
       "releaseTime": "17:00",
       "releaseFrequency": "daily",
-      "closedDays": ["monday"],
+      "closedDays": [
+        "monday"
+      ],
       "isRolling": false,
-      "bookingTips": "需提前1-7天预约，每日17:00放票；周一闭馆（法定节假日除外）；每人每参观日限预约1次",
+      "bookingTips": "每人每参观日限预约1次；登城楼须安检，建议轻装前往",
       "openTime": "08:30-17:00（16:30停止检票）",
       "ticketPrice": "15元/人",
       "idRequirement": "须持预约时使用的身份证件原件",
       "ageLimit": "18周岁以下、60周岁（含）以上中国公民免费；现役军人、消防救援人员、残疾人凭证件免费",
-      "lastCheckedDate": null
+      "lastCheckedDate": null,
+      "specialNotice": ""
     },
     {
       "spotId": "guobo",
       "advanceDays": 7,
       "releaseTime": "17:00",
       "releaseFrequency": "daily",
-      "closedDays": ["monday"],
+      "closedDays": [
+        "monday"
+      ],
       "isRolling": false,
-      "bookingTips": "需提前1-7天预约，每日17:00放票；每个账号每个参观日限预约5人；入馆须按预约时段",
+      "bookingTips": "每个账号每个参观日限预约5人；入馆须按预约时段，迟到可能无法入馆",
       "openTime": "09:00-17:00（16:00停止入馆），周一闭馆（法定节假日除外）",
       "ticketPrice": "免费",
       "idRequirement": "须持预约时使用的有效身份证件原件",
       "ageLimit": "未满14周岁未成年人须由成年人陪同参观；军人、残疾人、60岁以上老人凭证件优先",
-      "lastCheckedDate": null
+      "lastCheckedDate": null,
+      "specialNotice": ""
     },
     {
       "spotId": "yiheyuan",
@@ -49,26 +58,34 @@
       "releaseFrequency": "daily",
       "closedDays": [],
       "isRolling": false,
-      "bookingTips": "需提前1-7天预约，每日21:00放票；联票含德和园、佛香阁、苏州街、文昌院",
+      "bookingTips": "联票含德和园、佛香阁、苏州街、文昌院；园中园需二次检票，建议保留联票",
       "openTime": "旺季06:00-20:00（19:00停止入园），淡季06:30-19:00（18:00停止入园）",
       "ticketPrice": "旺季30元/人，淡季20元/人；联票旺季60元，淡季50元",
       "idRequirement": "身份证原件或护照",
       "ageLimit": "6周岁（含）以下或身高1.2米（含）以下儿童免费；60周岁（含）以上老年人凭身份证半价",
-      "lastCheckedDate": null
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "peakPrice": "旺季门票30元，联票60元",
+      "offPrice": "淡季门票20元，联票50元"
     },
     {
       "spotId": "tiantan",
       "advanceDays": 7,
       "releaseTime": "21:00",
       "releaseFrequency": "daily",
-      "closedDays": ["monday"],
+      "closedDays": [
+        "monday"
+      ],
       "isRolling": false,
-      "bookingTips": "需提前1-7天预约，每日21:00放票；祈年殿等景点周一闭馆（法定节假日除外）",
+      "bookingTips": "祈年殿等园内景点周一闭馆（法定节假日除外）；公园全天开放，景点需另购联票",
       "openTime": "公园06:00-22:00（21:00停止入园），景点08:00-18:00（17:30停止进入）",
       "ticketPrice": "旺季门票15元，联票34元；淡季门票10元，联票28元",
       "idRequirement": "身份证原件",
       "ageLimit": "18周岁以下未成年人免费；60周岁以上老年人凭身份证免费",
-      "lastCheckedDate": null
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "peakPrice": "旺季门票15元，联票34元",
+      "offPrice": "淡季门票10元，联票28元"
     },
     {
       "spotId": "badaling",
@@ -77,12 +94,15 @@
       "releaseFrequency": "daily",
       "closedDays": [],
       "isRolling": false,
-      "bookingTips": "需提前10天预约，每日00:00放票；建议提前预约；缆车、滑车另行购票",
+      "bookingTips": "缆车、滑车另行购票；旺季人流量大，建议错峰出行",
       "openTime": "旺季06:30-16:30，淡季07:30-16:00",
       "ticketPrice": "旺季40元/人，淡季35元/人",
       "idRequirement": "须持预约时使用的身份证件原件",
       "ageLimit": "未满18周岁中国公民免费；残疾人、现役军人、消防救援人员、60周岁以上老人凭有效证件免费",
-      "lastCheckedDate": null
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "peakPrice": "旺季门票40元",
+      "offPrice": "淡季门票35元"
     },
     {
       "spotId": "yuanmingyuan",
@@ -91,12 +111,14 @@
       "releaseFrequency": "daily",
       "closedDays": [],
       "isRolling": false,
-      "bookingTips": "需提前1-7天预约，每日00:00放票；建议购买联票参观西洋楼遗址",
+      "bookingTips": "建议购买联票参观西洋楼遗址；含大水法遗址、迷宫等景点",
       "openTime": "07:00-19:30（19:00停止售票）",
       "ticketPrice": "大门10元/人，西洋楼遗址15元，联票25元",
       "idRequirement": "身份证原件",
       "ageLimit": "未满18周岁未成年人免费；60周岁以上老年人凭老年证或身份证免费",
-      "lastCheckedDate": null
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "cardPrice": "大门10元，联票25元"
     },
     {
       "spotId": "beijing-zoo",
@@ -105,40 +127,316 @@
       "releaseFrequency": "daily",
       "closedDays": [],
       "isRolling": false,
-      "bookingTips": "需提前1-7天预约，每日00:00放票；大熊猫馆限流，建议购买联票",
+      "bookingTips": "大熊猫馆限流，建议购买联票；熊猫馆高峰时段需排队",
       "openTime": "旺季07:30-18:00，淡季07:30-17:00",
       "ticketPrice": "旺季15元/人，淡季10元/人；联票（含熊猫馆）旺季19元，淡季14元",
       "idRequirement": "身份证原件",
       "ageLimit": "6周岁（含）以下或身高1.2米（含）以下儿童免费；60周岁以上老年人凭身份证免费",
-      "lastCheckedDate": null
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "peakPrice": "旺季门票15元，联票（含熊猫馆）19元",
+      "offPrice": "淡季门票10元，联票（含熊猫馆）14元"
     },
     {
       "spotId": "gongwangfu",
       "advanceDays": 7,
       "releaseTime": "00:00",
       "releaseFrequency": "daily",
-      "closedDays": ["monday"],
+      "closedDays": [
+        "monday"
+      ],
       "isRolling": false,
-      "bookingTips": "需提前1-7天预约，每日00:00放票；每个证件每日限购1张",
+      "bookingTips": "每个证件每日限购1张；建议跟随讲解游览",
       "openTime": "08:30-17:00（16:10停止检票），周一闭馆（法定节假日除外）",
       "ticketPrice": "40元/人",
       "idRequirement": "须持预约时使用的身份证件原件",
       "ageLimit": "6周岁（含）以下或身高1.2米（含）以下儿童免费；60周岁以上老年人凭身份证半价（20元）",
-      "lastCheckedDate": null
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "cardPrice": "40元/人"
     },
     {
       "spotId": "beihai",
       "advanceDays": 7,
       "releaseTime": "00:00",
       "releaseFrequency": "daily",
-      "closedDays": ["monday"],
+      "closedDays": [
+        "monday"
+      ],
       "isRolling": false,
-      "bookingTips": "需提前1-7天预约，每日00:00放票；琼华岛等景点周一闭馆（法定节假日除外）",
+      "bookingTips": "琼华岛等园内景点周一闭馆（法定节假日除外）；白塔位于琼华岛山顶",
       "openTime": "旺季06:00-21:00（20:30停止入园），淡季06:30-20:00（19:30停止入园）",
       "ticketPrice": "旺季门票10元，联票20元；淡季门票5元，联票15元",
       "idRequirement": "身份证原件",
       "ageLimit": "6周岁（含）以下或身高1.2米（含）以下儿童免费；60周岁以上老年人凭身份证免费",
-      "lastCheckedDate": null
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "peakPrice": "旺季门票10元，联票20元",
+      "offPrice": "淡季门票5元，联票15元"
+    },
+    {
+      "advanceDays": 9,
+      "releaseTime": "12:00",
+      "releaseFrequency": "daily",
+      "closedDays": [],
+      "isRolling": false,
+      "bookingTips": "可提前1-9天预约，每日12:00放票，分升旗/上午/下午/降旗时段；观看升旗须单独预约升旗时段；节假日和暑期放票后几分钟即约满，建议设闹钟卡点",
+      "openTime": "升旗时段以官方当日公示为准；广场开放约 05:00-22:00（以官方为准）",
+      "ticketPrice": "免费",
+      "idRequirement": "须持预约时使用的有效身份证件原件",
+      "ageLimit": "全员实名预约，无免约通道",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "tiananmen-square"
+    },
+    {
+      "advanceDays": 6,
+      "releaseTime": "12:30",
+      "releaseFrequency": "daily",
+      "closedDays": [
+        "monday"
+      ],
+      "isRolling": false,
+      "bookingTips": "提前1-6天预约，每日12:30放票（12:38、12:50固定补放）；每账号最多约5人；严禁携带电子设备，须安检；当天不可约",
+      "openTime": "08:00-12:00（仅上午瞻仰，以官方公示为准）",
+      "ticketPrice": "免费",
+      "idRequirement": "须持预约时使用的有效身份证件原件",
+      "ageLimit": "全员实名预约，无免约通道",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "maozhuxi-jiniantang"
+    },
+    {
+      "advanceDays": 3,
+      "releaseTime": "17:00",
+      "releaseFrequency": "daily",
+      "closedDays": [
+        "monday"
+      ],
+      "isRolling": false,
+      "bookingTips": "提前1-3天预约，每日17:00放票；须按预约时段参观，携带身份证原件",
+      "openTime": "09:00-16:30（16:00停止检票），周一闭馆（以官方为准）",
+      "ticketPrice": "30元/人",
+      "idRequirement": "须持预约时使用的有效身份证件原件",
+      "ageLimit": "以官方公示为准",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "renmin-dahuitang"
+    },
+    {
+      "advanceDays": 8,
+      "releaseTime": "08:00",
+      "releaseFrequency": "daily",
+      "closedDays": [
+        "monday"
+      ],
+      "isRolling": false,
+      "bookingTips": "每日 8:00/17:00/20:00 三个放票时段（主时段 8:00）；提前8天可约；卡点进入，约不上别退出持续刷新；人数多可分时段分批约",
+      "openTime": "09:00-17:00（16:00停止入馆），周一闭馆",
+      "ticketPrice": "免费",
+      "idRequirement": "须持预约时使用的有效身份证件原件",
+      "ageLimit": "未满14周岁未成年人须由成年人陪同（以官方为准）",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "junbo"
+    },
+    {
+      "advanceDays": 3,
+      "releaseTime": "11:00",
+      "releaseFrequency": "daily",
+      "closedDays": [
+        "monday"
+      ],
+      "isRolling": false,
+      "bookingTips": "提前3天放票，每日11:00开抢；周末票比国博还难抢（场馆小票少），放票后几分钟约满；建议提前录好同行人信息、定闹钟卡点",
+      "openTime": "09:00-17:00（16:00停止入馆），周一闭馆",
+      "ticketPrice": "免费（收费临展另购）",
+      "idRequirement": "须持预约时使用的有效身份证件原件",
+      "ageLimit": "儿童无论年龄均需单独预约（以官方为准）",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "ziran-bowuguan"
+    },
+    {
+      "advanceDays": 3,
+      "releaseTime": "09:00",
+      "releaseFrequency": "daily",
+      "closedDays": [
+        "monday",
+        "tuesday"
+      ],
+      "isRolling": false,
+      "bookingTips": "每日限量约500-2000张，提前3天9:00放票，周末秒空；周二仅接受团体预约，散客无法入内；放票后建议持续刷新",
+      "openTime": "09:00-16:30（16:00停止检票）；周一闭馆，周二仅团体",
+      "ticketPrice": "免费",
+      "idRequirement": "须持预约时使用的有效身份证件原件",
+      "ageLimit": "以官方公示为准",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "kaogu-bowuguan"
+    },
+    {
+      "advanceDays": 7,
+      "releaseTime": "08:00",
+      "releaseFrequency": "daily",
+      "closedDays": [],
+      "isRolling": false,
+      "bookingTips": "通过「参观清华」小程序实名预约：每日8:00-17:00可即时预约（周末/节假日最多提前7天），17:00后可申请抽签预约（22:00公布结果）；暑期名额紧张",
+      "openTime": "入校参观时段以「参观清华」小程序为准（暑期约8:00-17:00入校）",
+      "ticketPrice": "免费",
+      "idRequirement": "实名认证，入校时人证核验",
+      "ageLimit": "以官方公示为准",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "tsinghua"
+    },
+    {
+      "advanceDays": 7,
+      "releaseTime": "08:00",
+      "releaseFrequency": "daily",
+      "closedDays": [],
+      "isRolling": false,
+      "bookingTips": "通过「参观北大」小程序实名预约：提前7日可约，每日8:00放新名额；入校时段 8:00-11:00、13:00-16:00，东侧门人证核验入校，当日19:00前离校",
+      "openTime": "入校时段 8:00-11:00、13:00-16:00（以官方为准）",
+      "ticketPrice": "免费",
+      "idRequirement": "实名预约，入校时人证核验",
+      "ageLimit": "以官方公示为准",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "peking-university"
+    },
+    {
+      "advanceDays": 7,
+      "releaseTime": "18:00",
+      "releaseFrequency": "daily",
+      "closedDays": [
+        "monday"
+      ],
+      "isRolling": false,
+      "bookingTips": "提前7天约18:00放票（曾为24:00，以官方为准）；主展厅票较充足，球幕/巨幕影院最难约，建议电脑端优先抢影院票",
+      "openTime": "09:30-17:00（16:30停止入馆），周一闭馆（以官方为准）",
+      "ticketPrice": "主展厅30元/人（以官方为准）；特效影院另购",
+      "idRequirement": "实名预约，凭有效身份证件入馆",
+      "ageLimit": "以官方公示为准",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "kejiguan"
+    },
+    {
+      "advanceDays": 7,
+      "releaseTime": "16:00",
+      "releaseFrequency": "daily",
+      "closedDays": [
+        "monday"
+      ],
+      "isRolling": false,
+      "bookingTips": "提前7日实名预约，每日16:00放票，日限6000人；周末及节假日名额紧张，建议卡点预约",
+      "openTime": "09:00-17:00（16:00停止入馆），周一闭馆",
+      "ticketPrice": "免费",
+      "idRequirement": "实名预约，凭有效身份证件入馆",
+      "ageLimit": "以官方公示为准",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "meishuguan"
+    },
+    {
+      "advanceDays": 7,
+      "releaseTime": "00:00",
+      "releaseFrequency": "daily",
+      "closedDays": [
+        "monday"
+      ],
+      "isRolling": false,
+      "bookingTips": "提前7日实名预约（放票时刻以官方为准）；周末和节假日只接受线上预约",
+      "openTime": "09:00-17:00（16:00停止入馆），周一闭馆",
+      "ticketPrice": "免费",
+      "idRequirement": "实名预约，凭有效身份证件入馆",
+      "ageLimit": "70周岁以上老人、现役军人、残障人士可现场协助办理（以官方为准）",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "gongyi-meishuguan"
+    },
+    {
+      "advanceDays": 7,
+      "releaseTime": "00:00",
+      "releaseFrequency": "daily",
+      "closedDays": [
+        "monday"
+      ],
+      "isRolling": false,
+      "bookingTips": "免费需实名预约（有「基本陈列免预约」口径，以官方为准）；临展可能需单独购票",
+      "openTime": "09:00-17:00（16:00停止入馆），周一闭馆",
+      "ticketPrice": "免费（临展另购）",
+      "idRequirement": "实名预约，凭有效身份证件入馆",
+      "ageLimit": "以官方公示为准",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "shoubo"
+    },
+    {
+      "advanceDays": 15,
+      "releaseTime": "00:00",
+      "releaseFrequency": "daily",
+      "closedDays": [],
+      "isRolling": false,
+      "bookingTips": "实名制预约购票，可提前15-30天（口径待实测）；票量充足，旺季建议提前线上购票；缆车/滑道另行购票",
+      "openTime": "旺季07:30-17:30，淡季07:30-16:30（以官方为准）",
+      "ticketPrice": "旺季45元/人，淡季35元（以官方为准）",
+      "idRequirement": "实名购票，刷身份证入园",
+      "ageLimit": "18周岁以下、60周岁以上免票（以官方为准）",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "mutianyu"
+    },
+    {
+      "advanceDays": 3,
+      "releaseTime": "19:00",
+      "releaseFrequency": "daily",
+      "closedDays": [
+        "monday"
+      ],
+      "isRolling": false,
+      "bookingTips": "可购买当日起3日内门票，每日19:00更新购票日期；当日也可现场扫码购票",
+      "openTime": "09:00-17:00（16:30停止入场），周一闭馆",
+      "ticketPrice": "30元/人（18周岁以下、60周岁以上免费）",
+      "idRequirement": "实名购票，凭身份证/二维码入馆",
+      "ageLimit": "18周岁以下、60周岁以上免费（以官方为准）",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "kongmiao-guozijian"
+    },
+    {
+      "advanceDays": 3,
+      "releaseTime": "00:00",
+      "releaseFrequency": "daily",
+      "closedDays": [
+        "monday",
+        "tuesday"
+      ],
+      "isRolling": false,
+      "bookingTips": "可购买3日内（含当日）展厅票、剧场票；剧场票较抢手，建议提前购票",
+      "openTime": "09:00-16:30（16:00停止入馆），周一、周二闭馆",
+      "ticketPrice": "展厅票10元/人（以官方为准）；剧场票另购",
+      "idRequirement": "实名购票",
+      "ageLimit": "以官方公示为准",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "tianwenguan"
+    },
+    {
+      "advanceDays": 7,
+      "releaseTime": "00:00",
+      "releaseFrequency": "daily",
+      "closedDays": [],
+      "isRolling": false,
+      "bookingTips": "购票型乐园：官方App/小程序购票并预约入园，指定日期票无需二次预约；旺季建议提前7天购票，谨防黄牛",
+      "openTime": "以官方App当日公示为准",
+      "ticketPrice": "淡季418元起，旺季638-748元（以官方为准）",
+      "idRequirement": "实名购票，凭身份证/人脸入园",
+      "ageLimit": "以官方公示为准",
+      "lastCheckedDate": null,
+      "specialNotice": "",
+      "spotId": "huanqiu-yingcheng"
     }
   ]
 }

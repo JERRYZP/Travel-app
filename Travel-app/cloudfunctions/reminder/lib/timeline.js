@@ -189,6 +189,8 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
   const closedSpots = [];
 
   for (const spot of (spotsRes.data || [])) {
+    // B 层免预约景点不进时间线（reservationRequired=false，2026 政策已取消预约）
+    if (spot.reservationRequired === false) continue;
     const built = buildEvents(spot, ruleMap[spot.spotId], trip);
     if (built.length === 0) {
       // TIMELINE-RULE-005：行程内每天都闭馆 → 想去列表该行标注「行程期间闭馆」

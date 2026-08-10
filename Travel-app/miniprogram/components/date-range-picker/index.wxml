@@ -1,0 +1,34 @@
+<view wx:if="{{show}}" class="drp-mask" bindtap="onClose" catchtouchmove="noop">
+  <view class="drp-sheet" catchtap="noop">
+    <view class="drp-handle"></view>
+    <view class="drp-header">
+      <text class="drp-title">选择行程日期</text>
+      <text class="drp-sub">最多可选 90 天</text>
+    </view>
+    <view class="drp-weekdays">
+      <text wx:for="{{weekdays}}" wx:key="*this" class="drp-weekday">{{item}}</text>
+    </view>
+    <scroll-view scroll-y class="drp-months">
+      <view wx:for="{{months}}" wx:for-item="m" wx:key="key" class="drp-month">
+        <text class="drp-month-title">{{m.title}}</text>
+        <view class="drp-grid">
+          <view
+            wx:for="{{m.days}}"
+            wx:for-item="d"
+            wx:key="index"
+            class="drp-day {{d.disabled ? 'is-disabled' : ''}} {{d.inRange ? 'in-range' : ''}} {{d.isStart ? 'is-start' : ''}} {{d.isEnd ? 'is-end' : ''}}"
+            bindtap="onDayTap"
+            data-date="{{d.date}}"
+            data-disabled="{{d.disabled}}"
+          >
+            <view class="drp-day-inner">{{d.day}}</view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+  <view class="drp-confirm-bar" catchtap="noop">
+    <text class="drp-range-text">{{rangeText}}</text>
+    <view class="drp-confirm-btn {{canConfirm ? '' : 'is-disabled'}}" bindtap="onConfirm">确认</view>
+  </view>
+</view>

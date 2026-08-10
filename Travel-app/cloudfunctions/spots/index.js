@@ -67,6 +67,12 @@ function computeDifficultyLabel(score) {
   return { key: 'EASY', text: '容易约', color: 'green' };
 }
 
+const DAY_CN = { monday: '周一', tuesday: '周二', wednesday: '周三', thursday: '周四', friday: '周五', saturday: '周六', sunday: '周日' };
+function closedDaysLabel(days) {
+  if (!days || days.length === 0) return '全年开放';
+  return days.map(d => DAY_CN[d] || d).join('、') + '闭馆';
+}
+
 /**
  * 今日放票是否已开始（按北京时间比较，修正了原实现用 UTC 小时的时区 bug）
  */
@@ -99,6 +105,19 @@ function computeEarliestDate(rule, now = new Date()) {
   return target;
 }
 
+/** B 层卡片描述（TAG-RULE-001 补充）：随到随买，当前{旺季/淡季}门票...，按北京时间判季节（TIME-RULE-001） */
+function cardDescOf(rule, now = new Date()) {
+  if (!rule) return '';
+  const p = beijingParts(now);
+  if (rule.peakPrice || rule.offPrice) {
+    const isPeak = p.month >= 4 && p.month <= 10; // 北京公园旺季 4-10 月
+    const frag = (isPeak ? rule.peakPrice : rule.offPrice) || rule.peakPrice || rule.offPrice;
+    return '随到随买，当前' + frag;
+  }
+  const base = rule.cardPrice || rule.ticketPrice || '';
+  return base ? '随到随买，' + base : '';
+}
+
 /** 组装景点卡（PAGE-001 网格 / PAGE-003 列表共用） */
 function buildCard(spot, rule, now) {
   const status = computeReleaseStatus(rule, now);
@@ -110,10 +129,16 @@ function buildCard(spot, rule, now) {
     difficultyScore: spot.difficultyScore,
     difficultyLabel: computeDifficultyLabel(spot.difficultyScore),
     popularityScore: spot.popularityScore,
+    // 2026 分层：是否仍需实名预约（B 层免预约 → 不进提醒流程，卡片显示「无需预约」tag）
+    reservationRequired: spot.reservationRequired !== false,
+    cardDesc: cardDescOf(rule, now),
     // TAG-RULE-001 核心标签：只回答「什么时候抢、难不难抢」
     tags: rule ? [`提前${rule.advanceDays}天放票`, `每日${rule.releaseTime}放票`] : [],
     advanceDays: rule ? rule.advanceDays : null,
     releaseTime: rule ? rule.releaseTime : null,
+    // B 层卡片信息区展示购票/入园信息
+    ticketPrice: rule ? (rule.ticketPrice || '') : '',
+    openTime: rule ? (rule.openTime || '') : '',
     closedDays: rule ? (rule.closedDays || []) : [],
     releaseStatus: status,
     earliestDate: computeEarliestDate(rule, now),
@@ -179,13 +204,13 @@ exports.main = async (event) => {
         // PAGE-002 预约方式列表：SORT-RULE-001 按直达率排序，缺失渠道不显示空行
         const entries = [];
         if (spot.officialAppid) {
-          entries.push({ type: 'MINIPROGRAM', label: '官方小程序', appid: spot.officialAppid, path: spot.officialPath || '', hint: '点击直接跳转官方小程序预约' });
+          entries.push({ type: 'MINIPROGRAM', label: '官方小程序', appid: spot.officialAppid, path: spot.officialPath || '', url: spot.officialWebUrl || '', hint: '点击直接跳转官方小程序预约' });
         }
         if (spot.officialAccount) {
-          entries.push({ type: 'OFFICIAL_ACCOUNT', label: '微信公众号', value: spot.officialAccount, hint: '点击参与预约 → 填写信息 → 预约成功' });
+          entries.push({ type: 'OFFICIAL_ACCOUNT', label: '微信公众号', value: spot.officialAccount, qrCode: spot.qrCode || '', hint: '点击参与预约 → 填写信息 → 预约成功' });
         }
         if (spot.officialWebUrl) {
-          entries.push({ type: 'WEB', label: '景区官网', url: spot.officialWebUrl, hint: '在浏览器中打开官网预约' });
+          entries.push({ type: 'WEB', label: '景区官网', url: spot.officialWebUrl, hint: '点击直接进入官网预约' });
         }
 
         return {
@@ -201,6 +226,7 @@ exports.main = async (event) => {
             ticketPrice: rule ? rule.ticketPrice : '',
             idRequirement: rule ? rule.idRequirement : '',
             ageLimit: rule ? rule.ageLimit : '',
+            closedDaysLabel: closedDaysLabel(rule ? rule.closedDays : []),
           },
         };
       }
@@ -220,7 +246,7 @@ exports.main = async (event) => {
         };
       }
 
-      /** PAGE-004 搜索态，SEARCH-RULE-001 本地匹配（V1 景点库仅 10 条，全量拉取后内存过滤） */
+      /** PAGE-004 搜索态，SEARCH-RULE-001 本地匹配（V1 景点库 18 条，全量拉取后内存过滤） */
       case 'search': {
         if (!keyword || !String(keyword).trim()) return { success: true, data: [], history: [] };
         const { spots, ruleMap } = await loadAll();
@@ -281,5 +307,5 @@ exports.main = async (event) => {
 
 exports._internal = {
   computeReleaseStatus, computeEarliestDate, computeDifficultyLabel,
-  buildCard, matchSpot, beijingParts, toDateStr, dayNameOfStr,
+  buildCard, cardDescOf, matchSpot, beijingParts, toDateStr, dayNameOfStr,
 };

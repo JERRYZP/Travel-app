@@ -1,0 +1,295 @@
+<wxs module="fmt" src="../../utils/format.wxs"></wxs>
+<!-- 自定义导航栏 -->
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px; background-color: rgba(248, 243, 234, {{navOpacity}});">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-city" bindtap="onCityTap">
+      <svg-icon name="location" size="14px" />
+      <text>游北京</text>
+      <svg-icon name="chevron-down" size="14px" />
+    </view>
+    <text class="navbar-title">景点预约提醒</text>
+  </view>
+</view>
+<!-- ========== 形态1：创建态 ========== -->
+<block wx:if="{{homeMode === 1}}">
+  <scroll-view scroll-y class="page-scroll" style="height: 100vh;" bindscroll="onPageScroll">
+   <view class="page-body page-body-create {{showTimeline ? 'page-body-timeline' : ''}}" style="padding-top: {{statusBarHeight + navBarHeight}}px;">
+      <image wx:if="{{cityBg}}" class="city-bg" src="{{cityBg}}" mode="aspectFit" />
+
+      <!-- 日期模块：点击卡片弹日历选范围 -->
+      <view class="form-section form-section-first">
+        <text class="form-label">准备玩几天？</text>
+        <view class="form-input-card" bindtap="onDateCardTap">
+          <svg-icon name="calendar" size="18px" />
+          <text wx:if="{{!dateRangeText}}" class="form-placeholder">来北京玩第一件事是预约景点</text>
+          <view wx:else class="form-date-row">
+            <text class="form-value">{{dateRangeText}}</text>
+            <text class="form-day-count">共{{dayCount}}天</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 景点模块 -->
+      <view class="form-section">
+        <text class="form-label">去哪些地方玩？</text>
+        <view class="form-input-card" bindtap="onMoreSpots">
+          <svg-icon name="location" size="18px" />
+          <scroll-view wx:if="{{selectedSpots.length > 0}}" class="form-tags-scroll" scroll-x>
+            <view class="form-tags">
+              <view wx:for="{{selectedSpots}}" wx:key="spotId" class="form-tag">{{item.name}}</view>
+            </view>
+          </scroll-view>
+          <view wx:else class="form-placeholder">北京必游：故宫博物院、国博</view>
+          <view wx:if="{{selectedSpots.length > 0}}" class="form-count">共{{selectedSpots.length}}个</view>
+        </view>
+      </view>
+
+      <!-- 主按钮 -->
+      <view class="primary-btn" bindtap="onGenerateTimeline">
+        <svg-icon name="sparkle-white" size="16px" />
+        <text>生成预约时间线</text>
+      </view>
+
+            <!-- ===== 内联预约时间线（无提醒任务时，当前页直接生成） ===== -->
+      <view wx:if="{{showTimeline}}" class="timeline-section">
+        <!-- 白底面板头部：标题+视图切换+出游日+说明/一键全部提醒；滚动吸顶 -->
+        <view id="timeline-header" class="timeline-panel {{timelineSticky ? 'timeline-panel-fixed' : ''}}" style="{{timelineSticky ? 'top: ' + timelineStickyTop + 'px;' : ''}}">
+          <view class="timeline-title-row">
+            <view class="timeline-title-wrap">
+              <svg-icon name="calendar-active" size="16px" />
+              <text class="timeline-title">专属预约时间线</text>
+            </view>
+            <view class="view-switcher">
+              <view class="view-switcher-item active">按出游日</view>
+              <view class="view-switcher-item">按景点</view>
+            </view>
+          </view>
+
+          <!-- 出游日 Tab -->
+          <scroll-view scroll-x class="tab-row" wx:if="{{timelineTabs.length > 0}}">
+            <view class="tab-row-inner">
+              <text class="tab-prefix">出游日：</text>
+              <view class="tab-item {{timelineActiveTab === item.key ? 'active' : ''}}" wx:for="{{timelineTabs}}" wx:key="key" bindtap="onInlineTabTap" data-key="{{item.key}}">
+                {{item.label}}
+              </view>
+            </view>
+          </scroll-view>
+
+          <!-- 说明 + 一键全部提醒 -->
+          <view class="timeline-meta">
+            <text class="timeline-caption">为您生成该出游日下意向景点的最早放票时间</text>
+            <view class="timeline-batch-btn" bindtap="onInlineAddAll">
+              <svg-icon name="bell-plus" size="12px" />
+              <text>一键全部提醒</text>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{timelineSticky}}" class="timeline-header-spacer" style="height: {{timelineHeaderHeight}}px;"></view>
+
+        <!-- 加载中 -->
+        <view wx:if="{{timelineLoading}}" class="loading-wrap">
+          <van-loading size="40rpx" color="#B8904A" />
+        </view>
+
+        <!-- 空状态 -->
+        <view wx:elif="{{timelineEmpty || timelineEvents.length === 0}}" class="empty-state">
+          <text>{{timelineEmptyReason || '这一天暂无可提醒的放票时间'}}</text>
+        </view>
+
+        <!-- 时间线事件 -->
+        <view wx:else class="timeline-list">
+          <block wx:for="{{timelineEvents}}" wx:key="spotId" wx:for-item="event" wx:for-index="idx">
+          <view class="timeline-event">
+            <!-- 左侧时间列：日期+时间，中间为连接两日期的虚线 -->
+            <view class="event-rail">
+              <text class="event-rail-date">{{event.releaseDateLabel}}</text>
+              <text class="event-rail-time">{{event.releaseTimeStr}}</text>
+              <view wx:if="{{idx < timelineEvents.length - 1}}" class="event-rail-line"></view>
+            </view>
+
+            <!-- 事件卡：左侧信息 + 竖虚线 + 右侧按钮 -->
+            <view class="event-card">
+              <view class="event-info">
+                <text class="event-status">可约</text>
+                <view class="event-name-row">
+                  <text class="event-name" bindtap="onSpotNameTap" data-id="{{event.spotId}}">{{event.spotName}}</text>
+                  <view class="event-diff diff-{{event.difficulty.key}}">{{event.difficulty.text}}</view>
+                </view>
+                <view class="event-visit"><text class="event-visit-date">{{event.visitDateLabel}}</text><text class="event-visit-ticket"> 门票</text></view>
+              </view>
+              <view class="event-divider"></view>
+              <view class="event-action">
+                <view
+                  class="event-btn event-btn-{{event.status}}"
+                  bindtap="onInlineEventAction"
+                  data-event="{{event}}"
+                >
+                  <svg-icon wx:if="{{event.status === 'BOOKABLE'}}" name="ticket-white" size="12px" />
+                  <svg-icon wx:elif="{{event.status === 'IN_CART'}}" name="check-gold" size="12px" />
+                  <svg-icon wx:elif="{{event.status === 'SELECTABLE' || event.status === 'WAITING' || event.status === 'REMINDERED'}}" name="bell-plus" size="12px" />
+                  <text>{{event.button.text}}</text>
+                </view>
+                <text wx:if="{{event.btnSub}}" class="event-btn-sub">{{event.btnSub}}</text>
+              </view>
+            </view>
+          </view>
+          </block>
+        </view>
+
+        <!-- 闭馆景点 -->
+        <view wx:if="{{timelineClosedSpots.length > 0}}" class="closed-spots">
+          <view wx:for="{{timelineClosedSpots}}" wx:key="spotId" class="closed-spot">
+            <van-icon name="warning-o" size="14px" color="#B8904A" />
+            <text>{{item.spotName}}：行程期间闭馆</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 热门景点（生成时间线后收起，表单保持可用） -->
+      <view wx:if="{{!showTimeline}}" class="hot-section">
+       <text class="hot-title">北京热门景点预约状态</text>
+        <view class="hot-grid">
+         <view wx:for="{{hotSpots}}" wx:key="spotId" class="spot-card">
+            <image class="spot-card-img" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" bindtap="onSpotNameTap" data-id="{{item.spotId}}" />
+           <view class="spot-card-body">
+              <view class="spot-card-title">
+                <text class="spot-card-name" bindtap="onSpotNameTap" data-id="{{item.spotId}}">{{item.name}}</text>
+                <view wx:if="{{item.reservationRequired}}" class="spot-card-diff diff-{{item.difficultyLabel.key}}">{{item.difficultyLabel.text}}</view>
+              </view>
+              <view class="spot-card-tags">
+                <block wx:if="{{item.reservationRequired}}">
+                  <text class="spot-card-tag">提前{{item.advanceDays}}天</text>
+                  <text class="spot-card-tag">{{fmt.releaseTimes(item.releaseTime)}}放票</text>
+                </block>
+                <block wx:else>
+                  <text class="spot-card-tag card-desc">{{item.cardDesc}}</text>
+                </block>
+              </view>
+            </view>
+            <view wx:if="{{item.reservationRequired}}"
+              class="spot-card-select {{item.selected ? 'selected' : ''}}"
+              bindtap="onSpotSelectToggle"
+              data-id="{{item.spotId}}"
+              data-spot="{{item}}"
+            >
+              <svg-icon wx:if="{{item.selected}}" name="check" size="12px" />
+              <svg-icon wx:else name="plus" size="12px" />
+              <text>{{item.selected ? '已选' : '选择'}}</text>
+            </view>
+            <view wx:else class="spot-card-nobook">无需预约</view>
+          </view>
+        </view>
+     </view>
+
+      <!-- 更多景点 -->
+      <view wx:if="{{!showTimeline}}" class="more-spots" bindtap="onMoreSpots">
+        <svg-icon name="plus" size="16px" />
+        <text>选择更多意向景点</text>
+      </view>
+      <view wx:if="{{!showTimeline}}" class="helper-text">
+        <svg-icon name="stopwatch" size="14px" />
+        <text>为你生成专属抢票时间线</text>
+      </view>
+
+    </view>
+  </scroll-view>
+
+  <!-- 内联时间线的清单条（置于底部导航之上） -->
+  <view wx:if="{{showTimeline}}" class="cart-bar">
+    <view class="cart-bar-icon" bindtap="onInlineOpenCart">
+      <svg-icon name="list-white" size="20px" />
+      <view wx:if="{{timelineCartCount > 0}}" class="cart-bar-badge">{{timelineCartCount}}</view>
+    </view>
+    <text class="cart-bar-text">{{timelineCartSummary ? '已选 ' + timelineCartSummary.count + ' 项，覆盖 ' + timelineCartSummary.spotCount + ' 个景点' : '清单为空'}}</text>
+    <view class="cart-bar-btn" bindtap="onInlineStartReminder">
+      <svg-icon name="stopwatch-white" size="14px" />
+      <text>开始提醒</text>
+    </view>
+  </view>
+</block>
+
+<!-- ========== 形态2：任务列表 ========== -->
+<block wx:elif="{{homeMode === 2}}">
+  <scroll-view scroll-y class="page-scroll" style="height: 100vh;" bindscroll="onPageScroll">
+    <view class="page-body" style="padding-top: {{statusBarHeight + navBarHeight}}px;">
+
+      <!-- Banner -->
+      <view wx:if="{{banner}}" class="banner">
+        <svg-icon name="announcement" size="14px" />
+        <text class="banner-text">{{banner.text}}</text>
+      </view>
+
+      <!-- 行程分组 Tab -->
+      <view wx:if="{{showGroupTabs}}" class="trip-tabs">
+        <view class="trip-tab {{!activeTripTab ? 'active' : ''}}" bindtap="onTripTabTap" data-id="">全部</view>
+        <view wx:for="{{trips}}" wx:key="_id" class="trip-tab {{activeTripTab === item._id ? 'active' : ''}}" bindtap="onTripTabTap" data-id="{{item._id}}">
+          {{item.name}}
+        </view>
+      </view>
+
+      <!-- 状态筛选 -->
+      <view class="filter-chips">
+        <view class="filter-chip {{activeFilter === 'active' ? 'active' : ''}}" bindtap="onFilterChange" data-filter="active">
+          进行中 {{counts.active}}
+        </view>
+        <view class="filter-chip {{activeFilter === 'expired' ? 'active' : ''}}" bindtap="onFilterChange" data-filter="expired">
+          已过期 {{counts.expired}}
+        </view>
+      </view>
+
+      <!-- 任务列表 -->
+      <view wx:if="{{taskGroups.length > 0}}">
+        <view wx:for="{{taskGroups}}" wx:key="key" wx:for-item="group" class="task-group">
+          <view class="task-group-header">{{group.label}}</view>
+          <view wx:for="{{group.items}}" wx:key="_id" wx:for-item="task" class="task-card">
+            <view class="task-card-time">
+              <text class="task-clock">{{task.releaseTimeLabel}}</text>
+              <text wx:if="{{task.countdown}}" class="task-countdown {{task.countdown.urgent ? 'urgent' : ''}}">{{task.countdown.text}}</text>
+            </view>
+            <image class="task-card-img" src="/images/spots/{{task.spotId}}.jpg" mode="aspectFill" />
+            <view class="task-card-body">
+              <text class="task-card-name" bindtap="onSpotNameTap" data-id="{{task.spotId}}">{{task.spotName}}</text>
+              <text class="task-card-visit">{{task.grabLabel}}</text>
+              <view class="task-card-status status-{{task.backendStatus === 'WAITING' ? 'waiting' : 'done'}}">
+                {{task.statusLabel}}
+              </view>
+            </view>
+            <view class="task-card-menu" bindtap="onTaskDelete" data-id="{{task._id}}">
+              <svg-icon name="trash" size="16px" />
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 空状态 -->
+      <view wx:elif="{{!loading}}" class="empty-state">
+        <text>还没有提醒任务</text>
+      </view>
+
+    </view>
+  </scroll-view>
+
+  <!-- 悬浮新增按钮 -->
+  <view class="fab-btn" bindtap="onNewReminder">
+    <svg-icon name="plus-white" size="18px" />
+    <text>新增提醒</text>
+  </view>
+</block>
+
+<!-- 景点弹窗 -->
+<spot-popup show="{{showSpotPopup}}" spot-id="{{popupSpotId}}" bind:close="onSpotPopupClose" />
+<date-range-picker
+  show="{{showCalendar}}"
+  min-date="{{minDate}}"
+  max-date="{{maxDate}}"
+  start="{{startDate}}"
+  end="{{endDate}}"
+  bind:confirm="onCalendarConfirm"
+  bind:close="onCalendarClose"
+/>
+<!-- 内联时间线清单弹窗 -->
+<cart-popup show="{{showCartPopup}}" trip-id="{{timelineTripId}}" above-tabbar bind:close="onInlineCartClose" bind:change="onInlineCartChange" />
+
+<!-- 底部导航 -->
+<tabbar active="home" badge="{{badge}}" />

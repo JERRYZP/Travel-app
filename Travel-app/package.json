@@ -4,7 +4,7 @@
   "description": "景点预约提醒小程序",
   "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test/flow.test.js && node test/timeline.test.js"
   },
   "dependencies": {
     "@vant/weapp": "^1.11.4"

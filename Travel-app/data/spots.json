@@ -6,14 +6,20 @@
       "category": "博物馆",
       "district": "东城区",
       "address": "景山前街4号",
-      "location": { "latitude": 39.916345, "longitude": 116.397155 },
+      "location": {
+        "latitude": 39.916345,
+        "longitude": 116.397155
+      },
       "officialAppid": "wx8f815c1df1f067ef",
       "officialPath": "pages/index/index",
       "officialWebUrl": "https://www.dpm.org.cn",
+      "officialAccount": "故宫博物院",
+      "qrCode": "/images/qrcodes/gugong.png",
       "difficultyScore": 5,
       "popularityScore": 5,
       "hasWebVersion": true,
-      "scrapingUrl": "https://www.dpm.org.cn/Home.html"
+      "scrapingUrl": "https://www.dpm.org.cn/Home.html",
+      "reservationRequired": true
     },
     {
       "spotId": "tiananmen-chenglou",
@@ -21,14 +27,20 @@
       "category": "古迹",
       "district": "东城区",
       "address": "天安门广场北侧",
-      "location": { "latitude": 39.90923, "longitude": 116.39745 },
+      "location": {
+        "latitude": 39.90923,
+        "longitude": 116.39745
+      },
       "officialAppid": "",
       "officialPath": "",
       "officialWebUrl": "https://www.tiananmenchenglou.com",
+      "officialAccount": "天安门城楼参观预约",
+      "qrCode": "",
       "difficultyScore": 5,
       "popularityScore": 5,
       "hasWebVersion": true,
-      "scrapingUrl": "https://www.tiananmenchenglou.com"
+      "scrapingUrl": "https://www.tiananmenchenglou.com",
+      "reservationRequired": true
     },
     {
       "spotId": "guobo",
@@ -36,14 +48,20 @@
       "category": "博物馆",
       "district": "东城区",
       "address": "东长安街16号",
-      "location": { "latitude": 39.9035, "longitude": 116.3976 },
+      "location": {
+        "latitude": 39.9035,
+        "longitude": 116.3976
+      },
       "officialAppid": "wxee20f5f652c82948",
       "officialPath": "pages/index/index",
       "officialWebUrl": "https://www.chnmuseum.cn",
+      "officialAccount": "中国国家博物馆",
+      "qrCode": "/images/qrcodes/guobo.png",
       "difficultyScore": 5,
       "popularityScore": 5,
       "hasWebVersion": true,
-      "scrapingUrl": "https://www.chnmuseum.cn"
+      "scrapingUrl": "https://www.chnmuseum.cn",
+      "reservationRequired": true
     },
     {
       "spotId": "yiheyuan",
@@ -51,14 +69,20 @@
       "category": "公园",
       "district": "海淀区",
       "address": "新建宫门路19号",
-      "location": { "latitude": 39.99998, "longitude": 116.27546 },
+      "location": {
+        "latitude": 39.99998,
+        "longitude": 116.27546
+      },
       "officialAppid": "wx5d0054631919f154",
       "officialPath": "pages/home/home",
       "officialWebUrl": "https://www.summerpalace-china.com",
-      "difficultyScore": 3,
+      "officialAccount": "畅游公园",
+      "qrCode": "",
+      "difficultyScore": 1,
       "popularityScore": 5,
       "hasWebVersion": true,
-      "scrapingUrl": "https://www.summerpalace-china.com"
+      "scrapingUrl": "https://www.summerpalace-china.com",
+      "reservationRequired": false
     },
     {
       "spotId": "tiantan",
@@ -66,14 +90,20 @@
       "category": "公园",
       "district": "东城区",
       "address": "天坛东里甲1号",
-      "location": { "latitude": 39.8833, "longitude": 116.4074 },
+      "location": {
+        "latitude": 39.8833,
+        "longitude": 116.4074
+      },
       "officialAppid": "wx5d0054631919f154",
       "officialPath": "pages/home/home",
       "officialWebUrl": "https://www.tiantanpark.com",
-      "difficultyScore": 2,
+      "officialAccount": "畅游公园",
+      "qrCode": "",
+      "difficultyScore": 1,
       "popularityScore": 4,
       "hasWebVersion": true,
-      "scrapingUrl": "https://www.tiantanpark.com"
+      "scrapingUrl": "https://www.tiantanpark.com",
+      "reservationRequired": false
     },
     {
       "spotId": "badaling",
@@ -81,14 +111,20 @@
       "category": "古迹",
       "district": "延庆区",
       "address": "G6京藏高速58号出口",
-      "location": { "latitude": 40.35958, "longitude": 116.01998 },
+      "location": {
+        "latitude": 40.35958,
+        "longitude": 116.01998
+      },
       "officialAppid": "wx510a0ad3c35a2fdc",
       "officialPath": "pages/index/index",
       "officialWebUrl": "https://www.badaling.cn",
-      "difficultyScore": 3,
+      "officialAccount": "八达岭长城",
+      "qrCode": "",
+      "difficultyScore": 1,
       "popularityScore": 5,
       "hasWebVersion": true,
-      "scrapingUrl": "https://www.badaling.cn"
+      "scrapingUrl": "https://www.badaling.cn",
+      "reservationRequired": false
     },
     {
       "spotId": "yuanmingyuan",
@@ -96,14 +132,20 @@
       "category": "公园",
       "district": "海淀区",
       "address": "清华西路28号",
-      "location": { "latitude": 40.0083, "longitude": 116.2986 },
+      "location": {
+        "latitude": 40.0083,
+        "longitude": 116.2986
+      },
       "officialAppid": "wx5d0054631919f154",
       "officialPath": "pages/home/home",
       "officialWebUrl": "https://www.yuanmingyuanpark.com",
+      "officialAccount": "畅游公园",
+      "qrCode": "",
       "difficultyScore": 1,
       "popularityScore": 4,
       "hasWebVersion": true,
-      "scrapingUrl": "https://www.yuanmingyuanpark.com"
+      "scrapingUrl": "https://www.yuanmingyuanpark.com",
+      "reservationRequired": false
     },
     {
       "spotId": "beijing-zoo",
@@ -111,14 +153,20 @@
       "category": "公园",
       "district": "西城区",
       "address": "西直门外大街137号",
-      "location": { "latitude": 39.9378, "longitude": 116.3345 },
+      "location": {
+        "latitude": 39.9378,
+        "longitude": 116.3345
+      },
       "officialAppid": "wx5d0054631919f154",
       "officialPath": "pages/home/home",
       "officialWebUrl": "https://www.beijingzoo.com",
-      "difficultyScore": 2,
+      "officialAccount": "畅游公园",
+      "qrCode": "",
+      "difficultyScore": 1,
       "popularityScore": 4,
       "hasWebVersion": true,
-      "scrapingUrl": "https://www.beijingzoo.com"
+      "scrapingUrl": "https://www.beijingzoo.com",
+      "reservationRequired": false
     },
     {
       "spotId": "gongwangfu",
@@ -126,14 +174,20 @@
       "category": "古迹",
       "district": "西城区",
       "address": "前海西街17号",
-      "location": { "latitude": 39.9365, "longitude": 116.3852 },
+      "location": {
+        "latitude": 39.9365,
+        "longitude": 116.3852
+      },
       "officialAppid": "wx5d0054631919f154",
       "officialPath": "pages/home/home",
       "officialWebUrl": "https://www.pgm.org.cn",
-      "difficultyScore": 2,
+      "officialAccount": "恭王府博物馆",
+      "qrCode": "",
+      "difficultyScore": 1,
       "popularityScore": 3,
       "hasWebVersion": true,
-      "scrapingUrl": "https://www.pgm.org.cn"
+      "scrapingUrl": "https://www.pgm.org.cn",
+      "reservationRequired": false
     },
     {
       "spotId": "beihai",
@@ -141,14 +195,416 @@
       "category": "公园",
       "district": "西城区",
       "address": "文津街1号",
-      "location": { "latitude": 39.9243, "longitude": 116.3888 },
+      "location": {
+        "latitude": 39.9243,
+        "longitude": 116.3888
+      },
       "officialAppid": "wx5d0054631919f154",
       "officialPath": "pages/home/home",
       "officialWebUrl": "https://www.beihaipark.com.cn",
+      "officialAccount": "畅游公园",
+      "qrCode": "",
       "difficultyScore": 1,
       "popularityScore": 3,
       "hasWebVersion": true,
-      "scrapingUrl": "https://www.beihaipark.com.cn"
+      "scrapingUrl": "https://www.beihaipark.com.cn",
+      "reservationRequired": false
+    },
+    {
+      "spotId": "tiananmen-square",
+      "name": "天安门广场",
+      "category": "广场",
+      "district": "东城区",
+      "address": "东长安街天安门广场",
+      "location": {
+        "latitude": 39.9087,
+        "longitude": 116.3975
+      },
+      "officialAppid": "wx784eb46174db6aed",
+      "officialPath": "",
+      "officialWebUrl": "http://yuyue.tamgw.beijing.gov.cn",
+      "officialAccount": "天安门广场预约参观",
+      "qrCode": "",
+      "difficultyScore": 5,
+      "popularityScore": 5,
+      "reservationRequired": true,
+      "hasWebVersion": true,
+      "scrapingUrl": "",
+      "aliases": [
+        "升旗",
+        "天安门升旗",
+        "看升旗"
+      ]
+    },
+    {
+      "spotId": "maozhuxi-jiniantang",
+      "name": "毛主席纪念堂",
+      "category": "纪念场馆",
+      "district": "东城区",
+      "address": "天安门广场人民英雄纪念碑南侧",
+      "location": {
+        "latitude": 39.9014,
+        "longitude": 116.3956
+      },
+      "officialAppid": "wx492b5d2f5b89c11e",
+      "officialPath": "",
+      "officialWebUrl": "https://cpc.people.com.cn/GB/143527/143528/",
+      "officialAccount": "毛主席纪念堂",
+      "qrCode": "",
+      "difficultyScore": 4,
+      "popularityScore": 4,
+      "reservationRequired": true,
+      "hasWebVersion": true,
+      "scrapingUrl": "",
+      "aliases": [
+        "纪念堂"
+      ]
+    },
+    {
+      "spotId": "renmin-dahuitang",
+      "name": "人民大会堂",
+      "category": "场馆",
+      "district": "西城区",
+      "address": "西长安街天安门广场西侧",
+      "location": {
+        "latitude": 39.9064,
+        "longitude": 116.3938
+      },
+      "officialAppid": "wxb2809a187df8351b",
+      "officialPath": "",
+      "officialWebUrl": "",
+      "officialAccount": "人民大会堂参观预约",
+      "qrCode": "",
+      "difficultyScore": 4,
+      "popularityScore": 4,
+      "reservationRequired": true,
+      "hasWebVersion": false,
+      "scrapingUrl": "",
+      "aliases": [
+        "大会堂"
+      ]
+    },
+    {
+      "spotId": "junbo",
+      "name": "中国人民革命军事博物馆",
+      "category": "博物馆",
+      "district": "海淀区",
+      "address": "复兴路9号",
+      "location": {
+        "latitude": 39.9078,
+        "longitude": 116.3211
+      },
+      "officialAppid": "wxe7ab4bac193578d0",
+      "officialPath": "",
+      "officialWebUrl": "https://www.junbo.org.cn",
+      "officialAccount": "中国人民革命军事博物馆",
+      "qrCode": "",
+      "difficultyScore": 4,
+      "popularityScore": 5,
+      "reservationRequired": true,
+      "hasWebVersion": true,
+      "scrapingUrl": "",
+      "aliases": [
+        "军博",
+        "军事博物馆"
+      ]
+    },
+    {
+      "spotId": "ziran-bowuguan",
+      "name": "国家自然博物馆",
+      "category": "博物馆",
+      "district": "东城区",
+      "address": "天桥南大街126号",
+      "location": {
+        "latitude": 39.8796,
+        "longitude": 116.3952
+      },
+      "officialAppid": "wx3ccbf39dedcfc335",
+      "officialPath": "",
+      "officialWebUrl": "https://www.bmnh.org.cn",
+      "officialAccount": "北京自然博物馆",
+      "qrCode": "",
+      "difficultyScore": 5,
+      "popularityScore": 4,
+      "reservationRequired": true,
+      "hasWebVersion": true,
+      "scrapingUrl": "",
+      "aliases": [
+        "自然博物馆",
+        "自然博"
+      ]
+    },
+    {
+      "spotId": "kaogu-bowuguan",
+      "name": "中国考古博物馆",
+      "category": "博物馆",
+      "district": "朝阳区",
+      "address": "国家体育场北路1号院1号楼",
+      "location": {
+        "latitude": 39.9985,
+        "longitude": 116.3835
+      },
+      "officialAppid": "wx48b5cc9990544897",
+      "officialPath": "",
+      "officialWebUrl": "",
+      "officialAccount": "中国考古博物馆",
+      "qrCode": "",
+      "difficultyScore": 5,
+      "popularityScore": 4,
+      "reservationRequired": true,
+      "hasWebVersion": false,
+      "scrapingUrl": "",
+      "aliases": [
+        "考古博物馆",
+        "考古博"
+      ]
+    },
+    {
+      "spotId": "tsinghua",
+      "name": "清华大学",
+      "category": "高校",
+      "district": "海淀区",
+      "address": "清华园1号",
+      "location": {
+        "latitude": 40.0023,
+        "longitude": 116.3262
+      },
+      "officialAppid": "wxef227a5869ad5e4a",
+      "officialPath": "",
+      "officialWebUrl": "https://www.tsinghua.edu.cn",
+      "officialAccount": "清华大学",
+      "qrCode": "",
+      "difficultyScore": 4,
+      "popularityScore": 4,
+      "reservationRequired": true,
+      "hasWebVersion": true,
+      "scrapingUrl": "",
+      "aliases": [
+        "清华",
+        "清华大学参观"
+      ]
+    },
+    {
+      "spotId": "peking-university",
+      "name": "北京大学",
+      "category": "高校",
+      "district": "海淀区",
+      "address": "颐和园路5号",
+      "location": {
+        "latitude": 39.9937,
+        "longitude": 116.3059
+      },
+      "officialAppid": "wxae221464afae4826",
+      "officialPath": "",
+      "officialWebUrl": "https://www.pku.edu.cn",
+      "officialAccount": "北京大学",
+      "qrCode": "",
+      "difficultyScore": 4,
+      "popularityScore": 4,
+      "reservationRequired": true,
+      "hasWebVersion": true,
+      "scrapingUrl": "",
+      "aliases": [
+        "北大",
+        "北京大学参观"
+      ]
+    },
+    {
+      "spotId": "kejiguan",
+      "name": "中国科技馆",
+      "category": "博物馆",
+      "district": "朝阳区",
+      "address": "北辰东路5号",
+      "location": {
+        "latitude": 40.0047,
+        "longitude": 116.3898
+      },
+      "officialAppid": "wx2c0837274f1a69e1",
+      "officialPath": "",
+      "officialWebUrl": "https://www.cstm.org.cn",
+      "officialAccount": "中国科学技术馆",
+      "qrCode": "",
+      "difficultyScore": 3,
+      "popularityScore": 4,
+      "reservationRequired": true,
+      "hasWebVersion": true,
+      "scrapingUrl": "",
+      "aliases": [
+        "科技馆",
+        "中国科学技术馆"
+      ]
+    },
+    {
+      "spotId": "meishuguan",
+      "name": "中国美术馆",
+      "category": "博物馆",
+      "district": "东城区",
+      "address": "五四大街1号",
+      "location": {
+        "latitude": 39.9285,
+        "longitude": 116.4108
+      },
+      "officialAppid": "wx7988edf272d3bc05",
+      "officialPath": "",
+      "officialWebUrl": "https://www.namoc.cn",
+      "officialAccount": "中国美术馆",
+      "qrCode": "/images/qrcodes/meishuguan.png",
+      "difficultyScore": 3,
+      "popularityScore": 4,
+      "reservationRequired": true,
+      "hasWebVersion": true,
+      "scrapingUrl": "",
+      "aliases": [
+        "美术馆"
+      ]
+    },
+    {
+      "spotId": "gongyi-meishuguan",
+      "name": "中国工艺美术馆·非遗馆",
+      "category": "博物馆",
+      "district": "朝阳区",
+      "address": "湖景东路16号",
+      "location": {
+        "latitude": 40.0067,
+        "longitude": 116.3878
+      },
+      "officialAppid": "",
+      "officialPath": "",
+      "officialWebUrl": "https://www.gmfyg.org.cn",
+      "officialAccount": "中国工美馆 中国非遗馆",
+      "qrCode": "/images/qrcodes/gongyi-meishuguan.png",
+      "difficultyScore": 2,
+      "popularityScore": 3,
+      "reservationRequired": true,
+      "hasWebVersion": true,
+      "scrapingUrl": "",
+      "aliases": [
+        "工艺美术馆",
+        "非遗馆",
+        "工美馆"
+      ]
+    },
+    {
+      "spotId": "shoubo",
+      "name": "首都博物馆",
+      "category": "博物馆",
+      "district": "西城区",
+      "address": "复兴门外大街16号",
+      "location": {
+        "latitude": 39.9066,
+        "longitude": 116.3479
+      },
+      "officialAppid": "wx79ef8066f8c5edcd",
+      "officialPath": "",
+      "officialWebUrl": "http://www.capitalmuseum.org.cn",
+      "officialAccount": "首都博物馆",
+      "qrCode": "",
+      "difficultyScore": 2,
+      "popularityScore": 3,
+      "reservationRequired": true,
+      "hasWebVersion": true,
+      "scrapingUrl": "",
+      "aliases": [
+        "首博"
+      ]
+    },
+    {
+      "spotId": "mutianyu",
+      "name": "慕田峪长城",
+      "category": "古迹",
+      "district": "怀柔区",
+      "address": "渤海镇慕田峪村",
+      "location": {
+        "latitude": 40.4323,
+        "longitude": 116.5651
+      },
+      "officialAppid": "wx15e60c04826479ea",
+      "officialPath": "",
+      "officialWebUrl": "https://www.mutianyugreatwall.com",
+      "officialAccount": "慕田峪长城",
+      "qrCode": "",
+      "difficultyScore": 2,
+      "popularityScore": 4,
+      "reservationRequired": true,
+      "hasWebVersion": true,
+      "scrapingUrl": "",
+      "aliases": [
+        "慕田峪"
+      ]
+    },
+    {
+      "spotId": "kongmiao-guozijian",
+      "name": "孔庙和国子监博物馆",
+      "category": "博物馆",
+      "district": "东城区",
+      "address": "国子监街15号",
+      "location": {
+        "latitude": 39.9482,
+        "longitude": 116.4106
+      },
+      "officialAppid": "",
+      "officialPath": "",
+      "officialWebUrl": "http://www.kmgzj.com",
+      "officialAccount": "孔庙和国子监博物馆",
+      "qrCode": "",
+      "difficultyScore": 2,
+      "popularityScore": 3,
+      "reservationRequired": true,
+      "hasWebVersion": true,
+      "scrapingUrl": "",
+      "aliases": [
+        "孔庙",
+        "国子监"
+      ]
+    },
+    {
+      "spotId": "tianwenguan",
+      "name": "北京天文馆",
+      "category": "博物馆",
+      "district": "西城区",
+      "address": "西直门外大街138号",
+      "location": {
+        "latitude": 39.9411,
+        "longitude": 116.3404
+      },
+      "officialAppid": "",
+      "officialPath": "",
+      "officialWebUrl": "https://www.bjp.org.cn",
+      "officialAccount": "北京天文馆",
+      "qrCode": "/images/qrcodes/tianwenguan.png",
+      "difficultyScore": 1,
+      "popularityScore": 3,
+      "reservationRequired": true,
+      "hasWebVersion": true,
+      "scrapingUrl": "",
+      "aliases": [
+        "天文馆"
+      ]
+    },
+    {
+      "spotId": "huanqiu-yingcheng",
+      "name": "北京环球影城",
+      "category": "主题乐园",
+      "district": "通州区",
+      "address": "京哈高速与东六环交汇处西北角",
+      "location": {
+        "latitude": 39.8597,
+        "longitude": 116.6777
+      },
+      "officialAppid": "wx3ba512d53df66a75",
+      "officialPath": "",
+      "officialWebUrl": "https://www.universalbeijingresort.com",
+      "officialAccount": "北京环球度假区",
+      "qrCode": "",
+      "difficultyScore": 2,
+      "popularityScore": 5,
+      "reservationRequired": true,
+      "hasWebVersion": true,
+      "scrapingUrl": "",
+      "aliases": [
+        "环球影城",
+        "环球度假区"
+      ]
     }
   ]
 }

@@ -3,9 +3,20 @@ App({
     userInfo: null,
     openid: null,
     cloudEnv: 'travel-app-env',
+    statusBarHeight: 20,
+    navBarHeight: 44,
+    menuButton: null,
+    currentTripId: null,
+    homeMode: 1,
   },
 
   onLaunch() {
+    const sysInfo = wx.getWindowInfo();
+    const menuButton = wx.getMenuButtonBoundingClientRect();
+    this.globalData.statusBarHeight = sysInfo.statusBarHeight;
+    this.globalData.navBarHeight = (menuButton.top - sysInfo.statusBarHeight) * 2 + menuButton.height;
+    this.globalData.menuButton = menuButton;
+
     if (!wx.cloud) {
       console.error('请使用 2.2.3 或以上的基础库以使用云能力');
     } else {
@@ -14,17 +25,5 @@ App({
         traceUser: true,
       });
     }
-
-    this.getUserOpenid();
-  },
-
-  getUserOpenid() {
-    wx.cloud.callFunction({
-      name: 'login',
-    }).then(res => {
-      this.globalData.openid = res.result.openid;
-    }).catch(err => {
-      console.error('获取 openid 失败', err);
-    });
   },
 });

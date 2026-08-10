@@ -84,16 +84,28 @@ function freshDb() {
   db = freshDb();
   const tr = await trip.createOrMerge(db, USER, {
     startDate: RANGE.startDate, endDate: RANGE.endDate,
-    spotIds: ['gugong', 'badaling'], // 故宫周一闭馆(4条) + 八达岭(5条) = 9
+    spotIds: ['gugong', 'tsinghua'], // 故宫周一闭馆(4条) + 清华不闭馆(5条) = 9
   });
   const tl = await timeline.generate(db, USER, tr.tripId);
   eq(tl.success, true, '生成成功');
-  eq(tl.events.length, 9, '故宫4 + 八达岭5 = 9 条');
+  eq(tl.events.length, 9, '故宫4 + 清华5 = 9 条');
   eq(tl.byDeparture.length, 5, '5 个出发日 Tab');
-  eq(tl.byDeparture.find(g => g.key === RANGE.monday).count, 1, '周一只有八达岭 1 条');
+  eq(tl.byDeparture.find(g => g.key === RANGE.monday).count, 1, '周一只有清华 1 条');
   eq(tl.bySpot.length, 2, '2 个景点 Tab');
   eq(tl.closedSpots.length, 0, '无全闭馆景点');
   eq(tl.events.every(e => e.status === EventSelectStatus.SELECTABLE), true, '未来行程初始态全部可选');
+
+  // B 层免预约景点不进时间线（reservationRequired=false，2026 政策取消预约）
+  const trB = await trip.createOrMerge(db, USER, {
+    startDate: time.addDays(RANGE.startDate, 14), endDate: time.addDays(RANGE.endDate, 14),
+    spotIds: ['gugong', 'badaling'],
+  });
+  const tlB = await timeline.generate(db, USER, trB.tripId);
+  eq(tlB.success, true, '含 B 层景点的行程生成成功');
+  eq(tlB.events.length, 4, 'badaling(免预约) 被排除，只剩故宫 4 条');
+  eq(tlB.bySpot.length, 1, '仅 1 个景点 Tab');
+  eq(tlB.closedSpots.length, 0, '免预约景点不计入「闭馆」');
+  await trip.removeIfEmpty(db, USER, trB.tripId); // 清理测试行程，避免影响后续级联断言
 
   /* ============ 3. 清单：加入 / 查重 / 批量限定 Tab ============ */
   console.log('\n=== 3. 提醒清单（CART-RULE）===');

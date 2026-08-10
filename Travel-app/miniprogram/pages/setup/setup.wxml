@@ -1,0 +1,77 @@
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack">
+      <van-icon name="arrow-left" size="18px" color="#4A2D23" />
+    </view>
+    <text class="navbar-title">设置提醒</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view class="page-body">
+  <!-- 提醒方式 -->
+  <text class="section-label">提醒方式</text>
+  <view class="setting-card">
+    <view class="setting-row" bindtap="onToggleChannel" data-key="officialAccount">
+      <view class="setting-row-left">
+        <van-icon name="chat-o" size="20px" color="#4A7C59" />
+        <view class="setting-row-info">
+          <text class="setting-row-label">公众号提醒</text>
+          <text class="setting-row-hint">需打开微信通知权限</text>
+        </view>
+      </view>
+      <view class="checkbox {{channels.officialAccount ? 'checked' : ''}}">
+        <van-icon wx:if="{{channels.officialAccount}}" name="success" size="12px" color="#fff" />
+      </view>
+    </view>
+    <view class="setting-row" bindtap="onToggleChannel" data-key="calendar">
+      <view class="setting-row-left">
+        <van-icon name="calendar-o" size="20px" color="#B8904A" />
+        <view class="setting-row-info">
+          <text class="setting-row-label">日历提醒</text>
+        </view>
+      </view>
+      <view class="checkbox {{channels.calendar ? 'checked' : ''}}">
+        <van-icon wx:if="{{channels.calendar}}" name="success" size="12px" color="#fff" />
+      </view>
+    </view>
+    <view class="setting-row setting-row-disabled">
+      <view class="setting-row-left">
+        <van-icon name="envelop-o" size="20px" color="#DBCDBB" />
+        <view class="setting-row-info">
+          <text class="setting-row-label setting-row-label-disabled">短信提醒</text>
+        </view>
+      </view>
+      <text class="setting-row-coming">敬请期待</text>
+    </view>
+  </view>
+
+  <!-- 提醒时间 -->
+  <text class="section-label">提醒时间</text>
+  <view class="setting-card">
+    <view class="setting-row">
+      <text class="setting-row-label">放票前</text>
+      <view class="offset-options">
+        <view class="offset-option {{checkedOffset5 ? 'checked' : ''}}" bindtap="onToggleOffset" data-val="5">
+          <view class="checkbox {{checkedOffset5 ? 'checked' : ''}}">
+            <van-icon wx:if="{{checkedOffset5}}" name="success" size="12px" color="#fff" />
+          </view>
+          <text>5分钟</text>
+        </view>
+        <view class="offset-option {{checkedOffset2 ? 'checked' : ''}}" bindtap="onToggleOffset" data-val="2">
+          <view class="checkbox {{checkedOffset2 ? 'checked' : ''}}">
+            <van-icon wx:if="{{checkedOffset2}}" name="success" size="12px" color="#fff" />
+          </view>
+          <text>2分钟</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 提交按钮 -->
+  <view class="submit-btn {{submitting ? 'disabled' : ''}}" bindtap="onSubmit">
+    <van-icon name="success" size="16px" color="#EDE5D2" />
+    <text>提交</text>
+  </view>
+</view>

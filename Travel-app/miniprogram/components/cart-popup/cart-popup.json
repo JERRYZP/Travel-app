@@ -1,0 +1,8 @@
+{
+  "component": true,
+  "usingComponents": {
+    "svg-icon": "/components/svg-icon/svg-icon",
+    "van-loading": "@vant/weapp/loading/index",
+    "van-dialog": "@vant/weapp/dialog/index"
+  }
+}
