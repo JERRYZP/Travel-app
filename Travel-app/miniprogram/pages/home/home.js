@@ -11,7 +11,7 @@ Page({
     navBarRight: 100,
     navOpacity: 0,
    homeMode: 1,
-    cityBg: '/images/cities/beijing.png',
+    cityBg: '/images/cities/beijing.webp',
    loading: true,
     startDate: '',
     endDate: '',

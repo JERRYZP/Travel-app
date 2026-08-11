@@ -7,7 +7,7 @@
 
 const USE_MOCK = true;
 
-/* ===== 景点数据（spotId 与 images/spots/*.jpg 对齐） ===== */
+/* ===== 景点数据（spotId 与 images/spots/*.webp 对齐） ===== */
 const SPOTS = [
   { spotId: 'gugong', name: '故宫博物院', category: '博物馆', district: '东城区', address: '景山前街4号', difficultyScore: 5, popularityScore: 5, reservationRequired: true, advanceDays: 7, releaseTime: '20:00', closedDays: ['monday'], officialAccount: '故宫博物院', qrCode: '/images/qrcodes/gugong.png', officialAppid: 'wx8f815c1df1f067ef', officialPath: 'pages/index/index', officialWebUrl: 'https://www.dpm.org.cn', hasWebVersion: true, scrapingUrl: 'https://www.dpm.org.cn/Home.html' },
   { spotId: 'tiananmen-chenglou', name: '天安门城楼', category: '古迹', district: '东城区', address: '天安门广场北侧', difficultyScore: 5, popularityScore: 5, reservationRequired: true, advanceDays: 7, releaseTime: '17:00', closedDays: ['monday'], officialAccount: '天安门城楼参观预约', qrCode: '', officialAppid: '', officialPath: '', officialWebUrl: 'https://www.tiananmenchenglou.com', hasWebVersion: true, scrapingUrl: 'https://www.tiananmenchenglou.com' },

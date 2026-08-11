@@ -151,7 +151,7 @@
        <text class="hot-title">北京热门景点预约状态</text>
         <view class="hot-grid">
          <view wx:for="{{hotSpots}}" wx:key="spotId" class="spot-card">
-            <image class="spot-card-img" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" bindtap="onSpotNameTap" data-id="{{item.spotId}}" />
+            <image class="spot-card-img" src="/images/spots/{{item.spotId}}.webp" mode="aspectFill" bindtap="onSpotNameTap" data-id="{{item.spotId}}" />
            <view class="spot-card-body">
               <view class="spot-card-title">
                 <text class="spot-card-name" bindtap="onSpotNameTap" data-id="{{item.spotId}}">{{item.name}}</text>
@@ -247,7 +247,7 @@
               <text class="task-clock">{{task.releaseTimeLabel}}</text>
               <text wx:if="{{task.countdown}}" class="task-countdown {{task.countdown.urgent ? 'urgent' : ''}}">{{task.countdown.text}}</text>
             </view>
-            <image class="task-card-img" src="/images/spots/{{task.spotId}}.jpg" mode="aspectFill" />
+            <image class="task-card-img" src="/images/spots/{{task.spotId}}.webp" mode="aspectFill" />
             <view class="task-card-body">
               <text class="task-card-name" bindtap="onSpotNameTap" data-id="{{task.spotId}}">{{task.spotName}}</text>
               <text class="task-card-visit">{{task.grabLabel}}</text>

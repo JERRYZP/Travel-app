@@ -41,7 +41,7 @@
     </view>
     <view wx:elif="{{searchResults.length > 0}}" class="spot-grid">
      <view wx:for="{{searchResults}}" wx:key="spotId" class="spot-card">
-        <image class="spot-card-img" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" bindtap="onSpotNameTap" data-id="{{item.spotId}}" />
+        <image class="spot-card-img" src="/images/spots/{{item.spotId}}.webp" mode="aspectFill" bindtap="onSpotNameTap" data-id="{{item.spotId}}" />
        <view class="spot-card-body">
           <view class="spot-card-title">
             <text class="spot-card-name" bindtap="onSpotNameTap" data-id="{{item.spotId}}">{{item.name}}</text>
@@ -100,7 +100,7 @@
       </view>
       <scroll-view scroll-x class="selected-scroll">
         <view wx:for="{{selectedSpots}}" wx:key="spotId" class="selected-card">
-          <image class="selected-card-img" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" />
+          <image class="selected-card-img" src="/images/spots/{{item.spotId}}.webp" mode="aspectFill" />
           <text class="selected-card-name">{{item.name}}</text>
           <view class="selected-card-x" bindtap="onRemoveSelected" data-id="{{item.spotId}}">
             <svg-icon name="close-white" size="10px" />
@@ -123,7 +123,7 @@
       </view>
       <view class="spot-grid">
        <view wx:for="{{hotSpots}}" wx:key="spotId" class="spot-card">
-          <image class="spot-card-img" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" bindtap="onSpotNameTap" data-id="{{item.spotId}}" />
+          <image class="spot-card-img" src="/images/spots/{{item.spotId}}.webp" mode="aspectFill" bindtap="onSpotNameTap" data-id="{{item.spotId}}" />
          <view class="spot-card-body">
             <view class="spot-card-title">
               <text class="spot-card-name" bindtap="onSpotNameTap" data-id="{{item.spotId}}">{{item.name}}</text>
