@@ -37,4 +37,7 @@
 .setting-row-label { font-size: 28rpx; color: var(--color-ink); }
 .setting-row-right { display: flex; align-items: center; gap: 8rpx; }
 .setting-row-hint { font-size: 24rpx; color: var(--color-muted); }
-.setting-row-hint-highlight { color: var(--color-primary); }
+/* 通知设置三态文案 */
+.setting-row-hint-none { color: var(--color-primary); font-weight: 600; }
+.setting-row-hint-partial { color: var(--color-muted); }
+.setting-row-hint-all { color: #4A7C59; }

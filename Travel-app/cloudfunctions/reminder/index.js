@@ -66,13 +66,7 @@ exports.main = async (event) => {
       case 'task.submit': {
         const res = await task.submit(db, userId, event);
         if (!res.success) return res;
-
-        // ICS-RULE-001/002：同步失败不阻塞微信侧提醒
-        let ics = null;
-        if (res.needsIcsSync) {
-          ics = await syncIcs(userId);
-        }
-        return ok({ ...res, ics });
+        return ok(res);
       }
       case 'task.list':
         return await task.list(db, userId, {
@@ -84,8 +78,12 @@ exports.main = async (event) => {
         if (!res.success) return res;
         // TRIP-RULE-004 级联：行程内任务与清单均空则删除行程
         const tripRemoved = await trip.removeIfEmpty(db, userId, res.tripId);
-        const ics = await syncIcs(userId);
-        return ok({ ...res, tripRemoved, ics });
+        return ok({ ...res, tripRemoved });
+      }
+      case 'task.clear': {
+        const res = await task.clear(db, userId);
+        if (!res.success) return res;
+        return ok(res);
       }
       case 'task.badge':
         return ok({ badge: await task.badgeCount(db, userId) });
@@ -116,23 +114,6 @@ exports.main = async (event) => {
   }
 };
 
-/**
- * 触发 ics-generator 重新生成该用户的日历文件（单用户单文件，覆盖写）
- * 失败只记录不抛出（ICS-RULE-002）
- */
-async function syncIcs(userId) {
-  try {
-    const res = await cloud.callFunction({
-      name: 'ics-generator',
-      data: { action: 'rebuild', userId },
-    });
-    return res.result || null;
-  } catch (err) {
-    console.error('[reminder] ICS 同步失败', err);
-    return { success: false, error: ERRORS.ICS_SYNC_FAILED.message };
-  }
-}
-
 /** TABLE-005 用户表：首次调用时惰性创建 */
 async function getOrCreateUser(userId) {
   const res = await db.collection(COLLECTIONS.USERS).where({ openId: userId }).get();
@@ -145,7 +126,6 @@ async function getOrCreateUser(userId) {
     avatarUrl: '',
     notifyPrefs: {
       officialAccount: false,
-      calendar: true,
       sms: false,
       offsets: [...V1.ALLOWED_OFFSETS],
     },

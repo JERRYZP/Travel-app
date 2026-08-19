@@ -11,7 +11,7 @@ Page({
     navBarRight: 100,
     navOpacity: 0,
    homeMode: 1,
-    cityBg: '/images/cities/beijing.webp',
+    cityBg: '/images/cities/beijing.png',
    loading: true,
     startDate: '',
     endDate: '',
@@ -33,6 +33,8 @@ Page({
     showSpotPopup: false,
     popupSpotId: '',
     badge: 0,
+    menuTaskId: '',
+    collapsedGroups: [],
 
     /* 形态1 内联时间线（无提醒任务时，在当前页生成，不跳转） */
     showTimeline: false,
@@ -82,7 +84,9 @@ Page({
   onPageScroll(e) {
     const scrollTop = (e.detail && e.detail.scrollTop) || 0;
     this._scrollTop = scrollTop;
-    this.setData({ navOpacity: Math.min(scrollTop / 50, 1) });
+    const patch = { navOpacity: Math.min(scrollTop / 50, 1) };
+    if (this.data.menuTaskId) patch.menuTaskId = '';
+    this.setData(patch);
     /* 时间线标题吸顶：滚动越过阈值后标题固定在导航栏下方 */
     if (this.data.showTimeline && this._headerTop > 0) {
       const stickTop = this.data.statusBarHeight + this.data.navBarHeight;
@@ -93,6 +97,78 @@ Page({
     }
   },
 
+
+  /* 任务卡副标题「开抢5月31日（周四）门票」→ 拆出红色日期段（对齐设计稿） */
+  decorateTaskGroups(groups) {
+    const collapsed = this.data.collapsedGroups || [];
+    return (groups || []).map(g => {
+      const items = (g.items || []).map(t => {
+        const m = /^(开抢)(.+?)(门票)$/.exec(t.grabLabel || '');
+        return Object.assign({}, t, {
+          grabPre: m ? m[1] : t.grabLabel,
+          grabDate: m ? m[2] : '',
+          grabPost: m ? m[3] : '',
+        });
+      });
+      return Object.assign({}, g, { items, collapsed: collapsed.indexOf(g.key) !== -1 });
+    });
+  },
+
+  onTaskMenuTap(e) {
+    const id = e.currentTarget.dataset.id;
+    this.setData({ menuTaskId: this.data.menuTaskId === id ? '' : id });
+  },
+
+  onTaskMenuClose() {
+    this.setData({ menuTaskId: '' });
+  },
+
+
+
+  doClearTasks() {
+    if (this.data.submitting) return;
+    this.setData({ submitting: true });
+    api.reminder.task.clear().then(() => {
+      this.setData({ submitting: false, menuTaskId: '' });
+      this.loadHomeData();
+    }).catch(err => { this.setData({ submitting: false }); api.toastError(err); });
+  },
+
+  onClearTasks() {
+    if (this.data.submitting) return;
+    /* 二次确认：先看还有没有「进行中」的待提醒任务 */
+    api.reminder.task.list({ filter: 'active' }).then(res => {
+      const pending = res.counts ? res.counts.active : 0;
+      if (pending > 0) {
+        wx.showModal({
+          title: `还有${pending}条任务待提醒，确认删除？`,
+          success: r => { if (r.confirm) this.doClearTasks(); },
+        });
+        return;
+      }
+      api.reminder.task.list({ filter: 'expired' }).then(r2 => {
+        const expired = r2.counts ? r2.counts.expired : 0;
+        if (expired === 0) {
+          wx.showToast({ title: '没有可清空的任务', icon: 'none' });
+          return;
+        }
+        wx.showModal({
+          title: '确认清空任务？',
+          success: r => { if (r.confirm) this.doClearTasks(); },
+        });
+      }).catch(err => api.toastError(err));
+    }).catch(err => api.toastError(err));
+  },
+
+  onGroupHeaderTap(e) {
+    const key = e.currentTarget.dataset.key;
+    const collapsed = (this.data.collapsedGroups || []).slice();
+    const i = collapsed.indexOf(key);
+    if (i !== -1) collapsed.splice(i, 1); else collapsed.push(key);
+    const groups = (this.data.taskGroups || []).map(g => Object.assign({}, g, { collapsed: collapsed.indexOf(g.key) !== -1 }));
+    this.setData({ collapsedGroups: collapsed, taskGroups: groups });
+  },
+
   loadHomeData() {
     this.setData({ loading: true });
     api.reminder.task.list({ filter: 'active' }).then(res => {
@@ -100,11 +176,13 @@ Page({
       this.setData({ homeMode: mode, badge: res.badge || 0, loading: false });
       if (mode === 2) {
         this.setData({
-          taskGroups: res.groups || [],
+          taskGroups: this.decorateTaskGroups(res.groups),
           counts: res.counts || { active: 0, expired: 0 },
           banner: res.banner,
           showTimeline: false,
           timelineSticky: false,
+          menuTaskId: '',
+          showCartPopup: false,
         });
         this.loadTrips();
       } else {
@@ -211,19 +289,27 @@ Page({
       spotIds: this.data.selectedSpotIds,
       city: '北京',
     };
-    /* 已内联生成过：更新同一行程后重算（保留清单，TIMELINE-RULE-002）；否则新建行程 */
+    /* 任务分组第一性原则：以本次生成的时间段与既有行程时间段是否相交/相接来判断合并（TRIP-RULE-002）。
+     * 相交/相接 → 归入同一任务组（时间段取并集、景点替换为当前选择）；否则新建行程（新任务组，顶部自动多一个 Tab） */
     const req = this.data.timelineTripId
-      ? Promise.all([
-          api.reminder.trip.updateRange({
-            tripId: this.data.timelineTripId,
-            startDate: payload.startDate,
-            endDate: payload.endDate,
-          }),
-          api.reminder.trip.updateSpots({
-            tripId: this.data.timelineTripId,
-            spotIds: payload.spotIds,
-          }),
-        ]).then(() => this.data.timelineTripId)
+      ? api.reminder.trip.list().then(res => {
+          const cur = (res.trips || []).find(t => t._id === this.data.timelineTripId);
+          if (cur && util.rangesMerge(cur.startDate, cur.endDate, payload.startDate, payload.endDate)) {
+            const merged = util.mergeRanges(cur.startDate, cur.endDate, payload.startDate, payload.endDate);
+            return Promise.all([
+              api.reminder.trip.updateRange({
+                tripId: cur._id,
+                startDate: merged.startDate,
+                endDate: merged.endDate,
+              }),
+              api.reminder.trip.updateSpots({
+                tripId: cur._id,
+                spotIds: payload.spotIds,
+              }),
+            ]).then(() => cur._id);
+          }
+          return api.reminder.trip.create(payload).then(res2 => res2.tripId);
+        })
       : api.reminder.trip.create(payload).then(res => res.tripId);
     req.then(tripId => {
       wx.hideLoading();
@@ -402,6 +488,8 @@ Page({
       wx.showToast({ title: '先添加至少一条提醒', icon: 'none' });
       return;
     }
+    /* 关闭提醒清单浮窗，避免提交返回后残留遮挡任务页 */
+    this.setData({ showCartPopup: false });
     wx.navigateTo({ url: '/pages/setup/setup?tripId=' + this.data.timelineTripId });
   },
 
@@ -440,7 +528,7 @@ Page({
     const filter = e.currentTarget.dataset.filter;
     this.setData({ activeFilter: filter });
     api.reminder.task.list({ filter }).then(res => {
-      this.setData({ taskGroups: res.groups || [] });
+      this.setData({ taskGroups: this.decorateTaskGroups(res.groups), menuTaskId: '' });
     }).catch(() => {});
   },
 
@@ -448,11 +536,12 @@ Page({
     const tripId = e.currentTarget.dataset.id;
     this.setData({ activeTripTab: tripId });
     api.reminder.task.list({ tripId: tripId || undefined, filter: this.data.activeFilter }).then(res => {
-      this.setData({ taskGroups: res.groups || [] });
+      this.setData({ taskGroups: this.decorateTaskGroups(res.groups), menuTaskId: '' });
     }).catch(() => {});
   },
 
   onTaskDelete(e) {
+    this.setData({ menuTaskId: '' });
     const taskId = e.currentTarget.dataset.id;
     wx.showModal({
       title: '确认移除这条提醒？',

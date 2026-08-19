@@ -1,0 +1,9 @@
+{
+  "name": "feedback",
+  "version": "1.0.0",
+  "description": "意见反馈 / 信息纠错 云函数",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

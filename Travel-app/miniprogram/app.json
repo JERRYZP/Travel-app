@@ -5,7 +5,11 @@
     "pages/timeline/timeline",
     "pages/setup/setup",
     "pages/profile/profile",
-    "pages/webview/webview"
+    "pages/webview/webview",
+    "pages/notify-settings/notify-settings",
+    "pages/feedback/feedback",
+    "pages/spot-correction/spot-correction",
+    "pages/admin-feedback/admin-feedback"
   ],
   "window": {
     "backgroundColor": "#F8F3EA",
@@ -15,12 +19,12 @@
     "navigationBarTextStyle": "black",
     "navigationStyle": "custom"
   },
- "usingComponents": {
-   "van-icon": "@vant/weapp/icon/index",
-   "svg-icon": "/components/svg-icon/svg-icon",
-   "van-dialog": "@vant/weapp/dialog/index",
-  "van-loading": "@vant/weapp/loading/index"
-},
+  "usingComponents": {
+    "van-icon": "@vant/weapp/icon/index",
+    "svg-icon": "/components/svg-icon/svg-icon",
+    "van-dialog": "@vant/weapp/dialog/index",
+    "van-loading": "@vant/weapp/loading/index"
+  },
   "sitemapLocation": "sitemap.json",
   "lazyCodeLoading": "requiredComponents"
 }

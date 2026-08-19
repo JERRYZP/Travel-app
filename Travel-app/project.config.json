@@ -55,8 +55,8 @@
     "disableSWC": true
   },
   "compileType": "miniprogram",
-  "libVersion": "2.32.0",
-  "appid": "wx81af8e2578dd36d6",
+  "libVersion": "3.17.1",
+  "appid": "wxf84c8647e84300c5",
   "projectname": "travel-app",
   "condition": {},
   "editorSetting": {

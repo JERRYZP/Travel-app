@@ -101,6 +101,19 @@ function formatMonthDayWeek(dateStr) {
   return `${p.month}月${p.day}日 (周${cn[p.weekday]})`;
 }
 
+/** UI 用的「M月D日」（PAGE-009 任务分组标题，设计稿不带星期） */
+function formatMonthDay(dateStr) {
+  const p = beijingParts(parseBeijing(dateStr, '12:00'));
+  return `${p.month}月${p.day}日`;
+}
+
+/** UI 用的「M月D日（周X）」（全角括号、无空格，PAGE-009 任务副标题，对齐设计稿） */
+function formatMonthDayWeekCn(dateStr) {
+  const p = beijingParts(parseBeijing(dateStr, '12:00'));
+  const cn = ['日', '一', '二', '三', '四', '五', '六'];
+  return `${p.month}月${p.day}日（周${cn[p.weekday]}）`;
+}
+
 /** UI 用的「HH:mm」（按北京时间显示 releaseAt） */
 function formatHourMinute(date) {
   const p = beijingParts(date);
@@ -132,6 +145,8 @@ module.exports = {
   dateRange,
   addMinutes,
   formatMonthDayWeek,
+  formatMonthDay,
+  formatMonthDayWeekCn,
   formatHourMinute,
   toIcsUtc,
 };

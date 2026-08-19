@@ -43,7 +43,6 @@ const EventSelectStatus = {
 /** ENUM-004 提醒通道 */
 const ChannelType = {
   OFFICIAL_ACCOUNT: 'OFFICIAL_ACCOUNT',
-  CALENDAR_ICS: 'CALENDAR_ICS',
   SMS: 'SMS', // reserved, V1.1
 };
 
@@ -74,7 +73,6 @@ function difficultyOf(score) {
 const ERRORS = {
   SPOT_NOT_FOUND: { code: 1001, message: '景点不存在' },
   REMINDER_EXISTS: { code: 1002, message: '这条提醒已经在清单里啦' },
-  ICS_SYNC_FAILED: { code: 1003, message: '日历同步失败，可稍后在设置中重新同步' },
   OA_AUTH_FAILED: { code: 1004, message: '公众号授权失败' },
   SCRAPE_STALE: { code: 1005, message: '数据更新中' },
   TRIP_DATE_INVALID: { code: 1006, message: '行程日期不合法' },

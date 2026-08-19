@@ -1,5 +1,8 @@
 const app = getApp();
 const api = require('../../utils/api.js');
+const notify = require('../../utils/notify.js');
+
+const NOTIFY_HINT_MAP = { none: '未开启', partial: '部分开启', all: '已开启' };
 
 Page({
   data: {
@@ -7,6 +10,8 @@ Page({
     navBarHeight: 44,
     user: null,
     badge: 0,
+    notifyHint: '未开启',
+    notifyState: 'none',
   },
 
   onLoad() {
@@ -17,6 +22,7 @@ Page({
   onShow() {
     this.loadUser();
     this.loadBadge();
+    this.loadNotifyHint();
   },
 
   loadUser() {
@@ -40,14 +46,15 @@ Page({
     }).catch(() => {});
   },
 
+  /* 通知设置三态：全没设 / 设了一个 / 全设（onShow 刷新，从内页返回即时更新） */
+  loadNotifyHint() {
+    notify.getNotifyStatus().then(s => {
+      this.setData({ notifyHint: NOTIFY_HINT_MAP[s.state], notifyState: s.state });
+    }).catch(() => {});
+  },
+
   onNotifySettings() {
-    wx.openSetting({
-      success: res => {
-        if (res.authSetting['scope.subscribeMessage']) {
-          wx.showToast({ title: '通知已开启', icon: 'none' });
-        }
-      },
-    });
+    wx.navigateTo({ url: '/pages/notify-settings/notify-settings' });
   },
 
   onGuide() {
@@ -55,20 +62,15 @@ Page({
   },
 
   onFeedback() {
-    wx.showToast({ title: '感谢反馈', icon: 'none' });
+    wx.navigateTo({ url: '/pages/feedback/feedback' });
   },
 
   onReportError() {
-    wx.showModal({
-      title: '信息纠错',
-      content: '发现景点信息有误？请描述问题，我们会尽快核实。',
-      editable: true,
-      placeholderText: '请输入问题描述',
-      success: res => {
-        if (res.confirm) {
-          wx.showToast({ title: '感谢反馈，我们会尽快核实', icon: 'none' });
-        }
-      },
-    });
+    wx.navigateTo({ url: '/pages/spot-correction/spot-correction' });
+  },
+
+  /** 隐藏入口：长按用户信息卡进入反馈管理页（权限由 feedback 云函数 openid 白名单把关） */
+  onAdminEntry() {
+    wx.navigateTo({ url: '/pages/admin-feedback/admin-feedback' });
   },
 });

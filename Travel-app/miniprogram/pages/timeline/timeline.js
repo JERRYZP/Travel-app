@@ -8,7 +8,9 @@ Page({
   data: {
     statusBarHeight: 20,
     navBarHeight: 44,
+    navOpacity: 0,
     tripId: '',
+    cityBg: '/images/cities/beijing.png',
     /* 表单：与首页形态1一致（二级页「添加提醒」内容同首页，仅导航栏不同） */
     startDate: '',
     endDate: '',
@@ -36,6 +38,12 @@ Page({
     popupSpotId: '',
     loading: true,
     submitting: false,
+  },
+
+  /* 导航栏背景：透明 → 滚动 50px 内渐变不透明（与首页一致） */
+  onPageScroll(e) {
+    const scrollTop = (e.detail && e.detail.scrollTop) || 0;
+    this.setData({ navOpacity: Math.min(scrollTop / 50, 1) });
   },
 
   onLoad(options) {
@@ -109,42 +117,44 @@ Page({
       return;
     }
     wx.showLoading({ title: '正在生成...' });
-    if (this.data.tripId) {
-      Promise.all([
-        api.reminder.trip.updateRange({
-          tripId: this.data.tripId,
-          startDate: this.data.startDate,
-          endDate: this.data.endDate,
-        }),
-        api.reminder.trip.updateSpots({
-          tripId: this.data.tripId,
-          spotIds: this.data.selectedSpotIds,
-        }),
-      ]).then(() => {
-        wx.hideLoading();
-        this.loadTimeline();
-        this.loadCart();
-      }).catch(err => {
-        wx.hideLoading();
-        api.toastError(err);
-      });
-    } else {
-      api.reminder.trip.create({
-        startDate: this.data.startDate,
-        endDate: this.data.endDate,
-        spotIds: this.data.selectedSpotIds,
-        city: '北京',
-      }).then(res => {
-        wx.hideLoading();
-        app.globalData.currentTripId = res.tripId;
-        this.setData({ tripId: res.tripId });
-        this.loadTimeline();
-        this.loadCart();
-      }).catch(err => {
-        wx.hideLoading();
-        api.toastError(err);
-      });
-    }
+    const payload = {
+      startDate: this.data.startDate,
+      endDate: this.data.endDate,
+      spotIds: this.data.selectedSpotIds,
+      city: '北京',
+    };
+    /* 任务分组第一性原则：以本次时间段与既有行程时间段是否相交/相接判断合并（TRIP-RULE-002）。
+     * 相交/相接 → 同一任务组（时间段取并集、景点替换）；否则新建行程（新任务组） */
+    const req = this.data.tripId
+      ? api.reminder.trip.list().then(res => {
+          const cur = (res.trips || []).find(t => t._id === this.data.tripId);
+          if (cur && util.rangesMerge(cur.startDate, cur.endDate, payload.startDate, payload.endDate)) {
+            const merged = util.mergeRanges(cur.startDate, cur.endDate, payload.startDate, payload.endDate);
+            return Promise.all([
+              api.reminder.trip.updateRange({
+                tripId: cur._id,
+                startDate: merged.startDate,
+                endDate: merged.endDate,
+              }),
+              api.reminder.trip.updateSpots({
+                tripId: cur._id,
+                spotIds: payload.spotIds,
+              }),
+            ]).then(() => cur._id);
+          }
+          return api.reminder.trip.create(payload).then(res2 => res2.tripId);
+        })
+      : api.reminder.trip.create(payload).then(res => res.tripId);
+    req.then(tripId => {
+      wx.hideLoading();
+      app.globalData.currentTripId = tripId;
+      this.setData({ tripId });
+      this.loadTimeline();
+      this.loadCart();
+    }).catch(err => {
+      wx.hideLoading();
+      api.toastError(err);
+    });
   },
 
   loadTimeline(keepTab) {

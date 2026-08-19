@@ -1,0 +1,67 @@
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack">
+      <svg-icon name="back-thick" size="18px" />
+    </view>
+    <text class="navbar-title">反馈管理</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view class="page-body">
+  <!-- 筛选 Tab -->
+  <view class="filter-bar">
+    <view class="filter-item {{activeFilter === item.key ? 'active' : ''}}" wx:for="{{filters}}" wx:key="key"
+      bindtap="onFilter" data-key="{{item.key}}">
+      <text>{{item.label}}</text>
+    </view>
+  </view>
+
+  <!-- 加载中 -->
+  <view class="state-block" wx:if="{{loading}}">
+    <text class="state-text">加载中...</text>
+  </view>
+
+  <!-- 无权限 -->
+  <view class="state-block" wx:elif="{{forbidden}}">
+    <text class="state-text">无权限访问</text>
+  </view>
+
+  <!-- 空列表 -->
+  <view class="state-block" wx:elif="{{!items.length}}">
+    <text class="state-text">暂无{{activeFilter === 'all' ? '' : '相关'}}记录</text>
+  </view>
+
+  <!-- 列表 -->
+  <block wx:else>
+    <view class="fb-card" wx:for="{{items}}" wx:key="id">
+      <view class="fb-card-head">
+        <view class="fb-tags">
+          <view class="fb-tag fb-tag-{{item.typeKey}}">{{item.typeLabel}}</view>
+          <view class="fb-tag fb-status fb-status-{{item.statusCls}}">{{item.statusLabel}}</view>
+        </view>
+        <text class="fb-time">{{item.time}}</text>
+      </view>
+
+      <view class="fb-spot" wx:if="{{item.isCorrection}}">
+        <text>{{item.spotName}}</text>
+        <text class="fb-spot-divider">·</text>
+        <text>{{item.errorTypeLabel}}</text>
+      </view>
+
+      <text class="fb-content">{{item.content}}</text>
+
+      <view class="fb-card-foot">
+        <text class="fb-contact" wx:if="{{item.contact}}">联系方式：{{item.contact}}</text>
+        <view class="fb-actions">
+          <block wx:if="{{item.status === 'OPEN'}}">
+            <view class="fb-btn fb-btn-primary" bindtap="onMark" data-id="{{item.id}}" data-status="PROCESSED">已处理</view>
+            <view class="fb-btn" bindtap="onMark" data-id="{{item.id}}" data-status="IGNORED">忽略</view>
+          </block>
+          <view class="fb-btn" wx:else bindtap="onMark" data-id="{{item.id}}" data-status="OPEN">重新打开</view>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>

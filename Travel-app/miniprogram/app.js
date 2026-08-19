@@ -2,7 +2,7 @@ App({
   globalData: {
     userInfo: null,
     openid: null,
-    cloudEnv: 'travel-app-env',
+    cloudEnv: 'cloud1-d0gtoyhce21c2b6b1',
     statusBarHeight: 20,
     navBarHeight: 44,
     menuButton: null,

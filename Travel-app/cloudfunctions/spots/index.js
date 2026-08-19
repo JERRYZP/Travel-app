@@ -118,6 +118,15 @@ function cardDescOf(rule, now = new Date()) {
   return base ? '随到随买，' + base : '';
 }
 
+/** TAG-RULE-001 标签构建：提前天数 + 放票时刻（支持多时段/空时刻） */
+function buildTags(rule) {
+  const t = [];
+  if (rule.advanceDays) t.push(`提前${rule.advanceDays}天放票`);
+  const rt = rule.releaseTimes || rule.releaseTime;
+  if (rt) t.push(`每日${Array.isArray(rt) ? rt.join('、') : rt}放票`);
+  return t;
+}
+
 /** 组装景点卡（PAGE-001 网格 / PAGE-003 列表共用） */
 function buildCard(spot, rule, now) {
   const status = computeReleaseStatus(rule, now);
@@ -133,9 +142,9 @@ function buildCard(spot, rule, now) {
     reservationRequired: spot.reservationRequired !== false,
     cardDesc: cardDescOf(rule, now),
     // TAG-RULE-001 核心标签：只回答「什么时候抢、难不难抢」
-    tags: rule ? [`提前${rule.advanceDays}天放票`, `每日${rule.releaseTime}放票`] : [],
+    tags: rule ? buildTags(rule) : [],
     advanceDays: rule ? rule.advanceDays : null,
-    releaseTime: rule ? rule.releaseTime : null,
+    releaseTime: rule ? (rule.releaseTimes || rule.releaseTime) : null,
     // B 层卡片信息区展示购票/入园信息
     ticketPrice: rule ? (rule.ticketPrice || '') : '',
     openTime: rule ? (rule.openTime || '') : '',

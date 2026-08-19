@@ -1,0 +1,67 @@
+.navbar { position: fixed; top: 0; left: 0; right: 0; z-index: 90; background: var(--color-page); }
+.navbar-content { display: flex; align-items: center; position: relative; }
+.navbar-back { position: absolute; left: 20rpx; width: 60rpx; height: 60rpx; display: flex; align-items: center; justify-content: center; }
+.navbar-title { position: absolute; left: 50%; transform: translateX(-50%); font-size: 30rpx; font-weight: 600; color: var(--color-ink); }
+
+.page-body { padding: 24rpx 30rpx 120rpx; }
+
+/* 筛选 Tab */
+.filter-bar { display: flex; gap: 16rpx; margin-bottom: 24rpx; }
+.filter-item {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  height: 64rpx;
+  background: var(--color-surface);
+  border: 2rpx solid var(--color-border);
+  border-radius: 32rpx;
+  font-size: 24rpx; color: var(--color-ink);
+}
+.filter-item.active { border-color: #B8904A; background: #FBF5E6; color: #B8904A; font-weight: 600; }
+
+/* 状态块 */
+.state-block { padding: 120rpx 0; display: flex; justify-content: center; }
+.state-text { font-size: 26rpx; color: var(--color-muted); }
+
+/* 卡片 */
+.fb-card {
+  background: var(--color-surface);
+  border-radius: 24rpx;
+  box-shadow: var(--shadow-card);
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+}
+.fb-card-head { display: flex; align-items: center; justify-content: space-between; }
+.fb-tags { display: flex; align-items: center; gap: 12rpx; }
+.fb-tag {
+  padding: 6rpx 16rpx;
+  border-radius: 8rpx;
+  font-size: 20rpx;
+}
+.fb-tag-suggestion { background: #FBF5E6; color: #B8904A; }
+.fb-tag-bug { background: #FBEAE5; color: #C0563C; }
+.fb-tag-correction { background: #E8F0F8; color: #4A7BA8; }
+.fb-status-open { background: #FBF5E6; color: #B8904A; }
+.fb-status-processed { background: #EDF5E8; color: #5E8C4A; }
+.fb-status-ignored { background: var(--color-page); color: var(--color-muted); }
+.fb-time { font-size: 22rpx; color: var(--color-muted); }
+
+.fb-spot { margin-top: 16rpx; font-size: 24rpx; color: var(--color-ink); font-weight: 600; }
+.fb-spot-divider { margin: 0 8rpx; color: var(--color-muted); font-weight: 400; }
+
+.fb-content {
+  display: block;
+  margin-top: 16rpx;
+  font-size: 26rpx; line-height: 1.6; color: var(--color-ink);
+}
+
+.fb-card-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 20rpx; }
+.fb-contact { font-size: 22rpx; color: var(--color-muted); flex: 1; margin-right: 16rpx; }
+.fb-actions { display: flex; gap: 16rpx; flex-shrink: 0; }
+.fb-btn {
+  padding: 10rpx 24rpx;
+  border-radius: 24rpx;
+  border: 2rpx solid var(--color-border);
+  font-size: 22rpx; color: var(--color-ink);
+  background: var(--color-surface);
+}
+.fb-btn-primary { border-color: #B8904A; color: #B8904A; background: #FBF5E6; }

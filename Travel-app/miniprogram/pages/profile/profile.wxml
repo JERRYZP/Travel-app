@@ -7,8 +7,8 @@
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
 
 <view class="page-body">
-  <!-- 用户信息 -->
-  <view class="profile-header">
+  <!-- 用户信息（长按进入反馈管理，后端 openid 白名单鉴权） -->
+  <view class="profile-header" bindlongpress="onAdminEntry">
     <view class="profile-avatar" style="background: linear-gradient(135deg, #EDE0C8, #DBCDBB);">
       <svg-icon name="profile" size="36px" />
     </view>
@@ -23,7 +23,7 @@
     <view class="setting-row" bindtap="onNotifySettings">
       <text class="setting-row-label">通知设置</text>
       <view class="setting-row-right">
-        <text class="setting-row-hint setting-row-hint-highlight">重要！强烈建议打开</text>
+        <text class="setting-row-hint setting-row-hint-{{notifyState}}">{{notifyHint}}</text>
         <svg-icon name="chevron-down" size="14px" rotate="270" />
       </view>
     </view>

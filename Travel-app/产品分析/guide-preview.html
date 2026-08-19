@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>北京旅游攻略 · 预览</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+  body { background: #EDE6D8; font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; padding: 24px 0; }
+  .phone {
+    width: 402px; margin: 0 auto; background: #F8F3EA; border-radius: 36px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.18); overflow: hidden;
+  }
+  .status { height: 34px; background: #F8F3EA; display: flex; align-items: flex-end; justify-content: center; font-size: 12px; color: #3A3A3A; }
+  .nav { height: 44px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; color: #3A3A3A; background: #F8F3EA; }
+
+  /* Banner 头图（公众号头图感） */
+  .banner { position: relative; height: 168px; overflow: hidden; }
+  .banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .banner .mask { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(248,243,234,0) 0%, rgba(248,243,234,.25) 55%, #F8F3EA 100%); }
+  .banner .title { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; }
+  .banner .title h1 { font-size: 22px; font-weight: 800; color: #2F5D3A; letter-spacing: 2px; text-shadow: 0 1px 8px rgba(255,255,255,.85); }
+  .banner .title p { font-size: 12px; color: #5B7A63; margin-top: 4px; letter-spacing: 1px; }
+
+  .page { padding: 14px 16px 34px; }
+
+  /* 节标题：emoji + 标题 + 短横线 */
+  .sec { margin-top: 22px; }
+  .sec-head { display: flex; align-items: center; gap: 8px; }
+  .sec-head .emoji { font-size: 18px; }
+  .sec-head h2 { font-size: 16px; font-weight: 700; color: #3A3A3A; letter-spacing: .5px; }
+  .sec-bar { width: 36px; height: 3px; border-radius: 2px; background: #7BC67E; margin-top: 6px; }
+  .sec-sub { font-size: 12px; color: #9A9A9A; margin-top: 6px; letter-spacing: .3px; }
+
+  .card { background: #FFFFFF; border-radius: 16px; padding: 14px 14px 12px; margin-top: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+
+  /* 清单 */
+  .item { display: flex; gap: 10px; padding: 8px 0; }
+  .item .no { flex: none; width: 22px; height: 22px; border-radius: 50%; background: #EAF7EE; color: #4C9A5A; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
+  .item .txt b { color: #3A3A3A; font-size: 14px; }
+  .item .txt span { color: #6B6B6B; font-size: 13px; line-height: 1.75; display: block; margin-top: 2px; }
+  .item + .item { border-top: 1px dashed #F0E9DC; }
+
+  /* 重点框 */
+  .tip { background: #EAF7EE; border-left: 3px solid #7BC67E; border-radius: 12px; padding: 10px 12px; margin-top: 12px; }
+  .tip b { color: #3F7A4C; font-size: 13px; }
+  .tip span { color: #5E8A68; font-size: 12.5px; line-height: 1.7; display: block; margin-top: 2px; }
+
+  /* 景点卡 */
+  .spot-card { display: flex; gap: 10px; padding: 10px 0; }
+  .spot-card + .spot-card { border-top: 1px dashed #F0E9DC; }
+  .spot-card img { width: 64px; height: 64px; border-radius: 12px; object-fit: cover; flex: none; }
+  .spot-card .info { flex: 1; min-width: 0; }
+  .spot-card .name-row { display: flex; align-items: center; gap: 6px; }
+  .spot-card .name-row .nm { font-size: 14px; font-weight: 700; color: #3A3A3A; }
+  .tag { flex: none; font-size: 10px; padding: 2px 7px; border-radius: 999px; font-weight: 600; }
+  .tag-hard { background: #FDECEC; color: #D96060; }
+  .tag-mid { background: #FFF4E0; color: #C98A2D; }
+  .tag-easy { background: #EAF7EE; color: #4C9A5A; }
+  .tag-free { background: #EEF1F6; color: #7A8AA0; }
+  .spot-card .rule { font-size: 12px; color: #9A9A9A; margin-top: 3px; }
+  .spot-card .rule b { color: #C98A2D; font-weight: 600; }
+  .spot-card .tip-line { font-size: 12px; color: #6B6B6B; line-height: 1.6; margin-top: 3px; }
+  .spot-card .go { margin-left: auto; flex: none; align-self: center; background: #7BC67E; color: #fff; font-size: 12px; border-radius: 999px; padding: 6px 12px; font-weight: 600; }
+
+  /* 分段分隔符 */
+  .divider { display: flex; align-items: center; gap: 8px; margin: 22px 0 2px; }
+  .divider .line { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, rgba(123,198,126,.7), transparent); }
+  .divider span { color: #B9C7BB; font-size: 11px; }
+
+  .foot { margin-top: 18px; text-align: center; }
+  .foot .box { background: #FFFFFF; border-radius: 14px; padding: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+  .foot .box b { font-size: 13px; color: #3A3A3A; }
+  .foot .box span { display: block; font-size: 12px; color: #9A9A9A; margin-top: 4px; line-height: 1.6; }
+  .foot .disc { font-size: 11px; color: #B7AFA0; margin-top: 12px; line-height: 1.6; }
+
+  .tabbar { height: 60px; background: #FFFFFF; border-top: 1px solid #F0E9DC; display: flex; align-items: center; justify-content: space-around; font-size: 11px; color: #9A9A9A; }
+  .tabbar .on { color: #4C9A5A; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status">9:41</div>
+  <div class="nav">北京旅游攻略</div>
+
+  <div class="banner">
+    <img src="../miniprogram/images/spots/gugong.jpg" alt="故宫">
+    <div class="mask"></div>
+    <div class="title">
+      <h1>北京旅游攻略</h1>
+      <p>不代抢不代约 · 只帮你不错过每个开抢时间</p>
+    </div>
+  </div>
+
+  <div class="page">
+
+    <!-- 1 -->
+    <div class="sec">
+      <div class="sec-head"><span class="emoji">1️⃣</span><h2>抢票前，先做这 5 件事</h2></div>
+      <div class="sec-bar"></div>
+      <div class="sec-sub">不管抢哪个景点，先把这几步搞定，成功率直接翻倍</div>
+      <div class="card">
+        <div class="item"><div class="no">1</div><div class="txt"><b>提前录好身份信息</b><span>在官方小程序/公众号「常用联系人」里提前填好姓名+身份证，抢票直接勾选，能省 10 秒以上。故宫、国博、军博、毛纪、城楼全靠这一步抢时间。</span></div></div>
+        <div class="item"><div class="no">2</div><div class="txt"><b>网络选 5G 或稳定 WiFi，有条件双设备</b><span>手机+电脑双开；天安门广场这类还可以小程序和「京通」互切着看余票。</span></div></div>
+        <div class="item"><div class="no">3</div><div class="txt"><b>姓名、身份证号提前复制到剪贴板</b><span>有些平台不让预填联系人，直接粘贴比手输快。</span></div></div>
+        <div class="item"><div class="no">4</div><div class="txt"><b>提前到小程序「通知设置」打开通知</b><span>提醒要发出来，得先把通知权限打开（我的 → 通知设置，重要！强烈建议打开）。</span></div></div>
+        <div class="item"><div class="no">5</div><div class="txt"><b>定闹钟，然后把提醒交给小程序</b><span>20:00、17:00、11:00 靠自己记太容易漏。把想去的景点加进行程，小程序到点提醒你。</span></div></div>
+      </div>
+      <div class="tip"><b>🧩 本小程序怎么帮你</b><span>以上「提醒」相关设置都在「我的 → 通知设置」里完成，先打开通知，后面的抢票提醒才收得到。</span></div>
+    </div>
+
+    <div class="divider"><span class="line"></span><span>✦</span><span class="line"></span></div>
+
+    <!-- 2 -->
+    <div class="sec">
+      <div class="sec-head"><span class="emoji">2️⃣</span><h2>必抢的 6 个，先安排</h2></div>
+      <div class="sec-bar"></div>
+      <div class="sec-sub">标「极难约」的不用慌：卡对时间点，人人都有机会</div>
+      <div class="card">
+        <div class="spot-card">
+          <img src="../miniprogram/images/spots/gugong.jpg"><div class="info">
+            <div class="name-row"><span class="nm">故宫博物院</span><span class="tag tag-hard">极难约</span></div>
+            <div class="rule">提前 7 天 · <b>20:00</b> 放票 · 周一闭馆</div>
+            <div class="tip-line">没抢到别放弃，20:00-20:50 反复刷，整点前后回流最多</div>
+          </div><div class="go">加入提醒</div>
+        </div>
+        <div class="spot-card">
+          <img src="../miniprogram/images/spots/guobo.jpg"><div class="info">
+            <div class="name-row"><span class="nm">中国国家博物馆</span><span class="tag tag-hard">极难约</span></div>
+            <div class="rule">提前 7 天 · <b>17:00</b> 放票 · 周一闭馆</div>
+            <div class="tip-line">17:00 前 3 分钟进页面；放票后 11 秒内提交成功率最高</div>
+          </div><div class="go">加入提醒</div>
+        </div>
+        <div class="spot-card">
+          <img src="../miniprogram/images/spots/tiananmen-chenglou.jpg"><div class="info">
+            <div class="name-row"><span class="nm">天安门城楼</span><span class="tag tag-hard">极难约</span></div>
+            <div class="rule">提前 7 天 · <b>17:00</b> 放票 · 周一闭馆</div>
+            <div class="tip-line">只放第 7 天一天的量；16:55 开始刷，没抢到等 18/19 点回流</div>
+          </div><div class="go">加入提醒</div>
+        </div>
+        <div class="spot-card">
+          <img src="../miniprogram/images/spots/tiananmen-square.jpg"><div class="info">
+            <div class="name-row"><span class="nm">天安门广场·升旗</span><span class="tag tag-hard">极难约</span></div>
+            <div class="rule">提前 1-7 天 · <b>12:00</b> 更新</div>
+            <div class="tip-line">升旗最难；晚上 22 点后、凌晨 0 点后容易捡到第二天退票</div>
+          </div><div class="go">加入提醒</div>
+        </div>
+        <div class="spot-card">
+          <img src="../miniprogram/images/spots/maozhuxi-jiniantang.jpg"><div class="info">
+            <div class="name-row"><span class="nm">毛主席纪念堂</span><span class="tag tag-hard">极难约</span></div>
+            <div class="rule">提前 1-6 天 · <b>12:30</b> 放票 · 周一闭馆</div>
+            <div class="tip-line">凌晨 0-1 点系统更新是捡漏黄金期；必须本人证件，不能带包</div>
+          </div><div class="go">加入提醒</div>
+        </div>
+        <div class="spot-card">
+          <img src="../miniprogram/images/spots/ziran-bowuguan.jpg"><div class="info">
+            <div class="name-row"><span class="nm">国家自然博物馆</span><span class="tag tag-hard">极难约</span></div>
+            <div class="rule">提前 3 天 · <b>11:00</b> 放票 · 周一闭馆</div>
+            <div class="tip-line">周末/节假日几分钟约满；提前挂好常用联系人，到点直接提交</div>
+          </div><div class="go">加入提醒</div>
+        </div>
+      </div>
+      <div class="tip"><b>🧩 本小程序怎么帮你</b><span>首页选好日期和景点 → 生成预约时间线 → 把要抢的加入提醒，几点放票一目了然，到点提醒你。</span></div>
+    </div>
+
+    <div class="divider"><span class="line"></span><span>✦</span><span class="line"></span></div>
+
+    <!-- 3 -->
+    <div class="sec">
+      <div class="sec-head"><span class="emoji">3️⃣</span><h2>规则特殊，别用错招</h2></div>
+      <div class="sec-bar"></div>
+      <div class="card">
+        <div class="spot-card">
+          <img src="../miniprogram/images/spots/junbo.jpg"><div class="info">
+            <div class="name-row"><span class="nm">军事博物馆</span><span class="tag tag-hard">极难约</span></div>
+            <div class="rule">提前 8 天 · 每日 <b>9:00 / 17:00</b> 两时段</div>
+            <div class="tip-line">卡点进，约不上别退出持续刷新；人多可分时段分批约</div>
+          </div><div class="go">加入提醒</div>
+        </div>
+        <div class="spot-card">
+          <img src="../miniprogram/images/spots/tsinghua.jpg"><div class="info">
+            <div class="name-row"><span class="nm">清华大学 / 北京大学</span><span class="tag tag-hard">极难约</span></div>
+            <div class="rule">双轨制 · 8:00-17:00 即时约 + <b>17:00-21:45 抽签</b></div>
+            <div class="tip-line">抽签 22:00 公布；每人每 180 天仅可成功预约 1 次，别轻易取消</div>
+          </div><div class="go">加入提醒</div>
+        </div>
+        <div class="spot-card">
+          <img src="../miniprogram/images/spots/renmin-dahuitang.jpg"><div class="info">
+            <div class="name-row"><span class="nm">人民大会堂</span><span class="tag tag-mid">较难约</span></div>
+            <div class="rule">提前 1-3 天 · <b>17:00</b> 放第 3 天票</div>
+            <div class="tip-line">相对好约，卡点即可</div>
+          </div><div class="go">加入提醒</div>
+        </div>
+        <div class="spot-card">
+          <img src="../miniprogram/images/spots/kaogu-bowuguan.jpg"><div class="info">
+            <div class="name-row"><span class="nm">中国考古博物馆</span><span class="tag tag-hard">极难约</span></div>
+            <div class="rule">提前 3 天 · 工作日好约</div>
+            <div class="tip-line">周末节假日秒空，建议约工作日</div>
+          </div><div class="go">加入提醒</div>
+        </div>
+      </div>
+      <div class="tip"><b>🧩 本小程序怎么帮你</b><span>军博两个时段、清华北大的抽签时间，都会标在「放票时间」标签和时间线上，不用自己记两套。</span></div>
+    </div>
+
+    <div class="divider"><span class="line"></span><span>✦</span><span class="line"></span></div>
+
+    <!-- 4 -->
+    <div class="sec">
+      <div class="sec-head"><span class="emoji">4️⃣</span><h2>不用抢的，别浪费精力</h2></div>
+      <div class="sec-bar"></div>
+      <div class="card">
+        <div class="item"><div class="no" style="background:#EEF1F6;color:#7A8AA0;">✓</div><div class="txt"><b>免预约，直接进（6 个）</b><span>颐和园、天坛、圆明园、北海、北京动物园、首都博物馆（首博带身份证登记入馆，周二闭馆，开到 20:00）。</span></div></div>
+        <div class="item"><div class="no" style="background:#FFF4E0;color:#C98A2D;">✓</div><div class="txt"><b>需预约但票源充足（1 个）</b><span>恭王府——官方公众号预约，基本每天都能约到，不用蹲点。</span></div></div>
+        <div class="item"><div class="no" style="background:#EAF7EE;color:#4C9A5A;">✓</div><div class="txt"><b>要提前买票，但不是「抢」（2 个）</b><span>八达岭、慕田峪——「长城内外」小程序/官网实名预约购票（慕田峪可提前 30 天），旺季提前几天买好即可。</span></div></div>
+        <div class="item"><div class="no" style="background:#FDECEC;color:#D96060;">!</div><div class="txt"><b>小提醒</b><span>颐和园、天坛虽免预约，但旺季联票（含园中园）可能卖完，建议提前线上购票。</span></div></div>
+      </div>
+      <div class="tip"><b>🧩 本小程序怎么帮你</b><span>卡片上直接标「无需预约」，选景点时一眼分清哪些要抢、哪些随到随买。</span></div>
+    </div>
+
+    <div class="divider"><span class="line"></span><span>✦</span><span class="line"></span></div>
+
+    <!-- 5 -->
+    <div class="sec">
+      <div class="sec-head"><span class="emoji">5️⃣</span><h2>捡漏时间表 + 避坑清单</h2></div>
+      <div class="sec-bar"></div>
+      <div class="sec-sub">没抢到 ≠ 没机会，回流票是真实存在的，按表蹲</div>
+      <div class="card">
+        <div class="item"><div class="no" style="background:#EAF7EE;color:#4C9A5A;">⏰</div><div class="txt"><b>故宫 20:00-20:50、21:00、21:30、22:00</b><span>退票 + 超时未支付订单回流</span></div></div>
+        <div class="item"><div class="no" style="background:#EAF7EE;color:#4C9A5A;">⏰</div><div class="txt"><b>国博 17:00 后 10 分钟内</b><span>首轮没锁住的票回流最多</span></div></div>
+        <div class="item"><div class="no" style="background:#EAF7EE;color:#4C9A5A;">⏰</div><div class="txt"><b>城楼 18:00、19:00</b><span>17 点没抢到，这两波回流最多</span></div></div>
+        <div class="item"><div class="no" style="background:#EAF7EE;color:#4C9A5A;">⏰</div><div class="txt"><b>毛纪 0:00-1:00</b><span>系统更新冷门期，成功率最高</span></div></div>
+        <div class="item"><div class="no" style="background:#EAF7EE;color:#4C9A5A;">⏰</div><div class="txt"><b>升旗 22:00 后、0:00 后</b><span>第二天退票回流</span></div></div>
+        <div class="item"><div class="no" style="background:#EAF7EE;color:#4C9A5A;">⏰</div><div class="txt"><b>出行前 1-2 天 20:00-22:00</b><span>所有热门景点退票高峰</span></div></div>
+      </div>
+      <div class="card">
+        <div class="item"><div class="no" style="background:#FDECEC;color:#D96060;">1</div><div class="txt"><b>周一闭馆是最大的坑</b><span>故宫、国博、城楼、军博、自然馆、毛纪、科技馆、美术馆、工艺美术馆、孔庙、恭王府周一闭馆；首博、天文馆是周二闭馆。</span></div></div>
+        <div class="item"><div class="no" style="background:#FDECEC;color:#D96060;">2</div><div class="txt"><b>证件要带原件</b><span>多数景点刷身份证原件入园；儿童免费也要预约，无身份证儿童带户口本。</span></div></div>
+        <div class="item"><div class="no" style="background:#FDECEC;color:#D96060;">3</div><div class="txt"><b>上午/下午票别搞错</b><span>故宫上午票 12:00 前入场、下午票 12:00 后入场，进错时段进不去。</span></div></div>
+        <div class="item"><div class="no" style="background:#FDECEC;color:#D96060;">4</div><div class="txt"><b>别买黄牛 / 代抢</b><span>官方免费或官方渠道唯一，第三方都是坑。</span></div></div>
+        <div class="item"><div class="no" style="background:#FDECEC;color:#D96060;">5</div><div class="txt"><b>别频繁退票锁号</b><span>账号可能被限制预约次数。</span></div></div>
+      </div>
+      <div class="tip"><b>🧩 本小程序怎么帮你</b><span>每个景点的闭馆日都标在卡片上，生成时间线时自动跳过闭馆日，不会让你白跑。</span></div>
+    </div>
+
+    <div class="foot">
+      <div class="box"><b>📌 收藏这篇，出发前再翻一遍</b><span>抢票前先来打卡，别忘了把想去的景点加进提醒</span></div>
+      <div class="disc">* 抢票技巧来自用户经验分享，放票规则以官方当日公告为准。<br>北京旅游攻略 · 随城市切换自动更新</div>
+    </div>
+
+  </div>
+
+  <div class="tabbar"><span>提醒</span><span class="on">我的</span></div>
+</div>
+</body>
+</html>

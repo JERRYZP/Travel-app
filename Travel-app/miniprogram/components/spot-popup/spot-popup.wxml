@@ -11,7 +11,7 @@
     <block wx:elif="{{spot}}">
       <!-- 头部：缩略图 + 名称/难度 + 核心标签 -->
       <view class="popup-header">
-        <image class="popup-spot-img" src="/images/spots/{{spot.spotId}}.webp" mode="aspectFill" />
+        <image class="popup-spot-img" src="/images/spots/{{spot.spotId}}.jpg" mode="aspectFill" />
         <view class="popup-header-info">
           <view class="popup-name-row">
             <text class="popup-spot-name">{{spot.name}}</text>

@@ -98,11 +98,11 @@ function freshDb() {
   // B 层免预约景点不进时间线（reservationRequired=false，2026 政策取消预约）
   const trB = await trip.createOrMerge(db, USER, {
     startDate: time.addDays(RANGE.startDate, 14), endDate: time.addDays(RANGE.endDate, 14),
-    spotIds: ['gugong', 'badaling'],
+    spotIds: ['gugong', 'shoubo'],
   });
   const tlB = await timeline.generate(db, USER, trB.tripId);
   eq(tlB.success, true, '含 B 层景点的行程生成成功');
-  eq(tlB.events.length, 4, 'badaling(免预约) 被排除，只剩故宫 4 条');
+  eq(tlB.events.length, 4, 'shoubo(免预约) 被排除，只剩故宫 4 条');
   eq(tlB.bySpot.length, 1, '仅 1 个景点 Tab');
   eq(tlB.closedSpots.length, 0, '免预约景点不计入「闭馆」');
   await trip.removeIfEmpty(db, USER, trB.tripId); // 清理测试行程，避免影响后续级联断言
@@ -154,7 +154,7 @@ function freshDb() {
 
   const sub = await task.submit(db, USER, {
     tripId: tr.tripId,
-    channels: [ChannelType.CALENDAR_ICS],
+    channels: [ChannelType.OFFICIAL_ACCOUNT],
     offsets: [5, 2],
   });
   eq(sub.success, true, '提交成功');
@@ -163,14 +163,14 @@ function freshDb() {
   eq(db._size(COLLECTIONS.REMINDER_TASKS), beforeCart, '任务数 = 原清单数');
   eq(sub.tasks[0].offsets.join(','), '5,2', 'offsets 降序存储（5 先于 2 触发）');
   eq(sub.tasks[0].backendStatus, ReminderBackendStatus.WAITING, '初始 WAITING');
-  eq(sub.needsIcsSync, true, '需同步 ICS');
+  eq(sub.needsOaAuth, true, '需引导关注公众号');
 
   // 校验失败分支
   const bad = await task.submit(db, USER, { tripId: tr.tripId, channels: [], offsets: [5] });
   eq(bad.success, false, '无通道提交被拒');
-  const bad2 = await task.submit(db, USER, { tripId: tr.tripId, channels: [ChannelType.CALENDAR_ICS], offsets: [10] });
+  const bad2 = await task.submit(db, USER, { tripId: tr.tripId, channels: [ChannelType.OFFICIAL_ACCOUNT], offsets: [10] });
   eq(bad2.success, false, '非法提前量被拒');
-  const empty = await task.submit(db, USER, { tripId: tr.tripId, channels: [ChannelType.CALENDAR_ICS], offsets: [5] });
+  const empty = await task.submit(db, USER, { tripId: tr.tripId, channels: [ChannelType.OFFICIAL_ACCOUNT], offsets: [5] });
   eq(empty.errorCode, 1009, '清单为空 → ERROR-1009');
 
   /* ============ 5. 提交后时间线状态回填 ============ */
@@ -188,7 +188,7 @@ function freshDb() {
   eq(tks.counts.active + tks.counts.expired, sub.created, '进行中+已过期 = 总任务');
   const firstItem = tks.groups[0].items[0];
   eq(firstItem.statusLabel, '待提醒', 'STATE-002 状态标签');
-  eq(/^开抢 \d+月\d+日 \(周.\) 门票$/.test(firstItem.grabLabel), true, `文案格式: ${firstItem.grabLabel}`);
+  eq(/^开抢\d+月\d+日（周.）门票$/.test(firstItem.grabLabel), true, `文案格式: ${firstItem.grabLabel}`);
 
   /* ============ 7. 删除与级联（TRIP-RULE-004）============ */
   console.log('\n=== 7. 删除与级联 ===');

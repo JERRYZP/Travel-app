@@ -1,4 +1,4 @@
-<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px; background-color: rgba(248, 243, 234, {{navOpacity}});">
   <view style="height: {{statusBarHeight}}px;"></view>
   <view class="navbar-content" style="height: {{navBarHeight}}px;">
     <view class="navbar-back" bindtap="onBack">
@@ -7,10 +7,10 @@
     <text class="navbar-title">添加提醒</text>
   </view>
 </view>
-<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
 
-<scroll-view scroll-y class="page-scroll" style="height: calc(100vh - {{statusBarHeight + navBarHeight}}px - 110rpx);">
-  <view class="page-body">
+<scroll-view scroll-y class="page-scroll" style="height: 100vh;" bindscroll="onPageScroll">
+  <view class="page-body" style="padding-top: {{statusBarHeight + navBarHeight + 8}}px;">
+    <image wx:if="{{cityBg}}" class="city-bg" src="{{cityBg}}" mode="aspectFit" />
     <!-- 日期模块：与首页形态1一致 -->
     <view class="form-section form-section-first">
       <text class="form-label">准备玩几天？</text>
@@ -70,12 +70,12 @@
           </view>
         </scroll-view>
 
-        <!-- 说明 + 一键全部提醒 -->
+        <!-- 说明 + 本页全部提醒 -->
         <view class="timeline-meta">
           <text class="timeline-caption">为您生成该出游日下意向景点的最早放票时间</text>
           <view class="timeline-batch-btn" bindtap="onAddAll">
             <svg-icon name="bell-plus" size="12px" />
-            <text>一键全部提醒</text>
+            <text>本页全部提醒</text>
           </view>
         </view>
       </view>

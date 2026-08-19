@@ -1,5 +1,6 @@
 const app = getApp();
 const api = require('../../utils/api.js');
+const notify = require('../../utils/notify.js');
 
 Page({
   data: {
@@ -8,7 +9,6 @@ Page({
     tripId: '',
     channels: {
       officialAccount: true,
-      calendar: true,
       sms: false,
     },
     offsets: [5, 2],
@@ -54,7 +54,6 @@ Page({
     const { channels, offsets, tripId } = this.data;
     const channelList = [];
     if (channels.officialAccount) channelList.push('OFFICIAL_ACCOUNT');
-    if (channels.calendar) channelList.push('CALENDAR_ICS');
     if (channelList.length === 0) {
       wx.showToast({ title: '请至少选择一种提醒方式', icon: 'none' });
       return;
@@ -65,17 +64,48 @@ Page({
     }
     this.setData({ submitting: true });
     wx.showLoading({ title: '正在提交...' });
+
+    /* 前置授权没做齐 → 当前页弹窗就地引导，不跳个人中心；授权完成后继续提交 */
+    notify.getNotifyStatus().then(status => {
+      if (status.doneCount >= 2) {
+        this.submitTask({ tripId, channelList, offsets });
+        return;
+      }
+      wx.hideLoading();
+      this.setData({ submitting: false });
+      wx.showModal({
+        title: '开启通知',
+        content: status.doneCount === 0
+          ? '需要开启「微信通知权限」和「订阅消息授权」，提醒才能送达。现在开启？'
+          : '还有一项通知权限未开启，提醒可能收不到。现在补上？',
+        confirmText: '去开启',
+        cancelText: '暂不',
+        success: res => {
+          if (res.confirm) {
+            this.setData({ submitting: true });
+            wx.showLoading({ title: '正在开启...' });
+            this.localAuthThenSubmit({ tripId, channelList, offsets }, status);
+          } else {
+            this.submitTask({ tripId, channelList, offsets });
+          }
+        },
+      });
+    });
+  },
+
+  /* 就地授权：订阅消息（页内弹框）+ 系统通知权限（跳系统设置），然后继续提交 */
+  localAuthThenSubmit(payload, status) {
+    const steps = [];
+    if (!status.subscribeOk) steps.push(notify.requestSubscribe());
+    if (!status.systemOk) steps.push(Promise.resolve(notify.openSystemNotifySetting()));
+    Promise.all(steps).then(() => this.submitTask(payload));
+  },
+
+  submitTask({ tripId, channelList, offsets }) {
+    wx.showLoading({ title: '正在提交...' });
     api.reminder.task.submit({ tripId, channels: channelList, offsets }).then(res => {
       wx.hideLoading();
       this.setData({ submitting: false });
-      if (res.ics && res.ics.success && res.ics.downloadUrl) {
-        wx.downloadFile({
-          url: res.ics.downloadUrl,
-          success: dlRes => {
-            wx.openDocument({ filePath: dlRes.tempFilePath, fileType: 'ics' });
-          },
-        });
-      }
       if (res.needsOaAuth) {
         wx.showModal({
           title: '公众号提醒',

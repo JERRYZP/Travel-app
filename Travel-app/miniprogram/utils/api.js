@@ -54,6 +54,7 @@ const reminder = {
     submit: (p) => call('reminder', { action: 'task.submit', ...p }),
     list: (p) => call('reminder', { action: 'task.list', ...p }),
     remove: (taskId) => call('reminder', { action: 'task.remove', taskId }),
+    clear: () => call('reminder', { action: 'task.clear' }),
     badge: () => call('reminder', { action: 'task.badge' }),
   },
   user: {
@@ -62,9 +63,17 @@ const reminder = {
   },
 };
 
+/* ===== feedback（意见反馈 / 信息纠错） ===== */
+const feedback = {
+  submit: (p) => call('feedback', { action: 'feedback.submit', ...p }),
+  list: () => call('feedback', { action: 'feedback.list' }),
+  /* 管理端（反馈管理页，后端 openid 白名单鉴权） */
+  adminList: (p) => call('feedback', { action: 'feedback.adminList', ...p }),
+  adminUpdateStatus: (p) => call('feedback', { action: 'feedback.adminUpdateStatus', ...p }),
+};
+
 /* ===== ICS ===== */
 const ics = {
-  rebuild: () => call('ics-generator', { action: 'rebuild' }),
 };
 
 /* ===== Toast helpers ===== */
@@ -72,7 +81,6 @@ function toastError(result) {
   const map = {
     1001: '景点不存在',
     1002: '这条提醒已经在清单里啦',
-    1003: '日历同步失败，可稍后在设置中重新同步',
     1005: '数据更新中',
     1006: '行程日期不合法',
     1007: '跳转失败，已复制链接',
@@ -86,4 +94,4 @@ function toastError(result) {
   wx.showToast({ title: msg, icon: 'none' });
 }
 
-module.exports = { spots, reminder, ics, toastError };
+module.exports = { spots, reminder, feedback, ics, toastError };

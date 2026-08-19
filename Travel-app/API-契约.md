@@ -1,7 +1,7 @@
 # Travel-app 前端接口契约 V1.2
 
 > 面向：前端（微信小程序页面开发）
-> 更新：2026-08-05（对照 `reminder/lib/*` / `spots/index.js` / `ics-generator/index.js` / `notifier/index.js` 源码提取）
+> 更新：2026-08-19（feedback 域新增管理端接口 adminList / adminUpdateStatus + 反馈管理页；此前 2026-08-14 去掉日历提醒通道 CALENDAR_ICS / ICS 同步；新增 feedback 域——意见反馈 / 信息纠错；对照 `reminder/lib/*` / `spots/index.js` / `notifier/index.js` / `feedback/lib/*` 源码提取）
 > 调用方式：`wx.cloud.callFunction({ name: '<函数名>', data: { action: '<域>.<动作>', ...params } })`
 
 ---
@@ -27,16 +27,16 @@
 | 1000 | 未登录 | 引导登录 |
 | 1001 | 景点不存在 | Toast + 卡片隐藏 |
 | 1002 | 提醒已存在（重复） | Toast「这条提醒已经在清单里啦」 |
-| 1003 | ICS 同步失败 | Toast「日历同步失败，可稍后在设置中重新同步」 |
 | 1004 | 公众号授权失败 | 软引导弹窗，可跳过 |
 | 1005 | 数据更新中 | 景点卡标注「数据更新中」 |
 | 1006 | 行程日期非法 | Toast 校验提示 |
 | 1007 | 小程序跳转失败 | 兜底复制链接 + 截图引导 |
-| 1008 | 订阅消息配额不足 | 引导日历通道兜底 |
+| 1008 | 订阅消息配额不足 | 引导公众号通道兜底 |
 | 1009 | 清单位空 | Toast「先添加至少一条提醒」 |
 | 1010 | 参数不合法 | Toast 提示 |
 | 1011 | 提交事务失败 | Toast「提交失败，请重试」 |
 | 1012 | 非待提醒任务不可删 | Toast「仅待提醒的任务可以删除」 |
+| 1020 | 反馈内容为空 | Toast「请填写反馈内容」 |
 | 1099 | 未知 action | Toast |
 | 1500 | 服务端异常 | Toast「服务异常，请稍后重试」 |
 
@@ -52,7 +52,7 @@ ReminderBackendStatus: 'WAITING' | 'TRIGGERED' | 'MISSED' | 'CLOSED'
 EventSelectStatus: 'SELECTABLE' | 'IN_CART' | 'WAITING' | 'REMINDERED' | 'BOOKABLE' | 'FULL'
 
 // ENUM-004 提醒通道
-ChannelType: 'OFFICIAL_ACCOUNT' | 'CALENDAR_ICS' | 'SMS'
+ChannelType: 'OFFICIAL_ACCOUNT' | 'SMS'  // CALENDAR_ICS 已于 2026-08-14 移除
 
 // ENUM-005 实时放票状态
 ReleaseStatus: 'NOT_RELEASED' | 'BOOKABLE' | 'FULL'
@@ -485,7 +485,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 调用：{
   action: 'task.submit',
   tripId: 'abc123',
-  channels: ['OFFICIAL_ACCOUNT', 'CALENDAR_ICS'],  // ENUM-004，至少 1 项
+  channels: ['OFFICIAL_ACCOUNT'],  // ENUM-004，至少 1 项
   offsets: [5, 2]                                   // 提前量（分钟），至少 1 项
 }
 ```
@@ -502,28 +502,18 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     visitDate: "2026-06-01",
     releaseAt: "...",
     offsets: [5, 2],
-    channels: ["OFFICIAL_ACCOUNT", "CALENDAR_ICS"],
+    channels: ["OFFICIAL_ACCOUNT"],
     backendStatus: "WAITING",
     sentOffsets: [],
     createdAt: "..."
   }],
-  needsIcsSync: true,                  // 前端据此决定是否触发 ICS 下载
-  needsOaAuth: true,                   // 前端据此决定是否弹公众号授权引导
-  ics: {                               // ICS 同步结果（仅 channels 含 CALENDAR_ICS 时有）
-    success: true,
-    fileID: "cloud://...",
-    downloadUrl: "https://...",        // 临时链接，前端用 wx.downloadFile
-    eventCount: 6,
-    taskCount: 3
-  }
+  needsOaAuth: true                    // 前端据此决定是否弹公众号授权引导
 }
 // 失败：{ success: false, error: "...", errorCode: 1009/1010/1011 }
 ```
 
 **前端提交后流程：**
 1. `needsOaAuth` 为 true → 弹公众号授权引导（软引导，可跳过）
-2. `needsIcsSync` 且 `ics.success` → 用 `ics.downloadUrl` 调用 `wx.downloadFile` + `wx.openDocument` 让用户导入日历
-3. `ics.success` 为 false → Toast「日历同步失败，可稍后在设置中重新同步」（不阻塞）
 
 #### `task.list` — 任务列表
 
@@ -552,7 +542,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
       visitDate: "2026-06-01",
       releaseAt: "...",
       offsets: [5, 2],
-      channels: ["OFFICIAL_ACCOUNT", "CALENDAR_ICS"],
+      channels: ["OFFICIAL_ACCOUNT"],
       backendStatus: "WAITING",
       releaseTimeLabel: "20:00",
       releaseDateStr: "2026-05-24",
@@ -590,9 +580,24 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   success: true,
   taskId: "...",
   tripId: "abc123",
-  needsIcsSync: true,
-  tripRemoved: false,                  // TRIP-RULE-004：任务删光后行程自动删除
-  ics: { /* 同 task.submit 的 ics */ }
+  tripRemoved: false                   // TRIP-RULE-004：任务删光后行程自动删除
+}
+```
+
+#### `task.clear` — 清空全部提醒任务
+
+```
+用途：PAGE-009 顶部「清空任务」按钮（用户二次确认后调用）
+调用：{ action: 'task.clear' }
+说明：与 task.remove 的单条「仅待提醒可删」不同，这是显式批量清理，
+     会删除该用户全部任务（含已提醒/过期的历史记录）
+```
+
+**返回：**
+```javascript
+{
+  success: true,
+  cleared: 8                // 实际删除条数
 }
 ```
 
@@ -631,7 +636,6 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     avatarUrl: "",
     notifyPrefs: {
       officialAccount: false,
-      calendar: true,
       sms: false,
       offsets: [5, 2]
     },
@@ -647,44 +651,106 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 用途：PAGE-010 通知设置
 调用：{
   action: 'user.updateNotifyPrefs',
-  notifyPrefs: { officialAccount: true, calendar: true, sms: false, offsets: [5, 2] }
+  notifyPrefs: { officialAccount: true, sms: false, offsets: [5, 2] }
 }
 ```
 
 ---
 
-## 3. ics-generator（ICS 日历文件）
-
-**云函数名：`ics-generator`**
-**说明：** 前端通常不直接调用。由 `reminder` 函数在 `task.submit` / `task.remove` 成功后内部触发，结果附在响应 `ics` 字段中。
-
-**前端收到 ICS 后下载流程：**
-```javascript
-// ics.downloadUrl 是临时链接
-wx.downloadFile({
-  url: ics.downloadUrl,
-  success(res) {
-    wx.openDocument({ filePath: res.tempFilePath, fileType: 'ics' });
-  }
-});
-```
-
-如果需要手动重建（如 PAGE-010 设置页「重新同步日历」），可直接调：
-```javascript
-wx.cloud.callFunction({ name: 'ics-generator', data: { action: 'rebuild' } });
-// 返回：{ success: true, fileID, downloadUrl, eventCount, taskCount }
-```
-
----
-
-## 4. notifier（提醒推送）
+## 3. notifier（提醒推送）
 
 **云函数名：`notifier`**
 **说明：** 定时触发器（每分钟一次），前端不直接调用。
 
 ---
 
-## 5. 页面 → API 映射速查
+## 3.5 feedback（意见反馈 / 信息纠错）
+
+**云函数名：`feedback`**
+**说明：** 意见反馈 / 信息纠错 统一入口，共用 `feedbacks` 集合（TABLE-008），`type` 区分两类。页面：PAGE-010 我的 → 意见反馈 / 信息纠错。
+
+### `feedback.submit` — 提交反馈 / 纠错
+
+```
+用途：意见反馈页（建议 / Bug）、信息纠错页（选景点 + 纠错类型）
+调用：{ action: 'feedback.submit', type, category?, spotId?, spotName?, errorType?, content, contact? }
+```
+
+**入参：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| type | String | 是 | `feedback`（意见反馈）\| `correction`（信息纠错） |
+| category | String | feedback 必填 | `suggestion`（建议）\| `bug`（Bug） |
+| spotId | String | correction 必填 | 景点 spotId |
+| spotName | String | correction 选填 | 景点名快照，便于运营查看 |
+| errorType | String | correction 必填 | `RELEASE_TIME` 放票时间 / `RELEASE_RULE` 放票规则 / `OPEN_TIME` 开放时间 / `TICKET_PRICE` 票价 / `ADDRESS` 地址 / `CLOSED_DAYS` 闭馆日 / `OTHER` 其他 |
+| content | String | 是 | 描述，非空，≤500 字 |
+| contact | String | 否 | 联系方式（手机号 / 微信号） |
+
+**返回：**
+
+```javascript
+{ success: true, id: "..." }
+```
+
+### `feedback.list` — 本人提交历史
+
+```
+调用：{ action: 'feedback.list' }
+```
+
+**返回：**
+
+```javascript
+{
+  success: true,
+  items: [{ _id, type, category, spotId, spotName, errorType, content, contact, status, createdAt }]
+  // 按 createdAt 倒序，最多 50 条；status = OPEN 待处理 | PROCESSED 已处理 | IGNORED 已忽略
+}
+```
+
+### `feedback.adminList` — 管理员查看全部（反馈管理页）
+
+```
+调用：{ action: 'feedback.adminList', type? }
+```
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| type | String | 可选，`feedback` \| `correction`，不传返回全部 |
+
+**鉴权：** 调用者 openid 必须在 `feedback/lib/schema.js` 的 `ADMIN_OPENIDS` 白名单内，否则返回 `1040 无权限`。
+
+**返回：**
+
+```javascript
+{
+  success: true,
+  items: [{ _id, userId, type, category, spotId, spotName, errorType, content, contact, status, createdAt }],
+  total: 3
+  // 不按 userId 过滤；按 createdAt 倒序，最多 100 条
+}
+```
+
+### `feedback.adminUpdateStatus` — 管理员更新处理状态
+
+```
+调用：{ action: 'feedback.adminUpdateStatus', id, status }
+```
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| id | String | 记录 _id，必填 |
+| status | String | `OPEN` \| `PROCESSED` \| `IGNORED` |
+
+**鉴权：** 同 adminList，白名单外返回 `1040 无权限`。
+
+**返回：** `{ success: true, updated: 1 }`；非法 status / 缺 id 返回 `1010 参数不合法`。
+
+---
+
+## 4. 页面 → API 映射速查
 
 | 页面 | 需要调用的 API |
 |------|---------------|
@@ -696,12 +762,16 @@ wx.cloud.callFunction({ name: 'ics-generator', data: { action: 'rebuild' } });
 | **PAGE-005** 出发日视图 | `timeline.generate`、`cart.add`、`cart.addAll`、`cart.list`（底部条） |
 | **PAGE-006** 景点视图 | 同 PAGE-005 |
 | **PAGE-007** 清单弹窗 | `cart.list`、`cart.remove`、`cart.clear` |
-| **PAGE-008** 设置提醒 | `task.submit` |
-| **PAGE-010** 我的 | `user.profile`、`user.updateNotifyPrefs` |
+| **PAGE-008** 设置提醒 | `task.submit`（提交前检测通知授权，未开启就地引导，不跳个人中心） |
+| **PAGE-010** 我的 | `user.profile`、`task.badge`、通知设置三态（`wx.getAppAuthorizeSetting` / `wx.getSetting`，非云函数） |
+| **PAGE-010-1** 通知设置 | 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`（模板未配置时「去授权」置灰） |
+| **PAGE-010-2** 意见反馈 | `feedback.submit`（type=feedback，category=suggestion/bug） |
+| **PAGE-010-3** 信息纠错 | `spots.search`（选景点）、`feedback.submit`（type=correction） |
+| **隐藏管理页**（反馈管理） | `feedback.adminList`、`feedback.adminUpdateStatus`；入口 = 我的页长按用户信息卡；后端 openid 白名单鉴权 |
 
 ---
 
-## 6. 页面间数据传递约定
+## 5. 页面间数据传递约定
 
 ```
 PAGE-001 → PAGE-005:  带 tripId（trip.create 返回）
@@ -715,7 +785,7 @@ PAGE-009 → PAGE-005:  带 tripId（新增提醒入口）
 
 ---
 
-## 7. 首页形态判定流程（形态1 ↔ 形态2）
+## 6. 首页形态判定流程（形态1 ↔ 形态2）
 
 ```
 App.onLaunch / 首页.onShow：
@@ -728,14 +798,13 @@ App.onLaunch / 首页.onShow：
 
 ---
 
-## 8. 开发提示
+## 7. 开发提示
 
 1. **防重复提交**：所有提交流程（cart.add、task.submit）按钮点击后立即设为 loading，收到响应后恢复。
 2. **按钮文案**：不要在前端自己算——`timeline.generate` 返回的每个 event 都带 `button.text`，直接渲染。
 3. **难度标签**：用后端返回的 `difficultyLabel.text`，不要前端用 `difficultyScore` 重算。
 4. **时间线 Tab 是单选筛选**：`byDeparture` / `bySpot` 已分组好，前端只需渲染当前选中 Tab 的 events。
 5. **清单缓冲**：PAGE-007 关闭不清空，数据在云数据库持久化（跨设备不丢）。
-6. **ICS 下载**：提交成功后的 `ics.downloadUrl` 是临时链接，应立即下载，超时失效。
 7. **scraper 未上线**：已放票事件 `stale: true` 时前端可展示「数据仅供参考」的轻提示。
 8. **导航实现**：V1 用页面内自绘 TabBar，暂不用 `app.json` 的 `tabBar`（见 `figma_design.md` §5）。
 9. **视觉基准**：设计稿 402px 宽，非 750rpx。换算 rpx 时以 402px = 100% 宽。

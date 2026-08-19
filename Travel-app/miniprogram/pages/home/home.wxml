@@ -8,13 +8,13 @@
       <text>游北京</text>
       <svg-icon name="chevron-down" size="14px" />
     </view>
-    <text class="navbar-title">景点预约提醒</text>
+    <text class="navbar-title">{{homeMode === 2 ? '提醒任务' : '景点预约提醒'}}</text>
   </view>
 </view>
 <!-- ========== 形态1：创建态 ========== -->
 <block wx:if="{{homeMode === 1}}">
   <scroll-view scroll-y class="page-scroll" style="height: 100vh;" bindscroll="onPageScroll">
-   <view class="page-body page-body-create {{showTimeline ? 'page-body-timeline' : ''}}" style="padding-top: {{statusBarHeight + navBarHeight}}px;">
+   <view class="page-body page-body-create {{showTimeline ? 'page-body-timeline' : ''}}" style="padding-top: {{statusBarHeight + navBarHeight + 8}}px;">
       <image wx:if="{{cityBg}}" class="city-bg" src="{{cityBg}}" mode="aspectFit" />
 
       <!-- 日期模块：点击卡片弹日历选范围 -->
@@ -53,7 +53,7 @@
 
             <!-- ===== 内联预约时间线（无提醒任务时，当前页直接生成） ===== -->
       <view wx:if="{{showTimeline}}" class="timeline-section">
-        <!-- 白底面板头部：标题+视图切换+出游日+说明/一键全部提醒；滚动吸顶 -->
+        <!-- 白底面板头部：标题+视图切换+出游日+说明/本页全部提醒；滚动吸顶 -->
         <view id="timeline-header" class="timeline-panel {{timelineSticky ? 'timeline-panel-fixed' : ''}}" style="{{timelineSticky ? 'top: ' + timelineStickyTop + 'px;' : ''}}">
           <view class="timeline-title-row">
             <view class="timeline-title-wrap">
@@ -76,12 +76,12 @@
             </view>
           </scroll-view>
 
-          <!-- 说明 + 一键全部提醒 -->
+          <!-- 说明 + 本页全部提醒 -->
           <view class="timeline-meta">
             <text class="timeline-caption">为您生成该出游日下意向景点的最早放票时间</text>
             <view class="timeline-batch-btn" bindtap="onInlineAddAll">
               <svg-icon name="bell-plus" size="12px" />
-              <text>一键全部提醒</text>
+              <text>本页全部提醒</text>
             </view>
           </view>
         </view>
@@ -151,7 +151,7 @@
        <text class="hot-title">北京热门景点预约状态</text>
         <view class="hot-grid">
          <view wx:for="{{hotSpots}}" wx:key="spotId" class="spot-card">
-            <image class="spot-card-img" src="/images/spots/{{item.spotId}}.webp" mode="aspectFill" bindtap="onSpotNameTap" data-id="{{item.spotId}}" />
+            <image class="spot-card-img" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" bindtap="onSpotNameTap" data-id="{{item.spotId}}" />
            <view class="spot-card-body">
               <view class="spot-card-title">
                 <text class="spot-card-name" bindtap="onSpotNameTap" data-id="{{item.spotId}}">{{item.name}}</text>
@@ -212,7 +212,8 @@
 <!-- ========== 形态2：任务列表 ========== -->
 <block wx:elif="{{homeMode === 2}}">
   <scroll-view scroll-y class="page-scroll" style="height: 100vh;" bindscroll="onPageScroll">
-    <view class="page-body" style="padding-top: {{statusBarHeight + navBarHeight}}px;">
+    <view class="page-body" style="padding-top: {{statusBarHeight + navBarHeight + 8}}px;">
+      <image wx:if="{{cityBg}}" class="city-bg" src="{{cityBg}}" mode="aspectFit" />
 
       <!-- Banner -->
       <view wx:if="{{banner}}" class="banner">
@@ -220,7 +221,7 @@
         <text class="banner-text">{{banner.text}}</text>
       </view>
 
-      <!-- 行程分组 Tab -->
+      <!-- 行程分组 Tab：按每次提交任务前的时间段是否相交/相接决定行程数（TRIP-RULE-002/006），≥2 个行程时显示 -->
       <view wx:if="{{showGroupTabs}}" class="trip-tabs">
         <view class="trip-tab {{!activeTripTab ? 'active' : ''}}" bindtap="onTripTabTap" data-id="">全部</view>
         <view wx:for="{{trips}}" wx:key="_id" class="trip-tab {{activeTripTab === item._id ? 'active' : ''}}" bindtap="onTripTabTap" data-id="{{item._id}}">
@@ -228,35 +229,58 @@
         </view>
       </view>
 
-      <!-- 状态筛选 -->
-      <view class="filter-chips">
-        <view class="filter-chip {{activeFilter === 'active' ? 'active' : ''}}" bindtap="onFilterChange" data-filter="active">
-          进行中 {{counts.active}}
+      <!-- 状态筛选 + 清空任务 -->
+      <view class="filter-row">
+        <view class="filter-chips">
+          <view class="filter-chip {{activeFilter === 'active' ? 'active' : ''}}" bindtap="onFilterChange" data-filter="active">
+            进行中 {{counts.active}}
+          </view>
+          <view class="filter-chip {{activeFilter === 'expired' ? 'active' : ''}}" bindtap="onFilterChange" data-filter="expired">
+            已过期 {{counts.expired}}
+          </view>
         </view>
-        <view class="filter-chip {{activeFilter === 'expired' ? 'active' : ''}}" bindtap="onFilterChange" data-filter="expired">
-          已过期 {{counts.expired}}
-        </view>
+        <view class="clear-tasks" bindtap="onClearTasks">清空任务</view>
       </view>
 
-      <!-- 任务列表 -->
+      <!-- 任务列表：按日期分组白面板 -->
       <view wx:if="{{taskGroups.length > 0}}">
         <view wx:for="{{taskGroups}}" wx:key="key" wx:for-item="group" class="task-group">
-          <view class="task-group-header">{{group.label}}</view>
-          <view wx:for="{{group.items}}" wx:key="_id" wx:for-item="task" class="task-card">
-            <view class="task-card-time">
-              <text class="task-clock">{{task.releaseTimeLabel}}</text>
-              <text wx:if="{{task.countdown}}" class="task-countdown {{task.countdown.urgent ? 'urgent' : ''}}">{{task.countdown.text}}</text>
-            </view>
-            <image class="task-card-img" src="/images/spots/{{task.spotId}}.webp" mode="aspectFill" />
-            <view class="task-card-body">
-              <text class="task-card-name" bindtap="onSpotNameTap" data-id="{{task.spotId}}">{{task.spotName}}</text>
-              <text class="task-card-visit">{{task.grabLabel}}</text>
-              <view class="task-card-status status-{{task.backendStatus === 'WAITING' ? 'waiting' : 'done'}}">
-                {{task.statusLabel}}
+          <view class="task-group-header" bindtap="onGroupHeaderTap" data-key="{{group.key}}">
+            <text>{{group.label}}</text>
+            <view wx:if="{{group.collapsed}}" class="task-group-arrow"><svg-icon name="chevron-down" size="12px" /></view>
+          </view>
+          <view wx:if="{{!group.collapsed}}" class="task-panel">
+            <view wx:for="{{group.items}}" wx:key="_id" wx:for-item="task" class="task-card">
+              <view class="task-card-time">
+                <text class="task-clock">{{task.releaseTimeLabel}}</text>
               </view>
-            </view>
-            <view class="task-card-menu" bindtap="onTaskDelete" data-id="{{task._id}}">
-              <svg-icon name="trash" size="16px" />
+              <image class="task-card-img" src="/images/spots/{{task.spotId}}.jpg" mode="aspectFill" />
+              <view class="task-card-body">
+                <view class="task-card-title-row">
+                  <text class="task-card-name" bindtap="onSpotNameTap" data-id="{{task.spotId}}">{{task.spotName}}</text>
+                  <svg-icon name="chevron-right-ink" size="12px" />
+                </view>
+                <view class="task-card-visit">
+                  <text>{{task.grabPre}}</text><text class="task-card-visit-date">{{task.grabDate}}</text><text>{{task.grabPost}}</text>
+                </view>
+              </view>
+              <view class="task-card-right">
+                <view class="task-card-status status-{{task.backendStatus === 'WAITING' ? 'waiting' : 'done'}}">
+                  <svg-icon name="{{task.backendStatus === 'WAITING' ? 'stopwatch-orange' : 'check-brown'}}" size="10px" />
+                  <text>{{task.statusLabel}}</text>
+                </view>
+                <text wx:if="{{task.countdown}}" class="task-countdown {{task.countdown.urgent ? 'urgent' : ''}}">{{task.countdown.text}}</text>
+              </view>
+              <view class="task-card-menu" bindtap="onTaskMenuTap" data-id="{{task._id}}">
+                <svg-icon name="menu-muted" size="14px" />
+                <!-- 三点菜单 → 删除弹层（在按钮下方展开，不遮挡按钮） -->
+                <view wx:if="{{menuTaskId === task._id}}" class="task-delete-popup" catchtap="onTaskMenuClose">
+                  <view class="task-delete-item" catchtap="onTaskDelete" data-id="{{task._id}}">
+                    <svg-icon name="trash" size="14px" />
+                    <text>删除</text>
+                  </view>
+                </view>
+              </view>
             </view>
           </view>
         </view>
@@ -289,7 +313,7 @@
   bind:close="onCalendarClose"
 />
 <!-- 内联时间线清单弹窗 -->
-<cart-popup show="{{showCartPopup}}" trip-id="{{timelineTripId}}" above-tabbar bind:close="onInlineCartClose" bind:change="onInlineCartChange" />
+<cart-popup show="{{showCartPopup}}" trip-id="{{timelineTripId}}" above-tabbar="{{true}}" bind:close="onInlineCartClose" bind:change="onInlineCartChange" />
 
 <!-- 底部导航 -->
 <tabbar active="home" badge="{{badge}}" />

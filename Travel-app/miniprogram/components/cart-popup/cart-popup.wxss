@@ -1,27 +1,38 @@
-.cart-mask {
+/* 弹窗容器：fixed 全屏，不拦截点击（pointer-events 交给遮罩/弹层） */
+.cart-popup {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.7);
   z-index: 200;
-  display: flex;
-  align-items: flex-end;
-}
-/* 底部让出页面自身的清单栏模块（92rpx + 安全区），弹窗与该模块共用 */
-.cart-mask {
-  bottom: calc(92rpx + env(safe-area-inset-bottom));
-}
-/* 首页弹出时：再让出底部 TabBar（100rpx + 安全区） */
-.cart-mask.above-tabbar {
-  bottom: calc(192rpx + env(safe-area-inset-bottom));
+  pointer-events: none;
 }
 
+/* 遮罩：点击关闭 + 拦截背景滚动；bottom 由 JS 内联 px 控制（让出底部清单栏） */
+.cart-mask {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  background: rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+  animation: cart-mask-in 0.2s ease;
+}
+
+/* 底部弹层：从底部升起；bottom 由 JS 内联 px 控制。
+   高度 = 头部 + 列表，列表高度由 JS 限制为 ≤80% 屏高 - 头部（确定性 px，非 max-height） */
 .cart-sheet {
-  width: 100%;
-  max-height: 80vh;
+  position: absolute;
+  left: 0; right: 0;
   background: var(--color-surface);
   border-radius: 32rpx 32rpx 0 0;
-  display: flex;
-  flex-direction: column;
+  pointer-events: auto;
+  animation: cart-sheet-up 0.25s ease;
+}
+
+@keyframes cart-mask-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes cart-sheet-up {
+  from { transform: translateY(40rpx); opacity: 0.6; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 /* 头部 */
@@ -30,7 +41,8 @@
   justify-content: space-between;
   align-items: center;
   padding: 32rpx 32rpx 20rpx;
-  flex-shrink: 0;
+  background: var(--color-surface);
+  box-shadow: 0 2rpx 8rpx rgba(100, 60, 20, 0.08);
 }
 .cart-title {
   font-size: 28rpx;
@@ -45,11 +57,8 @@
   color: #B09878;
 }
 
-/* 列表：米色底 + 日期分组白卡 */
+/* 列表：米色底 + 日期分组白卡；高度由 JS 内联 px 控制 */
 .cart-list {
-  flex: 1;
-  overflow-y: auto;
-  max-height: 50vh;
   background: var(--color-page);
 }
 
@@ -150,9 +159,6 @@
   border-radius: 12rpx;
   background: var(--color-surface);
 }
-
-/* 底部操作栏 */
-
 
 .dialog-body {
   padding: 40rpx;

@@ -1,0 +1,53 @@
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack">
+      <svg-icon name="back-thick" size="18px" />
+    </view>
+    <text class="navbar-title">意见反馈</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view class="page-body">
+  <!-- 反馈类型 -->
+  <view class="form-card">
+    <text class="form-label">反馈类型</text>
+    <view class="type-options">
+      <view class="type-option {{category === 'suggestion' ? 'active' : ''}}" bindtap="onSelectCategory" data-val="suggestion">
+        <text>建议</text>
+        <view class="radio {{category === 'suggestion' ? 'checked' : ''}}">
+          <svg-icon wx:if="{{category === 'suggestion'}}" name="check-white" size="12px" />
+        </view>
+      </view>
+      <view class="type-option {{category === 'bug' ? 'active' : ''}}" bindtap="onSelectCategory" data-val="bug">
+        <text>Bug</text>
+        <view class="radio {{category === 'bug' ? 'checked' : ''}}">
+          <svg-icon wx:if="{{category === 'bug'}}" name="check-white" size="12px" />
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 描述 -->
+  <view class="form-card">
+    <view class="form-label-row">
+      <text class="form-label">反馈内容</text>
+      <text class="form-count">{{content.length}}/{{maxContent}}</text>
+    </view>
+    <textarea class="form-textarea" value="{{content}}" bindinput="onContentInput" maxlength="{{maxContent}}"
+      placeholder="请描述你的建议或遇到的问题（必填）" placeholder-class="form-placeholder" />
+  </view>
+
+  <!-- 联系方式 -->
+  <view class="form-card">
+    <text class="form-label">联系方式（选填）</text>
+    <input class="form-input" value="{{contact}}" bindinput="onContactInput" placeholder="手机号 / 微信号，便于我们联系你"
+      placeholder-class="form-placeholder" />
+  </view>
+
+  <view class="submit-btn {{submitting ? 'disabled' : ''}}" bindtap="onSubmit">
+    <svg-icon name="check" size="14px" />
+    <text>提交</text>
+  </view>
+</view>

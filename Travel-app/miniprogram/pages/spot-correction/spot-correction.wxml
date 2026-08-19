@@ -1,0 +1,71 @@
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack">
+      <svg-icon name="back-thick" size="18px" />
+    </view>
+    <text class="navbar-title">信息纠错</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view class="page-body">
+  <!-- 选择景点 -->
+  <view class="form-card">
+    <text class="form-label">选择景点</text>
+    <view class="search-box">
+      <svg-icon name="search" size="18px" />
+      <input class="search-input" value="{{keyword}}" bindinput="onSearchInput" bindconfirm="onSearch"
+        placeholder="搜索景点名称" placeholder-class="form-placeholder" confirm-type="search" />
+      <view class="search-btn" bindtap="onSearch">搜索</view>
+    </view>
+
+    <view wx:if="{{selected}}" class="selected-spot" bindtap="onClearSpot">
+      <view class="selected-info">
+        <text class="selected-name">{{selected.name}}</text>
+        <text class="selected-hint">已选择，点击更换</text>
+      </view>
+      <svg-icon name="close" size="16px" />
+    </view>
+
+    <view wx:elif="{{searched}}" class="result-list">
+      <view wx:if="{{results.length === 0}}" class="result-empty">未找到相关景点，换个关键词试试</view>
+      <view wx:for="{{results}}" wx:key="spotId" class="result-item" bindtap="onSelectSpot" data-id="{{item.spotId}}">
+        <text class="result-name">{{item.name}}</text>
+        <text class="result-meta">{{item.district}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 纠错类型 -->
+  <view class="form-card">
+    <text class="form-label">纠错类型</text>
+    <view class="type-chips">
+      <view wx:for="{{errorTypes}}" wx:key="key"
+        class="chip {{errorType === item.key ? 'active' : ''}}"
+        bindtap="onSelectType" data-key="{{item.key}}">{{item.label}}</view>
+    </view>
+  </view>
+
+  <!-- 描述 -->
+  <view class="form-card">
+    <view class="form-label-row">
+      <text class="form-label">问题描述</text>
+      <text class="form-count">{{content.length}}/{{maxContent}}</text>
+    </view>
+    <textarea class="form-textarea" value="{{content}}" bindinput="onContentInput" maxlength="{{maxContent}}"
+      placeholder="请描述你发现的信息错误，如「实际放票时间是 17:00」（必填）" placeholder-class="form-placeholder" />
+  </view>
+
+  <!-- 联系方式 -->
+  <view class="form-card">
+    <text class="form-label">联系方式（选填）</text>
+    <input class="form-input" value="{{contact}}" bindinput="onContactInput" placeholder="手机号 / 微信号，便于我们联系你"
+      placeholder-class="form-placeholder" />
+  </view>
+
+  <view class="submit-btn {{submitting ? 'disabled' : ''}}" bindtap="onSubmit">
+    <svg-icon name="check" size="14px" />
+    <text>提交</text>
+  </view>
+</view>

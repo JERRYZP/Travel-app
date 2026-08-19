@@ -2,45 +2,38 @@
   <view style="height: {{statusBarHeight}}px;"></view>
   <view class="navbar-content" style="height: {{navBarHeight}}px;">
     <view class="navbar-back" bindtap="onBack">
-      <van-icon name="arrow-left" size="18px" color="#4A2D23" />
+      <svg-icon name="back-thick" size="24px" />
     </view>
-    <text class="navbar-title">设置提醒</text>
   </view>
 </view>
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
 
 <view class="page-body">
+  <!-- 页头：标题 + 右上插画 -->
+  <view class="page-header">
+    <image class="page-illustration" src="/images/icons/setup-illustration.svg" mode="aspectFit" />
+    <text class="page-title">设置提醒</text>
+  </view>
+
   <!-- 提醒方式 -->
-  <text class="section-label">提醒方式</text>
   <view class="setting-card">
     <view class="setting-row" bindtap="onToggleChannel" data-key="officialAccount">
       <view class="setting-row-left">
-        <van-icon name="chat-o" size="20px" color="#4A7C59" />
+        <svg-icon name="chat-bubble" size="24px" />
         <view class="setting-row-info">
           <text class="setting-row-label">公众号提醒</text>
           <text class="setting-row-hint">需打开微信通知权限</text>
         </view>
       </view>
       <view class="checkbox {{channels.officialAccount ? 'checked' : ''}}">
-        <van-icon wx:if="{{channels.officialAccount}}" name="success" size="12px" color="#fff" />
+        <svg-icon wx:if="{{channels.officialAccount}}" name="check-white" size="12px" />
       </view>
     </view>
-    <view class="setting-row" bindtap="onToggleChannel" data-key="calendar">
+    <view class="setting-row">
       <view class="setting-row-left">
-        <van-icon name="calendar-o" size="20px" color="#B8904A" />
+        <svg-icon name="sms-bubble" size="24px" />
         <view class="setting-row-info">
-          <text class="setting-row-label">日历提醒</text>
-        </view>
-      </view>
-      <view class="checkbox {{channels.calendar ? 'checked' : ''}}">
-        <van-icon wx:if="{{channels.calendar}}" name="success" size="12px" color="#fff" />
-      </view>
-    </view>
-    <view class="setting-row setting-row-disabled">
-      <view class="setting-row-left">
-        <van-icon name="envelop-o" size="20px" color="#DBCDBB" />
-        <view class="setting-row-info">
-          <text class="setting-row-label setting-row-label-disabled">短信提醒</text>
+          <text class="setting-row-label">短信提醒</text>
         </view>
       </view>
       <text class="setting-row-coming">敬请期待</text>
@@ -53,17 +46,17 @@
     <view class="setting-row">
       <text class="setting-row-label">放票前</text>
       <view class="offset-options">
-        <view class="offset-option {{checkedOffset5 ? 'checked' : ''}}" bindtap="onToggleOffset" data-val="5">
-          <view class="checkbox {{checkedOffset5 ? 'checked' : ''}}">
-            <van-icon wx:if="{{checkedOffset5}}" name="success" size="12px" color="#fff" />
-          </view>
+        <view class="offset-option" bindtap="onToggleOffset" data-val="5">
           <text>5分钟</text>
-        </view>
-        <view class="offset-option {{checkedOffset2 ? 'checked' : ''}}" bindtap="onToggleOffset" data-val="2">
-          <view class="checkbox {{checkedOffset2 ? 'checked' : ''}}">
-            <van-icon wx:if="{{checkedOffset2}}" name="success" size="12px" color="#fff" />
+          <view class="checkbox {{checkedOffset5 ? 'checked' : ''}}">
+            <svg-icon wx:if="{{checkedOffset5}}" name="check-white" size="12px" />
           </view>
+        </view>
+        <view class="offset-option" bindtap="onToggleOffset" data-val="2">
           <text>2分钟</text>
+          <view class="checkbox {{checkedOffset2 ? 'checked' : ''}}">
+            <svg-icon wx:if="{{checkedOffset2}}" name="check-white" size="12px" />
+          </view>
         </view>
       </view>
     </view>
@@ -71,7 +64,7 @@
 
   <!-- 提交按钮 -->
   <view class="submit-btn {{submitting ? 'disabled' : ''}}" bindtap="onSubmit">
-    <van-icon name="success" size="16px" color="#EDE5D2" />
+    <svg-icon name="check" size="14px" />
     <text>提交</text>
   </view>
 </view>

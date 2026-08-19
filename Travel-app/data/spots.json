@@ -124,7 +124,7 @@
       "popularityScore": 5,
       "hasWebVersion": true,
       "scrapingUrl": "https://www.badaling.cn",
-      "reservationRequired": false
+      "reservationRequired": true
     },
     {
       "spotId": "yuanmingyuan",
@@ -187,7 +187,7 @@
       "popularityScore": 3,
       "hasWebVersion": true,
       "scrapingUrl": "https://www.pgm.org.cn",
-      "reservationRequired": false
+      "reservationRequired": true
     },
     {
       "spotId": "beihai",
@@ -501,7 +501,7 @@
       "qrCode": "",
       "difficultyScore": 2,
       "popularityScore": 3,
-      "reservationRequired": true,
+      "reservationRequired": false,
       "hasWebVersion": true,
       "scrapingUrl": "",
       "aliases": [

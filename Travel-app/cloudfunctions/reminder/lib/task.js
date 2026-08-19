@@ -140,8 +140,6 @@ async function submit(db, userId, { tripId, channels, offsets }) {
   return ok({
     created: created.length,
     tasks: created,
-    // ICS 由调用方（index.js）在提交成功后触发生成，失败不阻塞（ICS-RULE-002）
-    needsIcsSync: channels.includes(ChannelType.CALENDAR_ICS),
     needsOaAuth: channels.includes(ChannelType.OFFICIAL_ACCOUNT),
   });
 }
@@ -178,10 +176,10 @@ async function list(db, userId, { tripId = null, filter = 'active' } = {}) {
       difficultyScore: spotMap[t.spotId] ? spotMap[t.spotId].difficultyScore : null,
       releaseTimeLabel: time.formatHourMinute(releaseAt),
       releaseDateStr: time.toDateStr(releaseAt),
-      grabLabel: `开抢 ${time.formatMonthDayWeek(t.visitDate)} 门票`,
+      grabLabel: `开抢${time.formatMonthDayWeekCn(t.visitDate)}门票`,
       statusLabel: uiLabelOf(t.backendStatus),
-      countdown: msLeft > 0 && msLeft < 3600 * 1000
-        ? { text: `还剩${Math.floor(totalMin / 60)}h ${totalMin % 60}m`, urgent: true }
+      countdown: msLeft > 0 && msLeft < 3 * 3600 * 1000
+        ? { text: `还剩${String(Math.floor(totalMin / 60)).padStart(2, '0')}h ${String(totalMin % 60).padStart(2, '0')}m`, urgent: true }
         : null,
       expired,
     };
@@ -201,7 +199,7 @@ async function list(db, userId, { tripId = null, filter = 'active' } = {}) {
     .sort((a, b) => (filter === 'expired' ? b[0].localeCompare(a[0]) : a[0].localeCompare(b[0])))
     .map(([dateStr, items]) => ({
       key: dateStr,
-      label: time.formatMonthDayWeek(dateStr),
+      label: time.formatMonthDay(dateStr),
       items: items.sort((a, b) => new Date(a.releaseAt) - new Date(b.releaseAt)),
     }));
 
@@ -229,7 +227,22 @@ async function remove(db, userId, taskId) {
   }
 
   await db.collection(COLLECTIONS.REMINDER_TASKS).doc(taskId).remove();
-  return ok({ taskId, tripId: task.tripId, needsIcsSync: true });
+  return ok({ taskId, tripId: task.tripId });
+}
+
+/**
+ * PAGE-009 清空任务：用户确认后清空全部提醒任务（含已提醒/过期的历史记录）
+ * 与 task.remove 的单条「仅待提醒可删」不同，这是显式批量清理操作
+ */
+async function clear(db, userId) {
+  const res = await db.collection(COLLECTIONS.REMINDER_TASKS)
+    .where({ userId })
+    .get();
+  const ids = (res.data || []).map(t => t._id);
+  for (const id of ids) {
+    await db.collection(COLLECTIONS.REMINDER_TASKS).doc(id).remove();
+  }
+  return ok({ cleared: ids.length });
 }
 
 /**
@@ -280,6 +293,7 @@ module.exports = {
   submit,
   list,
   remove,
+  clear,
   badgeCount,
   cleanup,
 };

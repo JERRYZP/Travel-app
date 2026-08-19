@@ -94,7 +94,7 @@
       "releaseFrequency": "daily",
       "closedDays": [],
       "isRolling": false,
-      "bookingTips": "缆车、滑车另行购票；旺季人流量大，建议错峰出行",
+      "bookingTips": "通过「长城内外旅游」小程序实名预约购票（2026-08 恢复开放公告）；缆车、滑车另行购票；旺季人流量大，建议提前3-7天预约",
       "openTime": "旺季06:30-16:30，淡季07:30-16:00",
       "ticketPrice": "旺季40元/人，淡季35元/人",
       "idRequirement": "须持预约时使用的身份证件原件",
@@ -146,7 +146,7 @@
         "monday"
       ],
       "isRolling": false,
-      "bookingTips": "每个证件每日限购1张；建议跟随讲解游览",
+      "bookingTips": "需预约但票源充足，基本每天都能约到；官方渠道「恭王府博物馆」公众号；每个证件每日限购1张；建议跟随讲解游览",
       "openTime": "08:30-17:00（16:10停止检票），周一闭馆（法定节假日除外）",
       "ticketPrice": "40元/人",
       "idRequirement": "须持预约时使用的身份证件原件",
@@ -175,12 +175,12 @@
       "offPrice": "淡季门票5元，联票15元"
     },
     {
-      "advanceDays": 9,
+      "advanceDays": 7,
       "releaseTime": "12:00",
       "releaseFrequency": "daily",
       "closedDays": [],
       "isRolling": false,
-      "bookingTips": "可提前1-9天预约，每日12:00放票，分升旗/上午/下午/降旗时段；观看升旗须单独预约升旗时段；节假日和暑期放票后几分钟即约满，建议设闹钟卡点",
+      "bookingTips": "可提前1-7天预约，每日12:00分批更新可预约票量，分升旗/上午/下午/降旗时段；观看升旗须单独预约升旗时段；节假日和暑期放票后几分钟即约满，建议设闹钟卡点",
       "openTime": "升旗时段以官方当日公示为准；广场开放约 05:00-22:00（以官方为准）",
       "ticketPrice": "免费",
       "idRequirement": "须持预约时使用的有效身份证件原件",
@@ -225,20 +225,24 @@
     },
     {
       "advanceDays": 8,
-      "releaseTime": "08:00",
+      "releaseTime": "09:00",
       "releaseFrequency": "daily",
       "closedDays": [
         "monday"
       ],
       "isRolling": false,
-      "bookingTips": "每日 8:00/17:00/20:00 三个放票时段（主时段 8:00）；提前8天可约；卡点进入，约不上别退出持续刷新；人数多可分时段分批约",
+      "bookingTips": "每日 9:00、17:00 两个放票时段（官方暑期安排，释放次日参观票）；提前8天可约；卡点进入，约不上别退出持续刷新；人数多可分时段分批约",
       "openTime": "09:00-17:00（16:00停止入馆），周一闭馆",
       "ticketPrice": "免费",
       "idRequirement": "须持预约时使用的有效身份证件原件",
       "ageLimit": "未满14周岁未成年人须由成年人陪同（以官方为准）",
       "lastCheckedDate": null,
       "specialNotice": "",
-      "spotId": "junbo"
+      "spotId": "junbo",
+      "releaseTimes": [
+        "09:00",
+        "17:00"
+      ]
     },
     {
       "advanceDays": 3,
@@ -281,7 +285,7 @@
       "releaseFrequency": "daily",
       "closedDays": [],
       "isRolling": false,
-      "bookingTips": "通过「参观清华」小程序实名预约：每日8:00-17:00可即时预约（周末/节假日最多提前7天），17:00后可申请抽签预约（22:00公布结果）；暑期名额紧张",
+      "bookingTips": "通过「参观清华」小程序实名预约，双轨制：即时预约每日8:00-17:00（工作日最多提前1天，周末及节假日最多提前7天）；抽签预约每日17:00-21:45（工作日最多提前2天，周末及节假日最多提前8天，22:00公布中签）；每人每180天仅可成功预约1次",
       "openTime": "入校参观时段以「参观清华」小程序为准（暑期约8:00-17:00入校）",
       "ticketPrice": "免费",
       "idRequirement": "实名认证，入校时人证核验",
@@ -296,7 +300,7 @@
       "releaseFrequency": "daily",
       "closedDays": [],
       "isRolling": false,
-      "bookingTips": "通过「参观北大」小程序实名预约：提前7日可约，每日8:00放新名额；入校时段 8:00-11:00、13:00-16:00，东侧门人证核验入校，当日19:00前离校",
+      "bookingTips": "通过「参观北大」小程序实名预约，双轨制：即时预约每日8:00-17:00（最多提前7日）；抽签预约每日17:00-21:45（最多提前8日）；入校时段 8:00-11:00、13:00-16:00，东侧门人证核验入校，当日19:00前离校",
       "openTime": "入校时段 8:00-11:00、13:00-16:00（以官方为准）",
       "ticketPrice": "免费",
       "idRequirement": "实名预约，入校时人证核验",
@@ -357,15 +361,15 @@
       "spotId": "gongyi-meishuguan"
     },
     {
-      "advanceDays": 7,
-      "releaseTime": "00:00",
+      "advanceDays": null,
+      "releaseTime": "",
       "releaseFrequency": "daily",
       "closedDays": [
-        "monday"
+        "tuesday"
       ],
       "isRolling": false,
-      "bookingTips": "免费需实名预约（有「基本陈列免预约」口径，以官方为准）；临展可能需单独购票",
-      "openTime": "09:00-17:00（16:00停止入馆），周一闭馆",
+      "bookingTips": "2025-12-20 起免预约，携带身份证北侧入口登记入馆（以官方为准）；临展可能需单独购票",
+      "openTime": "09:00-20:00（19:00停止入馆），周二闭馆",
       "ticketPrice": "免费（临展另购）",
       "idRequirement": "实名预约，凭有效身份证件入馆",
       "ageLimit": "以官方公示为准",
@@ -374,12 +378,12 @@
       "spotId": "shoubo"
     },
     {
-      "advanceDays": 15,
+      "advanceDays": 30,
       "releaseTime": "00:00",
       "releaseFrequency": "daily",
       "closedDays": [],
       "isRolling": false,
-      "bookingTips": "实名制预约购票，可提前15-30天（口径待实测）；票量充足，旺季建议提前线上购票；缆车/滑道另行购票",
+      "bookingTips": "实名制预约购票，可提前30天（官网口径）；票量充足，旺季建议提前线上购票；缆车/滑道另行购票",
       "openTime": "旺季07:30-17:30，淡季07:30-16:30（以官方为准）",
       "ticketPrice": "旺季45元/人，淡季35元（以官方为准）",
       "idRequirement": "实名购票，刷身份证入园",
@@ -389,14 +393,14 @@
       "spotId": "mutianyu"
     },
     {
-      "advanceDays": 3,
-      "releaseTime": "19:00",
+      "advanceDays": 7,
+      "releaseTime": "08:00",
       "releaseFrequency": "daily",
       "closedDays": [
         "monday"
       ],
       "isRolling": false,
-      "bookingTips": "可购买当日起3日内门票，每日19:00更新购票日期；当日也可现场扫码购票",
+      "bookingTips": "可提前7天预约，参观日前7天早8:00释放名额；周一闭馆；也可当日现场扫码购票（以官方为准）",
       "openTime": "09:00-17:00（16:30停止入场），周一闭馆",
       "ticketPrice": "30元/人（18周岁以下、60周岁以上免费）",
       "idRequirement": "实名购票，凭身份证/二维码入馆",
@@ -406,16 +410,15 @@
       "spotId": "kongmiao-guozijian"
     },
     {
-      "advanceDays": 3,
-      "releaseTime": "00:00",
+      "advanceDays": 5,
+      "releaseTime": "",
       "releaseFrequency": "daily",
       "closedDays": [
-        "monday",
         "tuesday"
       ],
       "isRolling": false,
-      "bookingTips": "可购买3日内（含当日）展厅票、剧场票；剧场票较抢手，建议提前购票",
-      "openTime": "09:00-16:30（16:00停止入馆），周一、周二闭馆",
+      "bookingTips": "散客票最早可提前5天预约（以官方为准）；官方未明确固定放票时刻，以公众号通知为准；剧场票较抢手，建议提前3-5天购票",
+      "openTime": "09:00-16:30（16:00停止入馆），周二闭馆",
       "ticketPrice": "展厅票10元/人（以官方为准）；剧场票另购",
       "idRequirement": "实名购票",
       "ageLimit": "以官方公示为准",

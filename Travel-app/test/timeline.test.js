@@ -25,8 +25,8 @@ console.log('--- 交叉积总数 ---');
 const reserveSpots = spots.filter(s => s.reservationRequired !== false);
 const all = reserveSpots.flatMap(s => TL.buildEvents(s, rm[s.spotId], trip));
 const closedMon = rules.filter(r => (r.closedDays || []).includes('monday')).length;
-eq(closedMon, 17, '17 个景点周一闭馆（含 B 层，共 26 条规则）');
-eq(all.length, 79, '总事件 = 12 个仅周一闭馆×4 + 考古馆/天文馆(周一+周二闭馆)×3×2 + 5 个不闭馆×5 = 79');
+eq(closedMon, 15, '15 个景点周一闭馆（首博改周二、天文馆改仅周二，共 26 条规则）');
+eq(all.length, 81, '总事件 = 12 个仅周一闭馆×4 + 考古馆(周一+周二)×3 + 6 个不闭馆×5 + 天文馆(无固定放票时刻不生成) = 81');
 
 console.log('\n--- 故宫：周一闭馆，5 天里 4 条 ---');
 const gg = TL.buildEvents(sm.gugong, rm.gugong, trip);
@@ -45,7 +45,7 @@ eq(time.formatHourMinute(th[0].releaseAt), '08:00', '08:00 放票');
 console.log('\n--- 出发日视图：6/1 只剩 3 个景点（8 个周一闭馆）---');
 const byDep = TL.groupByDeparture(all);
 eq(byDep.length, 5, '5 个日期 Tab');
-eq(byDep.map(g => g.count).join(','), '19,5,17,19,19', '各 Tab 事件数（6/1 周一 14 个闭馆剩 5；6/2 考古馆/天文馆周二闭馆剩 17）');
+eq(byDep.map(g => g.count).join(','), '19,6,18,19,19', '各 Tab 事件数（6/1 周一 13 个闭馆剩 6；6/2 考古馆/天文馆周二闭馆剩 18）');
 eq(byDep[1].key, '2026-06-01', '第 2 个 Tab 是 6/1');
 eq(byDep[1].label, '6月1日 (周一)', 'Tab 标签');
 console.log('   6/1 可约:', byDep[1].events.map(e => e.spotName).join('、'));
@@ -54,7 +54,7 @@ eq(byDep[0].events.every((e, i, a) => i === 0 || a[i - 1].releaseAt <= e.release
 
 console.log('\n--- 景点视图：故宫 Tab 显示 4 天 ---');
 const bySpot = TL.groupBySpot(all);
-eq(bySpot.length, 19, '19 个需预约景点 Tab');
+eq(bySpot.length, 19, '19 个需预约景点 Tab（天文馆无固定放票时刻不生成事件）');
 const ggTab = bySpot.find(g => g.key === 'gugong');
 eq(ggTab.count, 4, '故宫 Tab 4 条');
 eq(ggTab.label, '故宫博物院', 'Tab 标签用景点名');

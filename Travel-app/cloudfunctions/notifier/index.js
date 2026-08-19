@@ -30,8 +30,7 @@ const ReminderBackendStatus = {
 
 const ChannelType = {
   OFFICIAL_ACCOUNT: 'OFFICIAL_ACCOUNT',
-  CALENDAR_ICS: 'CALENDAR_ICS',
-  SMS: 'SMS',
+  SMS: 'SMS', // reserved, V1.1
 };
 
 const STAGGER_WINDOW_MS = 30 * 1000; // REMINDER-RULE-003
