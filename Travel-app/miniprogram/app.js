@@ -2,7 +2,7 @@ App({
   globalData: {
     userInfo: null,
     openid: null,
-    cloudEnv: 'cloud1-d0gtoyhce21c2b6b1',
+    cloudEnv: 'cloud1-d5givb65417e3b8c9',
     statusBarHeight: 20,
     navBarHeight: 44,
     menuButton: null,

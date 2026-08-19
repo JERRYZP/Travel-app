@@ -9,7 +9,7 @@
 
 - 权威需求 = `产品文档.md`（V1.0 基线，编号化条目，444 行）。视觉规范 = `figma_design.md`（第 4 节视觉基准宽度 402px，第 5 节 V1 用「页面内自绘导航」）。
 - 页面：`home`（行程创建 + 任务列表双形态）/ `spots`（景点选择）/ `timeline`（时间线）/ `setup`（提醒设置）/ `profile`（我的）/ `webview`（官方渠道外链兜底）/ `notify-settings`（通知设置=订阅消息前置授权）/ `feedback`（意见反馈：建议/Bug）/ `spot-correction`（信息纠错：选景点+纠错类型）。原生 `tabBar` 已移除，用 `components/tabbar` 自绘导航。
-- 数据层：`utils/mock.js`（内存 mock 后端）+ `utils/api.js`（云函数调用封装，按 `USE_MOCK` 自动切换）。**2026-08-19 起已联调真实环境：`USE_MOCK=false`，cloudEnv=cloud1-d0gtoyhce21c2b6b1（填在 `app.js`）。回退 mock 开发时改回 true。**
+- 数据层：`utils/mock.js`（内存 mock 后端）+ `utils/api.js`（云函数调用封装，按 `USE_MOCK` 自动切换）。**2026-08-19 起已联调真实环境：`USE_MOCK=false`，cloudEnv=cloud1-d5givb65417e3b8c9（填在 `app.js`，2026-08-19 换 AppID 后重建）。回退 mock 开发时改回 true。**
 - **前端接口契约**：`API-契约.md`（从云函数源码提取，覆盖 spots / reminder(trip/timeline/cart/task/user) / feedback(意见反馈/信息纠错) / ics-generator / notifier 的 action、入参、出参、错误码）。页面开发前必须对照此文档，不要凭空猜接口。
 
 ## 技术栈
@@ -34,7 +34,7 @@ UI-V1.0/             页面导出图 01~11.png（对应 PAGE-001~011，缺 06）
 ```
 - 字段命名 camelCase。全系统时间按北京时间 GMT+8（`产品文档.md` TIME-RULE-001）。
 - **选中态约定**（重要）：WXML 数据绑定不支持 `indexOf` 等数组方法调用（静默失效 → 点了不变）。选中态需在 JS 侧算成 `selected` 布尔字段（用 `util.markSpotsSelected(list, ids)`），WXML 只绑 `{{item.selected}}`。同理，setData 必须传**新数组/新对象引用**，不能原地 `push`/`splice` 后传回原引用。
-- **通知设置 = 订阅消息前置授权（2026-08-14）**：两个前置项 = ①微信系统通知权限（`wx.getAppAuthorizeSetting`）②小程序订阅消息授权（`wx.getSetting` 的 `scope.subscribeMessage`）。个人中心「通知设置」行右侧三态文案：全没设「未开启」/ 设了一个「部分开启」/ 全设「已开启」，检测逻辑共用 `miniprogram/utils/notify.js`。内页 `pages/notify-settings` 上下排列两项授权；**设置提醒页（PAGE-008）提交时前置未做齐 → 当前页弹窗就地引导授权并继续提交，不跳个人中心**。微信订阅消息是「一次性订阅」（每次授权=可发 1 条），模板 ID 申请后回填 `notify.js` 的 `SUBSCRIBE_TEMPLATE_ID`（与 notifier 的 `SUBSCRIBE_TEMPLATE_ID` env 对齐），未配置时「去授权」按钮置灰「通道准备中」。短信提醒下个迭代上线，页面仅占位说明。
+- **通知设置 = 订阅消息前置授权（2026-08-14）**：两个前置项 = ①微信系统通知权限（`wx.getAppAuthorizeSetting`）②小程序订阅消息授权（`wx.getSetting` 的 `scope.subscribeMessage`）。个人中心「通知设置」行右侧三态文案：全没设「未开启」/ 设了一个「部分开启」/ 全设「已开启」，检测逻辑共用 `miniprogram/utils/notify.js`。内页 `pages/notify-settings` 上下排列两项授权；**设置提醒页（PAGE-008）提交时前置未做齐 → 当前页弹窗就地引导授权并继续提交，不跳个人中心**。微信订阅消息是「一次性订阅」（每次授权=可发 1 条），模板 ID（2026-08-19 已回填，「活动开始通知」公共模板，关键词顺序=活动名称/开始时间/温馨提示，对应 thing1/time2/thing3）写在 `notify.js` 的 `SUBSCRIBE_TEMPLATE_ID` 与 notifier 的兜底常量（环境变量 `SUBSCRIBE_TEMPLATE_ID` 优先），两处必须一致；未配置时「去授权」按钮置灰「通道准备中」。短信提醒下个迭代上线，页面仅占位说明。
 - **意见反馈 / 信息纠错（2026-08-14）**：走 `feedback` 云函数 + `feedbacks` 集合（TABLE-008，type=feedback|correction）。意见反馈只保留 建议(suggestion)/Bug(bug) 两类；信息纠错 = 选景点（`spots.search`）+ 纠错类型（RELEASE_TIME/RELEASE_RULE/OPEN_TIME/TICKET_PRICE/ADDRESS/CLOSED_DAYS/OTHER）+ 描述。提交后 Toast「感谢反馈，我们会尽快核实」。错误码 1020=内容为空。V1 不做截图上传与积分奖励。**反馈管理页（2026-08-19）**：隐藏页 `pages/admin-feedback`（我的页长按用户信息卡进入），调 `feedback.adminList`/`feedback.adminUpdateStatus`（管理员改 OPEN/PROCESSED/IGNORED），管理员白名单在 `cloudfunctions/feedback/lib/schema.js` 的 `ADMIN_OPENIDS`（openid 从控制台 feedbacks 记录 userId 取，改后需重新部署）。
 - 难度标签只有一处真身：`spots` 云函数的 `computeDifficultyLabel`（≥4 极难约 / =3 较难约 / ≤2 容易约，同 TAG-RULE-001），mock 里也有同逻辑。页面直接渲染 `difficultyLabel` 即可，不要自己再算。
 - **时间线刷新**：加提醒/清单变化后刷新时间线必须用 `loadInlineTimeline(tripId, keepTab, true)` 静默模式——不要置 `timelineLoading`，否则列表高度塌缩会让 scroll-view 跳回顶部（2026-08-10 修复）。
@@ -51,4 +51,4 @@ UI-V1.0/             页面导出图 01~11.png（对应 PAGE-001~011，缺 06）
 - 测试：`test/` 下 `flow.test.js`（FLOW-001 全链路）/ `timeline.test.js`（时间线交叉积），用 `test/mock-db.js` 内存云数据库桩跑 `cloudfunctions/reminder/lib/*`；运行 `npm test`（= `node test/flow.test.js && node test/timeline.test.js`）
 
 ## 部署
-微信小程序 + 腾讯云云开发。云环境 id `cloud1-d0gtoyhce21c2b6b1` 写在 `miniprogram/app.js` 的 `cloudEnv`。尚未真机验证。
+微信小程序 + 腾讯云云开发。云环境 id `cloud1-d5givb65417e3b8c9` 写在 `miniprogram/app.js` 的 `cloudEnv`（2026-08-19 换 AppID 后重建；`project.config.json` 已换新 appid `wxfee99eee9c95bd15`）。尚未真机验证。

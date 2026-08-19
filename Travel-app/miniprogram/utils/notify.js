@@ -8,7 +8,7 @@
 
 // 订阅消息模板 ID：微信公众平台申请后回填（与 cloudfunctions/notifier 的 SUBSCRIBE_TEMPLATE_ID 对齐）。
 // 为空时推送通道不可用，授权按钮置灰「通道准备中」，避免用户授权了个寂寞。
-const SUBSCRIBE_TEMPLATE_ID = '';
+const SUBSCRIBE_TEMPLATE_ID = 'w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk';
 
 /** ① 系统通知权限：同步 API，老基础库不可用时按未开启处理 */
 function getSystemNotifyOk() {

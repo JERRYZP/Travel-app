@@ -37,8 +37,9 @@ const STAGGER_WINDOW_MS = 30 * 1000; // REMINDER-RULE-003
 const CLEAN_AFTER_DAYS = 14;         // REMINDER-RULE-006
 const SCAN_WINDOW_MS = 60 * 1000;    // 每分钟扫描一次
 
-/** 订阅消息模板 ID：在微信后台申请后填入环境变量 SUBSCRIBE_TEMPLATE_ID */
-const TEMPLATE_ID = process.env.SUBSCRIBE_TEMPLATE_ID || '';
+/** 订阅消息模板 ID（微信公众平台「活动开始通知」公共模板，2026-08-19 申请）。
+ *  环境变量优先；控制台未配 env 时用兜底常量，保证重新部署不丢配置。与 miniprogram/utils/notify.js 对齐。 */
+const TEMPLATE_ID = process.env.SUBSCRIBE_TEMPLATE_ID || 'w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk';
 
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
 
@@ -195,6 +196,13 @@ async function scanAndSend() {
 
     const result = await sendOne(task, spotMap[task.spotId], offset);
     await markResult(task, offset, result, Date.now());
+
+    if (!result.ok) {
+      console.log('[notifier] send-fail', JSON.stringify({
+        taskId: task._id, spotId: task.spotId, offset, reason: result.reason,
+        templateConfigured: Boolean(TEMPLATE_ID),
+      }));
+    }
 
     if (result.ok) sent += 1;
     else if (result.skipped) skipped += 1;
