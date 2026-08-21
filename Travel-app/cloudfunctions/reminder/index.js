@@ -11,6 +11,7 @@
 const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
+const _ = db.command;
 
 const { COLLECTIONS, V1, ERRORS, ChannelType, ok, fail } = require('./lib/schema');
 const time = require('./lib/time');
@@ -81,18 +82,29 @@ exports.main = async (event) => {
         return ok({ ...res, tripRemoved });
       }
       case 'task.clear': {
-        const res = await task.clear(db, userId);
+        const res = await task.clear(db, userId, {
+          filter: event.filter || null,
+          tripId: event.tripId || null,
+        });
         if (!res.success) return res;
+        // TRIP-RULE-004 级联：清空后行程内任务与清单均空则删除行程
+        for (const tid of (res.affectedTripIds || [])) {
+          await trip.removeIfEmpty(db, userId, tid);
+        }
         return ok(res);
       }
-      case 'task.badge':
-        return ok({ badge: await task.badgeCount(db, userId) });
 
       /* ======== 用户 ======== */
       case 'user.profile':
         return await getOrCreateUser(userId);
       case 'user.updateNotifyPrefs':
         return await updateNotifyPrefs(userId, event.notifyPrefs || {});
+
+      /* ======== 订阅消息额度（一次性订阅） ======== */
+      case 'subscribe.add':
+        return await addSubscribe(userId, event.templateId);
+      case 'subscribe.get':
+        return await getSubscribe(userId, event.templateId);
 
       /* ======== 运维 ======== */
       case 'admin.seed':
@@ -129,6 +141,7 @@ async function getOrCreateUser(userId) {
       sms: false,
       offsets: [...V1.ALLOWED_OFFSETS],
     },
+    subscribeQuota: 0,
     memberLevel: V1.MEMBER_LEVEL_DEFAULT, // V1 固定 NORMAL
     points: 0,                            // V1 固定 0
     createdAt: time.now(),
@@ -146,6 +159,38 @@ async function updateNotifyPrefs(userId, prefs) {
     data: { notifyPrefs: prefs },
   });
   return ok({ notifyPrefs: prefs });
+}
+
+/** 订阅消息模板 ID（与 miniprogram/utils/notify.js、cloudfunctions/notifier 兜底常量对齐） */
+const DEFAULT_SUBSCRIBE_TEMPLATE_ID = 'w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk';
+
+/**
+ * subscribe.add —— 用户授权订阅消息后 +1 一次性额度（微信每次授权=可发 1 条）
+ * 落库到 users.subscribeQuota（TABLE-005），便于前端展示「剩余可提醒次数」。
+ */
+async function addSubscribe(userId, templateId) {
+  const tpl = templateId || DEFAULT_SUBSCRIBE_TEMPLATE_ID;
+  let res = await db.collection(COLLECTIONS.USERS).where({ openId: userId }).get();
+  if (!(res.data || []).length) await getOrCreateUser(userId);
+  const target = await db.collection(COLLECTIONS.USERS).where({ openId: userId }).get();
+  const u = target.data[0];
+  await db.collection(COLLECTIONS.USERS).doc(u._id).update({
+    data: {
+      subscribeQuota: _.inc(1),
+      subscribeTemplateId: tpl,
+      subscribeUpdatedAt: time.now(),
+    },
+  });
+  return ok({ quota: (u.subscribeQuota || 0) + 1, templateId: tpl });
+}
+
+/** subscribe.get —— 查询当前用户剩余一次性订阅额度 */
+async function getSubscribe(userId, templateId) {
+  const tpl = templateId || DEFAULT_SUBSCRIBE_TEMPLATE_ID;
+  const res = await db.collection(COLLECTIONS.USERS).where({ openId: userId }).get();
+  if (!(res.data || []).length) return ok({ quota: 0, templateId: tpl });
+  const u = res.data[0];
+  return ok({ quota: u.subscribeQuota || 0, templateId: u.subscribeTemplateId || tpl });
 }
 
 /**

@@ -40,6 +40,7 @@
         <view class="auth-info">
           <text class="auth-label">订阅消息授权</text>
           <text class="auth-hint">放票前通过微信服务通知提醒；微信为一次性订阅，提交提醒时会再次确认</text>
+          <text wx:if="{{templateReady}}" class="auth-hint">剩余可发提醒次数：{{subscribeQuota}}</text>
         </view>
       </view>
       <view class="auth-status {{subscribeOk ? 'ok' : 'off'}}">{{subscribeOk ? '已授权' : '未授权'}}</view>

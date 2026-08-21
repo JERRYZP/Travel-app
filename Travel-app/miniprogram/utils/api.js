@@ -54,12 +54,15 @@ const reminder = {
     submit: (p) => call('reminder', { action: 'task.submit', ...p }),
     list: (p) => call('reminder', { action: 'task.list', ...p }),
     remove: (taskId) => call('reminder', { action: 'task.remove', taskId }),
-    clear: () => call('reminder', { action: 'task.clear' }),
-    badge: () => call('reminder', { action: 'task.badge' }),
+    clear: (p) => call('reminder', { action: 'task.clear', ...(p || {}) }),
   },
   user: {
     profile: () => call('reminder', { action: 'user.profile' }),
     updateNotifyPrefs: (notifyPrefs) => call('reminder', { action: 'user.updateNotifyPrefs', notifyPrefs }),
+  },
+  subscribe: {
+    add: (templateId) => call('reminder', { action: 'subscribe.add', templateId }),
+    get: (templateId) => call('reminder', { action: 'subscribe.get', templateId }),
   },
 };
 

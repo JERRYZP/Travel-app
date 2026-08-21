@@ -196,7 +196,7 @@ function buildMockBanner(tasks, now) {
     minutesLeft,
   };
 }
-let tripSeq = 0, cartSeq = 0, taskSeq = 0, feedbackSeq = 0;
+let tripSeq = 0, cartSeq = 0, taskSeq = 0, feedbackSeq = 0, subscribeSeq = 0;
 
 /* ===== 时间线生成（简化版后端 timeline.generate） ===== */
 function generateTimeline(tripId) {
@@ -331,7 +331,17 @@ const handlers = {
     });
     return { success: true, tripId: keep._id, merged: true, mergedFrom: [keep._id, ...drops.map(d => d._id)], trip: keep };
   },
-  'trip.list': () => ({ success: true, trips: Object.values(db.trips), showGroupTabs: Object.keys(db.trips).length >= 2 }),
+  'trip.list': () => {
+    /* TRIP-RULE-004 读取时兜底：任务与清单皆空的孤儿行程自动删除（同步云函数） */
+    const kept = Object.values(db.trips).filter(t => {
+      const hasTask = Object.values(db.tasks).some(x => x.tripId === t._id);
+      const hasCart = Object.values(db.carts).some(c => c.tripId === t._id);
+      if (hasTask || hasCart) return true;
+      delete db.trips[t._id];
+      return false;
+    });
+    return { success: true, trips: kept, showGroupTabs: kept.length >= 2 };
+  },
   'trip.updateSpots': (data) => {
     const trip = db.trips[data.tripId];
     if (!trip) return { success: false, error: '行程不存在', errorCode: 1001 };
@@ -437,19 +447,38 @@ const handlers = {
     const map = {};
     shown.forEach(t => { (map[t.releaseDateStr] = map[t.releaseDateStr] || []).push(t); });
     const groups = Object.keys(map).sort((a, b) => data.filter === 'expired' ? b.localeCompare(a) : a.localeCompare(b)).map(k => ({ key: k, label: formatMonthDay(k), items: map[k].sort((a, b) => new Date(a.releaseAt) - new Date(b.releaseAt)) }));
-    return { success: true, groups, counts: { active: active.length, expired: past.length }, banner: buildMockBanner(enriched, now), badge: active.length, homeMode: enriched.length === 0 ? 1 : 2 };
+    return { success: true, groups, counts: { active: active.length, expired: past.length }, banner: buildMockBanner(enriched, now), homeMode: enriched.length === 0 ? 1 : 2 };
   },
   'task.remove': (data) => { const t = db.tasks[data.taskId]; delete db.tasks[data.taskId]; return { success: true, taskId: data.taskId, tripId: t ? t.tripId : null, tripRemoved: false }; },
-  'task.clear': () => { const ids = Object.keys(db.tasks); ids.forEach(id => { delete db.tasks[id]; }); return { success: true, cleared: ids.length }; },
-  'task.badge': () => {
-    const now = new Date(); const until = new Date(now.getTime() + 24 * 3600000);
-    const badge = Object.values(db.tasks).filter(t => t.backendStatus === 'WAITING' && new Date(t.releaseAt) > now && new Date(t.releaseAt) <= until).length;
-    return { success: true, badge };
+  'task.clear': (data) => {
+    let targets = Object.values(db.tasks);
+    if (data && data.tripId) targets = targets.filter(t => t.tripId === data.tripId);
+    if (data && data.filter) {
+      const now = new Date();
+      targets = targets.filter(t => {
+        const msLeft = new Date(t.releaseAt).getTime() - now.getTime();
+        const expired = msLeft <= 0;
+        return data.filter === 'expired' ? expired : !expired;
+      });
+    }
+    const affectedTripIds = [...new Set(targets.map(t => t.tripId).filter(Boolean))];
+    targets.forEach(t => { delete db.tasks[t._id]; });
+    /* TRIP-RULE-004 级联：行程内任务与清单均空则删除行程（同步云函数） */
+    affectedTripIds.forEach(tid => {
+      const hasTask = Object.values(db.tasks).some(t => t.tripId === tid);
+      const hasCart = Object.values(db.carts).some(c => c.tripId === tid);
+      if (!hasTask && !hasCart) delete db.trips[tid];
+    });
+    return { success: true, cleared: targets.length };
   },
 
   /* ----- user ----- */
-  'user.profile': () => ({ success: true, user: { openId: 'mock-user', nickname: '游客', avatarUrl: '', memberLevel: 'NORMAL', points: 0, notifyPrefs: { officialAccount: false, sms: false, offsets: [5, 2] } } }),
+  'user.profile': () => ({ success: true, user: { openId: 'mock-user', nickname: '游客', avatarUrl: '', memberLevel: 'NORMAL', points: 0, subscribeQuota: subscribeSeq, notifyPrefs: { officialAccount: false, sms: false, offsets: [5, 2] } } }),
   'user.updateNotifyPrefs': (data) => ({ success: true, notifyPrefs: data.notifyPrefs }),
+
+  /* ----- 订阅消息额度（一次性订阅） ----- */
+  'subscribe.add': () => { subscribeSeq += 1; return { success: true, quota: subscribeSeq }; },
+  'subscribe.get': () => ({ success: true, quota: subscribeSeq }),
 
   /* ----- feedback（意见反馈 / 信息纠错，与 cloudfunctions/feedback/lib/schema.js 对齐） ----- */
   'feedback.submit': (data) => {

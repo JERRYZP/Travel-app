@@ -245,6 +245,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```
 用途：首页 Tab 行程分组、TRIP-RULE-006 判定是否显示分组行
 调用：{ action: 'trip.list' }
+说明：读取时兜底执行 TRIP-RULE-004 级联——任务与清单均空的孤儿行程
+     （如生成了时间线但从未提交提醒）会被自动删除，返回的行程都有内容。
 ```
 
 **返回：**
@@ -486,7 +488,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   action: 'task.submit',
   tripId: 'abc123',
   channels: ['OFFICIAL_ACCOUNT'],  // ENUM-004，至少 1 项
-  offsets: [5, 2]                                   // 提前量（分钟），至少 1 项
+  offsets: [5]                                      // 提前量（分钟），前端单选，一次只传 1 项（V1.2）
 }
 ```
 
@@ -547,7 +549,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
       releaseTimeLabel: "20:00",
       releaseDateStr: "2026-05-24",
       grabLabel: "开抢 6月1日 (周一) 门票",
-      statusLabel: "待提醒",          // STATE-002 映射：WAITING→待提醒，TRIGGERED/MISSED→已提醒
+      statusLabel: "待提醒",          // STATE-002 映射：WAITING→待提醒，TRIGGERED→已提醒，MISSED→未送达
       countdown: {                    // <1h 时出现倒计时
         text: "还剩0h 45m",
         urgent: true
@@ -562,7 +564,6 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     taskId: "...",
     minutesLeft: 20
   },
-  badge: 3,                           // REMINDER-RULE-007 Tab 角标（为 0 不显示）
   homeMode: 2                         // HOME-RULE-001：1=形态1，2=形态2
 }
 ```
@@ -584,33 +585,25 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 }
 ```
 
-#### `task.clear` — 清空全部提醒任务
+#### `task.clear` — 清空提醒任务（可按当前 tab 范围）
 
 ```
 用途：PAGE-009 顶部「清空任务」按钮（用户二次确认后调用）
-调用：{ action: 'task.clear' }
-说明：与 task.remove 的单条「仅待提醒可删」不同，这是显式批量清理，
-     会删除该用户全部任务（含已提醒/过期的历史记录）
+调用：{ action: 'task.clear', filter: 'active'|'expired'|null, tripId: 'abc123'|null }
+说明：与 task.remove 的单条「仅待提醒可删」不同，这是显式批量清理。
+     filter/tripId 都不传 → 清空该用户全部任务（含已提醒/过期的历史记录）；
+     传 filter → 只清空该状态 tab 的任务（过期判定与 task.list 一致：MISSED 或已过放票时间点）；
+     传 tripId → 只清空该行程下的任务。两者可叠加，对应前端「只清空当前 tab」。
+     清空后对受影响的行程执行 TRIP-RULE-004 级联：行程内任务与清单均空则自动删除行程。
 ```
 
 **返回：**
 ```javascript
 {
   success: true,
-  cleared: 8                // 实际删除条数
+  cleared: 8,               // 实际删除条数
+  affectedTripIds: [...]    // 本次清空涉及到的行程，服务端已对其执行空行程级联删除
 }
-```
-
-#### `task.badge` — 获取角标数
-
-```
-用途：TabBar 角标独立刷新（REMINDER-RULE-007）
-调用：{ action: 'task.badge' }
-```
-
-**返回：**
-```javascript
-{ success: true, badge: 3 }   // 未来 24h 内 WAITING 任务数
 ```
 
 ---
@@ -655,12 +648,80 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 }
 ```
 
+#### `subscribe.add` / `subscribe.get` — 一次性订阅消息额度
+
+`wx.requestSubscribeMessage` 每次授权 = 可发 1 条订阅消息。额度以 `users.subscribeQuota`（TABLE-005 用户表字段）记录，授权成功 +1、notifier 发送成功 -1。
+
+**`subscribe.add`**（用户授权后前端调用，云端按当前 openid 记 +1）：
+
+```
+调用：{ action: 'subscribe.add', templateId? }
+```
+
+**返回：**
+
+```javascript
+{ success: true, quota: 3, templateId: "w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk" }
+```
+
+**`subscribe.get`**（查询剩余额度，通知设置页展示）：
+
+```
+调用：{ action: 'subscribe.get', templateId? }
+```
+
+**返回：**
+
+```javascript
+{ success: true, quota: 3, templateId: "w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk" }
+```
+
+> 未授权/未落库时 quota 为 0，发送侧仍会尝试（微信侧按真实授权校验，返回 43101 即表示无额度/未订阅）。
+
 ---
 
 ## 3. notifier（提醒推送）
 
 **云函数名：`notifier`**
-**说明：** 定时触发器（每分钟一次），前端不直接调用。
+**说明：** 定时触发器（每分钟一次），前端不直接调用。走**微信服务端 HTTP 接口**发送订阅消息（不依赖小程序端触发，定时触发可用）。
+
+**环境变量（云函数配置）**：`WX_APPID`（小程序 AppID，缺省回退 `wxfee99eee9c95bd15`）、`WX_APPSECRET`（必填，小程序密钥）、`SUBSCRIBE_TEMPLATE_ID`（订阅模板 ID，缺省回退内置常量）。三者由 `sendOne` 读取，未配置时该任务记 `failed`（不会误标为 MISSED）。
+
+### `notifier.testSend` — 发送测试订阅消息（排查/验证通道）
+
+```
+调用：{ action: 'testSend', touser, miniprogramState?, lang?, data?, templateId? }
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| touser | String | 是 | 已授权订阅该模板的 openid |
+| miniprogramState | String | 否 | 默认 `formal`（正式版） |
+| lang | String | 否 | 默认 `zh_CN` |
+| data | Object | 否 | 不传用内置测试数据（thing4/date5/thing7，对应「活动开始通知」模板：活动名称/活动时间/温馨提示） |
+| templateId | String | 否 | 默认用 `TEMPLATE_ID` |
+
+**返回：**
+
+```javascript
+{ success: true, res: { errcode: 0, errmsg: 'ok' } }
+// 失败时 success=false，res 为微信错误（如 43101 未订阅 / 47003 参数错 / 40037 template_id 无效）
+```
+
+**错误码要点**：`40001/42001` 会自动强制刷新 access_token 并重试一次；`43101` = 用户未订阅或一次性配额已用完；`40037` = template_id 不属于该 AppID；`43107` = 订阅消息能力被封禁。
+
+### `notifier.whoami` — 获取调用者 openid（测试用）
+
+```
+调用：{ action: 'whoami' }
+```
+**说明：** 必须从小程序端调用（`wx.cloud.callFunction`），返回当前用户的真实 openid，便于 `testSend` 复用。
+
+**返回：**
+
+```javascript
+{ success: true, openid: "<真实openid>", appid: "wxfee99eee9c95bd15" }
+```
 
 ---
 
@@ -755,7 +816,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | 页面 | 需要调用的 API |
 |------|---------------|
 | **PAGE-001** 首页·创建态 | `spots.list`（热门景点卡）、`trip.create`（生成时间线时） |
-| **PAGE-009** 首页·任务列表 | `task.list`、`trip.list`（分组 Tab）、`task.remove`（删除）、`task.badge` |
+| **PAGE-009** 首页·任务列表 | `task.list`、`trip.list`（分组 Tab）、`task.remove`（删除）、`task.clear`（按 tab 清空） |
 | **PAGE-002** 景点弹窗 | `spots.detail` |
 | **PAGE-003** 想去景点 | `spots.list`、`spots.batch`（已选行）、`spots.searchHistory`、`spots.clearSearchHistory`、`trip.updateSpots` |
 | **PAGE-004** 搜索态 | `spots.search` |
@@ -763,7 +824,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-006** 景点视图 | 同 PAGE-005 |
 | **PAGE-007** 清单弹窗 | `cart.list`、`cart.remove`、`cart.clear` |
 | **PAGE-008** 设置提醒 | `task.submit`（提交前检测通知授权，未开启就地引导，不跳个人中心） |
-| **PAGE-010** 我的 | `user.profile`、`task.badge`、通知设置三态（`wx.getAppAuthorizeSetting` / `wx.getSetting`，非云函数） |
+| **PAGE-010** 我的 | `user.profile`、通知设置三态（`wx.getAppAuthorizeSetting` / `wx.getSetting`，非云函数） |
 | **PAGE-010-1** 通知设置 | 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`（模板未配置时「去授权」置灰） |
 | **PAGE-010-2** 意见反馈 | `feedback.submit`（type=feedback，category=suggestion/bug） |
 | **PAGE-010-3** 信息纠错 | `spots.search`（选景点）、`feedback.submit`（type=correction） |

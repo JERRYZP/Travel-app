@@ -5,11 +5,12 @@
  * 每次扫描「提醒时刻落在本分钟窗口内」的 WAITING 任务，
  * 30 秒内错峰发送，写 TRIGGERED；超过 releaseAt 仍未成功写 MISSED。
  *
- * 订阅消息模板 ID 尚未申请（产品文档附录 D 第 3 条）：
- * 未配置时不阻塞流程，跳过公众号通道并记 ERROR-1008，日历通道由 ICS 独立承担。
+ * 订阅消息：经微信服务端 HTTP 接口发送（不依赖小程序端触发，定时触发也能用）；
+ * AppID/Secret 走环境变量 WX_APPID / WX_APPSECRET，模板 ID 走 SUBSCRIBE_TEMPLATE_ID（回退常量）。
  */
 
 const cloud = require('wx-server-sdk');
+const https = require('https');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const _ = db.command;
@@ -19,6 +20,7 @@ const COLLECTIONS = {
   SPOTS: 'spots',
   TRIPS: 'trips',
   REMINDER_CART: 'reminder_cart',
+  USERS: 'users',
 };
 
 const ReminderBackendStatus = {
@@ -49,8 +51,17 @@ function beijingHm(date) {
 }
 
 function beijingMonthDay(dateStr) {
-  const [, m, d] = String(dateStr).split('-').map(Number);
-  return `${m}月${d}日`;
+  // 兼容 ISO datetime（releaseAt）与 YYYY-MM-DD（visitDate）两种输入，都取北京时间月日
+  const d = new Date(new Date(dateStr).getTime() + BEIJING_OFFSET_MS);
+  const s = d.toISOString();
+  return `${Number(s.slice(5, 7))}月${Number(s.slice(8, 10))}日`;
+}
+
+function beijingDateTime(dateStr) {
+  // date5 字段是 date 类型，要求「年月日 + 时刻」，如 2019-10-20 07:00（北京时区）
+  const d = new Date(new Date(dateStr).getTime() + BEIJING_OFFSET_MS);
+  const s = d.toISOString();
+  return `${s.slice(0, 4)}-${s.slice(5, 7)}-${s.slice(8, 10)} ${s.slice(11, 13)}:${s.slice(14, 16)}`;
 }
 
 /**
@@ -90,6 +101,83 @@ function collectDue(tasks, nowTs) {
   return due.sort((a, b) => a.remindAt - b.remindAt);
 }
 
+/* ============ 微信服务端 HTTP 传输（不依赖小程序端触发） ============ */
+
+const WX_BASE = 'https://api.weixin.qq.com';
+const WX_APPID = process.env.WX_APPID || 'wxfee99eee9c95bd15';
+const WX_APPSECRET = process.env.WX_APPSECRET || '';
+
+let accessTokenCache = { token: null, expiresAt: 0 };
+const TOKEN_SAFETY_MS = 60 * 1000; // 提前 1 分钟视为过期，避免踩线
+
+function httpJson(method, url, body) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = https.request({
+      method,
+      hostname: u.hostname,
+      path: u.pathname + u.search,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(body ? { 'Content-Length': Buffer.byteLength(JSON.stringify(body)) } : {}),
+      },
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (e) {
+          reject(new Error(`WX HTTP ${res.statusCode} non-json: ${data}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+async function getAccessToken(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && accessTokenCache.token && accessTokenCache.expiresAt > now + TOKEN_SAFETY_MS) {
+    return accessTokenCache.token;
+  }
+  const url = `${WX_BASE}/cgi-bin/token?grant_type=client_credential&appid=${encodeURIComponent(WX_APPID)}&secret=${encodeURIComponent(WX_APPSECRET)}`;
+  const res = await httpJson('GET', url);
+  if (!res.access_token) {
+    throw new Error(`获取 access_token 失败 errcode=${res.errcode} errmsg=${res.errmsg}`);
+  }
+  accessTokenCache = {
+    token: res.access_token,
+    expiresAt: now + (res.expires_in || 7200) * 1000,
+  };
+  return accessTokenCache.token;
+}
+
+async function sendSubscribeMessageHttp(payload, forceRefresh = false) {
+  const token = await getAccessToken(forceRefresh);
+  const url = `${WX_BASE}/cgi-bin/message/subscribe/send?access_token=${encodeURIComponent(token)}`;
+  return httpJson('POST', url, payload);
+}
+
+/**
+ * 一次性订阅额度核销：发送成功后 -1（best-effort）。
+ * 未落库/旧记录不拦截：微信侧本身会按真实授权校验（43101 未订阅）。
+ */
+async function consumeSubscribeQuota(openid) {
+  try {
+    const res = await db.collection(COLLECTIONS.USERS).where({ openId: openid }).get();
+    const doc = (res.data || [])[0];
+    if (!doc || !(doc.subscribeQuota > 0)) return;
+    await db.collection(COLLECTIONS.USERS).doc(doc._id).update({
+      data: { subscribeQuota: _.inc(-1) },
+    });
+  } catch (e) {
+    console.error('[notifier] consume-quota-failed', e.message);
+  }
+}
+
 /**
  * 发送单条订阅消息。
  * 模板未配置时返回 skipped，不算失败（避免把任务错误标记为 MISSED）。
@@ -101,35 +189,77 @@ async function sendOne(task, spot, offset) {
   if (!(task.channels || []).includes(ChannelType.OFFICIAL_ACCOUNT)) {
     return { ok: false, skipped: true, reason: '用户未勾选公众号通道' };
   }
+  if (!WX_APPID || !WX_APPSECRET) {
+    console.error('[notifier] wx-config-missing', JSON.stringify({
+      taskId: task._id, spotId: task.spotId, offset,
+      hasAppid: Boolean(WX_APPID), hasAppsecret: Boolean(WX_APPSECRET),
+    }));
+    return { ok: false, skipped: false, reason: 'WX_APPID/WX_APPSECRET 未配置，订阅消息通道不可用' };
+  }
 
   const spotName = spot ? spot.name : '景点';
+  const payload = {
+    touser: task.userId,
+    template_id: TEMPLATE_ID,
+    page: 'pages/home/home',
+    miniprogram_state: 'formal',
+    lang: 'zh_CN',
+    data: {
+      // 模板「活动开始通知」字段：thing4=活动名称 / date5=活动时间 / thing7=温馨提示（2026-08-21 对照公众平台修正）
+      thing4: { value: spotName },
+      date5: { value: beijingDateTime(task.releaseAt) },
+      thing7: { value: `${offset} 分钟后放票，记得去抢票` },
+    },
+  };
+
   try {
-    const res = await cloud.openapi.subscribeMessage.send({
-      touser: task.userId,
-      templateId: TEMPLATE_ID,
-      page: 'pages/index/index',
-      miniprogramState: 'formal',
-      lang: 'zh_CN',
-      data: {
-        thing1: { value: spotName },
-        time2: { value: `${beijingMonthDay(task.visitDate)} ${beijingHm(task.releaseAt)}` },
-        thing3: { value: `${offset} 分钟后放票` },
-      },
-    });
-    return { ok: true, res };
+    let res = await sendSubscribeMessageHttp(payload);
+    // access_token 失效/过期（40001/42001）→ 强制刷新后重试一次
+    if (res && Number(res.errcode) !== 0 && [40001, 42001].includes(Number(res.errcode))) {
+      res = await sendSubscribeMessageHttp(payload, true);
+    }
+
+    // HTTP 接口成功时 errcode=0；微信侧错误统一为非 0 errcode
+    if (res && Number(res.errcode) === 0) {
+      // 发送成功 → 扣减一次性订阅额度（best-effort）
+      await consumeSubscribeQuota(task.userId);
+      return { ok: true, res };
+    }
+
+    const errCode = res ? res.errcode : null;
+    const errMsg = res ? res.errmsg : 'empty response';
+    console.error('[notifier] send-error-full', JSON.stringify({
+      taskId: task._id, spotId: task.spotId, offset,
+      errCode, errMsg, detail: res,
+    }));
+    return { ok: false, skipped: false, reason: errCode != null ? `errCode=${errCode} ${errMsg}` : errMsg };
   } catch (err) {
-    // 43101 = 用户拒收 / 未授权；ERROR-1008 配额不足
-    return { ok: false, skipped: false, reason: err.errCode ? `errCode=${err.errCode}` : err.message };
+    // 只存 errCode 会丢掉微信返回的完整错误信息（errMsg 往往直接点名原因），这里全量打日志
+    const errMsg = (err && (err.errMsg || err.message)) || String(err);
+    console.error('[notifier] send-error-full', JSON.stringify({
+      taskId: task._id, spotId: task.spotId, offset,
+      errCode: err && err.errCode, errMsg,
+      detail: err && err.detail,
+    }));
+    return { ok: false, skipped: false, reason: err && err.errCode ? `errCode=${err.errCode} ${errMsg}` : errMsg };
   }
 }
 
 /**
  * REMINDER-RULE-004 状态写入
+ *
+ * 发送失败（如 43101 配额不足）不把 offset 记入 sentOffsets：
+ * 留待下一分钟扫描重试，用户在窗口期内补订阅授权即可救回；
+ * 超过放票时刻仍未成功则判 MISSED。
  */
 async function markResult(task, offset, sendResult, nowTs) {
-  const sent = [...(task.sentOffsets || []), offset];
-  const allSent = (task.offsets || []).every(o => sent.includes(o));
   const releaseAt = new Date(task.releaseAt).getTime();
+  const failed = !sendResult.ok && !sendResult.skipped;
+
+  const sent = failed
+    ? [...(task.sentOffsets || [])]
+    : [...(task.sentOffsets || []), offset];
+  const allSent = (task.offsets || []).every(o => sent.includes(o));
 
   const data = { sentOffsets: sent };
 
@@ -140,7 +270,7 @@ async function markResult(task, offset, sendResult, nowTs) {
       data.triggeredAt = new Date(nowTs);
       data.cleanAt = new Date(nowTs + CLEAN_AFTER_DAYS * 86400000);
     }
-  } else if (!sendResult.skipped) {
+  } else if (failed) {
     // 发送失败：若已过放票时刻则判 MISSED，否则留待下次扫描重试
     if (nowTs >= releaseAt) {
       data.backendStatus = ReminderBackendStatus.MISSED;
@@ -148,7 +278,7 @@ async function markResult(task, offset, sendResult, nowTs) {
       data.cleanAt = new Date(nowTs + CLEAN_AFTER_DAYS * 86400000);
     }
   } else if (allSent) {
-    // 全部通道被跳过（如模板未配置）：仍推进状态，避免任务永久滞留 WAITING
+    // 全部通道被跳过（如用户未勾选公众号通道）：仍推进状态，避免任务永久滞留 WAITING
     data.backendStatus = ReminderBackendStatus.TRIGGERED;
     data.triggeredAt = new Date(nowTs);
     data.cleanAt = new Date(nowTs + CLEAN_AFTER_DAYS * 86400000);
@@ -296,6 +426,33 @@ exports.main = async (event) => {
       }
       case 'sendNow':
         return { success: true, ...(await scanAndSend()) };
+      case 'testSend': {
+        const { touser, miniprogramState = 'formal', lang = 'zh_CN', data, templateId } = event || {};
+        if (!touser) return { success: false, error: 'testSend 需要 touser（已授权订阅的 openid）' };
+        if (!WX_APPID || !WX_APPSECRET) return { success: false, error: 'WX_APPID/WX_APPSECRET 未配置' };
+        const payload = {
+          touser,
+          template_id: templateId || TEMPLATE_ID,
+          page: 'pages/home/home',
+          miniprogram_state: miniprogramState,
+          lang,
+          data: data || {
+            thing4: { value: '测试提醒' },
+            date5: { value: '2026-08-21 18:30' },
+            thing7: { value: '订阅消息通道验证（活动开始通知）' },
+          },
+        };
+        try {
+          const res = await sendSubscribeMessageHttp(payload);
+          return { success: !!(res && Number(res.errcode) === 0), res };
+        } catch (err) {
+          return { success: false, error: err.message, res: null };
+        }
+      }
+      case 'whoami': {
+        const ctx = cloud.getWXContext();
+        return { success: true, openid: ctx.OPENID || null, appid: ctx.APPID || null };
+      }
       case 'sweepMissed':
         return { success: true, ...(await sweepMissed()) };
       case 'cleanup':
@@ -309,4 +466,4 @@ exports.main = async (event) => {
   }
 };
 
-exports._internal = { collectDue, staggerDelays, beijingHm, beijingMonthDay };
+exports._internal = { collectDue, staggerDelays, beijingHm, beijingMonthDay, beijingDateTime, getAccessToken, sendSubscribeMessageHttp, httpJson, WX_APPID, WX_APPSECRET, TEMPLATE_ID };

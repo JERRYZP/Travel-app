@@ -1,3 +1,5 @@
+const api = require('./api.js');
+
 /**
  * 通知授权状态工具 —— profile 三态文案 / 通知设置内页 / 设置提醒页就地授权 共用
  *
@@ -68,10 +70,24 @@ function requestSubscribe() {
     }
     wx.requestSubscribeMessage({
       tmplIds: [SUBSCRIBE_TEMPLATE_ID],
-      success: res => resolve({ ok: res[SUBSCRIBE_TEMPLATE_ID] === 'accept' }),
+      success: res => {
+        const ok = res[SUBSCRIBE_TEMPLATE_ID] === 'accept';
+        if (ok) {
+          // 授权成功 → 云端 +1 一次性订阅额度（best-effort，不影响提交流程）
+          api.reminder.subscribe.add(SUBSCRIBE_TEMPLATE_ID).catch(() => {});
+        }
+        resolve({ ok });
+      },
       fail: () => resolve({ ok: false, reason: 'request-failed' }),
     });
   });
+}
+
+/** 查询剩余一次性订阅额度（用于通知设置页展示） */
+function getSubscribeQuota() {
+  return api.reminder.subscribe.get(SUBSCRIBE_TEMPLATE_ID)
+    .then(r => ({ ok: true, quota: (r && r.quota) || 0 }))
+    .catch(() => ({ ok: false, quota: 0 }));
 }
 
 module.exports = {
@@ -79,4 +95,5 @@ module.exports = {
   getNotifyStatus,
   openSystemNotifySetting,
   requestSubscribe,
+  getSubscribeQuota,
 };

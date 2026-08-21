@@ -8,6 +8,7 @@ Page({
     systemOk: false,
     subscribeOk: false,
     templateReady: false,
+    subscribeQuota: 0,
     loading: true,
   },
 
@@ -28,6 +29,9 @@ Page({
   refresh() {
     notify.getNotifyStatus().then(s => {
       this.setData({ systemOk: s.systemOk, subscribeOk: s.subscribeOk, loading: false });
+    });
+    notify.getSubscribeQuota().then(q => {
+      this.setData({ subscribeQuota: q.quota });
     });
   },
 
