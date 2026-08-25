@@ -3,29 +3,36 @@
 <view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px; background-color: rgba(248, 243, 234, {{navOpacity}});">
   <view style="height: {{statusBarHeight}}px;"></view>
   <view class="navbar-content" style="height: {{navBarHeight}}px;">
-    <view class="navbar-city" bindtap="onCityTap">
-      <svg-icon name="location" size="14px" />
-      <text>游北京</text>
-      <svg-icon name="chevron-down" size="14px" />
+    <view wx:if="{{homeMode === 2}}" class="navbar-tabs">
+      <view class="navbar-tab {{homeTab === 'tasks' ? 'active' : ''}}" bindtap="onHomeTabTap" data-tab="tasks">提醒任务</view>
+      <view class="navbar-tab {{homeTab === 'add' ? 'active' : ''}}" bindtap="onHomeTabTap" data-tab="add">添加提醒</view>
     </view>
-    <text class="navbar-title">{{homeMode === 2 ? '提醒任务' : '景点预约提醒'}}</text>
+    <text wx:else class="navbar-title">景点预约提醒</text>
   </view>
 </view>
+
 <!-- ========== 形态1：创建态 ========== -->
-<block wx:if="{{homeMode === 1}}">
+<block wx:if="{{homeMode === 1 || (homeMode === 2 && homeTab === 'add')}}">
   <scroll-view scroll-y class="page-scroll" style="height: 100vh;" bindscroll="onPageScroll">
-   <view class="page-body page-body-create {{showTimeline ? 'page-body-timeline' : ''}}" style="padding-top: {{statusBarHeight + navBarHeight + 8}}px;">
+   <view class="page-body page-body-create {{showTimeline ? 'page-body-timeline' : ''}}" style="padding-top: {{statusBarHeight + navBarHeight + (homeMode === 2 && homeTab === 'add' ? 0 : 8)}}px;">
       <image wx:if="{{cityBg}}" class="city-bg" src="{{cityBg}}" mode="aspectFit" />
 
-      <!-- 日期模块：点击卡片弹日历选范围 -->
+      <!-- 行程模块：城市（窄）+ 日期（宽），点击各自弹选择 -->
       <view class="form-section form-section-first">
-        <text class="form-label">准备玩几天？</text>
-        <view class="form-input-card" bindtap="onDateCardTap">
-          <svg-icon name="calendar" size="18px" />
-          <text wx:if="{{!dateRangeText}}" class="form-placeholder">来北京玩第一件事是预约景点</text>
-          <view wx:else class="form-date-row">
-            <text class="form-value">{{dateRangeText}}</text>
-            <text class="form-day-count">共{{dayCount}}天</text>
+        <text class="form-label">去哪儿玩几天？</text>
+        <view class="form-row">
+          <view class="form-city-card" bindtap="onCityTap">
+            <svg-icon name="location" size="16px" />
+            <text class="form-city-name">北京</text>
+            <svg-icon name="chevron-down" size="14px" />
+          </view>
+          <view class="form-input-card form-date-card" bindtap="onDateCardTap">
+            <svg-icon name="calendar" size="18px" />
+            <text wx:if="{{!dateRangeText}}" class="form-placeholder">选择游玩日期</text>
+            <view wx:else class="form-date-row">
+              <text class="form-value">{{dateRangeText}}</text>
+              <text class="form-day-count">共{{dayCount}}天</text>
+            </view>
           </view>
         </view>
       </view>
@@ -137,11 +144,11 @@
           </block>
         </view>
 
-        <!-- 闭馆景点 -->
+        <!-- 闭馆 / 放票时间未定景点 -->
         <view wx:if="{{timelineClosedSpots.length > 0}}" class="closed-spots">
           <view wx:for="{{timelineClosedSpots}}" wx:key="spotId" class="closed-spot">
             <van-icon name="warning-o" size="14px" color="#B8904A" />
-            <text>{{item.spotName}}：行程期间闭馆</text>
+            <text>{{item.spotName}}：{{item.note || '行程期间闭馆'}}</text>
           </view>
         </view>
       </view>
@@ -210,7 +217,7 @@
 </block>
 
 <!-- ========== 形态2：任务列表 ========== -->
-<block wx:elif="{{homeMode === 2}}">
+<block wx:elif="{{homeMode === 2 && homeTab === 'tasks'}}">
   <scroll-view scroll-y class="page-scroll" style="height: 100vh;" bindscroll="onPageScroll">
     <view class="page-body" style="padding-top: {{statusBarHeight + navBarHeight + 8}}px;">
       <image wx:if="{{cityBg}}" class="city-bg" src="{{cityBg}}" mode="aspectFit" />
@@ -265,8 +272,8 @@
                 </view>
               </view>
               <view class="task-card-right">
-                <view class="task-card-status status-{{task.backendStatus === 'WAITING' ? 'waiting' : 'done'}}">
-                  <svg-icon name="{{task.backendStatus === 'WAITING' ? 'stopwatch-orange' : 'check-brown'}}" size="10px" />
+                <view class="task-card-status status-{{task.statusClass}}" catchtap="onMissedExplain" data-id="{{task._id}}">
+                  <svg-icon wx:if="{{task.backendStatus === 'MISSED'}}" name="alert-circle" size="10px" />
                   <text>{{task.statusLabel}}</text>
                 </view>
                 <text wx:if="{{task.countdown}}" class="task-countdown {{task.countdown.urgent ? 'urgent' : ''}}">{{task.countdown.text}}</text>
@@ -297,7 +304,7 @@
   <!-- 悬浮新增按钮 -->
   <view class="fab-btn" bindtap="onNewReminder">
     <svg-icon name="plus-white" size="18px" />
-    <text>新增提醒</text>
+    <text>添加提醒</text>
   </view>
 </block>
 
@@ -316,4 +323,4 @@
 <cart-popup show="{{showCartPopup}}" trip-id="{{timelineTripId}}" above-tabbar="{{true}}" bind:close="onInlineCartClose" bind:change="onInlineCartChange" />
 
 <!-- 底部导航 -->
-<tabbar active="home" badge="{{badge}}" />
+<tabbar active="home" />

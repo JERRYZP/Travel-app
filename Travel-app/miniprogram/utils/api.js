@@ -58,6 +58,7 @@ const reminder = {
   },
   user: {
     profile: () => call('reminder', { action: 'user.profile' }),
+    updateProfile: (p) => call('reminder', { action: 'user.updateProfile', ...p }),
     updateNotifyPrefs: (notifyPrefs) => call('reminder', { action: 'user.updateNotifyPrefs', notifyPrefs }),
   },
   subscribe: {

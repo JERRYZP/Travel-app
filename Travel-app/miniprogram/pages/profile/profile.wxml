@@ -7,13 +7,16 @@
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
 
 <view class="page-body">
-  <!-- 用户信息（长按进入反馈管理，后端 openid 白名单鉴权） -->
+  <!-- 用户信息：无感登录常驻登录态；点头像/昵称进编辑资料页；长按进入反馈管理，后端 openid 白名单鉴权 -->
   <view class="profile-header" bindlongpress="onAdminEntry">
-    <view class="profile-avatar" style="background: linear-gradient(135deg, #EDE0C8, #DBCDBB);">
-      <svg-icon name="profile" size="36px" />
+    <view class="profile-avatar" bindtap="onEditProfile">
+      <image wx:if="{{user.avatarUrl}}" class="profile-avatar-img" src="{{user.avatarUrl}}" mode="aspectFill" />
+      <svg-icon wx:else name="profile" size="36px" />
     </view>
     <view class="profile-info">
-      <text class="profile-name">{{user.nickname || '游客'}}</text>
+      <view class="profile-name-row">
+        <text class="profile-name" bindtap="onEditProfile">{{user.nickname || '用户'}}</text>
+      </view>
       <view class="profile-tag">普通用户</view>
     </view>
   </view>
@@ -49,4 +52,4 @@
   </view>
 </view>
 
-<tabbar active="profile" badge="{{badge}}" />
+<tabbar active="profile" />

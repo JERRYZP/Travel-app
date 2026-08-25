@@ -49,14 +49,10 @@ Page({
   load() {
     this.setData({ loading: true, forbidden: false });
     api.feedback.adminList().then((res) => {
-      if (!res || !res.success) {
-        // 1040 = 非管理员白名单
-        this.setData({ loading: false, forbidden: true, items: [] });
-        return;
-      }
       this.rawItems = (res.items || []).map(item => this.decorate(item));
       this.setData({ loading: false, items: this.filterItems(this.data.activeFilter) });
     }).catch(() => {
+      // 一切失败（非管理员白名单 1040 / mock 未实现 1099 / 网络等）→ 无权限页
       this.setData({ loading: false, forbidden: true, items: [] });
     });
   },
@@ -98,10 +94,6 @@ Page({
   onMark(e) {
     const { id, status } = e.currentTarget.dataset;
     api.feedback.adminUpdateStatus({ id, status }).then((res) => {
-      if (!res || !res.success) {
-        api.toastError(res);
-        return;
-      }
       const target = this.rawItems.find(i => i.id === id);
       if (target) {
         const meta = STATUS_META[status] || STATUS_META.OPEN;
@@ -110,7 +102,7 @@ Page({
         target.statusCls = meta.cls;
         this.setData({ items: this.filterItems(this.data.activeFilter) });
       }
-    });
+    }).catch(err => api.toastError(err));
   },
 
   onBack() {

@@ -118,6 +118,17 @@ function cardDescOf(rule, now = new Date()) {
   return base ? '随到随买，' + base : '';
 }
 
+/** 弱提醒（需预约但非常好约）：标签行改为平和描述，不渲染放票紧迫标签 */
+function weakLine(rule) {
+  if (!rule) return '票量充足，无需卡点抢票';
+  const rt = rule.releaseTimes || rule.releaseTime;
+  if (rt) {
+    const adv = rule.advanceDays ? `提前${rule.advanceDays}天 ` : '';
+    return `${adv}${Array.isArray(rt) ? rt.join('、') : rt}放票 · 票量充足，无需卡点`;
+  }
+  return '票量充足，无需卡点抢票';
+}
+
 /** TAG-RULE-001 标签构建：提前天数 + 放票时刻（支持多时段/空时刻） */
 function buildTags(rule) {
   const t = [];
@@ -130,6 +141,12 @@ function buildTags(rule) {
 /** 组装景点卡（PAGE-001 网格 / PAGE-003 列表共用） */
 function buildCard(spot, rule, now) {
   const status = computeReleaseStatus(rule, now);
+  // 可提醒 = 需预约 且有真实放票时刻（无放票时刻如环球影城购票型 → 不进时间线/清单/任务）
+  const remindable = spot.reservationRequired !== false && !!(rule && rule.advanceDays && (rule.releaseTimes || rule.releaseTime));
+  const weak = spot.reservationRequired !== false && (spot.difficultyScore || 0) <= 2;
+  let cardDesc = cardDescOf(rule, now);
+  if (remindable && weak) cardDesc = weakLine(rule);
+  else if (!remindable && spot.reservationRequired !== false) cardDesc = '无固定放票时刻，随买随用';
   return {
     spotId: spot.spotId,
     name: spot.name,
@@ -140,7 +157,11 @@ function buildCard(spot, rule, now) {
     popularityScore: spot.popularityScore,
     // 2026 分层：是否仍需实名预约（B 层免预约 → 不进提醒流程，卡片显示「无需预约」tag）
     reservationRequired: spot.reservationRequired !== false,
-    cardDesc: cardDescOf(rule, now),
+    // 无放票时刻的需预约景点（如环球影城）也不可添加，按钮位显示「随买随用」tag
+    remindable,
+    // 弱提醒：需预约但非常好约（difficulty≤2），标签行给平和描述而非紧迫放票标签
+    weak,
+    cardDesc,
     // TAG-RULE-001 核心标签：只回答「什么时候抢、难不难抢」
     tags: rule ? buildTags(rule) : [],
     advanceDays: rule ? rule.advanceDays : null,
@@ -231,6 +252,8 @@ exports.main = async (event) => {
             entries,
             // 预约注意事项（折叠展开），取自 release_rules
             bookingTips: rule ? rule.bookingTips : '',
+            // 官方临时公告（如闭馆维修/临时停开），有内容时详情弹窗顶部红条显示
+            specialNotice: rule ? (rule.specialNotice || '') : '',
             openTime: rule ? rule.openTime : '',
             ticketPrice: rule ? rule.ticketPrice : '',
             idRequirement: rule ? rule.idRequirement : '',

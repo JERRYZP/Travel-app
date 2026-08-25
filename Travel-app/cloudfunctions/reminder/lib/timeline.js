@@ -191,10 +191,16 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
   for (const spot of (spotsRes.data || [])) {
     // B 层免预约景点不进时间线（reservationRequired=false，2026 政策已取消预约）
     if (spot.reservationRequired === false) continue;
-    const built = buildEvents(spot, ruleMap[spot.spotId], trip);
+    const rule = ruleMap[spot.spotId];
+    const built = buildEvents(spot, rule, trip);
     if (built.length === 0) {
-      // TIMELINE-RULE-005：行程内每天都闭馆 → 想去列表该行标注「行程期间闭馆」
-      closedSpots.push({ spotId: spot.spotId, spotName: spot.name, note: '行程期间闭馆' });
+      // 区分两种「无事件」：规则不全（无放票时刻，如环球影城购票型）≠ 行程期间闭馆
+      if (!rule || !rule.advanceDays || !rule.releaseTime) {
+        closedSpots.push({ spotId: spot.spotId, spotName: spot.name, note: '无固定放票时刻，暂不生成提醒' });
+      } else {
+        // TIMELINE-RULE-005：行程内每天都闭馆 → 想去列表该行标注「行程期间闭馆」
+        closedSpots.push({ spotId: spot.spotId, spotName: spot.name, note: '行程期间闭馆' });
+      }
       continue;
     }
     for (const event of built) {

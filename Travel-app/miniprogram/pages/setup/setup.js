@@ -11,9 +11,9 @@ Page({
       officialAccount: true,
       sms: false,
     },
-    offsets: [5, 2],
+    offsets: [5],
     checkedOffset5: true,
-    checkedOffset2: true,
+    checkedOffset2: false,
     submitting: false,
   },
 
@@ -34,19 +34,13 @@ Page({
     this.setData({ channels });
   },
 
+  /* 提前量单选：5 分钟 / 2 分钟二选一（一次性订阅消息按条授权，一条任务只发一条提醒） */
   onToggleOffset(e) {
     const val = Number(e.currentTarget.dataset.val);
-    const offsets = [].concat(this.data.offsets);
-    const idx = offsets.indexOf(val);
-    if (idx >= 0) {
-      offsets.splice(idx, 1);
-    } else {
-      offsets.push(val);
-    }
     this.setData({
-      offsets,
-      checkedOffset5: offsets.indexOf(5) >= 0,
-      checkedOffset2: offsets.indexOf(2) >= 0,
+      offsets: [val],
+      checkedOffset5: val === 5,
+      checkedOffset2: val === 2,
     });
   },
 
@@ -67,8 +61,12 @@ Page({
 
     /* 前置授权没做齐 → 当前页弹窗就地引导，不跳个人中心；授权完成后继续提交 */
     notify.getNotifyStatus().then(status => {
-      if (status.doneCount >= 2) {
-        this.submitTask({ tripId, channelList, offsets });
+      if (status.systemOk && status.subscribeOk) {
+        /* 两项授权都在，仍要攒配额：一次性订阅每授权一次只能发一条，
+           勾过「总是允许」的用户此处静默通过不弹窗 */
+        notify.requestSubscribe().then(() => {
+          this.submitTask({ tripId, channelList, offsets });
+        });
         return;
       }
       wx.hideLoading();
@@ -93,10 +91,9 @@ Page({
     });
   },
 
-  /* 就地授权：订阅消息（页内弹框）+ 系统通知权限（跳系统设置），然后继续提交 */
+  /* 就地授权：订阅消息（页内弹框，每次提交都请求以攒配额）+ 系统通知权限（跳系统设置），然后继续提交 */
   localAuthThenSubmit(payload, status) {
-    const steps = [];
-    if (!status.subscribeOk) steps.push(notify.requestSubscribe());
+    const steps = [notify.requestSubscribe()];
     if (!status.systemOk) steps.push(Promise.resolve(notify.openSystemNotifySetting()));
     Promise.all(steps).then(() => this.submitTask(payload));
   },
@@ -120,6 +117,8 @@ Page({
         });
       }
       wx.showToast({ title: '提醒已设置，放票前见', icon: 'none' });
+      /* 标记提交成功，首页 onShow 据此切回「提醒任务」Tab */
+      app.globalData.reminderSubmitted = true;
       setTimeout(() => {
         /* 回到首页：兼容 首页→设置（内联生成）与 首页→添加提醒→设置 两种栈深 */
         const pages = getCurrentPages();

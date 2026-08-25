@@ -97,6 +97,8 @@ exports.main = async (event) => {
       /* ======== 用户 ======== */
       case 'user.profile':
         return await getOrCreateUser(userId);
+      case 'user.updateProfile':
+        return await updateUserProfile(userId, event);
       case 'user.updateNotifyPrefs':
         return await updateNotifyPrefs(userId, event.notifyPrefs || {});
 
@@ -126,16 +128,24 @@ exports.main = async (event) => {
   }
 };
 
-/** TABLE-005 用户表：首次调用时惰性创建 */
+/** TABLE-005 用户表：首次调用时惰性创建（无感登录：自动生成昵称+随机默认头像，无任何弹窗） */
 async function getOrCreateUser(userId) {
   const res = await db.collection(COLLECTIONS.USERS).where({ openId: userId }).get();
   if ((res.data || []).length > 0) {
-    return ok({ user: res.data[0] });
+    const u = res.data[0];
+    /* 惰性迁移旧数据：昵称为空或「游客」-> 补自动资料，用户无感知 */
+    if (!u.nickname || u.nickname === '游客') {
+      const patch = genAutoProfile();
+      patch.profileUpdatedAt = time.now();
+      await db.collection(COLLECTIONS.USERS).doc(u._id).update({ data: patch });
+      return ok({ user: { ...u, ...patch } });
+    }
+    return ok({ user: u });
   }
   const data = {
     openId: userId,
-    nickname: '',
-    avatarUrl: '',
+    ...genAutoProfile(),
+    phone: '',
     notifyPrefs: {
       officialAccount: false,
       sms: false,
@@ -150,6 +160,21 @@ async function getOrCreateUser(userId) {
   return ok({ user: { _id: add._id, ...data } });
 }
 
+/**
+ * 无感登录自动资料：昵称 = 「用户」+ 6 位随机字符（小写字母+数字，去易混淆 0/o/1/l），
+ * 头像 = 随机默认占位图（主包内本地路径 /images/avatars/default-{1..6}.png，前端 <image> 直接渲染）。
+ * 昵称允许重复（无唯一约束）；用户可在「编辑资料」页自行修改头像/昵称/手机号。
+ */
+function genAutoProfile() {
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+  let suffix = '';
+  for (let i = 0; i < 6; i++) suffix += chars[Math.floor(Math.random() * chars.length)];
+  return {
+    nickname: '用户' + suffix,
+    avatarUrl: '/images/avatars/default-' + (1 + Math.floor(Math.random() * 6)) + '.png',
+  };
+}
+
 async function updateNotifyPrefs(userId, prefs) {
   const res = await db.collection(COLLECTIONS.USERS).where({ openId: userId }).get();
   if (!(res.data || []).length) await getOrCreateUser(userId);
@@ -159,6 +184,35 @@ async function updateNotifyPrefs(userId, prefs) {
     data: { notifyPrefs: prefs },
   });
   return ok({ notifyPrefs: prefs });
+}
+
+/**
+ * user.updateProfile —— 保存头像/昵称/手机号（「编辑资料」页）
+ * 昵称必填且允许重复；头像为云存储 fileID 或主包默认占位图路径，可空（空则前端显示占位）；
+ * 手机号选填，填了须为大陆 11 位手机号格式。
+ */
+async function updateUserProfile(userId, data = {}) {
+  const nickname = (data.nickname || '').trim().slice(0, 32);
+  if (!nickname) return fail({ code: ERRORS.BAD_PARAM.code, message: '昵称不能为空' });
+  const avatarUrl = typeof data.avatarUrl === 'string' ? data.avatarUrl.slice(0, 512) : '';
+  const phone = typeof data.phone === 'string' ? data.phone.trim() : '';
+  if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
+    return fail({ code: ERRORS.BAD_PARAM.code, message: '手机号格式不正确' });
+  }
+
+  let res = await db.collection(COLLECTIONS.USERS).where({ openId: userId }).get();
+  if (!(res.data || []).length) await getOrCreateUser(userId);
+  const target = await db.collection(COLLECTIONS.USERS).where({ openId: userId }).get();
+  const u = target.data[0];
+  await db.collection(COLLECTIONS.USERS).doc(u._id).update({
+    data: {
+      nickname,
+      avatarUrl,
+      phone,
+      profileUpdatedAt: time.now(),
+    },
+  });
+  return ok({ user: { ...u, nickname, avatarUrl, phone } });
 }
 
 /** 订阅消息模板 ID（与 miniprogram/utils/notify.js、cloudfunctions/notifier 兜底常量对齐） */

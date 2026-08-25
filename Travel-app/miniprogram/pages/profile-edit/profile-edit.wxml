@@ -1,0 +1,62 @@
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack">
+      <svg-icon name="back-thick" size="18px" />
+    </view>
+    <text class="navbar-title">编辑资料</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view class="page-body">
+  <view class="edit-card">
+    <!-- 头像：整行可点，走微信原生 chooseAvatar 选头像 -->
+    <button class="edit-row edit-row-avatar edit-row-btn" open-type="chooseAvatar" bindchooseavatar="onChooseWechatAvatar">
+      <text class="edit-label">头像</text>
+      <view class="edit-row-right">
+        <view class="edit-avatar">
+          <image wx:if="{{avatarUrl}}" class="edit-avatar-img" src="{{avatarUrl}}" mode="aspectFill" />
+          <svg-icon wx:else name="profile" size="24px" />
+        </view>
+        <svg-icon name="chevron-right" size="14px" />
+      </view>
+    </button>
+
+    <!-- 昵称：type=nickname 聚焦时键盘上方展示微信昵称，点一下即填入；也可自行输入，允许与他人重复 -->
+    <view class="edit-row">
+      <text class="edit-label">昵称</text>
+      <input
+        class="edit-input"
+        type="nickname"
+        value="{{nickname}}"
+        bindinput="onNicknameInput"
+        placeholder="点击填入微信昵称，或自行输入"
+        placeholder-class="edit-placeholder"
+        maxlength="32"
+      />
+    </view>
+
+    <!-- 手机号：选填，用于未来的短信提醒 -->
+    <view class="edit-row">
+      <view class="edit-label-wrap">
+        <text class="edit-label">手机号</text>
+        <text class="edit-optional">选填</text>
+      </view>
+      <input
+        class="edit-input edit-input-phone"
+        type="number"
+        value="{{phone}}"
+        bindinput="onPhoneInput"
+        placeholder="用于短信提醒服务"
+        placeholder-class="edit-placeholder"
+        maxlength="11"
+      />
+    </view>
+  </view>
+
+  <view class="save-btn {{saving ? 'disabled' : ''}}" bindtap="onSave">
+    <van-loading wx:if="{{saving}}" size="40rpx" color="#FFFEFB" />
+    <text>{{saving ? '保存中' : '保存'}}</text>
+  </view>
+</view>

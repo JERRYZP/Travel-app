@@ -130,11 +130,11 @@
         </block>
       </view>
 
-      <!-- 闭馆景点 -->
+      <!-- 闭馆 / 放票时间未定景点 -->
       <view wx:if="{{closedSpots.length > 0}}" class="closed-spots">
         <view wx:for="{{closedSpots}}" wx:key="spotId" class="closed-spot">
           <van-icon name="warning-o" size="14px" color="#B8904A" />
-          <text>{{item.spotName}}：行程期间闭馆</text>
+          <text>{{item.spotName}}：{{item.note || '行程期间闭馆'}}</text>
         </view>
       </view>
     </view>

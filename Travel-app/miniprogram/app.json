@@ -5,6 +5,7 @@
     "pages/timeline/timeline",
     "pages/setup/setup",
     "pages/profile/profile",
+    "pages/profile-edit/profile-edit",
     "pages/webview/webview",
     "pages/notify-settings/notify-settings",
     "pages/feedback/feedback",

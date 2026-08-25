@@ -11,6 +11,8 @@ Page({
     navBarRight: 100,
     navOpacity: 0,
    homeMode: 1,
+    /* 有任务时的顶部双 Tab（提醒任务 / 添加提醒），默认落在任务列表 */
+    homeTab: 'tasks',
     cityBg: '/images/cities/beijing.png',
    loading: true,
     startDate: '',
@@ -32,7 +34,6 @@ Page({
     showGroupTabs: false,
     showSpotPopup: false,
     popupSpotId: '',
-    badge: 0,
     menuTaskId: '',
     collapsedGroups: [],
 
@@ -77,6 +78,11 @@ Page({
   },
 
   onShow() {
+    /* 设置提醒提交成功后返回首页，落回「提醒任务」让用户直接看到新任务 */
+    if (app.globalData.reminderSubmitted) {
+      app.globalData.reminderSubmitted = false;
+      this.setData({ homeTab: 'tasks' });
+    }
     this.loadHomeData();
   },
 
@@ -101,6 +107,7 @@ Page({
   /* 任务卡副标题「开抢5月31日（周四）门票」→ 拆出红色日期段（对齐设计稿） */
   decorateTaskGroups(groups) {
     const collapsed = this.data.collapsedGroups || [];
+    const STATUS_CLASS = { WAITING: 'waiting', TRIGGERED: 'done', MISSED: 'missed' };
     return (groups || []).map(g => {
       const items = (g.items || []).map(t => {
         const m = /^(开抢)(.+?)(门票)$/.exec(t.grabLabel || '');
@@ -108,6 +115,7 @@ Page({
           grabPre: m ? m[1] : t.grabLabel,
           grabDate: m ? m[2] : '',
           grabPost: m ? m[3] : '',
+          statusClass: STATUS_CLASS[t.backendStatus] || 'done',
         });
       });
       return Object.assign({}, g, { items, collapsed: collapsed.indexOf(g.key) !== -1 });
@@ -125,10 +133,10 @@ Page({
 
 
 
-  doClearTasks() {
+  doClearTasks(params) {
     if (this.data.submitting) return;
     this.setData({ submitting: true });
-    api.reminder.task.clear().then(() => {
+    api.reminder.task.clear(params).then(() => {
       this.setData({ submitting: false, menuTaskId: '' });
       this.loadHomeData();
     }).catch(err => { this.setData({ submitting: false }); api.toastError(err); });
@@ -136,27 +144,20 @@ Page({
 
   onClearTasks() {
     if (this.data.submitting) return;
-    /* 二次确认：先看还有没有「进行中」的待提醒任务 */
-    api.reminder.task.list({ filter: 'active' }).then(res => {
-      const pending = res.counts ? res.counts.active : 0;
-      if (pending > 0) {
-        wx.showModal({
-          title: `还有${pending}条任务待提醒，确认删除？`,
-          success: r => { if (r.confirm) this.doClearTasks(); },
-        });
+    /* 只清空当前 tab（状态筛选 + 行程分组），提示语带上 tab 名与条数 */
+    const filter = this.data.activeFilter;
+    const tripId = this.data.activeTripTab || undefined;
+    api.reminder.task.list({ filter, tripId }).then(res => {
+      const n = res.counts ? (res.counts[filter] || 0) : 0;
+      if (n === 0) {
+        wx.showToast({ title: '当前没有可清空的任务', icon: 'none' });
         return;
       }
-      api.reminder.task.list({ filter: 'expired' }).then(r2 => {
-        const expired = r2.counts ? r2.counts.expired : 0;
-        if (expired === 0) {
-          wx.showToast({ title: '没有可清空的任务', icon: 'none' });
-          return;
-        }
-        wx.showModal({
-          title: '确认清空任务？',
-          success: r => { if (r.confirm) this.doClearTasks(); },
-        });
-      }).catch(err => api.toastError(err));
+      const tabName = filter === 'expired' ? '已过期' : '进行中';
+      wx.showModal({
+        title: `确认清空${tabName}的 ${n} 条任务？`,
+        success: r => { if (r.confirm) this.doClearTasks({ filter, tripId }); },
+      });
     }).catch(err => api.toastError(err));
   },
 
@@ -173,18 +174,21 @@ Page({
     this.setData({ loading: true });
     api.reminder.task.list({ filter: 'active' }).then(res => {
       const mode = res.homeMode || 1;
-      this.setData({ homeMode: mode, badge: res.badge || 0, loading: false });
+      this.setData({ homeMode: mode, loading: false });
       if (mode === 2) {
+        /* 双 Tab 的「添加提醒」视图下保留内联时间线，返回本页不丢进度 */
+        const keepInline = this.data.homeTab === 'add' && this.data.showTimeline && this.data.timelineTripId;
         this.setData({
           taskGroups: this.decorateTaskGroups(res.groups),
           counts: res.counts || { active: 0, expired: 0 },
           banner: res.banner,
-          showTimeline: false,
+          showTimeline: keepInline,
           timelineSticky: false,
           menuTaskId: '',
           showCartPopup: false,
         });
         this.loadTrips();
+        if (keepInline) this.loadInlineCart();
       } else {
         /* 形态1：已有内联时间线则保留并刷新清单，否则加载热门景点 */
         if (this.data.showTimeline && this.data.timelineTripId) {
@@ -194,7 +198,7 @@ Page({
         }
       }
     }).catch(() => {
-      this.setData({ homeMode: 1, badge: 0, loading: false });
+      this.setData({ homeMode: 1, loading: false });
       this.loadHotSpots();
     });
   },
@@ -217,12 +221,29 @@ Page({
 
  loadTrips() {
     api.reminder.trip.list().then(res => {
-      this.setData({ trips: res.trips || [], showGroupTabs: res.showGroupTabs || false });
+      const trips = res.trips || [];
+      const patch = { trips, showGroupTabs: res.showGroupTabs || false };
+      /* 选中行程已被服务端级联删除（空行程）→ 回到「全部」 */
+      if (this.data.activeTripTab && !trips.some(t => t._id === this.data.activeTripTab)) {
+        patch.activeTripTab = '';
+      }
+      this.setData(patch);
     }).catch(() => {});
   },
 
   onCityTap() {
     wx.showToast({ title: '更多城市即将开放', icon: 'none' });
+  },
+
+  onHomeTabTap(e) {
+    const tab = e.currentTarget.dataset.tab;
+    if (tab === this.data.homeTab) return;
+    const patch = { homeTab: tab, menuTaskId: '' };
+    /* 首次切到「添加提醒」且没有内联时间线时，惰性加载热门景点 */
+    if (tab === 'add' && !this.data.showTimeline && this.data.hotSpots.length === 0) {
+      this.loadHotSpots();
+    }
+    this.setData(patch);
   },
 
   onDateCardTap() {
@@ -252,9 +273,12 @@ Page({
   onSpotSelectToggle(e) {
     const spotId = e.currentTarget.dataset.id;
     const spot = e.currentTarget.dataset.spot;
-    // B 层免预约景点不可选（UI 已是「无需预约」tag，此处兜底）
-    if (spot && spot.reservationRequired === false) {
-      wx.showToast({ title: '该景点无需预约，现场购票即可', icon: 'none' });
+    // 免预约或无放票时刻景点不可选（UI 已是 tag，此处兜底）
+    if (spot && !spot.remindable) {
+      wx.showToast({
+        title: spot.reservationRequired ? '该景点无固定放票时刻，随买随用即可' : '该景点无需预约，现场购票即可',
+        icon: 'none',
+      });
       return;
     }
     const ids = [].concat(this.data.selectedSpotIds);
@@ -555,13 +579,32 @@ Page({
     });
   },
 
-  onNewReminder() {
-    const tripId = this.data.activeTripTab || (this.data.trips[0] && this.data.trips[0]._id) || '';
-    if (tripId) {
-      wx.navigateTo({ url: '/pages/timeline/timeline?tripId=' + tripId });
-    } else {
-      wx.navigateTo({ url: '/pages/timeline/timeline' });
+  /* MISSED 任务状态胶囊整体可点 → 弹未送达原因（quota / 通知权限）；其他状态不拦截 */
+  onMissedExplain(e) {
+    const id = e.currentTarget.dataset.id;
+    let task = null;
+    for (const g of this.data.taskGroups || []) {
+      const hit = (g.items || []).find(i => i._id === id);
+      if (hit) { task = hit; break; }
     }
+    if (!task || task.backendStatus !== 'MISSED') return;
+    const reason = task.missedReason || '';
+    const content = /43101/.test(reason)
+      ? '微信订阅消息授权次数不足：每设置一次提醒需重新授权一次，本次发送被微信拒绝。下次设置提醒时，请在授权弹窗中点「允许」。'
+      : reason.includes('超过放票时间')
+        ? '已过放票时间仍未送达。常见原因：订阅消息授权次数不足，或微信通知权限未开启。'
+        : reason || '已过放票时间仍未送达，具体原因未知。';
+    wx.showModal({
+      title: '未送达原因',
+      content,
+      showCancel: false,
+      confirmText: '知道了',
+    });
+  },
+
+  onNewReminder() {
+    /* 底部主操作改为切到「添加提醒」Tab，不再跳二级页 */
+    this.setData({ homeTab: 'add', menuTaskId: '' });
   },
 
 });

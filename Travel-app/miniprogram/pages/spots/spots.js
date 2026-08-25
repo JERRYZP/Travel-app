@@ -61,7 +61,7 @@ Page({
   },
 
   applyHotPool(list) {
-    const pool = (list || []).filter(s => s.reservationRequired !== false); // S+A
+    const pool = (list || []).filter(s => s.remindable); // 仅可提醒景点（S+A，含无放票时刻者挡出）
     this.setData({
       hotPool: pool,
       hotSpots: this.mixBatch(pool, this.data.selectedSpotIds),
@@ -147,9 +147,12 @@ Page({
   onSpotToggle(e) {
     const spotId = e.currentTarget.dataset.id;
     const spot = e.currentTarget.dataset.spot;
-    // B 层免预约景点不可选（UI 已是「无需预约」tag，此处兜底）
-    if (spot && spot.reservationRequired === false) {
-      wx.showToast({ title: '该景点无需预约，现场购票即可', icon: 'none' });
+    // 免预约或无放票时刻景点不可选（UI 已是 tag，此处兜底）
+    if (spot && !spot.remindable) {
+      wx.showToast({
+        title: spot.reservationRequired ? '该景点无固定放票时刻，随买随用即可' : '该景点无需预约，现场购票即可',
+        icon: 'none',
+      });
       return;
     }
     const ids = [].concat(this.data.selectedSpotIds);

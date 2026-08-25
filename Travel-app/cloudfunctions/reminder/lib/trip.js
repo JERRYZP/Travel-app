@@ -216,13 +216,20 @@ async function removeIfEmpty(db, userId, tripId) {
 }
 
 /**
- * 列出行程，附带 TRIP-RULE-005 排序所需的 nextReminderAt 与 TRIP-RULE-006 分组信息
+ * 列出行程，附带 TRIP-RULE-005 排序所需的 nextReminderAt 与 TRIP-RULE-006 分组信息。
+ * 读取时兜底清理孤儿行程：任务与清单均空的行程（如生成了时间线但从未提交提醒）
+ * 自动删除（TRIP-RULE-004），保证返回的行程都有内容，避免空行程 tab 残留。
  */
 async function list(db, userId) {
   const res = await db.collection(COLLECTIONS.TRIPS)
     .where({ userId })
     .get();
-  const trips = res.data || [];
+  const kept = [];
+  for (const t of (res.data || [])) {
+    const removed = await removeIfEmpty(db, userId, t._id);
+    if (!removed) kept.push(t);
+  }
+  const trips = kept;
 
   const { ReminderBackendStatus } = require('./schema');
   for (const t of trips) {

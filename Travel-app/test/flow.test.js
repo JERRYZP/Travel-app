@@ -76,6 +76,14 @@ function freshDb() {
   eq(t3.merged, false, '不相接行程新建');
   eq(db._size(COLLECTIONS.TRIPS), 2, '现在有 2 个行程');
 
+  // 给两个行程各加一条清单，避免被 trip.list 的空行程清理（TRIP-RULE-004）误删
+  for (const tid of [t1.tripId, t3.tripId]) {
+    await db.collection(COLLECTIONS.REMINDER_CART).add({
+      data: { userId: USER, tripId: tid, spotId: 'gugong', visitDate: '2026-06-01', releaseAt: new Date('2026-06-01T10:00:00+08:00') },
+    });
+  }
+  eq(db._size(COLLECTIONS.REMINDER_CART), 2, '两个行程各 1 条清单');
+
   const listed = await trip.list(db, USER);
   eq(listed.showGroupTabs, true, '≥2 行程显示分组 Tab（TRIP-RULE-006）');
 
@@ -204,6 +212,17 @@ function freshDb() {
   const rmBad = await task.remove(db, USER, t0._id);
   eq(rmBad.success, false, '已触发任务不可删（REMINDER-RULE-005）');
 
+  // STATE-002：MISSED 显示「未送达」而不是「已提醒」
+  await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t0._id).update({
+    data: { backendStatus: ReminderBackendStatus.MISSED, missedReason: 'errCode=43101' },
+  });
+  const tksMissed = await task.list(db, USER, { tripId: tr.tripId, filter: 'expired' });
+  const missedItem = tksMissed.groups
+    .reduce((acc, g) => acc.concat(g.items), [])
+    .find(i => i.backendStatus === ReminderBackendStatus.MISSED);
+  eq(missedItem.statusLabel, '未送达', 'MISSED 显示「未送达」而非「已提醒」（STATE-002）');
+  eq(missedItem.missedReason, 'errCode=43101', 'missedReason 透传供前端解释');
+
   // 删光 → 行程自动删除
   await db.collection(COLLECTIONS.REMINDER_TASKS).where({ userId: USER }).remove();
   const removed = await trip.removeIfEmpty(db, USER, tr.tripId);
@@ -212,6 +231,65 @@ function freshDb() {
 
   const tksEmpty = await task.list(db, USER, {});
   eq(tksEmpty.homeMode, 1, '无任务 → 首页形态1');
+
+  /* ============ 8. 清空任务（task.clear 按 tab 清空 + TRIP-RULE-004 级联）============ */
+  console.log('\n=== 8. 清空任务（按 tab 清空 + 级联删行程）===');
+  db = freshDb();
+  const cTripA = await trip.createOrMerge(db, USER, { startDate: RANGE.startDate, endDate: RANGE.endDate, spotIds: ['gugong'] });
+  const cTripB = await trip.createOrMerge(db, USER, { startDate: time.addDays(RANGE.startDate, 20), endDate: time.addDays(RANGE.endDate, 20), spotIds: ['tiantan'] });
+  const nowTs = new Date();
+  const pastDay = new Date(nowTs.getTime() - 2 * 86400000);
+  const futureDay = new Date(nowTs.getTime() + 2 * 86400000);
+  const mkTask = (tripId, spotId, releaseAt) => db.collection(COLLECTIONS.REMINDER_TASKS).add({
+    data: { userId: USER, tripId, spotId, visitDate: time.todayStr(), releaseAt, offsets: [5, 2], channels: [ChannelType.OFFICIAL_ACCOUNT], backendStatus: ReminderBackendStatus.WAITING },
+  });
+  await mkTask(cTripA.tripId, 'gugong', futureDay);   // A 进行中
+  await mkTask(cTripA.tripId, 'gugong', pastDay);     // A 已过期
+  await mkTask(cTripB.tripId, 'tiantan', pastDay);    // B 已过期
+
+  // 模拟 index.js 分发：task.clear 后对 affectedTripIds 执行级联
+  const clearAll = async (params) => {
+    const r = await task.clear(db, USER, params);
+    for (const tid of (r.affectedTripIds || [])) await trip.removeIfEmpty(db, USER, tid);
+    return r;
+  };
+
+  const ca = await clearAll({ filter: 'active' });
+  eq(ca.cleared, 1, '清空「进行中」只删 1 条');
+  let li = await task.list(db, USER, {});
+  eq(li.counts.active, 0, '进行中已空');
+  eq(li.counts.expired, 2, '已过期仍 2 条');
+  eq(db._size(COLLECTIONS.TRIPS), 2, 'A 尚有已过期任务 → 行程保留');
+
+  const cb = await clearAll({ filter: 'expired', tripId: cTripA.tripId });
+  eq(cb.cleared, 1, '限定行程+「已过期」只清 A 的 1 条');
+  li = await task.list(db, USER, {});
+  eq(li.counts.expired, 1, '剩 B 的 1 条已过期');
+  eq(db._size(COLLECTIONS.TRIPS), 1, 'A 任务清空 → 行程级联删除');
+
+  const cc = await clearAll({});
+  eq(cc.cleared, 1, '不传范围全清');
+  li = await task.list(db, USER, {});
+  eq(li.homeMode, 1, '全清后回到形态1');
+  eq(db._size(COLLECTIONS.TRIPS), 0, 'B 行程级联删除');
+
+  /* ============ 9. 孤儿行程读取时清理（trip.list 兜底 TRIP-RULE-004）============ */
+  console.log('\n=== 9. 孤儿行程读取时清理 ===');
+  db = freshDb();
+  // 生成了时间线但从未提交 → 0 任务 0 清单的孤儿行程
+  const orphan = await trip.createOrMerge(db, USER, { startDate: RANGE.startDate, endDate: RANGE.endDate, spotIds: ['gugong'] });
+  // 有清单的行程（构建中）应保留
+  const withCart = await trip.createOrMerge(db, USER, { startDate: time.addDays(RANGE.startDate, 20), endDate: time.addDays(RANGE.endDate, 20), spotIds: ['tiantan'] });
+  await db.collection(COLLECTIONS.REMINDER_CART).add({
+    data: { userId: USER, tripId: withCart.tripId, spotId: 'tiantan', visitDate: time.addDays(RANGE.startDate, 20), releaseAt: new Date('2026-08-01T10:00:00+08:00') },
+  });
+  const pre = db._size(COLLECTIONS.TRIPS);
+  eq(pre, 2, '创建后 2 个行程（孤儿 + 有清单）');
+  const after = await trip.list(db, USER);
+  eq(after.trips.length, 1, '孤儿行程读取时被删除，只剩有清单的');
+  eq(after.trips[0]._id, withCart.tripId, '保留的是有清单的行程');
+  eq(after.showGroupTabs, false, '只剩 1 个行程 → 不显示分组 Tab');
+  eq(db._size(COLLECTIONS.TRIPS), 1, '孤儿行程已从库中删除');
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);

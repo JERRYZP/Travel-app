@@ -9,7 +9,6 @@ Page({
     statusBarHeight: 20,
     navBarHeight: 44,
     user: null,
-    badge: 0,
     notifyHint: '未开启',
     notifyState: 'none',
   },
@@ -21,29 +20,18 @@ Page({
 
   onShow() {
     this.loadUser();
-    this.loadBadge();
     this.loadNotifyHint();
   },
 
+  /* 无感登录：profile 首次调用即自动建号（自动昵称+默认头像），页面常驻登录态 */
   loadUser() {
     api.reminder.user.profile().then(res => {
-      this.setData({ user: res.user });
+      this.setData({ user: res.user || {} });
     }).catch(() => {
       this.setData({
-        user: {
-          nickname: '游客',
-          avatarUrl: '',
-          memberLevel: 'NORMAL',
-          points: 0,
-        },
+        user: { nickname: '', avatarUrl: '', memberLevel: 'NORMAL', points: 0 },
       });
     });
-  },
-
-  loadBadge() {
-    api.reminder.task.badge().then(res => {
-      this.setData({ badge: res.badge || 0 });
-    }).catch(() => {});
   },
 
   /* 通知设置三态：全没设 / 设了一个 / 全设（onShow 刷新，从内页返回即时更新） */
@@ -51,6 +39,11 @@ Page({
     notify.getNotifyStatus().then(s => {
       this.setData({ notifyHint: NOTIFY_HINT_MAP[s.state], notifyState: s.state });
     }).catch(() => {});
+  },
+
+  /* 点头像/昵称 -> 编辑资料页（头像/昵称/手机号） */
+  onEditProfile() {
+    wx.navigateTo({ url: '/pages/profile-edit/profile-edit' });
   },
 
   onNotifySettings() {

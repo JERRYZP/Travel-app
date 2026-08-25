@@ -1,7 +1,6 @@
 Component({
   properties: {
     active: { type: String, value: 'home' },
-    badge: { type: Number, value: 0 },
   },
 
   methods: {

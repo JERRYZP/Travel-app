@@ -21,13 +21,13 @@ function remindAtOf(releaseAt, offsetMinutes) {
 
 /**
  * STATE-002 UI 状态映射
- * WAITING → 「待提醒」；TRIGGERED / MISSED → 「已提醒」；CLOSED → 不展示
+ * WAITING → 「待提醒」；TRIGGERED → 「已提醒」；MISSED → 「未送达」（不伪装成功，供前端附原因解释）；CLOSED → 不展示
  */
 function uiLabelOf(backendStatus) {
   switch (backendStatus) {
     case ReminderBackendStatus.WAITING: return '待提醒';
-    case ReminderBackendStatus.TRIGGERED:
-    case ReminderBackendStatus.MISSED: return '已提醒';
+    case ReminderBackendStatus.TRIGGERED: return '已提醒';
+    case ReminderBackendStatus.MISSED: return '未送达';
     default: return null; // CLOSED 不展示
   }
 }
@@ -207,7 +207,6 @@ async function list(db, userId, { tripId = null, filter = 'active' } = {}) {
     groups,
     counts: { active: active.length, expired: past.length },
     banner: buildBanner(enriched, nowTs),
-    badge: await badgeCount(db, userId),
     // HOME-RULE-001 首页形态判定：无任何任务 → 形态1
     homeMode: enriched.length === 0 ? 1 : 2,
   });
@@ -231,34 +230,32 @@ async function remove(db, userId, taskId) {
 }
 
 /**
- * PAGE-009 清空任务：用户确认后清空全部提醒任务（含已提醒/过期的历史记录）
- * 与 task.remove 的单条「仅待提醒可删」不同，这是显式批量清理操作
+ * PAGE-009 清空任务：用户确认后清空提醒任务（含已提醒/过期的历史记录）
+ * 与 task.remove 的单条「仅待提醒可删」不同，这是显式批量清理操作。
+ * 传 filter/tripId 时只清空当前 tab 范围（与 task.list 的过期判定一致），
+ * 不传则清空该用户全部任务。
  */
-async function clear(db, userId) {
-  const res = await db.collection(COLLECTIONS.REMINDER_TASKS)
-    .where({ userId })
-    .get();
-  const ids = (res.data || []).map(t => t._id);
-  for (const id of ids) {
-    await db.collection(COLLECTIONS.REMINDER_TASKS).doc(id).remove();
-  }
-  return ok({ cleared: ids.length });
-}
+async function clear(db, userId, { filter = null, tripId = null } = {}) {
+  const where = { userId };
+  if (tripId) where.tripId = tripId;
 
-/**
- * REMINDER-RULE-007 Tab 角标 = 未来 24 小时内 WAITING 任务数
- */
-async function badgeCount(db, userId) {
-  const nowTs = time.now();
-  const until = new Date(nowTs.getTime() + V1.BADGE_WINDOW_HOURS * 3600 * 1000);
-  const res = await db.collection(COLLECTIONS.REMINDER_TASKS)
-    .where({
-      userId,
-      backendStatus: ReminderBackendStatus.WAITING,
-      releaseAt: db.command.gt(nowTs).and(db.command.lte(until)),
-    })
-    .count();
-  return res.total || 0;
+  const res = await db.collection(COLLECTIONS.REMINDER_TASKS).where(where).get();
+  let targets = res.data || [];
+  if (filter) {
+    const nowTs = time.now();
+    targets = targets.filter(t => {
+      if (t.backendStatus === ReminderBackendStatus.CLOSED) return false;
+      const msLeft = new Date(t.releaseAt).getTime() - nowTs.getTime();
+      const expired = t.backendStatus === ReminderBackendStatus.MISSED || msLeft <= 0;
+      return filter === 'expired' ? expired : !expired;
+    });
+  }
+
+  const affectedTripIds = [...new Set(targets.map(t => t.tripId).filter(Boolean))];
+  for (const t of targets) {
+    await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).remove();
+  }
+  return ok({ cleared: targets.length, affectedTripIds });
 }
 
 /**
@@ -294,6 +291,5 @@ module.exports = {
   list,
   remove,
   clear,
-  badgeCount,
   cleanup,
 };

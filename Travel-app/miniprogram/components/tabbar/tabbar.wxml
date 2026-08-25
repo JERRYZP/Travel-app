@@ -2,7 +2,6 @@
   <view class="tabbar-item {{active === 'home' ? 'active' : ''}}" bindtap="onTap" data-tab="home">
     <view class="tabbar-icon-wrap">
       <svg-icon name="{{active === 'home' ? 'reminder-active' : 'reminder'}}" size="22px" />
-      <view wx:if="{{badge > 0}}" class="tabbar-badge">{{badge > 99 ? '99+' : badge}}</view>
     </view>
     <text class="tabbar-label" style="color: {{active === 'home' ? '#C0472A' : '#B09878'}}">提醒</text>
   </view>

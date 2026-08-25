@@ -1,0 +1,57 @@
+.navbar { position: fixed; top: 0; left: 0; right: 0; z-index: 90; background: var(--color-page); }
+.navbar-content { display: flex; align-items: center; position: relative; }
+.navbar-back { position: absolute; left: 20rpx; width: 60rpx; height: 60rpx; display: flex; align-items: center; justify-content: center; }
+.navbar-title { position: absolute; left: 50%; transform: translateX(-50%); font-size: 30rpx; font-weight: 600; color: var(--color-ink); }
+
+.page-body { padding: 32rpx 30rpx 120rpx; }
+
+.edit-card {
+  background: var(--color-surface);
+  border-radius: 24rpx;
+  box-shadow: var(--shadow-card);
+  padding: 0 24rpx;
+}
+.edit-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 24rpx;
+  padding: 28rpx 0; border-bottom: 1rpx solid var(--color-border);
+}
+.edit-row:last-child { border-bottom: none; }
+.edit-label { font-size: 28rpx; color: var(--color-ink); flex-shrink: 0; }
+.edit-label-wrap { display: flex; align-items: center; gap: 12rpx; flex-shrink: 0; }
+.edit-optional {
+  padding: 2rpx 12rpx; background: var(--color-cream);
+  border: 1rpx solid var(--color-border); border-radius: 6rpx;
+  font-size: 20rpx; color: var(--color-muted);
+}
+.edit-row-right { display: flex; align-items: center; gap: 16rpx; }
+
+/* 头像行：与昵称/手机号行同高同布局，整行可点 */
+.edit-row-btn {
+  width: 100%;
+  margin: 0;
+  padding: 28rpx 0;
+  background: transparent;
+  border-radius: 0;
+  text-align: left;
+  line-height: 1.4;
+}
+.edit-row-btn::after { border: none; }
+.edit-avatar {
+  width: 80rpx; height: 80rpx; border-radius: 40rpx; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  background: linear-gradient(135deg, #EDE0C8, #DBCDBB);
+}
+.edit-avatar-img { width: 80rpx; height: 80rpx; border-radius: 40rpx; }
+
+/* 输入行 */
+.edit-input { flex: 1; font-size: 28rpx; color: var(--color-ink); text-align: right; }
+.edit-input-phone { letter-spacing: 1rpx; }
+.edit-placeholder { color: var(--color-placeholder); }
+
+.save-btn {
+  margin-top: 64rpx; height: 88rpx; border-radius: 44rpx;
+  background: var(--color-primary); color: #FFFEFB;
+  display: flex; align-items: center; justify-content: center; gap: 12rpx;
+  font-size: 28rpx; font-weight: 600;
+}
+.save-btn.disabled { opacity: 0.6; }

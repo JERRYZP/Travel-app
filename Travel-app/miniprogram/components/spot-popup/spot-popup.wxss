@@ -265,3 +265,28 @@
   font-size: 26rpx;
   color: var(--color-text);
 }
+
+/* 官方临时公告红条（闭馆维修 / 临时停开）：上下间距 12px（402 基准 ≈ 22rpx） */
+.popup-header--with-notice {
+  margin-bottom: 0;
+}
+.popup-special-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10rpx;
+  margin: 22rpx 0;
+  padding: 14rpx 16rpx;
+  background: #FDF3F2;
+  border: 1rpx solid #F5C6C0;
+  border-radius: 12rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #C0392B;
+}
+/* 图标包裹层与一行文字等高（24rpx × 1.5 = 36rpx）并垂直居中，使图标与首行文字对齐 */
+.popup-notice-icon {
+  flex-shrink: 0;
+  height: 36rpx;
+  display: flex;
+  align-items: center;
+}

@@ -10,7 +10,7 @@
 
     <block wx:elif="{{spot}}">
       <!-- 头部：缩略图 + 名称/难度 + 核心标签 -->
-      <view class="popup-header">
+      <view class="popup-header {{spot.specialNotice ? 'popup-header--with-notice' : ''}}">
         <image class="popup-spot-img" src="/images/spots/{{spot.spotId}}.jpg" mode="aspectFill" />
         <view class="popup-header-info">
           <view class="popup-name-row">
@@ -20,15 +20,26 @@
             </view>
           </view>
           <view class="popup-tag-row">
-            <block wx:if="{{spot.reservationRequired}}">
+            <block wx:if="{{spot.remindable}}">
               <view class="popup-core-tag">提前{{spot.advanceDays}}天</view>
-              <view class="popup-core-tag">每日{{fmt.releaseTimes(spot.releaseTime)}}点放票</view>
+              <view wx:if="{{spot.releaseTime}}" class="popup-core-tag">每日{{fmt.releaseTimes(spot.releaseTime)}}点放票</view>
+            </block>
+            <block wx:elif="{{spot.reservationRequired}}">
+              <view class="popup-core-tag">无固定放票时刻</view>
             </block>
             <block wx:else>
               <view class="popup-core-tag">无需预约</view>
             </block>
           </view>
         </view>
+      </view>
+
+      <!-- 官方临时公告（闭馆维修 / 临时停开等），specialNotice 有内容时显示 -->
+      <view wx:if="{{spot.specialNotice}}" class="popup-special-notice">
+        <view class="popup-notice-icon">
+          <van-icon name="warning-o" size="14px" color="#C0392B" />
+        </view>
+        <text>{{spot.specialNotice}}</text>
       </view>
 
       <!-- 预约方式（B 层免预约 → 购票 / 入园方式） -->

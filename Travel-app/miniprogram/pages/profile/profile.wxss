@@ -8,14 +8,20 @@
 .profile-header {
   display: flex; align-items: center; gap: 24rpx;
   padding: 32rpx 24rpx; margin-bottom: 32rpx;
+  background: var(--color-surface);
+  border-radius: 24rpx;
+  box-shadow: var(--shadow-card);
 }
 .profile-avatar {
   width: 120rpx; height: 120rpx; border-radius: 60rpx;
   display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
+  flex-shrink: 0; overflow: hidden;
+  background: linear-gradient(135deg, #EDE0C8, #DBCDBB);
 }
-.profile-info { display: flex; flex-direction: column; gap: 12rpx; }
-.profile-name { font-size: 32rpx; font-weight: 600; color: var(--color-ink); }
+.profile-avatar-img { width: 120rpx; height: 120rpx; border-radius: 60rpx; }
+.profile-info { display: flex; flex-direction: column; gap: 12rpx; flex: 1; min-width: 0; }
+.profile-name-row { display: flex; align-items: center; gap: 12rpx; min-width: 0; }
+.profile-name { font-size: 32rpx; font-weight: 600; color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .profile-tag {
   display: inline-block; width: fit-content;
   padding: 4rpx 16rpx; background: var(--color-cream);
@@ -37,7 +43,6 @@
 .setting-row-label { font-size: 28rpx; color: var(--color-ink); }
 .setting-row-right { display: flex; align-items: center; gap: 8rpx; }
 .setting-row-hint { font-size: 24rpx; color: var(--color-muted); }
-/* 通知设置三态文案 */
 .setting-row-hint-none { color: var(--color-primary); font-weight: 600; }
 .setting-row-hint-partial { color: var(--color-muted); }
 .setting-row-hint-all { color: #4A7C59; }

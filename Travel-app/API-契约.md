@@ -1,7 +1,7 @@
 # Travel-app 前端接口契约 V1.2
 
 > 面向：前端（微信小程序页面开发）
-> 更新：2026-08-19（feedback 域新增管理端接口 adminList / adminUpdateStatus + 反馈管理页；此前 2026-08-14 去掉日历提醒通道 CALENDAR_ICS / ICS 同步；新增 feedback 域——意见反馈 / 信息纠错；对照 `reminder/lib/*` / `spots/index.js` / `notifier/index.js` / `feedback/lib/*` 源码提取）
+> 更新：2026-08-26（spots 返回新增 `remindable` / `weak`，卡片文案区分免预约「无需预约」、无放票时刻「随买随用」、弱提醒「票量充足，无需卡点」；首页有任务时改为导航栏双 Tab「提醒任务 / 添加提醒」，添加提醒内联在首页；编辑资料头像改 `open-type="chooseAvatar"`；此前 2026-08-19 feedback 域新增管理端接口 adminList / adminUpdateStatus + 反馈管理页；2026-08-14 去掉日历提醒通道 CALENDAR_ICS / ICS 同步；对照 `reminder/lib/*` / `spots/index.js` / `notifier/index.js` / `feedback/lib/*` 源码提取）
 > 调用方式：`wx.cloud.callFunction({ name: '<函数名>', data: { action: '<域>.<动作>', ...params } })`
 
 ---
@@ -95,7 +95,9 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     difficultyLabel: { key: "EXTREME", text: "极难约" },
     popularityScore: 95,
     reservationRequired: true,          // 2026 分层：是否需预约（false = 免预约，不进提醒流程）
-    cardDesc: "随到随买，当前旺季门票10元，联票20元",  // 仅 B 层有值，按 GMT+8 季节生成（cloud cardDescOf）
+    remindable: true,                   // 2026-08-26：需预约且有放票时刻 → 可进时间线/清单/任务
+    weak: false,                        // 需预约且 difficultyScore≤2 → 弱提醒，标签行显示「票量充足，无需卡点」
+    cardDesc: "随到随买，当前旺季门票10元，联票20元",  // 免预约 B 层：「随到随买…」；弱提醒可提醒景点：「提前N天 HH:MM放票 · 票量充足，无需卡点」；需预约但无放票时刻：「无固定放票时刻，随买随用」
     tags: ["提前7天放票", "20:00放票"],
     advanceDays: 7,
     releaseTime: "20:00",
@@ -108,7 +110,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     stale: true                        // scraper 未上线时为 true，前端可选「数据仅供参考」提示
   }]
 }
-// 排序：popularityScore 降序；前端按 reservationRequired 分流：true → 难度/放票标签+选择按钮；false → 「无需预约」tag + cardDesc，不可选
+// 排序：popularityScore 降序；前端按 remindable 分流：true → 难度/放票标签+选择按钮；false → 免预约显示「无需预约」、无放票时刻显示「随买随用」，均不可选
 ```
 
 ### 1.2 `detail` — 景点详情弹窗
@@ -145,7 +147,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ### 1.3 `batch` — 批量取景点卡
 
 ```
-用途：PAGE-003 已选景点缩略行、PAGE-005 行程摘要
+用途：PAGE-003 已选景点缩略行、首页内联时间线行程摘要
 调用：{ action: 'batch', spotIds: ['gugong', 'tiantan'] }
 ```
 
@@ -299,7 +301,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 #### `timeline.generate` — 生成时间线
 
 ```
-用途：PAGE-005/006 核心数据，每次进入页面或行程变化时调用
+用途：PAGE-005/006（首页内联）核心数据，每次进入页面或行程变化时调用
 调用：{
   action: 'timeline.generate',
   tripId: 'abc123',
@@ -336,14 +338,14 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     button: { text: "+ 添加提醒", enabled: true },  // 前端直接渲染
     stale: false                       // 已放票事件在 scraper 未上线时为 true
   }],
-  byDeparture: [{                      // 按出发日视图 Tab（PAGE-005）
+  byDeparture: [{                      // 按出发日视图 Tab（PAGE-005，首页内联）
     key: "2026-06-01",                 // Tab key = visitDate
     label: "6月1日 (周一)",            // Tab 显示文案
     events: [ /* 该日各景点事件，按 releaseAt 升序 */ ],
     count: 2,
     scrollIndex: 0                     // UI-006 默认滚动位置
   }],
-  bySpot: [{                           // 按景点视图 Tab（PAGE-006）
+  bySpot: [{                           // 按景点视图 Tab（PAGE-006，首页内联）
     key: "gugong",                     // Tab key = spotId
     label: "故宫博物院",               // Tab 显示文案
     events: [ /* 该景点各日出事件，按 releaseAt 升序 */ ],
@@ -378,7 +380,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 #### `cart.add` — 加入清单（单条）
 
 ```
-用途：PAGE-005/006 事件卡「+ 添加提醒」
+用途：PAGE-005/006（首页内联）事件卡「+ 添加提醒」
 调用：{
   action: 'cart.add',
   tripId: 'abc123',
@@ -397,7 +399,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 #### `cart.addAll` — 一键批量添加（仅当前 Tab）
 
 ```
-用途：PAGE-005/006「本日全部提醒」/「该景点全部提醒」(CART-RULE-004)
+用途：PAGE-005/006（首页内联）「本日全部提醒」/「该景点全部提醒」(CART-RULE-004)
 调用：{
   action: 'cart.addAll',
   tripId: 'abc123',
@@ -435,7 +437,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 #### `cart.list` — 列出清单
 
 ```
-用途：PAGE-007 主数据 + PAGE-005/006 底部清单条
+用途：PAGE-007 主数据 + PAGE-005/006（首页内联）底部清单条
 调用：{ action: 'cart.list', tripId: 'abc123' }  // 不传则查全部
 ```
 
@@ -610,12 +612,15 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 ### 2.5 用户域（user.*）
 
-#### `user.profile` — 获取/创建用户
+#### `user.profile` — 获取/创建用户（无感登录）
 
 ```
-用途：PAGE-010 我的页
+用途：PAGE-010 我的页、PAGE-profile-edit 编辑资料页
 调用：{ action: 'user.profile' }
-// 首次调用惰性创建（TABLE-005 默认值）
+// 首次调用惰性创建（TABLE-005 默认值），并自动生成资料：
+//   昵称 = 「用户」+ 6 位随机字符（小写字母+数字，去 0/o/1/l，允许重复）
+//   头像 = 随机默认占位图 /images/avatars/default-{1..6}.png（主包本地路径）
+// 旧数据（昵称为空或「游客」）惰性迁移补齐，用户无感知
 ```
 
 **返回：**
@@ -625,18 +630,41 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   user: {
     _id: "...",
     openId: "...",
-    nickname: "",
-    avatarUrl: "",
+    nickname: "用户a8x2kq",          // 无感登录自动生成，可重复
+    avatarUrl: "/images/avatars/default-3.png",  // 本地默认图，或用户上传后的 cloud:// fileID
+    phone: "",                       // 选填，大陆 11 位手机号（未填为空串）
     notifyPrefs: {
       officialAccount: false,
       sms: false,
       offsets: [5, 2]
     },
-    memberLevel: "NORMAL",             // V1 固定
+    memberLevel: "NORMAL",           // V1 固定
     points: 0
   }
 }
 ```
+
+#### `user.updateProfile` — 保存头像/昵称/手机号（编辑资料页）
+
+```
+用途：PAGE-profile-edit 编辑资料页（无感登录后的资料修改）
+调用：{ action: 'user.updateProfile', nickname, avatarUrl, phone }
+// avatarUrl 由前端先用 wx.cloud.uploadFile 上传云存储后传 fileID（cloud://...）；
+// 未换头像时原样回传原 avatarUrl（cloud:// 或 /images/... 均可）；可空，空则前端显示默认占位。
+```
+
+| 入参 | 类型 | 说明 |
+|------|------|------|
+| nickname | String | 必填。trim 后取前 32 字符；空 → 1010 参数不合法。**允许与他人重复** |
+| avatarUrl | String | 选填。云存储 fileID 或主包默认图路径，最长 512 字符 |
+| phone | String | 选填。大陆 11 位手机号；非空且格式不合法（非 `1[3-9]` 开头 11 位）→ 1010 参数不合法 |
+
+**返回：**
+```javascript
+{ success: true, user: { _id, openId, nickname, avatarUrl, phone, notifyPrefs, memberLevel, points, profileUpdatedAt } }
+```
+
+> 说明：无感登录 = 首次 `user.profile` 即自动建号并生成昵称/默认头像，全程无弹窗。微信**不开放**程序化读取真实头像/昵称（`wx.getUserProfile` 已回收），故默认头像为主包占位图、默认昵称为系统生成；用户可进编辑资料页自行修改。编辑资料页头像为整行 `button open-type="chooseAvatar"` 调微信原生头像选择（2026-08-26 起不再自绘选择面板），昵称输入框 `type="nickname"` 聚焦时键盘上方展示微信昵称可一键填入。
 
 #### `user.updateNotifyPrefs` — 更新通知设置
 
@@ -815,16 +843,17 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 | 页面 | 需要调用的 API |
 |------|---------------|
-| **PAGE-001** 首页·创建态 | `spots.list`（热门景点卡）、`trip.create`（生成时间线时） |
+| **PAGE-001** 首页·创建态 | `spots.list`（热门景点卡）、`trip.create`（生成时间线时）、`timeline.generate` / `cart.*`（内联时间线，不跳转） |
 | **PAGE-009** 首页·任务列表 | `task.list`、`trip.list`（分组 Tab）、`task.remove`（删除）、`task.clear`（按 tab 清空） |
 | **PAGE-002** 景点弹窗 | `spots.detail` |
 | **PAGE-003** 想去景点 | `spots.list`、`spots.batch`（已选行）、`spots.searchHistory`、`spots.clearSearchHistory`、`trip.updateSpots` |
 | **PAGE-004** 搜索态 | `spots.search` |
-| **PAGE-005** 出发日视图 | `timeline.generate`、`cart.add`、`cart.addAll`、`cart.list`（底部条） |
-| **PAGE-006** 景点视图 | 同 PAGE-005 |
+| **PAGE-005** 出发日视图（首页内联） | `timeline.generate`、`cart.add`、`cart.addAll`、`cart.list`（底部条） |
+| **PAGE-006** 景点视图（首页内联） | 同 PAGE-005 |
 | **PAGE-007** 清单弹窗 | `cart.list`、`cart.remove`、`cart.clear` |
 | **PAGE-008** 设置提醒 | `task.submit`（提交前检测通知授权，未开启就地引导，不跳个人中心） |
 | **PAGE-010** 我的 | `user.profile`、通知设置三态（`wx.getAppAuthorizeSetting` / `wx.getSetting`，非云函数） |
+| **PAGE-012** 编辑资料 | `user.profile`、`user.updateProfile`（头像走 `open-type="chooseAvatar"` + `wx.cloud.uploadFile` 上传） |
 | **PAGE-010-1** 通知设置 | 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`（模板未配置时「去授权」置灰） |
 | **PAGE-010-2** 意见反馈 | `feedback.submit`（type=feedback，category=suggestion/bug） |
 | **PAGE-010-3** 信息纠错 | `spots.search`（选景点）、`feedback.submit`（type=correction） |
@@ -835,13 +864,13 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ## 5. 页面间数据传递约定
 
 ```
-PAGE-001 → PAGE-005:  带 tripId（trip.create 返回）
-PAGE-001 → PAGE-003:  带 tripId + 已有 spotIds
-PAGE-003 → PAGE-005:  带回新 spotIds（调 trip.updateSpots），然后重新 timeline.generate
-PAGE-005 → PAGE-007:  不需要传参，PAGE-007 自己调 cart.list
-PAGE-005 → PAGE-008:  不需要传参，PAGE-008 自己调 task.submit（读 cart）
-PAGE-008 → PAGE-009:  提交成功后 wx.navigateBack 回到首页，首页 onShow 调 task.list
-PAGE-009 → PAGE-005:  带 tripId（新增提醒入口）
+PAGE-001 → 内联时间线:  trip.create 返回 tripId，当前页直接 timeline.generate（不跳转）
+PAGE-001 → PAGE-003:  带已有 spotIds；返回后带新 spotIds（调 trip.updateSpots），重新 timeline.generate
+PAGE-003 → 首页:       带回新 spotIds（调 trip.updateSpots），重新 timeline.generate
+内联时间线 → PAGE-007: 不需要传参，PAGE-007 自己调 cart.list
+内联时间线 → PAGE-008: 不需要传参，PAGE-008 自己调 task.submit（读 cart）
+PAGE-008 → PAGE-009:  提交成功后 wx.navigateBack 回到首页，首页 onShow 调 task.list 并切回「提醒任务」Tab
+PAGE-009 → 添加提醒 Tab: 不跳页，切到首页「添加提醒」视图（保留 timelineTripId / 内联时间线）
 ```
 
 ---
@@ -853,8 +882,10 @@ App.onLaunch / 首页.onShow：
   1. 调 task.list（不传 tripId、filter='active'）
   2. 读 homeMode 字段：
      - homeMode === 1 → 渲染 PAGE-001（创建态）
-     - homeMode === 2 → 渲染 PAGE-009（任务列表）
-  3. 同时可能还需要调 trip.list 获取分组信息
+     - homeMode === 2 → 导航栏双 Tab「提醒任务 / 添加提醒」，默认落「提醒任务」（PAGE-009）
+  3. 「添加提醒」Tab = 首页内联创建表单 + 时间线（PAGE-001/005/006 内容，不跳页）
+  4. 提交提醒成功后首页 onShow 自动切回「提醒任务」Tab
+  5. 同时可能还需要调 trip.list 获取分组信息
 ```
 
 ---
