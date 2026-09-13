@@ -59,43 +59,37 @@ Page({
     this.setData({ submitting: true });
     wx.showLoading({ title: '正在提交...' });
 
-    /* 前置授权没做齐 → 当前页弹窗就地引导，不跳个人中心；授权完成后继续提交 */
-    notify.getNotifyStatus().then(status => {
-      if (status.systemOk && status.subscribeOk) {
-        /* 两项授权都在，仍要攒配额：一次性订阅每授权一次只能发一条，
-           勾过「总是允许」的用户此处静默通过不弹窗 */
-        notify.requestSubscribe().then(() => {
-          this.submitTask({ tripId, channelList, offsets });
-        });
-        return;
-      }
+    const doSubmit = () => this.submitTask({ tripId, channelList, offsets });
+
+    /* ① 系统通知权限（推送能否送达的前提）未开 → 引导去系统设置 */
+    if (!notify.getSystemNotifyOk()) {
       wx.hideLoading();
       this.setData({ submitting: false });
       wx.showModal({
         title: '开启通知',
-        content: status.doneCount === 0
-          ? '需要开启「微信通知权限」和「订阅消息授权」，提醒才能送达。现在开启？'
-          : '还有一项通知权限未开启，提醒可能收不到。现在补上？',
+        content: '微信通知权限未开启，提醒可能收不到。现在去系统设置开启？',
         confirmText: '去开启',
         cancelText: '暂不',
         success: res => {
           if (res.confirm) {
             this.setData({ submitting: true });
             wx.showLoading({ title: '正在开启...' });
-            this.localAuthThenSubmit({ tripId, channelList, offsets }, status);
-          } else {
-            this.submitTask({ tripId, channelList, offsets });
+            notify.openSystemNotifySetting();
           }
+          doSubmit();
         },
       });
-    });
-  },
+      return;
+    }
 
-  /* 就地授权：订阅消息（页内弹框，每次提交都请求以攒配额）+ 系统通知权限（跳系统设置），然后继续提交 */
-  localAuthThenSubmit(payload, status) {
-    const steps = [notify.requestSubscribe()];
-    if (!status.systemOk) steps.push(Promise.resolve(notify.openSystemNotifySetting()));
-    Promise.all(steps).then(() => this.submitTask(payload));
+    /* ② 订阅额度按需授权：额度足够不弹；不足时微信自动弹授权窗（勾过「总是保持」则不弹）；
+       20004（订阅消息总开关关闭）→ 引导去设置页 */
+    notify.ensureSubscribe(offsets.length).then(r => {
+      if (r.reason === 'master-switch-off' || r.reason === 'subscription-disabled') {
+        notify.guideOpenSubscribeSetting(r.reason);
+      }
+      doSubmit();
+    });
   },
 
   submitTask({ tripId, channelList, offsets }) {

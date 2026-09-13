@@ -123,18 +123,16 @@ Page({
       spotIds: this.data.selectedSpotIds,
       city: '北京',
     };
-    /* 任务分组第一性原则：以本次时间段与既有行程时间段是否相交/相接判断合并（TRIP-RULE-002）。
-     * 相交/相接 → 同一任务组（时间段取并集、景点替换）；否则新建行程（新任务组） */
+    /* 2026-08-31 起取消自动合并（TRIP-RULE-002）：在已生成行程上重新生成 → 严格按本次输入的日期与景点替换，不做并集 */
     const req = this.data.tripId
       ? api.reminder.trip.list().then(res => {
           const cur = (res.trips || []).find(t => t._id === this.data.tripId);
           if (cur && util.rangesMerge(cur.startDate, cur.endDate, payload.startDate, payload.endDate)) {
-            const merged = util.mergeRanges(cur.startDate, cur.endDate, payload.startDate, payload.endDate);
             return Promise.all([
               api.reminder.trip.updateRange({
                 tripId: cur._id,
-                startDate: merged.startDate,
-                endDate: merged.endDate,
+                startDate: payload.startDate,
+                endDate: payload.endDate,
               }),
               api.reminder.trip.updateSpots({
                 tripId: cur._id,

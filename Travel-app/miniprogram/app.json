@@ -2,6 +2,8 @@
   "pages": [
     "pages/home/home",
     "pages/spots/spots",
+    "pages/spot-hub/spot-hub",
+    "pages/spot-rule/spot-rule",
     "pages/timeline/timeline",
     "pages/setup/setup",
     "pages/profile/profile",

@@ -83,6 +83,18 @@ Page({
       app.globalData.reminderSubmitted = false;
       this.setData({ homeTab: 'tasks' });
     }
+    /* 从「景点规则详情页」点「设置预约提醒」进入：预选该景点并落回「添加提醒」 */
+    if (app.globalData.pendingReminderSpot) {
+      const spot = app.globalData.pendingReminderSpot;
+      app.globalData.pendingReminderSpot = null;
+      const ids = [].concat(this.data.selectedSpotIds);
+      const spots = [].concat(this.data.selectedSpots);
+      if (spot && spot.spotId && ids.indexOf(spot.spotId) < 0) {
+        ids.push(spot.spotId);
+        spots.push(spot);
+        this.setData({ selectedSpotIds: ids, selectedSpots: spots, homeTab: 'add' });
+      }
+    }
     this.loadHomeData();
   },
 
@@ -172,14 +184,74 @@ Page({
 
   loadHomeData() {
     this.setData({ loading: true });
-    api.reminder.task.list({ filter: 'active' }).then(res => {
+    const filter = this.data.activeFilter;
+    /* 双 Tab 的「添加提醒」视图下保留内联时间线，返回本页不丢进度 */
+    const keepInline = this.data.homeTab === 'add' && this.data.showTimeline && this.data.timelineTripId;
+    api.reminder.home.bootstrap({
+      filter,
+      activeTripTab: this.data.activeTripTab || '',
+      tripId: keepInline ? this.data.timelineTripId : '',
+      includeSpots: this.data.hotSpots.length === 0,
+    }).then(res => {
       const mode = res.homeMode || 1;
-      this.setData({ homeMode: mode, loading: false });
       if (mode === 2) {
-        /* 双 Tab 的「添加提醒」视图下保留内联时间线，返回本页不丢进度 */
-        const keepInline = this.data.homeTab === 'add' && this.data.showTimeline && this.data.timelineTripId;
+        /* 选中行程已被服务端级联删除（空行程）→ 回到「全部」 */
+        const stillHasTrip = !this.data.activeTripTab || (res.trips || []).some(t => t._id === this.data.activeTripTab);
+        const activeTripTab = stillHasTrip ? this.data.activeTripTab : '';
+        const groups = (activeTripTab && res.tripTasks && res.tripTasks.groups) ? res.tripTasks.groups : res.groups;
         this.setData({
-          taskGroups: this.decorateTaskGroups(res.groups),
+          homeMode: mode, loading: false,
+          taskGroups: this.decorateTaskGroups(groups || []),
+          counts: res.counts || { active: 0, expired: 0 },
+          banner: res.banner,
+          showTimeline: keepInline,
+          timelineSticky: false,
+          menuTaskId: '',
+          showCartPopup: false,
+          trips: res.trips || [],
+          showGroupTabs: res.showGroupTabs || false,
+          activeTripTab,
+        });
+        if (keepInline && res.cart) {
+          this.setData({
+            timelineCartSummary: res.cart.summary,
+            timelineCartCount: res.cart.summary ? res.cart.summary.count : 0,
+          });
+        }
+        /* 预加热点网格（切换到「添加提醒」时秒显），已有数据不覆盖 */
+        if (res.hotSpots && res.hotSpots.length) {
+          this.setData({ hotSpots: this.buildHotSpots(res.hotSpots, this.data.selectedSpotIds) });
+        }
+      } else {
+        /* 形态1：已有内联时间线则保留并刷新清单，否则加载热门景点 */
+        if (this.data.showTimeline && this.data.timelineTripId) {
+          this.setData({ homeMode: mode, loading: false });
+          if (res.cart) {
+            this.setData({
+              timelineCartSummary: res.cart.summary,
+              timelineCartCount: res.cart.summary ? res.cart.summary.count : 0,
+            });
+          }
+        } else {
+          this.setData({ homeMode: mode, loading: false });
+          if (res.hotSpots && res.hotSpots.length) {
+            this.setData({ hotSpots: this.buildHotSpots(res.hotSpots, this.data.selectedSpotIds) });
+          } else if (this.data.hotSpots.length === 0) {
+            /* 兜底：bootstrap 未返回热点（如内部 spots 调用失败）→ 单独拉一次 */
+            this.loadHotSpots();
+          }
+        }
+      }
+      /* 自愈：内联时间线的行程被孤儿清理删除（timelineTripId 悬空）→ 重新创建恢复 */
+      this.ensureInlineTrip(res.trips);
+    }).catch(() => {
+      /* 回退路径：home.bootstrap 未部署（旧云端）或 mock 缺失时，退回 task.list 旧链路，
+         保证任务列表形态与内联时间线仍能展示；云端部署新版后此回退不触发 */
+      api.reminder.task.list({ filter, tripId: this.data.activeTripTab || undefined }).then(res => {
+        const mode = res.homeMode || 1;
+        this.setData({
+          homeMode: mode, loading: false,
+          taskGroups: this.decorateTaskGroups(res.groups || []),
           counts: res.counts || { active: 0, expired: 0 },
           banner: res.banner,
           showTimeline: keepInline,
@@ -187,19 +259,13 @@ Page({
           menuTaskId: '',
           showCartPopup: false,
         });
-        this.loadTrips();
+        this.loadTrips().then(() => this.ensureInlineTrip(this.data.trips));
         if (keepInline) this.loadInlineCart();
-      } else {
-        /* 形态1：已有内联时间线则保留并刷新清单，否则加载热门景点 */
-        if (this.data.showTimeline && this.data.timelineTripId) {
-          this.loadInlineCart();
-        } else {
-          this.loadHotSpots();
-        }
-      }
-    }).catch(() => {
-      this.setData({ homeMode: 1, loading: false });
-      this.loadHotSpots();
+        this.loadHotSpots();
+      }).catch(() => {
+        this.setData({ homeMode: 1, loading: false });
+        this.loadHotSpots();
+      });
     });
   },
 
@@ -220,7 +286,7 @@ Page({
   },
 
  loadTrips() {
-    api.reminder.trip.list().then(res => {
+    return api.reminder.trip.list().then(res => {
       const trips = res.trips || [];
       const patch = { trips, showGroupTabs: res.showGroupTabs || false };
       /* 选中行程已被服务端级联删除（空行程）→ 回到「全部」 */
@@ -314,17 +380,18 @@ Page({
       city: '北京',
     };
     /* 任务分组第一性原则：以本次生成的时间段与既有行程时间段是否相交/相接来判断合并（TRIP-RULE-002）。
-     * 相交/相接 → 归入同一任务组（时间段取并集、景点替换为当前选择）；否则新建行程（新任务组，顶部自动多一个 Tab） */
+     * 相交/相接 → 视为在同一个行程上调整，严格按本次输入的日期与景点替换（不做并集扩展，
+     *   否则时间线会出现用户本次没选的日期）；否则新建行程（新任务组，顶部自动多一个 Tab）。
+     * 旧版云端 trip.create 仍会自动合并（merged:true）时，由 createTripStrict 兜底改回严格值 */
     const req = this.data.timelineTripId
       ? api.reminder.trip.list().then(res => {
           const cur = (res.trips || []).find(t => t._id === this.data.timelineTripId);
           if (cur && util.rangesMerge(cur.startDate, cur.endDate, payload.startDate, payload.endDate)) {
-            const merged = util.mergeRanges(cur.startDate, cur.endDate, payload.startDate, payload.endDate);
             return Promise.all([
               api.reminder.trip.updateRange({
                 tripId: cur._id,
-                startDate: merged.startDate,
-                endDate: merged.endDate,
+                startDate: payload.startDate,
+                endDate: payload.endDate,
               }),
               api.reminder.trip.updateSpots({
                 tripId: cur._id,
@@ -332,9 +399,9 @@ Page({
               }),
             ]).then(() => cur._id);
           }
-          return api.reminder.trip.create(payload).then(res2 => res2.tripId);
+          return this.createTripStrict(payload);
         })
-      : api.reminder.trip.create(payload).then(res => res.tripId);
+      : this.createTripStrict(payload);
     req.then(tripId => {
       wx.hideLoading();
       app.globalData.currentTripId = tripId;
@@ -344,6 +411,43 @@ Page({
       wx.hideLoading();
       api.toastError(err);
     });
+  },
+
+  /* 创建行程（部署无关兜底）：新版云端 trip.create 严格按本次输入（merged:false）；
+   * 旧版云端 createOrMerge 会把相交/相接行程合并成日期/景点并集（merged:true），
+   * 与「严格按本次输入」冲突 → 检测到合并即用精确替换的 updateRange/updateSpots 改回，
+   * 保证时间线只含本次选中的日期与景点；新版云端不触发。 */
+  createTripStrict(payload) {
+    return api.reminder.trip.create(payload).then(res => {
+      if (res && res.merged === true) {
+        return Promise.all([
+          api.reminder.trip.updateRange({ tripId: res.tripId, startDate: payload.startDate, endDate: payload.endDate }),
+          api.reminder.trip.updateSpots({ tripId: res.tripId, spotIds: payload.spotIds }),
+        ]).then(() => res.tripId);
+      }
+      return res.tripId;
+    });
+  },
+
+  /* 内联时间线的行程自愈：孤儿清理（TRIP-RULE-004：无任务且无清单的行程在 trip.list 读取时被删）
+   * 会把刚生成、尚未加提醒的行程删掉，导致 timelineTripId 悬空——此后"添加提醒"会加进已删除行程、
+   * 时间线刷新失败、购物车栏停留在 0。这里在 loadHomeData 后检测：行程若已不在 trips 里，
+   * 用当前表单（startDate/endDate/selectedSpotIds）重新创建并恢复时间线。 */
+  ensureInlineTrip(trips) {
+    const id = this.data.timelineTripId;
+    if (!id || !this.data.showTimeline) return Promise.resolve(id);
+    if ((trips || []).some(t => t._id === id)) return Promise.resolve(id);
+    if (!this.data.startDate || this.data.selectedSpotIds.length === 0) return Promise.resolve(id);
+    return this.createTripStrict({
+      startDate: this.data.startDate,
+      endDate: this.data.endDate,
+      spotIds: this.data.selectedSpotIds,
+      city: '北京',
+    }).then(newId => {
+      app.globalData.currentTripId = newId;
+      this.loadInlineTimeline(newId);
+      return newId;
+    }).catch(() => id);
   },
 
   loadInlineTimeline(tripId, keepTab, silent) {
@@ -366,7 +470,7 @@ Page({
         timelineTabs: tabs,
         timelineActiveTab: activeTab,
         timelineEvents: events,
-        timelineClosedSpots: res.closedSpots || [],
+        timelineClosedSpots: (res.closedSpots || []).concat(res.closedDaySkips || []),
         timelineEmpty: res.empty,
         timelineEmptyReason: res.emptyReason,
         timelineLoading: false,
@@ -548,20 +652,28 @@ Page({
     this.setData({ showSpotPopup: false });
   },
 
-  onFilterChange(e) {
-    const filter = e.currentTarget.dataset.filter;
-    this.setData({ activeFilter: filter });
-    api.reminder.task.list({ filter }).then(res => {
-      this.setData({ taskGroups: this.decorateTaskGroups(res.groups), menuTaskId: '' });
+  /* 刷新任务列表+计数：过期状态是任务组 Tab 的下一层级，
+   * 列表与计数始终以当前 activeTripTab + activeFilter 为准 */
+  loadTasks() {
+    const filter = this.data.activeFilter;
+    const tripId = this.data.activeTripTab || undefined;
+    return api.reminder.task.list({ filter, tripId }).then(res => {
+      this.setData({
+        taskGroups: this.decorateTaskGroups(res.groups),
+        counts: res.counts || { active: 0, expired: 0 },
+        menuTaskId: '',
+      });
     }).catch(() => {});
   },
 
+  onFilterChange(e) {
+    this.setData({ activeFilter: e.currentTarget.dataset.filter });
+    this.loadTasks();
+  },
+
   onTripTabTap(e) {
-    const tripId = e.currentTarget.dataset.id;
-    this.setData({ activeTripTab: tripId });
-    api.reminder.task.list({ tripId: tripId || undefined, filter: this.data.activeFilter }).then(res => {
-      this.setData({ taskGroups: this.decorateTaskGroups(res.groups), menuTaskId: '' });
-    }).catch(() => {});
+    this.setData({ activeTripTab: e.currentTarget.dataset.id });
+    this.loadTasks();
   },
 
   onTaskDelete(e) {
@@ -604,6 +716,10 @@ Page({
 
   onNewReminder() {
     /* 底部主操作改为切到「添加提醒」Tab，不再跳二级页 */
+    /* 与导航栏 Tab 一致：首次切到添加页且没有内联时间线时，惰性加载热门景点 */
+    if (!this.data.showTimeline && this.data.hotSpots.length === 0) {
+      this.loadHotSpots();
+    }
     this.setData({ homeTab: 'add', menuTaskId: '' });
   },
 

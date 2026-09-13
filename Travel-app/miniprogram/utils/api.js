@@ -34,6 +34,10 @@ const spots = {
 
 /* ===== reminder ===== */
 const reminder = {
+  /* 首页聚合：一次调用返回 tasks/trips/hotSpots/cart，减少冷启动与串行等待 */
+  home: {
+    bootstrap: (p) => call('reminder', { action: 'home.bootstrap', ...(p || {}) }),
+  },
   trip: {
     create: (p) => call('reminder', { action: 'trip.create', ...p }),
     list: () => call('reminder', { action: 'trip.list' }),

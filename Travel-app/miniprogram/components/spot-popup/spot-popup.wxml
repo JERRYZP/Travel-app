@@ -106,14 +106,37 @@
           <text>{{spot.idRequirement}}</text>
         </view>
         <view wx:if="{{spot.closedDaysLabel}}" class="popup-tips-row">
-          <text class="popup-tips-label">闭馆日</text>
+          <text class="popup-tips-label">开放时间</text>
           <text>{{spot.closedDaysLabel}}</text>
+        </view>
+        <view wx:if="{{spot.closedDaysNote}}" class="popup-tips-row">
+          <text class="popup-tips-label">闭馆提示</text>
+          <text>{{spot.closedDaysNote}}</text>
         </view>
         <view wx:if="{{spot.ageLimit}}" class="popup-tips-row">
           <text class="popup-tips-label">优惠政策</text>
           <text>{{spot.ageLimit}}</text>
         </view>
+        <!-- 规则更新时间（V3.1：仅更新时间，不含来源等级）固定在注意事项末尾 -->
+        <view class="popup-tips-row">
+          <text class="popup-tips-label">数据</text>
+          <text class="popup-verify {{spot.verified ? 'verify-ok' : 'verify-warn'}}">{{spot.verifiedLabel}}</text>
+        </view>
       </view>
     </block>
+
+    <!-- 底部操作栏（V3.0 本期仅视觉占位，不接交互）：内容不超屏随流收尾，超屏 sticky 吸底 -->
+    <view wx:if="{{spot && !loading}}" class="popup-actions-bar">
+      <view wx:if="{{!spot.remindable}}" class="popup-actions-note">
+        {{spot.reservationRequired ? '暂无固定放票时刻，不设提醒' : '无需预约，随到随玩，不设提醒'}}
+      </view>
+      <view class="popup-actions">
+        <block wx:if="{{spot.remindable}}">
+          <view class="popup-btn popup-btn-primary">加入提醒</view>
+          <view class="popup-btn popup-btn-ghost">加入行程</view>
+        </block>
+        <view wx:else class="popup-btn popup-btn-primary">加入行程</view>
+      </view>
+    </view>
   </view>
 </view>

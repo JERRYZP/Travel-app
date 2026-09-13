@@ -1,4 +1,5 @@
 const api = require('../../utils/api.js');
+const verify = require('../../utils/verify.js');
 
 Component({
   properties: {
@@ -29,7 +30,13 @@ Component({
     loadDetail(spotId) {
       this.setData({ loading: true });
       api.spots.detail(spotId).then(res => {
-        this.setData({ spot: res.data, loading: false });
+        this.setData({
+          spot: Object.assign({}, res.data, {
+            verifiedLabel: verify.verifiedLabel(res.data.lastCheckedDate),
+            verified: verify.isVerified(res.data.lastCheckedDate),
+          }),
+          loading: false,
+        });
       }).catch(() => {
         this.setData({ loading: false });
         wx.showToast({ title: '加载失败', icon: 'none' });

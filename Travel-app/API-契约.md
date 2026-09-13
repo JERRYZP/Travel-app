@@ -91,6 +91,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     name: "故宫博物院",
     category: "博物馆",
     district: "东城区",
+    audienceTags: ["family", "elder"],  // 2026-09-06 景点聚合页：人群标签（family=亲子 / elder=带父母），无标注为 []
     difficultyScore: 5,
     difficultyLabel: { key: "EXTREME", text: "极难约" },
     popularityScore: 95,
@@ -208,12 +209,46 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 ---
 
+### 2.0 首页聚合（home.*）
+
+#### `home.bootstrap` — 首页一次性聚合
+
+```
+用途：PAGE-001 首页 onShow 一次请求拿回任务/行程/清单/热门景点，替代 3~5 次串行 callFunction，
+      削减免费版冷启动次数（2026-08-30 新增）。
+调用：{
+  action: 'home.bootstrap',
+  filter: 'active',                 // 任务筛选：active | expired
+  activeTripTab: 'abc123' | '',     // 当前选中的行程 Tab；为空则只返回全量分组
+  tripId: 'abc123' | '',            // 内联时间线的清单 tripId（keepInline 时传，用于返回 cart）
+  includeSpots: true                // 是否返回热门景点（内部调 spots 云函数；false 时 hotSpots=[]）
+}
+
+返回（success=true，字段均为扁平顶层）：
+{
+  homeMode: 1 | 2,               // 首页形态：无任务=1，有任务=2
+  groups: [...],                 // 全量任务分组（未按行程筛选）
+  counts: { active, expired },
+  banner: {...} | null,
+  tripTasks: { groups, counts } | null,  // activeTripTab 非空时返回该行程分组
+  trips: [...],                  // 行程列表
+  showGroupTabs: boolean,
+  cart: { summary, groups, items } | null, // tripId 非空时返回内联清单
+  hotSpots: [...]                // 热门景点卡（来自 spots.list）
+}
+
+错误码：1500（服务异常）。热路径依赖组合索引 reminder_tasks{backendStatus, releaseAt}，
+      且内部调用 spots 云函数（失败时 hotSpots=[]，前端回退 spots.list）。
+```
+
 ### 2.1 行程域（trip.*）
 
-#### `trip.create` — 创建/合并行程
+#### `trip.create` — 创建行程（2026-08-31 起不自动合并）
 
 ```
 用途：PAGE-001 首页形态1「生成预约时间线」→ 内部先创建行程
+说明：2026-08-31 起取消自动合并（TRIP-RULE-002）——日期/景点严格按本次输入创建独立行程；
+     `merged` 字段保留以兼容调用方（新版恒为 false；旧版为 true 时前端用 updateRange/updateSpots 兜底改回）
 调用：{
   action: 'trip.create',
   startDate: '2026-05-31',    // YYYY-MM-DD
@@ -228,8 +263,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 {
   success: true,
   tripId: "abc123",
-  merged: false,                       // 是否与已有行程合并
-  mergedFrom: [],                      // 被合并的行程 ID 列表
+  merged: false,                       // 兼容字段：新版恒为 false（2026-08-31 起取消自动合并）
+  mergedFrom: [],                      // 被合并的行程 ID 列表（新版恒为空）
   trip: {
     _id: "abc123",
     city: "北京",
@@ -356,6 +391,11 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     spotId: "...",
     spotName: "...",
     note: "行程期间闭馆"
+  }],
+  closedDaySkips: [{                    // 2026-09-02：部分日期被闭馆跳过（非全闭馆），供前端提示「已为你跳过」
+    spotId: "tsinghua",
+    spotName: "清华大学",
+    note: "6月1日 (周一) 闭馆，已为你跳过"
   }],
   empty: false,                        // 事件为空时 true
   emptyReason: null                    // empty=true 时的原因文案
@@ -678,7 +718,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 #### `subscribe.add` / `subscribe.get` — 一次性订阅消息额度
 
-`wx.requestSubscribeMessage` 每次授权 = 可发 1 条订阅消息。额度以 `users.subscribeQuota`（TABLE-005 用户表字段）记录，授权成功 +1、notifier 发送成功 -1。
+`wx.requestSubscribeMessage` 每次授权 = 可发 1 条订阅消息。额度按模板存入 `users.subscribeQuotas[templateId]`，同时维护旧字段 `users.subscribeQuota` 作为总数；授权成功 +1、notifier 发送成功 -1、微信返回 `43101` 时对应模板清零。当前业务只有「放票提醒」一个模板，但协议按 templateId 设计，后续可直接扩展多模板。
 
 **`subscribe.add`**（用户授权后前端调用，云端按当前 openid 记 +1）：
 
@@ -689,7 +729,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 **返回：**
 
 ```javascript
-{ success: true, quota: 3, templateId: "w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk" }
+{ success: true, quota: 3, totalQuota: 3, quotas: { "w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk": 3 }, templateId: "w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk" }
 ```
 
 **`subscribe.get`**（查询剩余额度，通知设置页展示）：
@@ -701,7 +741,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 **返回：**
 
 ```javascript
-{ success: true, quota: 3, templateId: "w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk" }
+{ success: true, quota: 3, totalQuota: 3, quotas: { "w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk": 3 }, templateId: "w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk" }
 ```
 
 > 未授权/未落库时 quota 为 0，发送侧仍会尝试（微信侧按真实授权校验，返回 43101 即表示无额度/未订阅）。
@@ -736,7 +776,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 // 失败时 success=false，res 为微信错误（如 43101 未订阅 / 47003 参数错 / 40037 template_id 无效）
 ```
 
-**错误码要点**：`40001/42001` 会自动强制刷新 access_token 并重试一次；`43101` = 用户未订阅或一次性配额已用完；`40037` = template_id 不属于该 AppID；`43107` = 订阅消息能力被封禁。
+**错误码要点**：`40001/42001` 会自动强制刷新 access_token 并重试一次；`43101` = 用户未订阅、已拒收或一次性配额已用完，notifier 会立即把本地对应 `users.subscribeQuotas[templateId]` 清零并同步总数、记录 `subscribeLastError/At`（本地次数不是微信真实剩余额度）；`40037` = template_id 不属于该 AppID；`43107` = 订阅消息能力被封禁。
 
 ### `notifier.whoami` — 获取调用者 openid（测试用）
 

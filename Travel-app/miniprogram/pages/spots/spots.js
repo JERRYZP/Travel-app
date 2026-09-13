@@ -14,6 +14,7 @@ Page({
     selectedSpotIds: [],
     hotSpots: [],
     hotPool: [],
+    shuffleRound: 0,
     history: [],
     searchResults: [],
     searching: false,
@@ -53,7 +54,7 @@ Page({
     });
   },
 
-  /* 热门推荐：只混搭 S+A 级，每批 6 个 S（难度≥4）+ 4 个 A（难度≤3），共 10 个，避免全是极难约 */
+  /* 热门推荐：只混搭 S+A 级，S 优先占满、其余用 A 补足到 10 个，避免全是极难约（见 mixBatch） */
   loadHotSpots() {
     api.spots.list().then(res => {
       this.applyHotPool(res.data || []);
@@ -64,19 +65,27 @@ Page({
     const pool = (list || []).filter(s => s.remindable); // 仅可提醒景点（S+A，含无放票时刻者挡出）
     this.setData({
       hotPool: pool,
-      hotSpots: this.mixBatch(pool, this.data.selectedSpotIds),
+      shuffleRound: 0,
+      hotSpots: this.mixBatch(pool, this.data.selectedSpotIds, 0),
     });
   },
 
-  /* 混搭一批：S 取热度前 6、A 取热度前 4，合并后按热度降序；可避开当前批次的 spotId */
-  mixBatch(pool, selectedIds, excludeIds) {
-    const ex = excludeIds || [];
+  /* 混搭一批：S 全取占满，其余用 A 补足到目标数（凑满 10），合并后按热度降序。
+   * 用轮次平移（round × count 取模）代替「排除当前批」——当前池子 S 仅 3 个、A 存量充足，
+   * 排除后不足目标数会回退整表，导致每次换一批都是同一批。 */
+  mixBatch(pool, selectedIds, round = 0) {
+    const COUNT = 10;
     const sList = pool.filter(s => (s.difficultyScore || 0) >= 4);
     const aList = pool.filter(s => (s.difficultyScore || 0) <= 3);
-    const sPool = sList.filter(s => ex.indexOf(s.spotId) < 0);
-    const aPool = aList.filter(s => ex.indexOf(s.spotId) < 0);
-    const s = (sPool.length >= 6 ? sPool : sList).slice(0, 6);
-    const a = (aPool.length >= 4 ? aPool : aList).slice(0, 4);
+    const rotate = (list, count) => {
+      if (list.length <= count) return list.slice(); // 不足 count 直接全展示
+      const start = (round * count) % list.length;
+      const picked = [];
+      for (let i = 0; i < count; i += 1) picked.push(list[(start + i) % list.length]);
+      return picked;
+    };
+    const s = sList.slice(); // S 全取占满（现仅 3 个，不足 COUNT）
+    const a = rotate(aList, Math.max(0, COUNT - s.length));
     const batch = s.concat(a).sort((x, y) => (y.popularityScore || 0) - (x.popularityScore || 0));
     return util.markSpotsSelected(batch, selectedIds);
   },
@@ -141,7 +150,11 @@ Page({
   },
 
   onShuffle() {
-    this.setData({ hotSpots: this.mixBatch(this.data.hotPool, this.data.selectedSpotIds, this.data.hotSpots.map(s => s.spotId)) });
+    const round = (this.data.shuffleRound || 0) + 1;
+    this.setData({
+      shuffleRound: round,
+      hotSpots: this.mixBatch(this.data.hotPool, this.data.selectedSpotIds, round),
+    });
   },
 
   onSpotToggle(e) {

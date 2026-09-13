@@ -14,12 +14,15 @@
       "officialPath": "pages/index/index",
       "officialWebUrl": "https://www.dpm.org.cn",
       "officialAccount": "故宫博物院",
-      "qrCode": "/images/qrcodes/gugong.png",
+      "qrCode": "/images/qrcodes/gugong.jpg",
       "difficultyScore": 5,
       "popularityScore": 5,
       "hasWebVersion": true,
       "scrapingUrl": "https://www.dpm.org.cn/Home.html",
-      "reservationRequired": true
+      "reservationRequired": true,
+      "audienceTags": [
+        "elder"
+      ]
     },
     {
       "spotId": "tiananmen-chenglou",
@@ -35,12 +38,15 @@
       "officialPath": "",
       "officialWebUrl": "https://www.tiananmenchenglou.com",
       "officialAccount": "天安门城楼参观预约",
-      "qrCode": "",
+      "qrCode": "/images/qrcodes/tiananmen-chenglou.png",
       "difficultyScore": 5,
       "popularityScore": 5,
       "hasWebVersion": true,
       "scrapingUrl": "https://www.tiananmenchenglou.com",
-      "reservationRequired": true
+      "reservationRequired": true,
+      "audienceTags": [
+        "elder"
+      ]
     },
     {
       "spotId": "guobo",
@@ -61,7 +67,10 @@
       "popularityScore": 5,
       "hasWebVersion": true,
       "scrapingUrl": "https://www.chnmuseum.cn",
-      "reservationRequired": true
+      "reservationRequired": true,
+      "audienceTags": [
+        "elder"
+      ]
     },
     {
       "spotId": "yiheyuan",
@@ -77,12 +86,16 @@
       "officialPath": "pages/home/home",
       "officialWebUrl": "https://www.summerpalace-china.com",
       "officialAccount": "畅游公园",
-      "qrCode": "",
+      "qrCode": "/images/qrcodes/yiheyuan.png",
       "difficultyScore": 1,
       "popularityScore": 5,
       "hasWebVersion": true,
       "scrapingUrl": "https://www.summerpalace-china.com",
-      "reservationRequired": false
+      "reservationRequired": false,
+      "audienceTags": [
+        "family",
+        "elder"
+      ]
     },
     {
       "spotId": "tiantan",
@@ -97,13 +110,17 @@
       "officialAppid": "wxf0693a7822f75666",
       "officialPath": "pages/home/home",
       "officialWebUrl": "https://www.tiantanpark.com",
-      "officialAccount": "畅游公园",
+      "officialAccount": "",
       "qrCode": "",
       "difficultyScore": 1,
       "popularityScore": 4,
       "hasWebVersion": true,
       "scrapingUrl": "https://www.tiantanpark.com",
-      "reservationRequired": false
+      "reservationRequired": false,
+      "audienceTags": [
+        "family",
+        "elder"
+      ]
     },
     {
       "spotId": "badaling",
@@ -119,12 +136,15 @@
       "officialPath": "pages/index/index",
       "officialWebUrl": "https://www.badaling.cn",
       "officialAccount": "八达岭长城",
-      "qrCode": "",
+      "qrCode": "/images/qrcodes/badaling.png",
       "difficultyScore": 1,
       "popularityScore": 5,
       "hasWebVersion": true,
       "scrapingUrl": "https://www.badaling.cn",
-      "reservationRequired": true
+      "reservationRequired": true,
+      "audienceTags": [
+        "family"
+      ]
     },
     {
       "spotId": "yuanmingyuan",
@@ -140,12 +160,15 @@
       "officialPath": "",
       "officialWebUrl": "https://www.yuanmingyuanpark.cn",
       "officialAccount": "圆明园遗址公园",
-      "qrCode": "",
+      "qrCode": "/images/qrcodes/yuanmingyuan.jpg",
       "difficultyScore": 1,
       "popularityScore": 4,
       "hasWebVersion": true,
       "scrapingUrl": "https://www.yuanmingyuanpark.cn",
-      "reservationRequired": false
+      "reservationRequired": false,
+      "audienceTags": [
+        "family"
+      ]
     },
     {
       "spotId": "beijing-zoo",
@@ -161,12 +184,15 @@
       "officialPath": "pages/home/home",
       "officialWebUrl": "https://www.bjzoo.com",
       "officialAccount": "畅游公园",
-      "qrCode": "",
+      "qrCode": "/images/qrcodes/beijing-zoo.png",
       "difficultyScore": 1,
       "popularityScore": 4,
       "hasWebVersion": true,
       "scrapingUrl": "https://www.bjzoo.com",
-      "reservationRequired": false
+      "reservationRequired": false,
+      "audienceTags": [
+        "family"
+      ]
     },
     {
       "spotId": "gongwangfu",
@@ -182,12 +208,15 @@
       "officialPath": "",
       "officialWebUrl": "https://www.pgm.org.cn",
       "officialAccount": "恭王府博物馆",
-      "qrCode": "",
-      "difficultyScore": 3,
+      "qrCode": "/images/qrcodes/gongwangfu.jpg",
+      "difficultyScore": 2,
       "popularityScore": 3,
       "hasWebVersion": true,
       "scrapingUrl": "https://www.pgm.org.cn",
-      "reservationRequired": true
+      "reservationRequired": true,
+      "audienceTags": [
+        "elder"
+      ]
     },
     {
       "spotId": "beihai",
@@ -203,12 +232,16 @@
       "officialPath": "pages/home/home",
       "officialWebUrl": "https://www.beihaipark.com.cn",
       "officialAccount": "畅游公园",
-      "qrCode": "",
+      "qrCode": "/images/qrcodes/beihai.jpg",
       "difficultyScore": 1,
       "popularityScore": 3,
       "hasWebVersion": true,
       "scrapingUrl": "https://www.beihaipark.com.cn",
-      "reservationRequired": false
+      "reservationRequired": false,
+      "audienceTags": [
+        "family",
+        "elder"
+      ]
     },
     {
       "spotId": "tiananmen-square",
@@ -223,9 +256,9 @@
       "officialAppid": "wx784eb46174db6aed",
       "officialPath": "",
       "officialWebUrl": "http://yuyue.tamgw.beijing.gov.cn",
-      "officialAccount": "天安门广场预约参观",
+      "officialAccount": "",
       "qrCode": "",
-      "difficultyScore": 5,
+      "difficultyScore": 2,
       "popularityScore": 5,
       "reservationRequired": true,
       "hasWebVersion": true,
@@ -234,6 +267,9 @@
         "升旗",
         "天安门升旗",
         "看升旗"
+      ],
+      "audienceTags": [
+        "elder"
       ]
     },
     {
@@ -249,15 +285,18 @@
       "officialAppid": "wx492b5d2f5b89c11e",
       "officialPath": "",
       "officialWebUrl": "https://cpc.people.com.cn/GB/143527/143528/",
-      "officialAccount": "毛主席纪念堂",
+      "officialAccount": "",
       "qrCode": "",
-      "difficultyScore": 4,
+      "difficultyScore": 2,
       "popularityScore": 4,
       "reservationRequired": true,
       "hasWebVersion": true,
       "scrapingUrl": "",
       "aliases": [
         "纪念堂"
+      ],
+      "audienceTags": [
+        "elder"
       ]
     },
     {
@@ -273,15 +312,18 @@
       "officialAppid": "wxb2809a187df8351b",
       "officialPath": "",
       "officialWebUrl": "",
-      "officialAccount": "人民大会堂参观预约",
+      "officialAccount": "",
       "qrCode": "",
-      "difficultyScore": 4,
+      "difficultyScore": 2,
       "popularityScore": 4,
       "reservationRequired": true,
       "hasWebVersion": false,
       "scrapingUrl": "",
       "aliases": [
         "大会堂"
+      ],
+      "audienceTags": [
+        "elder"
       ]
     },
     {
@@ -298,8 +340,8 @@
       "officialPath": "",
       "officialWebUrl": "http://www.jb.mil.cn",
       "officialAccount": "中国人民革命军事博物馆",
-      "qrCode": "",
-      "difficultyScore": 4,
+      "qrCode": "/images/qrcodes/junbo.jpg",
+      "difficultyScore": 2,
       "popularityScore": 5,
       "reservationRequired": true,
       "hasWebVersion": true,
@@ -307,6 +349,10 @@
       "aliases": [
         "军博",
         "军事博物馆"
+      ],
+      "audienceTags": [
+        "family",
+        "elder"
       ]
     },
     {
@@ -323,8 +369,8 @@
       "officialPath": "",
       "officialWebUrl": "https://www.nnhm.org.cn",
       "officialAccount": "国家自然博物馆",
-      "qrCode": "",
-      "difficultyScore": 5,
+      "qrCode": "/images/qrcodes/ziran-bowuguan.jpg",
+      "difficultyScore": 2,
       "popularityScore": 4,
       "reservationRequired": true,
       "hasWebVersion": true,
@@ -332,6 +378,9 @@
       "aliases": [
         "自然博物馆",
         "自然博"
+      ],
+      "audienceTags": [
+        "family"
       ]
     },
     {
@@ -348,8 +397,8 @@
       "officialPath": "",
       "officialWebUrl": "https://cam.zglsyjy.cn",
       "officialAccount": "中国考古博物馆",
-      "qrCode": "",
-      "difficultyScore": 5,
+      "qrCode": "/images/qrcodes/kaogu-bowuguan.png",
+      "difficultyScore": 2,
       "popularityScore": 4,
       "reservationRequired": true,
       "hasWebVersion": true,
@@ -357,6 +406,9 @@
       "aliases": [
         "考古博物馆",
         "考古博"
+      ],
+      "audienceTags": [
+        "elder"
       ]
     },
     {
@@ -373,8 +425,8 @@
       "officialPath": "",
       "officialWebUrl": "https://www.tsinghua.edu.cn",
       "officialAccount": "清华大学",
-      "qrCode": "",
-      "difficultyScore": 4,
+      "qrCode": "/images/qrcodes/tsinghua.png",
+      "difficultyScore": 3,
       "popularityScore": 4,
       "reservationRequired": true,
       "hasWebVersion": true,
@@ -382,6 +434,9 @@
       "aliases": [
         "清华",
         "清华大学参观"
+      ],
+      "audienceTags": [
+        "elder"
       ]
     },
     {
@@ -398,8 +453,8 @@
       "officialPath": "",
       "officialWebUrl": "https://www.pku.edu.cn",
       "officialAccount": "北京大学",
-      "qrCode": "",
-      "difficultyScore": 4,
+      "qrCode": "/images/qrcodes/peking-university.png",
+      "difficultyScore": 3,
       "popularityScore": 4,
       "reservationRequired": true,
       "hasWebVersion": true,
@@ -407,6 +462,9 @@
       "aliases": [
         "北大",
         "北京大学参观"
+      ],
+      "audienceTags": [
+        "elder"
       ]
     },
     {
@@ -423,8 +481,8 @@
       "officialPath": "",
       "officialWebUrl": "https://www.cstm.org.cn",
       "officialAccount": "中国科学技术馆",
-      "qrCode": "",
-      "difficultyScore": 3,
+      "qrCode": "/images/qrcodes/kejiguan.jpg",
+      "difficultyScore": 2,
       "popularityScore": 4,
       "reservationRequired": true,
       "hasWebVersion": true,
@@ -432,6 +490,9 @@
       "aliases": [
         "科技馆",
         "中国科学技术馆"
+      ],
+      "audienceTags": [
+        "family"
       ]
     },
     {
@@ -449,13 +510,16 @@
       "officialWebUrl": "https://www.namoc.cn",
       "officialAccount": "中国美术馆",
       "qrCode": "/images/qrcodes/meishuguan.png",
-      "difficultyScore": 3,
+      "difficultyScore": 2,
       "popularityScore": 4,
       "reservationRequired": true,
       "hasWebVersion": true,
       "scrapingUrl": "",
       "aliases": [
         "美术馆"
+      ],
+      "audienceTags": [
+        "elder"
       ]
     },
     {
@@ -482,6 +546,10 @@
         "工艺美术馆",
         "非遗馆",
         "工美馆"
+      ],
+      "audienceTags": [
+        "family",
+        "elder"
       ]
     },
     {
@@ -498,7 +566,7 @@
       "officialPath": "",
       "officialWebUrl": "http://www.capitalmuseum.org.cn",
       "officialAccount": "首都博物馆",
-      "qrCode": "",
+      "qrCode": "/images/qrcodes/shoubo.jpg",
       "difficultyScore": 2,
       "popularityScore": 3,
       "reservationRequired": false,
@@ -506,6 +574,10 @@
       "scrapingUrl": "",
       "aliases": [
         "首博"
+      ],
+      "audienceTags": [
+        "family",
+        "elder"
       ]
     },
     {
@@ -522,7 +594,7 @@
       "officialPath": "",
       "officialWebUrl": "https://www.mutianyugreatwall.com",
       "officialAccount": "慕田峪长城",
-      "qrCode": "",
+      "qrCode": "/images/qrcodes/mutianyu.png",
       "difficultyScore": 2,
       "popularityScore": 4,
       "reservationRequired": true,
@@ -530,6 +602,9 @@
       "scrapingUrl": "",
       "aliases": [
         "慕田峪"
+      ],
+      "audienceTags": [
+        "family"
       ]
     },
     {
@@ -546,7 +621,7 @@
       "officialPath": "",
       "officialWebUrl": "http://www.kmgzj.com",
       "officialAccount": "孔庙和国子监博物馆",
-      "qrCode": "",
+      "qrCode": "/images/qrcodes/kongmiao-guozijian.jpg",
       "difficultyScore": 2,
       "popularityScore": 3,
       "reservationRequired": false,
@@ -555,6 +630,10 @@
       "aliases": [
         "孔庙",
         "国子监"
+      ],
+      "audienceTags": [
+        "family",
+        "elder"
       ]
     },
     {
@@ -579,6 +658,9 @@
       "scrapingUrl": "",
       "aliases": [
         "天文馆"
+      ],
+      "audienceTags": [
+        "family"
       ]
     },
     {
@@ -595,7 +677,7 @@
       "officialPath": "",
       "officialWebUrl": "https://www.universalbeijingresort.com",
       "officialAccount": "北京环球度假区",
-      "qrCode": "",
+      "qrCode": "/images/qrcodes/huanqiu-yingcheng.png",
       "difficultyScore": 2,
       "popularityScore": 5,
       "reservationRequired": true,
@@ -604,6 +686,9 @@
       "aliases": [
         "环球影城",
         "环球度假区"
+      ],
+      "audienceTags": [
+        "family"
       ]
     }
   ]

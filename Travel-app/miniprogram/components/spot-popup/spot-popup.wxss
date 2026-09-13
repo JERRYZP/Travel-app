@@ -12,7 +12,7 @@
   max-height: 80vh;
   background: var(--color-surface);
   border-radius: 32rpx 32rpx 0 0;
-  padding: 32rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
+  padding: 32rpx 32rpx 0;
   overflow-y: auto;
 }
 
@@ -215,6 +215,11 @@
   width: 120rpx;
 }
 
+/* 数据核验状态 */
+.popup-verify { font-size: 24rpx; }
+.verify-ok { color: #2f6b3d; }
+.verify-warn { color: #b8860b; }
+
 /* ===== 公众号二维码弹层 ===== */
 .qr-mask {
   position: fixed;
@@ -289,4 +294,47 @@
   height: 36rpx;
   display: flex;
   align-items: center;
+}
+
+/* ===== 底部操作栏（V3.0：本期仅视觉占位，不接交互） =====
+   sticky 吸底：内容不超屏时随流收尾；超屏时恒贴弹窗底缘，滚动中按钮可见。
+   打开/展开折叠无需 JS 判定——sticky 在两种形态下天然成立，滚动过程不切换。 */
+.popup-actions-bar {
+  position: sticky;
+  bottom: 0;
+  margin-top: 8rpx;
+  padding: 20rpx 0 calc(24rpx + env(safe-area-inset-bottom));
+  background: var(--color-surface);
+}
+
+.popup-actions {
+  display: flex;
+  gap: 20rpx;
+}
+
+.popup-btn {
+  flex: 1;
+  height: 88rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.popup-btn-primary { background: var(--color-primary); color: #fff; }
+.popup-btn-ghost {
+  border: 2rpx solid var(--color-primary);
+  color: var(--color-primary);
+  background: transparent;
+  box-sizing: border-box;
+}
+
+/* B 层（免预约/无固定放票时刻）固定说明 */
+.popup-actions-note {
+  text-align: center;
+  font-size: 22rpx;
+  color: var(--color-muted);
+  margin-bottom: 16rpx;
 }

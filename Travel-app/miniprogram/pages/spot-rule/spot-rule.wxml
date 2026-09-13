@@ -1,0 +1,153 @@
+<!-- 自定义导航栏 -->
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack">
+      <svg-icon name="back" size="18px" />
+    </view>
+    <text class="navbar-title">{{spot ? spot.name : '景点规则'}}</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view wx:if="{{loading}}" class="loading-wrap">
+  <van-loading size="40rpx" color="#B8904A" />
+</view>
+
+<block wx:elif="{{spot}}">
+  <view class="page-body">
+    <!-- 顶部头图 -->
+    <view class="hero">
+      <image class="hero-img" src="/images/spots/{{spot.spotId}}.jpg" mode="aspectFill" />
+      <view class="hero-shade"></view>
+      <view class="hero-info">
+        <view class="hero-status-row">
+          <view class="hero-status hero-status-{{spot.status.key}}">{{spot.status.text}}</view>
+          <view wx:if="{{spot.reservationRequired && spot.difficultyLabel}}" class="hero-diff diff-{{spot.difficultyLabel.key}}">{{spot.difficultyLabel.text}}</view>
+        </view>
+        <text class="hero-name">{{spot.name}}</text>
+        <text wx:if="{{spot.address}}" class="hero-addr">{{spot.address}}</text>
+      </view>
+    </view>
+
+    <!-- 核心预约规则 -->
+    <view class="section-card rule-card">
+      <view class="section-title-row">
+        <view class="section-dot"></view>
+        <text class="section-title">核心预约规则</text>
+      </view>
+      <view class="rule-main">
+        <text class="rule-main-text">{{spot.ruleText}}</text>
+      </view>
+      <view wx:if="{{spot.remindable && spot.releaseTime}}" class="rule-tags">
+        <view wx:for="{{spot.releaseList}}" wx:key="*this" class="rule-tag">每日{{item}}放票</view>
+        <view wx:if="{{spot.closedDaysLabel}}" class="rule-tag">{{spot.closedDaysLabel}}</view>
+      </view>
+      <view wx:elif="{{spot.closedDaysLabel}}" class="rule-tags">
+        <view class="rule-tag">{{spot.closedDaysLabel}}</view>
+      </view>
+    </view>
+
+    <!-- 可信区块：核验溯源 + 来源 + 我要纠错 -->
+    <view class="trust-block {{spot.verified ? 'trust-verified' : 'trust-unverified'}}">
+      <view class="trust-row">
+        <svg-icon name="clock-badge" size="14px" />
+        <text>{{spot.verifiedLabel}}</text>
+      </view>
+      <view wx:if="{{spot.verified}}" class="trust-row">
+        <svg-icon name="globe" size="14px" />
+        <text>{{spot.sourceText || '来源：官方渠道'}}</text>
+      </view>
+      <view class="trust-correct" bindtap="onCorrect">
+        <svg-icon name="edit" size="14px" />
+        <text>我要纠错</text>
+        <svg-icon name="chevron-right" size="12px" />
+      </view>
+    </view>
+
+    <!-- 详细讲解（预约注意事项 / 特殊人群 / 特殊区域等） -->
+    <view class="section-card">
+      <view class="section-title-row">
+        <view class="section-dot"></view>
+        <text class="section-title">预约详情</text>
+      </view>
+
+      <view wx:if="{{spot.bookingTips}}" class="detail-block">
+        <text class="detail-label">预约注意事项</text>
+        <text class="detail-text">{{spot.bookingTips}}</text>
+      </view>
+
+      <view wx:if="{{spot.openTime}}" class="detail-row">
+        <text class="detail-label">开放时间</text>
+        <text class="detail-text">{{spot.openTime}}</text>
+      </view>
+      <view wx:if="{{spot.ticketPrice}}" class="detail-row">
+        <text class="detail-label">票价</text>
+        <text class="detail-text">{{spot.ticketPrice}}</text>
+      </view>
+      <view wx:if="{{spot.idRequirement}}" class="detail-row">
+        <text class="detail-label">证件要求</text>
+        <text class="detail-text">{{spot.idRequirement}}</text>
+      </view>
+      <view wx:if="{{spot.ageLimit}}" class="detail-row">
+        <text class="detail-label">特殊人群</text>
+        <text class="detail-text">{{spot.ageLimit}}</text>
+      </view>
+    </view>
+
+    <!-- 官方临时公告 -->
+    <view wx:if="{{spot.specialNotice}}" class="special-notice">
+      <view class="special-notice-icon"><van-icon name="warning-o" size="14px" color="#C0392B" /></view>
+      <text>{{spot.specialNotice}}</text>
+    </view>
+
+    <!-- 官方预约入口 -->
+    <view class="section-card">
+      <view class="section-title-row">
+        <view class="section-dot"></view>
+        <text class="section-title">{{spot.reservationRequired ? '官方预约入口' : '购票 / 入园方式'}}</text>
+      </view>
+      <view class="entries">
+        <view
+          wx:for="{{spot.entries}}"
+          wx:key="type"
+          class="entry"
+          bindtap="onEntryTap"
+          data-entry="{{item}}"
+        >
+          <view class="entry-icon"><svg-icon name="{{item.type === 'OFFICIAL_ACCOUNT' ? 'wechat' : item.type === 'WEB' ? 'globe' : 'miniprogram'}}" size="32px" /></view>
+          <view class="entry-body">
+            <view class="entry-label-row">
+              <text class="entry-label">{{item.label}}</text>
+              <view class="entry-badge">{{spot.reservationRequired ? '预约方式' : '购票方式'}}{{index + 1}}</view>
+            </view>
+            <text class="entry-hint">{{item.hint}}</text>
+          </view>
+          <view class="entry-actions">
+            <text wx:if="{{item.type === 'WEB' && item.url}}" class="entry-copy" catchtap="onCopyEntry" data-entry="{{item}}">复制链接</text>
+            <view class="entry-btn {{item.type === 'OFFICIAL_ACCOUNT' ? 'btn-account' : 'btn-link'}}">{{item.type === 'OFFICIAL_ACCOUNT' ? '查看二维码' : '打开链接'}}</view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 底部行动栏：设置提醒（规则详情页的行动出口） -->
+  <view class="action-bar">
+    <view class="action-btn {{spot.reservationRequired && spot.remindable ? '' : 'disabled'}}" bindtap="onSetReminder">
+      <svg-icon name="bell-plus" size="16px" />
+      <text>设置预约提醒</text>
+    </view>
+    <text class="action-hint">{{(!spot.reservationRequired || !spot.remindable) ? (spot.reservationRequired ? '无固定放票时刻，随买随用即可' : '该景点无需预约，现场购票即可') : '放票前提醒您前往官方渠道'}}</text>
+  </view>
+
+  <!-- 公众号二维码弹层 -->
+  <view wx:if="{{showQr && qrSpot}}" class="qr-mask" catchtap="closeQr" catchtouchmove="noop">
+    <view class="qr-card" catchtap="noop">
+      <text class="qr-title">{{qrSpot.name}}</text>
+      <text class="qr-subtitle">长按识别二维码，关注公众号后参与预约</text>
+      <image class="qr-img" src="{{qrSpot.qrCode}}" mode="aspectFit" show-menu-by-longpress />
+      <view class="qr-close" bindtap="closeQr">关闭</view>
+    </view>
+  </view>
+</block>

@@ -1,0 +1,133 @@
+<!-- 自定义导航栏（Tab 页）：左城市入口（V1 仅北京，静态占位），中标题 -->
+<view class="navbar" style="height: {{pinTop}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-city">
+      <svg-icon name="location" size="13px" />
+      <text class="navbar-city-text">游北京</text>
+      <svg-icon name="chevron-down" size="9px" />
+    </view>
+    <text class="navbar-title">景点</text>
+  </view>
+</view>
+<view style="height: {{pinTop}}px;"></view>
+
+<view class="page-body">
+  <!-- 今日放票 Banner（V3.0）：3 条/页 · 最多 9 条 · 轮播循环 · 点景点名进详情 -->
+  <view wx:if="{{banner && banner.pages.length}}" class="release-banner">
+    <image class="release-banner-bg" src="/images/banner_bg.png" mode="aspectFill" />
+    <view class="release-banner-inner">
+      <view class="release-banner-head">
+        <view class="release-banner-head-left">
+          <text class="release-banner-date">{{banner.dateLabel}}</text>
+          <text class="release-banner-title">今日放票提醒</text>
+        </view>
+        <!-- 查看更多：本期占位，不接跳转 -->
+        <text class="release-banner-more">查看更多 ></text>
+      </view>
+      <swiper
+        class="release-swiper"
+        autoplay="{{bannerAutoplay}}"
+        circular="{{banner.pages.length > 1}}"
+        interval="5000"
+        duration="400"
+        current="{{bannerCurrent}}"
+        bindchange="onBannerChange"
+        catchtouchstart="onBannerTouch"
+      >
+        <swiper-item wx:for="{{banner.pages}}" wx:for-item="page" wx:key="key">
+          <view class="release-panel">
+            <view
+              wx:for="{{page.rows}}"
+              wx:for-item="row"
+              wx:key="spotId"
+              class="release-row"
+              bindtap="onBannerSpotTap"
+              data-id="{{row.spotId}}"
+            >
+              <text class="release-row-name">{{row.name}}</text>
+              <view class="release-row-time">
+                <text class="release-row-hh">{{row.timeText}}</text>
+                <text class="release-row-date">可约 {{row.dateText}}</text>
+                <text wx:if="{{row.released}}" class="release-row-released">已放票 ></text>
+              </view>
+              <view class="release-row-flames">
+                <image wx:for="{{row.flames}}" wx:for-item="f" wx:key="*this" class="release-flame" src="/images/icons/fire.svg" />
+              </view>
+            </view>
+          </view>
+        </swiper-item>
+      </swiper>
+      <view wx:if="{{banner.pages.length > 1}}" class="release-dots">
+        <view wx:for="{{banner.pages}}" wx:key="key" class="release-dot {{bannerCurrent === index ? 'active' : ''}}"></view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 搜索 + 类型 Tab：聚焦时整页滚动，本容器 sticky 吸顶（Banner 滑出视口，不销毁） -->
+  <view class="pin-wrap" style="top: {{pinTop}}px;">
+    <view class="search-bar">
+      <view class="search-input-wrap">
+        <svg-icon name="search" size="16px" />
+        <input
+          class="search-input"
+          placeholder="搜索景点名称"
+          placeholder-class="search-placeholder"
+          value="{{keyword}}"
+          confirm-type="search"
+          bindinput="onSearchInput"
+          bindfocus="onSearchFocus"
+        />
+        <view wx:if="{{keyword}}" class="search-clear" bindtap="onClearKeyword">
+          <svg-icon name="close" size="16px" />
+        </view>
+      </view>
+      <text wx:if="{{searchFocused}}" class="search-cancel" bindtap="onSearchCancel">取消</text>
+    </view>
+
+    <scroll-view class="type-tabs" scroll-x enhanced show-scrollbar="{{false}}">
+      <view class="type-tabs-inner">
+        <view
+          wx:for="{{tabs}}"
+          wx:key="key"
+          class="type-tab {{activeTab === item.key ? 'active' : ''}}"
+          bindtap="onTabTap"
+          data-key="{{item.key}}"
+        >
+          <svg-icon wx:if="{{item.flame}}" name="fire" size="12px" />
+          <text>{{item.label}}</text>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- 加载态 -->
+  <view wx:if="{{loading}}" class="loading-wrap">
+    <van-loading size="40rpx" color="#B8904A" />
+  </view>
+
+  <!-- 全量数据为空（云端无数据/失败） -->
+  <view wx:elif="{{dataEmpty}}" class="empty-state">
+    <text>{{loadFailed ? '景点数据加载失败，请检查云端' : '暂无景点数据，请确认云端已导入'}}</text>
+  </view>
+
+  <!-- 搜索无结果 / 分类为空 -->
+  <view
+    wx:elif="{{(searchMode ? searchResults.length : spots.length) === 0}}"
+    class="empty-state"
+  >
+    <text>{{searchMode ? '没有找到相关景点，换个词试试' : '该分类下暂无景点'}}</text>
+  </view>
+
+  <!-- 两列宫格（卡片无选择按钮，进入完整规则详情页） -->
+  <view wx:else class="spot-grid">
+    <block wx:if="{{searchMode}}">
+      <spot-card wx:for="{{searchResults}}" wx:key="spotId" spot="{{item}}" bind:cardtap="onCardTap" />
+    </block>
+    <block wx:else>
+      <spot-card wx:for="{{spots}}" wx:key="spotId" spot="{{item}}" bind:cardtap="onCardTap" />
+    </block>
+  </view>
+</view>
+
+<tabbar active="spots" />

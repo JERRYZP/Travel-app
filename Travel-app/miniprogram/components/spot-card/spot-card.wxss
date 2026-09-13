@@ -1,0 +1,75 @@
+/* 与 pages/home home.wxss 的 spot-card 系列逐条一致（402 基准），仅去掉选择按钮 */
+.spot-card {
+  width: 337rpx;
+  background: var(--color-surface);
+  border-radius: 24rpx;
+  box-shadow: var(--shadow-card);
+  padding: 16rpx;
+  position: relative;
+  box-sizing: border-box;
+}
+.spot-card-img {
+  width: 100%;
+  height: 127rpx;
+  border-radius: 12rpx;
+  display: block;
+  background: linear-gradient(135deg, #EDE0C8, #DBCDBB);
+  margin-bottom: 12rpx;
+}
+.spot-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+.spot-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+.spot-card-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 26rpx;
+  font-weight: 500;
+  color: var(--color-text);
+  text-decoration: underline;
+}
+.spot-card-diff {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 2rpx 12rpx;
+  border-radius: 8rpx;
+  font-size: 20rpx;
+  width: fit-content;
+}
+.diff-EXTREME { background: var(--diff-extreme-bg); color: var(--diff-extreme-text); }
+.diff-NORMAL { background: var(--diff-normal-bg); color: var(--diff-normal-text); }
+.diff-EASY { background: var(--diff-easy-bg); color: var(--diff-easy-text); }
+.spot-card-tags {
+  display: flex;
+  gap: 8rpx;
+  flex-wrap: wrap;
+}
+.spot-card-tag {
+  font-size: 20rpx;
+  color: var(--color-muted);
+}
+.card-desc { line-height: 1.5; }
+
+/* B 层免预约 / 无固定放票时刻：选择按钮位置改为信息 tag（home 同款样式） */
+.spot-card-nobook {
+  position: absolute;
+  top: 24rpx;
+  right: 24rpx;
+  display: flex;
+  align-items: center;
+  padding: 6rpx 16rpx;
+  border-radius: 24rpx;
+  border: 1rpx solid var(--color-border);
+  font-size: 20rpx;
+  color: var(--color-muted);
+  background: rgba(255, 255, 255, 0.9);
+}

@@ -68,9 +68,36 @@ function computeDifficultyLabel(score) {
 }
 
 const DAY_CN = { monday: '周一', tuesday: '周二', wednesday: '周三', thursday: '周四', friday: '周五', saturday: '周六', sunday: '周日' };
-function closedDaysLabel(days) {
-  if (!days || days.length === 0) return '全年开放';
-  return days.map(d => DAY_CN[d] || d).join('、') + '闭馆';
+/**
+ * 闭馆 / 开放日标签。四态，与 reminder/lib/time.js 的 openDaysLabel 同逻辑（云函数间不共享模块，故镜像一份）：
+ * 1. openDays 非空（白名单，北大/清华）→ 「仅周六、周日开放」。
+ *    绝不能落回「全年开放」——那正好说反，比不显示更糟。
+ * 2. closedDays 非空 → 「周一闭馆」。
+ * 3. 都没配但有 closedDaysNote → 用 note。用于「园中园周一闭馆、公园本体全开」的天坛/北海：
+ *    要说清周一有东西不开，但不能改 closedDays，否则 App 会报「周一闭馆」而公园其实开着。
+ * 4. 否则 → 「全年开放」。
+ */
+function closedDaysLabel(days, openDays, note) {
+  const open = openDays || [];
+  if (open.length > 0) return '仅' + open.map(d => DAY_CN[d] || d).join('、') + '开放';
+  if (days && days.length > 0) return days.map(d => DAY_CN[d] || d).join('、') + '闭馆';
+  if (note) return note;
+  return '全年开放';
+}
+
+/** 当前生效中的官方公告：过了 specialNoticeUntil（含当天）自动不下发（同 reminder/lib/time.js） */
+function activeNoticeOf(rule, now = new Date()) {
+  if (!rule || !rule.specialNotice) return '';
+  const until = rule.specialNoticeUntil;
+  if (!until) return rule.specialNotice;
+  return toDateStr(now) <= until ? rule.specialNotice : '';
+}
+
+function isOpenOn(rule, dayName) {
+  if (!rule) return true;
+  const open = rule.openDays || [];
+  if (open.length > 0) return open.includes(dayName);
+  return !(rule.closedDays || []).includes(dayName);
 }
 
 /**
@@ -80,8 +107,8 @@ function computeReleaseStatus(rule, now = new Date()) {
   if (!rule || !rule.releaseTime) return ReleaseStatus.NOT_RELEASED;
 
   const p = beijingParts(now);
-  // 今天闭馆 → 今日不放票
-  if ((rule.closedDays || []).includes(p.dayName)) return ReleaseStatus.NOT_RELEASED;
+  // 今天不可约（闭馆日 / 白名单外的星期）→ 今日不放票
+  if (!isOpenOn(rule, p.dayName)) return ReleaseStatus.NOT_RELEASED;
 
   const [h, m] = rule.releaseTime.split(':').map(Number);
   const nowMinutes = p.hour * 60 + p.minute;
@@ -93,16 +120,19 @@ function computeReleaseStatus(rule, now = new Date()) {
 }
 
 /**
- * 最早可约日期 = 今天 + advanceDays，落在闭馆日则顺延
+ * 最早可约日期 = 今天 + advanceDays，不可约则顺延到下一个可约日（isOpenOn 判定）
+ *
+ * 顺延上限按 7 天取：白名单景点（仅周末）最多顺延 6 天即可命中，
+ * 黑名单景点同理。超限说明规则异常，返回 null 好过返回一个其实约不了的日期。
  */
 function computeEarliestDate(rule, now = new Date()) {
   if (!rule || !rule.advanceDays) return null;
   let target = addDaysStr(toDateStr(now), rule.advanceDays);
   for (let i = 0; i < 7; i += 1) {
-    if (!(rule.closedDays || []).includes(dayNameOfStr(target))) break;
+    if (isOpenOn(rule, dayNameOfStr(target))) return target;
     target = addDaysStr(target, 1);
   }
-  return target;
+  return null;
 }
 
 /** B 层卡片描述（TAG-RULE-001 补充）：随到随买，当前{旺季/淡季}门票...，按北京时间判季节（TIME-RULE-001） */
@@ -151,6 +181,7 @@ function buildCard(spot, rule, now) {
     spotId: spot.spotId,
     name: spot.name,
     category: spot.category,
+    audienceTags: spot.audienceTags || [],
     district: spot.district,
     difficultyScore: spot.difficultyScore,
     difficultyLabel: computeDifficultyLabel(spot.difficultyScore),
@@ -170,8 +201,11 @@ function buildCard(spot, rule, now) {
     ticketPrice: rule ? (rule.ticketPrice || '') : '',
     openTime: rule ? (rule.openTime || '') : '',
     closedDays: rule ? (rule.closedDays || []) : [],
+    // 白名单开放日（非空时接管 closedDays），前端据此显示「仅周六、周日开放」
+    openDays: rule ? (rule.openDays || []) : [],
     releaseStatus: status,
     earliestDate: computeEarliestDate(rule, now),
+    lastCheckedDate: rule ? (rule.lastCheckedDate || '') : '',
     officialAppid: spot.officialAppid || '',
     officialPath: spot.officialPath || '',
     officialWebUrl: spot.officialWebUrl || '',
@@ -253,12 +287,17 @@ exports.main = async (event) => {
             // 预约注意事项（折叠展开），取自 release_rules
             bookingTips: rule ? rule.bookingTips : '',
             // 官方临时公告（如闭馆维修/临时停开），有内容时详情弹窗顶部红条显示
-            specialNotice: rule ? (rule.specialNotice || '') : '',
+            specialNotice: activeNoticeOf(rule),
             openTime: rule ? rule.openTime : '',
             ticketPrice: rule ? rule.ticketPrice : '',
             idRequirement: rule ? rule.idRequirement : '',
             ageLimit: rule ? rule.ageLimit : '',
-            closedDaysLabel: closedDaysLabel(rule ? rule.closedDays : []),
+            closedDaysLabel: closedDaysLabel(rule && rule.closedDays, rule && rule.openDays, rule && rule.closedDaysNote),
+            // 园中园等「部分闭馆」说明（天坛/北海）。仅当主标签已经承载了它（白名单/黑名单态）时
+            // 才单独透出，否则会与 closedDaysLabel 重复显示同一句话。
+            closedDaysNote: (rule && rule.closedDaysNote
+              && (((rule.openDays || []).length > 0) || ((rule.closedDays || []).length > 0)))
+              ? rule.closedDaysNote : '',
           },
         };
       }

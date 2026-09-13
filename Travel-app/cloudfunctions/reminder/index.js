@@ -32,7 +32,7 @@ exports.main = async (event) => {
     switch (action) {
       /* ======== 行程 ======== */
       case 'trip.create':
-        return await trip.createOrMerge(db, userId, event);
+        return await trip.create(db, userId, event);
       case 'trip.list':
         return await trip.list(db, userId);
       case 'trip.updateSpots':
@@ -45,6 +45,10 @@ exports.main = async (event) => {
         return await timeline.generate(db, userId, event.tripId, {
           spotStatusMap: event.spotStatusMap || {},
         });
+
+      /* ======== 首页聚合（一次调用返回全部，减少冷启动） ======== */
+      case 'home.bootstrap':
+        return await homeBootstrap(db, userId, event);
 
       /* ======== 提醒清单 ======== */
       case 'cart.add':
@@ -127,6 +131,49 @@ exports.main = async (event) => {
     return fail({ code: 1500, message: err.message });
   }
 };
+
+/**
+ * home.bootstrap —— 首页一次调用聚合，替代 3~5 次串行 callFunction。
+ * 并行拉取：全部任务(算 homeMode/counts/banner)、选中行程分组、行程列表、内联清单、热门景点。
+ * 热门景点内部复用 spots 云函数（难度标签/卡片逻辑单一真身留在 spots），失败不阻断整体，
+ * 前端在 hotSpots 为空时回退 loadHotSpots()。
+ */
+async function homeBootstrap(db, userId, event = {}) {
+  const filter = event.filter || 'active';
+  const activeTripTab = event.activeTripTab || '';
+  const tripId = event.tripId || '';       // 内联时间线的清单 tripId（keepInline 时）
+  const includeSpots = event.includeSpots !== false;
+
+  const tasksAllP = task.list(db, userId, { tripId: null, filter });
+  const tripsP = trip.list(db, userId);
+  const cartP = tripId ? cart.list(db, userId, tripId) : Promise.resolve(null);
+  const tripTasksP = activeTripTab
+    ? task.list(db, userId, { tripId: activeTripTab, filter })
+    : Promise.resolve(null);
+  const spotsP = includeSpots
+    ? cloud.callFunction({ name: 'spots', data: { action: 'list' } }).catch(() => null)
+    : Promise.resolve(null);
+
+  const [tasksAll, trips, cart, tripTasks, spotsCall] = await Promise.all([
+    tasksAllP, tripsP, cartP, tripTasksP, spotsP,
+  ]);
+
+  return ok({
+    // 首页形态与任务主数据（未按行程筛选）
+    homeMode: (tasksAll && tasksAll.homeMode) || 1,
+    groups: (tasksAll && tasksAll.groups) || [],
+    counts: (tasksAll && tasksAll.counts) || { active: 0, expired: 0 },
+    banner: (tasksAll && tasksAll.banner) || null,
+    // 选中行程 Tab 时的分组（可能为 null）
+    tripTasks: tripTasks && tripTasks.success ? tripTasks : null,
+    trips: (trips && trips.trips) || [],
+    showGroupTabs: (trips && trips.showGroupTabs) || false,
+    // 内联清单（形态1/2 保留时间线时）
+    cart,
+    // 热门景点（内部调用 spots 云函数，失败不阻断整体）
+    hotSpots: spotsCall && spotsCall.result && Array.isArray(spotsCall.result.data) ? spotsCall.result.data : [],
+  });
+}
 
 /** TABLE-005 用户表：首次调用时惰性创建（无感登录：自动生成昵称+随机默认头像，无任何弹窗） */
 async function getOrCreateUser(userId) {
@@ -219,8 +266,29 @@ async function updateUserProfile(userId, data = {}) {
 const DEFAULT_SUBSCRIBE_TEMPLATE_ID = 'w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk';
 
 /**
- * subscribe.add —— 用户授权订阅消息后 +1 一次性额度（微信每次授权=可发 1 条）
- * 落库到 users.subscribeQuota（TABLE-005），便于前端展示「剩余可提醒次数」。
+ * 读取某个模板的本地额度。
+ * 新数据用 subscribeQuotas[templateId]；旧数据单模板回退到 subscribeQuota。
+ */
+function subscribeQuotaOf(user, templateId) {
+  const quotas = user.subscribeQuotas || {};
+  if (Object.prototype.hasOwnProperty.call(quotas, templateId)) {
+    return Number(quotas[templateId]) || 0;
+  }
+  const legacyTemplateId = user.subscribeTemplateId || DEFAULT_SUBSCRIBE_TEMPLATE_ID;
+  if (legacyTemplateId === templateId) return Number(user.subscribeQuota) || 0;
+  return 0;
+}
+
+/** 各模板额度之和；无模板 map 时回退旧总数 */
+function totalSubscribeQuota(quotas, fallback = 0) {
+  const values = Object.values(quotas || {}).filter(v => typeof v === 'number' && v >= 0);
+  if (!values.length) return Math.max(0, Number(fallback) || 0);
+  return values.reduce((sum, v) => sum + v, 0);
+}
+
+/**
+ * subscribe.add —— 用户授权某个模板后 +1 一次性额度。
+ * 同时维护旧 subscribeQuota 总数，兼容现有页面和旧数据。
  */
 async function addSubscribe(userId, templateId) {
   const tpl = templateId || DEFAULT_SUBSCRIBE_TEMPLATE_ID;
@@ -228,23 +296,34 @@ async function addSubscribe(userId, templateId) {
   if (!(res.data || []).length) await getOrCreateUser(userId);
   const target = await db.collection(COLLECTIONS.USERS).where({ openId: userId }).get();
   const u = target.data[0];
+  const quotas = Object.assign({}, u.subscribeQuotas || {});
+  const quota = subscribeQuotaOf(u, tpl) + 1;
+  quotas[tpl] = quota;
+  const totalQuota = totalSubscribeQuota(quotas, u.subscribeQuota);
   await db.collection(COLLECTIONS.USERS).doc(u._id).update({
     data: {
-      subscribeQuota: _.inc(1),
+      subscribeQuota: totalQuota,
+      subscribeQuotas: quotas,
       subscribeTemplateId: tpl,
       subscribeUpdatedAt: time.now(),
     },
   });
-  return ok({ quota: (u.subscribeQuota || 0) + 1, templateId: tpl });
+  return ok({ quota, totalQuota, quotas, templateId: tpl });
 }
 
-/** subscribe.get —— 查询当前用户剩余一次性订阅额度 */
+/** subscribe.get —— 查询当前用户某个模板的本地额度 */
 async function getSubscribe(userId, templateId) {
   const tpl = templateId || DEFAULT_SUBSCRIBE_TEMPLATE_ID;
   const res = await db.collection(COLLECTIONS.USERS).where({ openId: userId }).get();
-  if (!(res.data || []).length) return ok({ quota: 0, templateId: tpl });
+  if (!(res.data || []).length) return ok({ quota: 0, totalQuota: 0, quotas: {}, templateId: tpl });
   const u = res.data[0];
-  return ok({ quota: u.subscribeQuota || 0, templateId: u.subscribeTemplateId || tpl });
+  const quotas = u.subscribeQuotas || {};
+  return ok({
+    quota: subscribeQuotaOf(u, tpl),
+    totalQuota: totalSubscribeQuota(quotas, u.subscribeQuota),
+    quotas,
+    templateId: tpl,
+  });
 }
 
 /**

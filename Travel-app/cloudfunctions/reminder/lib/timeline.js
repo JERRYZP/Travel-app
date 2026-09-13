@@ -14,6 +14,19 @@ const time = require('./time');
 /* ============ 纯函数区 ============ */
 
 /**
+ * 被跳过的日期，用哪个词收尾。
+ * 白名单景点（北大/清华「仅周末可约」）不是闭馆，说「不可约」才不误导用户。
+ */
+function skipReasonOf(rule) {
+  return (rule && rule.openDays && rule.openDays.length > 0) ? ' 不可约，已为你跳过' : ' 闭馆，已为你跳过';
+}
+
+/** 同理，「行程期间」那行标注也不能一律说闭馆 */
+function closedSpotNoteOf(rule) {
+  return (rule && rule.openDays && rule.openDays.length > 0) ? '行程期间不可约' : '行程期间闭馆';
+}
+
+/**
  * TIMELINE-RULE-001 + 005 为单个景点生成事件（交叉积）
  *
  * 景点 × 行程内每个非闭馆日 = N 个事件。
@@ -21,17 +34,17 @@ const time = require('./time');
  *
  * 不替用户推断出行日——用户通过 PAGE-005/006 的 Tab 选择实际要哪天的提醒。
  *
- * @returns {Array} 空数组表示该景点在行程内每天都闭馆（TIMELINE-RULE-005）
+ * @returns {Array} 空数组表示该景点在行程内每天都不可约（TIMELINE-RULE-005）
  */
 function buildEvents(spot, rule, trip) {
   if (!rule || !rule.advanceDays || !rule.releaseTime) return [];
 
-  const closed = rule.closedDays || [];
   const events = [];
 
   for (const visitDate of time.dateRange(trip.startDate, trip.endDate)) {
-    // TIMELINE-RULE-005 按日判定：该日闭馆则跳过这一天，其余日期照常生成
-    if (closed.includes(time.dayNameOf(visitDate))) continue;
+    // TIMELINE-RULE-005 按日判定：该日不可约则跳过这一天，其余日期照常生成
+    // 判定统一走 time.isOpenOn —— openDays 白名单优先，用于北大/清华「仅周末可约」
+    if (!time.isOpenOn(rule, time.dayNameOf(visitDate))) continue;
 
     const releaseDate = time.addDays(visitDate, -rule.advanceDays);
     events.push({
@@ -187,6 +200,7 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
   const nowTs = time.now();
   const events = [];
   const closedSpots = [];
+  const closedDaySkips = [];
 
   for (const spot of (spotsRes.data || [])) {
     // B 层免预约景点不进时间线（reservationRequired=false，2026 政策已取消预约）
@@ -198,10 +212,21 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
       if (!rule || !rule.advanceDays || !rule.releaseTime) {
         closedSpots.push({ spotId: spot.spotId, spotName: spot.name, note: '无固定放票时刻，暂不生成提醒' });
       } else {
-        // TIMELINE-RULE-005：行程内每天都闭馆 → 想去列表该行标注「行程期间闭馆」
-        closedSpots.push({ spotId: spot.spotId, spotName: spot.name, note: '行程期间闭馆' });
+        // TIMELINE-RULE-005：行程内每天都不可约 → 想去列表该行标注（闭馆 / 仅周末可约但行程不在周末）
+        closedSpots.push({ spotId: spot.spotId, spotName: spot.name, note: closedSpotNoteOf(rule) });
       }
       continue;
+    }
+    // TIMELINE-RULE-005 补充：该景点在行程内非每天不可约，但有若干天被跳过 → 记录这些日期供前端提示
+    // 与 buildEvents 共用 time.isOpenOn，避免「生成事件用一套、提示用另一套」的口径漂移
+    const skipped = time.dateRange(trip.startDate, trip.endDate).filter(d => !time.isOpenOn(rule, time.dayNameOf(d)));
+    if (skipped.length > 0) {
+      closedDaySkips.push({
+        spotId: spot.spotId,
+        spotName: spot.name,
+        // 北大/清华这类白名单景点：不是「闭馆」而是「该日不可约」，文案分开
+        note: skipped.map(d => time.formatMonthDayWeek(d)).join('、') + skipReasonOf(rule),
+      });
     }
     for (const event of built) {
       const key = `${event.spotId}|${event.visitDate}`;
@@ -236,6 +261,8 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
     byDeparture: groupByDeparture(events, nowTs),
     bySpot: groupBySpot(events, nowTs),
     closedSpots,
+    // 周一闭馆等：该景点部分日期被跳过（TIMELINE-RULE-005 补充），供前端提示「已为你跳过」
+    closedDaySkips,
     // 空状态判定（PAGE-005 异常分支）
     empty: events.length === 0,
     emptyReason: events.length === 0

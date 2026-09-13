@@ -30,9 +30,24 @@ Page({
     maxContent: MAX_CONTENT,
   },
 
-  onLoad() {
+  onLoad(options) {
     const g = app.globalData;
-    this.setData({ statusBarHeight: g.statusBarHeight, navBarHeight: g.navBarHeight });
+    const patch = { statusBarHeight: g.statusBarHeight, navBarHeight: g.navBarHeight };
+    // 从规则详情「我要纠错」进入时预选该景点（有 name 直接用，否则拉详情）
+    if (options && options.spotId) {
+      if (options.spotName) {
+        patch.selected = {
+          spotId: options.spotId,
+          name: decodeURIComponent(options.spotName),
+          district: options.district ? decodeURIComponent(options.district) : '',
+        };
+      } else {
+        api.spots.detail(options.spotId).then(res => {
+          this.setData({ selected: { spotId: res.data.spotId, name: res.data.name, district: res.data.district || '' } });
+        }).catch(() => {});
+      }
+    }
+    this.setData(patch);
   },
 
   onSearchInput(e) {

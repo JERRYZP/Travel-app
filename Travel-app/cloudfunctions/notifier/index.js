@@ -38,6 +38,12 @@ const ChannelType = {
 const STAGGER_WINDOW_MS = 30 * 1000; // REMINDER-RULE-003
 const CLEAN_AFTER_DAYS = 14;         // REMINDER-RULE-006
 const SCAN_WINDOW_MS = 60 * 1000;    // 每分钟扫描一次
+// 时间窗扫描上界 = 本分钟窗口 + 最大提前量（V1.ALLOWED_OFFSETS = [5,2]，取 5 分钟），
+// 保证 releaseAt 落在窗口内的任务都能被 collectDue 命中，而不是全表拉前 500 条。
+const MAX_ADVANCE_MS = 5 * 60 * 1000;
+const SCAN_PAGE_SIZE = 100;          // 分页取数，避免 limit(500) 漏扫
+const SCAN_MAX_ROWS = 800;           // 单次巡检安全上限（时间窗只有约 6 分钟，超出的靠下分钟重扫补齐）
+const SEND_CONCURRENCY = 5;          // 同一时刻在途的微信请求数，错峰窗口内并发
 
 /** 订阅消息模板 ID（微信公众平台「活动开始通知」公共模板，2026-08-19 申请）。
  *  环境变量优先；控制台未配 env 时用兜底常量，保证重新部署不丢配置。与 miniprogram/utils/notify.js 对齐。 */
@@ -161,20 +167,69 @@ async function sendSubscribeMessageHttp(payload, forceRefresh = false) {
   return httpJson('POST', url, payload);
 }
 
+/** 读取用户某个模板的本地额度；旧数据单模板回退到 subscribeQuota。 */
+function subscribeQuotaOf(user, templateId) {
+  const quotas = user.subscribeQuotas || {};
+  if (Object.prototype.hasOwnProperty.call(quotas, templateId)) {
+    return Number(quotas[templateId]) || 0;
+  }
+  const legacyTemplateId = user.subscribeTemplateId || TEMPLATE_ID;
+  if (legacyTemplateId === templateId) return Number(user.subscribeQuota) || 0;
+  return 0;
+}
+
+/** 各模板额度之和 */
+function totalSubscribeQuota(quotas, fallback = 0) {
+  const values = Object.values(quotas || {}).filter(v => typeof v === 'number' && v >= 0);
+  if (!values.length) return Math.max(0, Number(fallback) || 0);
+  return values.reduce((sum, v) => sum + v, 0);
+}
+
 /**
- * 一次性订阅额度核销：发送成功后 -1（best-effort）。
- * 未落库/旧记录不拦截：微信侧本身会按真实授权校验（43101 未订阅）。
+ * 一次性订阅额度核销：发送成功后指定 templateId -1（best-effort）。
+ * 同时维护 subscribeQuota 总数，兼容旧页面。
  */
-async function consumeSubscribeQuota(openid) {
+async function consumeSubscribeQuota(openid, templateId = TEMPLATE_ID) {
   try {
     const res = await db.collection(COLLECTIONS.USERS).where({ openId: openid }).get();
     const doc = (res.data || [])[0];
-    if (!doc || !(doc.subscribeQuota > 0)) return;
+    if (!doc) return;
+    const quota = subscribeQuotaOf(doc, templateId);
+    if (quota <= 0) return;
+    const quotas = Object.assign({}, doc.subscribeQuotas || {});
+    quotas[templateId] = quota - 1;
     await db.collection(COLLECTIONS.USERS).doc(doc._id).update({
-      data: { subscribeQuota: _.inc(-1) },
+      data: {
+        subscribeQuota: totalSubscribeQuota(quotas, doc.subscribeQuota),
+        subscribeQuotas: quotas,
+      },
     });
   } catch (e) {
     console.error('[notifier] consume-quota-failed', e.message);
+  }
+}
+
+/**
+ * 微信明确返回 43101 时，本地台账必然与微信侧不一致。
+ * 清零对应模板额度，避免首页展示假“剩余次数”阻止重新授权。
+ */
+async function invalidateSubscribeQuota(openid, templateId, errCode, errMsg) {
+  try {
+    const res = await db.collection(COLLECTIONS.USERS).where({ openId: openid }).get();
+    const doc = (res.data || [])[0];
+    if (!doc) return;
+    const quotas = Object.assign({}, doc.subscribeQuotas || {});
+    quotas[templateId] = 0;
+    await db.collection(COLLECTIONS.USERS).doc(doc._id).update({
+      data: {
+        subscribeQuota: totalSubscribeQuota(quotas, 0),
+        subscribeQuotas: quotas,
+        subscribeLastError: `errcode=${errCode} ${errMsg || ''}`.trim(),
+        subscribeLastErrorAt: new Date(),
+      },
+    });
+  } catch (e) {
+    console.error('[notifier] invalidate-quota-failed', e.message);
   }
 }
 
@@ -222,12 +277,15 @@ async function sendOne(task, spot, offset) {
     // HTTP 接口成功时 errcode=0；微信侧错误统一为非 0 errcode
     if (res && Number(res.errcode) === 0) {
       // 发送成功 → 扣减一次性订阅额度（best-effort）
-      await consumeSubscribeQuota(task.userId);
+      await consumeSubscribeQuota(task.userId, TEMPLATE_ID);
       return { ok: true, res };
     }
 
     const errCode = res ? res.errcode : null;
     const errMsg = res ? res.errmsg : 'empty response';
+    if (Number(errCode) === 43101) {
+      await invalidateSubscribeQuota(task.userId, TEMPLATE_ID, errCode, errMsg);
+    }
     console.error('[notifier] send-error-full', JSON.stringify({
       taskId: task._id, spotId: task.spotId, offset,
       errCode, errMsg, detail: res,
@@ -252,41 +310,52 @@ async function sendOne(task, spot, offset) {
  * 留待下一分钟扫描重试，用户在窗口期内补订阅授权即可救回；
  * 超过放票时刻仍未成功则判 MISSED。
  */
-async function markResult(task, offset, sendResult, nowTs) {
+/**
+ * REMINDER-RULE-004 状态写入
+ *
+ * 发送失败（如 43101 配额不足）不把 offset 记入 sentOffsets：
+ * 留待下一分钟扫描重试，用户在窗口期内补订阅授权即可救回；
+ * 超过放票时刻仍未成功则判 MISSED。
+ *
+ * @param {object} state 运行态 { sentOffsets, backendStatus }；并发下同一任务按组串行传入，避免多个 offset 互相覆盖。
+ * @returns 更新后的运行态，供同一任务的下一个 offset 使用。
+ */
+async function markResult(task, offset, sendResult, nowTs, state = {}) {
   const releaseAt = new Date(task.releaseAt).getTime();
   const failed = !sendResult.ok && !sendResult.skipped;
-
-  const sent = failed
-    ? [...(task.sentOffsets || [])]
-    : [...(task.sentOffsets || []), offset];
+  const base = state.sentOffsets || task.sentOffsets || [];
+  const sent = (!failed && !base.includes(offset)) ? [...base, offset] : base;
   const allSent = (task.offsets || []).every(o => sent.includes(o));
-
   const data = { sentOffsets: sent };
+  let backendStatus = state.backendStatus || task.backendStatus || ReminderBackendStatus.WAITING;
 
   if (sendResult.ok) {
     // 实际发送成功 → TRIGGERED
     if (allSent) {
-      data.backendStatus = ReminderBackendStatus.TRIGGERED;
+      backendStatus = ReminderBackendStatus.TRIGGERED;
+      data.backendStatus = backendStatus;
       data.triggeredAt = new Date(nowTs);
       data.cleanAt = new Date(nowTs + CLEAN_AFTER_DAYS * 86400000);
     }
   } else if (failed) {
     // 发送失败：若已过放票时刻则判 MISSED，否则留待下次扫描重试
     if (nowTs >= releaseAt) {
-      data.backendStatus = ReminderBackendStatus.MISSED;
+      backendStatus = ReminderBackendStatus.MISSED;
+      data.backendStatus = backendStatus;
       data.missedReason = sendResult.reason;
       data.cleanAt = new Date(nowTs + CLEAN_AFTER_DAYS * 86400000);
     }
   } else if (allSent) {
     // 全部通道被跳过（如用户未勾选公众号通道）：仍推进状态，避免任务永久滞留 WAITING
-    data.backendStatus = ReminderBackendStatus.TRIGGERED;
+    backendStatus = ReminderBackendStatus.TRIGGERED;
+    data.backendStatus = backendStatus;
     data.triggeredAt = new Date(nowTs);
     data.cleanAt = new Date(nowTs + CLEAN_AFTER_DAYS * 86400000);
     data.missedReason = sendResult.reason;
   }
 
   await db.collection(COLLECTIONS.REMINDER_TASKS).doc(task._id).update({ data });
-  return data.backendStatus || ReminderBackendStatus.WAITING;
+  return { sentOffsets: sent, backendStatus };
 }
 
 /**
@@ -294,21 +363,91 @@ async function markResult(task, offset, sendResult, nowTs) {
  */
 async function scanAndSend() {
   const nowTs = Date.now();
+  const scanWhere = {
+    backendStatus: ReminderBackendStatus.WAITING,
+    releaseAt: _.gt(new Date(nowTs))
+      .and(_.lte(new Date(nowTs + SCAN_WINDOW_MS + MAX_ADVANCE_MS))),
+  };
+  const tasks = await fetchTasksPaged(scanWhere);
 
-  // 只查 WAITING 且尚未过放票时刻的任务
-  const res = await db.collection(COLLECTIONS.REMINDER_TASKS)
-    .where({
-      backendStatus: ReminderBackendStatus.WAITING,
-      releaseAt: _.gt(new Date(nowTs)),
-    })
-    .limit(500)
-    .get();
-
-  const due = collectDue(res.data || [], nowTs);
+  const due = collectDue(tasks, nowTs);
   if (due.length === 0) {
-    return { scanned: (res.data || []).length, due: 0, sent: 0, failed: 0, skipped: 0 };
+    return { scanned: tasks.length, due: 0, sent: 0, failed: 0, skipped: 0 };
   }
 
+  const spotMap = await loadSpotMap(due);
+
+  // 同一任务的多个 offset 归为一组：组内串行（保证 sentOffsets 递增不被并发覆盖），组间可并发。
+  const groupMap = new Map();
+  for (const d of due) {
+    if (!groupMap.has(d.task._id)) groupMap.set(d.task._id, { task: d.task, offsets: [] });
+    groupMap.get(d.task._id).offsets.push({ offset: d.offset, remindAt: d.remindAt });
+  }
+  const groups = [...groupMap.values()].map(g => ({
+    task: g.task,
+    offsets: g.offsets.slice().sort((a, b) => a.remindAt - b.remindAt),
+    state: { sentOffsets: [...(g.task.sentOffsets || [])], backendStatus: g.task.backendStatus },
+  }));
+
+  const delays = staggerDelays(groups.length);
+  const runStart = Date.now();
+  let sent = 0; let failed = 0; let skipped = 0;
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < groups.length) {
+      const i = cursor; cursor += 1;
+      const g = groups[i];
+      // 错峰：每个任务组在自己的 30s 时间片启动，不改动 REMINDER-RULE-003 的错峰语义
+      const wait = Math.max(0, delays[i] - (Date.now() - runStart));
+      if (wait > 0) await sleep(wait);
+
+      for (const { offset } of g.offsets) {
+        const result = await sendOne(g.task, spotMap[g.task.spotId], offset);
+        g.state = await markResult(g.task, offset, result, Date.now(), g.state);
+
+        if (!result.ok) {
+          console.log('[notifier] send-fail', JSON.stringify({
+            taskId: g.task._id, spotId: g.task.spotId, offset, reason: result.reason,
+            templateConfigured: Boolean(TEMPLATE_ID),
+          }));
+        }
+
+        if (result.ok) sent += 1;
+        else if (result.skipped) skipped += 1;
+        else failed += 1;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(SEND_CONCURRENCY, groups.length) }, () => worker()));
+  return { scanned: tasks.length, due: due.length, sent, failed, skipped };
+}
+
+/**
+ * 分页取回时间窗内的 WAITING 任务（orderBy releaseAt 依赖组合索引 backendStatus+releaseAt）。
+ * 用 skip+limit 循环，避免 limit(500) 在第 500 条之后漏扫。
+ */
+async function fetchTasksPaged(where, { pageSize = SCAN_PAGE_SIZE, maxRows = SCAN_MAX_ROWS } = {}) {
+  const rows = [];
+  let skip = 0;
+  while (rows.length < maxRows) {
+    const res = await db.collection(COLLECTIONS.REMINDER_TASKS)
+      .where(where)
+      .orderBy('releaseAt', 'asc')
+      .skip(skip)
+      .limit(pageSize)
+      .get();
+    const batch = res.data || [];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+    skip += pageSize;
+  }
+  return rows;
+}
+
+/** 按 due 涉及的 spotId 批量取景点名（发送消息需要） */
+async function loadSpotMap(due) {
   const spotIds = [...new Set(due.map(d => d.task.spotId))];
   const spotMap = {};
   if (spotIds.length) {
@@ -316,30 +455,7 @@ async function scanAndSend() {
       .where({ spotId: _.in(spotIds) }).get();
     (spotsRes.data || []).forEach(s => { spotMap[s.spotId] = s; });
   }
-
-  const delays = staggerDelays(due.length);
-  let sent = 0; let failed = 0; let skipped = 0;
-
-  for (let i = 0; i < due.length; i += 1) {
-    const { task, offset } = due[i];
-    if (delays[i] > 0) await sleep(delays[i] - (i > 0 ? delays[i - 1] : 0));
-
-    const result = await sendOne(task, spotMap[task.spotId], offset);
-    await markResult(task, offset, result, Date.now());
-
-    if (!result.ok) {
-      console.log('[notifier] send-fail', JSON.stringify({
-        taskId: task._id, spotId: task.spotId, offset, reason: result.reason,
-        templateConfigured: Boolean(TEMPLATE_ID),
-      }));
-    }
-
-    if (result.ok) sent += 1;
-    else if (result.skipped) skipped += 1;
-    else failed += 1;
-  }
-
-  return { scanned: (res.data || []).length, due: due.length, sent, failed, skipped };
+  return spotMap;
 }
 
 /**
@@ -348,16 +464,13 @@ async function scanAndSend() {
  */
 async function sweepMissed() {
   const nowTs = Date.now();
-  const res = await db.collection(COLLECTIONS.REMINDER_TASKS)
-    .where({
-      backendStatus: ReminderBackendStatus.WAITING,
-      releaseAt: _.lte(new Date(nowTs)),
-    })
-    .limit(500)
-    .get();
+  const tasks = await fetchTasksPaged({
+    backendStatus: ReminderBackendStatus.WAITING,
+    releaseAt: _.lte(new Date(nowTs)),
+  });
 
   let marked = 0;
-  for (const t of (res.data || [])) {
+  for (const t of tasks) {
     await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).update({
       data: {
         backendStatus: ReminderBackendStatus.MISSED,
@@ -444,7 +557,13 @@ exports.main = async (event) => {
         };
         try {
           const res = await sendSubscribeMessageHttp(payload);
-          return { success: !!(res && Number(res.errcode) === 0), res };
+          const ok = !!(res && Number(res.errcode) === 0);
+          if (ok) {
+            await consumeSubscribeQuota(touser, payload.template_id);
+          } else if (Number(res && res.errcode) === 43101) {
+            await invalidateSubscribeQuota(touser, payload.template_id, res.errcode, res.errmsg);
+          }
+          return { success: ok, res };
         } catch (err) {
           return { success: false, error: err.message, res: null };
         }

@@ -10,32 +10,6 @@ const time = require('./time');
 /* ============ 纯函数区：可脱离云环境测试 ============ */
 
 /**
- * TRIP-RULE-002 合并判定：同城市，且（日期有交集 或 首尾相接）
- * 首尾相接 = 一方 endDate + 1天 === 另一方 startDate
- *
- * 文档正例：
- *   北京 5.31-6.4 + 6.5-6.8 → 可合并（相接）
- *   北京 5.31-6.4 + 6.6-6.8 → 不可合并（隔了 6.5）
- */
-function canMerge(a, b) {
-  if (a.city !== b.city) return false;
-  // 有交集：a 起点 ≤ b 终点 且 b 起点 ≤ a 终点
-  const overlap = a.startDate <= b.endDate && b.startDate <= a.endDate;
-  if (overlap) return true;
-  // 首尾相接（两个方向）
-  return time.addDays(a.endDate, 1) === b.startDate
-    || time.addDays(b.endDate, 1) === a.startDate;
-}
-
-/** 合并后的日期取并集 */
-function mergeRange(a, b) {
-  return {
-    startDate: a.startDate < b.startDate ? a.startDate : b.startDate,
-    endDate: a.endDate > b.endDate ? a.endDate : b.endDate,
-  };
-}
-
-/**
  * TRIP-RULE-003 系统命名「北京 5.31-6.4」，用户不可编辑
  */
 function buildName(city, startDate, endDate) {
@@ -54,116 +28,46 @@ function validateRange(startDate, endDate) {
 }
 
 /**
- * TRIP-RULE-005 排序：按「最近一条待提醒任务的提醒时间」升序，无待提醒任务的沉底
- * @param {Array} trips 每项需带 nextReminderAt（Date|null）
+ * TRIP-RULE-005 行程按开始日期升序（从左到右按时间顺序）
+ * @param {Array} trips 行程数组
  */
 function sortTrips(trips) {
-  return [...trips].sort((x, y) => {
-    const a = x.nextReminderAt ? new Date(x.nextReminderAt).getTime() : Infinity;
-    const b = y.nextReminderAt ? new Date(y.nextReminderAt).getTime() : Infinity;
-    if (a !== b) return a - b;
-    // 都无待提醒任务时，用开始日期兜底保证顺序稳定
-    return String(x.startDate).localeCompare(String(y.startDate));
-  });
-}
-
-/**
- * 把一批待合并行程滚雪球式合并到一起。
- * 新行程可能同时与多个既有行程相接，需反复合并直到不再变化。
- * @returns {{range: {startDate,endDate}, mergedIds: string[]}}
- */
-function collapse(incoming, existing) {
-  let range = { city: incoming.city, startDate: incoming.startDate, endDate: incoming.endDate };
-  const mergedIds = [];
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const t of existing) {
-      if (mergedIds.includes(t._id)) continue;
-      if (canMerge(range, t)) {
-        range = { city: range.city, ...mergeRange(range, t) };
-        mergedIds.push(t._id);
-        changed = true;
-      }
-    }
-  }
-  return { range, mergedIds };
+  return [...trips].sort((x, y) => String(x.startDate).localeCompare(String(y.startDate)));
 }
 
 /* ============ 数据库操作区 ============ */
 
 /**
- * TRIP-RULE-001/002 创建或合并行程
+ * TRIP-RULE-002 创建行程（2026-08-31 起取消自动合并：zz 决策「生成时间线严格按本次输入」）。
+ * 日期与景点严格按传入参数创建独立行程，不再与既有行程做日期并集/景点并集；
+ * 连续日期会生成多个行程 Tab（TRIP-RULE-006 分组展示）。保留 merged 返回字段以兼容调用方。
  * @returns {{tripId, merged: boolean, mergedFrom: string[]}}
  */
-async function createOrMerge(db, userId, { startDate, endDate, spotIds = [], city = V1.CITY }) {
+async function create(db, userId, { startDate, endDate, spotIds = [], city = V1.CITY }) {
   if (!validateRange(startDate, endDate)) return fail(ERRORS.TRIP_DATE_INVALID);
 
-  const existRes = await db.collection(COLLECTIONS.TRIPS)
-    .where({ userId, city, status: TripStatus.ACTIVE })
-    .get();
-  const existing = existRes.data || [];
-
-  const { range, mergedIds } = collapse({ city, startDate, endDate }, existing);
-
-  // 合并目标景点：新增的 + 被合并行程原有的，去重
-  const spotSet = new Set(spotIds);
-  existing.filter(t => mergedIds.includes(t._id))
-    .forEach(t => (t.spotIds || []).forEach(id => spotSet.add(id)));
-  const finalSpotIds = [...spotSet];
-
-  const name = buildName(city, range.startDate, range.endDate);
+  const finalSpotIds = [...new Set(spotIds)];
+  const name = buildName(city, startDate, endDate);
   const nowTs = time.now();
 
-  if (mergedIds.length === 0) {
-    const res = await db.collection(COLLECTIONS.TRIPS).add({
-      data: {
-        userId,
-        city,
-        startDate: range.startDate,
-        endDate: range.endDate,
-        name,
-        spotIds: finalSpotIds,
-        status: TripStatus.ACTIVE,
-        createdAt: nowTs,
-        updatedAt: nowTs,
-      },
-    });
-    return ok({ tripId: res._id, merged: false, mergedFrom: [], trip: {
-      _id: res._id, city, ...range, name, spotIds: finalSpotIds, status: TripStatus.ACTIVE,
-    } });
-  }
-
-  // 保留第一个被合并的行程作为存续行程，其余删除（其任务需改挂，由调用方按 TIMELINE-RULE-002 重算）
-  const keepId = mergedIds[0];
-  const dropIds = mergedIds.slice(1);
-
-  await db.collection(COLLECTIONS.TRIPS).doc(keepId).update({
+  const res = await db.collection(COLLECTIONS.TRIPS).add({
     data: {
-      startDate: range.startDate,
-      endDate: range.endDate,
+      userId,
+      city,
+      startDate,
+      endDate,
       name,
       spotIds: finalSpotIds,
+      status: TripStatus.ACTIVE,
+      createdAt: nowTs,
       updatedAt: nowTs,
     },
   });
-
-  for (const id of dropIds) {
-    // 被吞并行程的任务与清单改挂到存续行程
-    await db.collection(COLLECTIONS.REMINDER_TASKS)
-      .where({ userId, tripId: id })
-      .update({ data: { tripId: keepId } });
-    await db.collection(COLLECTIONS.REMINDER_CART)
-      .where({ userId, tripId: id })
-      .update({ data: { tripId: keepId } });
-    await db.collection(COLLECTIONS.TRIPS).doc(id).remove();
-  }
-
   return ok({
-    tripId: keepId,
-    merged: true,
-    mergedFrom: mergedIds,
-    trip: { _id: keepId, city, ...range, name, spotIds: finalSpotIds, status: TripStatus.ACTIVE },
+    tripId: res._id,
+    merged: false,
+    mergedFrom: [],
+    trip: { _id: res._id, city, startDate, endDate, name, spotIds: finalSpotIds, status: TripStatus.ACTIVE },
   });
 }
 
@@ -251,14 +155,11 @@ async function list(db, userId) {
 
 module.exports = {
   // 纯函数
-  canMerge,
-  mergeRange,
   buildName,
   validateRange,
   sortTrips,
-  collapse,
   // DB
-  createOrMerge,
+  create,
   updateSpots,
   updateRange,
   removeIfEmpty,

@@ -11,8 +11,8 @@
 
 <view class="page-body">
   <view class="intro">
-    <text class="intro-title">开启这两项，提醒才能顺利送达</text>
-    <text class="intro-desc">设置一次，之后设置提醒时无需再重复操作</text>
+    <text class="intro-title">按次获取提醒，放票前不缺席</text>
+    <text class="intro-desc">每次授权 = 1 条放票提醒，可多次点击“续收 +1”</text>
   </view>
 
   <!-- ① 微信系统通知权限 -->
@@ -38,22 +38,28 @@
       <view class="auth-left">
         <view class="auth-icon auth-icon-green"><svg-icon name="chat-bubble" size="20px" /></view>
         <view class="auth-info">
-          <text class="auth-label">订阅消息授权</text>
-          <text class="auth-hint">放票前通过微信服务通知提醒；微信为一次性订阅，提交提醒时会再次确认</text>
-          <text wx:if="{{templateReady}}" class="auth-hint">剩余可发提醒次数：{{subscribeQuota}}</text>
+          <text class="auth-label">{{templateName}}</text>
+          <text class="auth-hint">{{templateDesc}}；微信为一次性订阅，剩余不足时提交会再次确认</text>
+          <text wx:if="{{templateReady}}" class="auth-hint">本地记录可发次数：<text class="quota-num">{{subscribeQuota}}</text></text>
         </view>
       </view>
-      <view class="auth-status {{subscribeOk ? 'ok' : 'off'}}">{{subscribeOk ? '已授权' : '未授权'}}</view>
+      <view class="auth-status {{subscribeOk ? 'ok' : 'off'}}">{{quotaLabel}}</view>
     </view>
-    <view wx:if="{{!subscribeOk}}" class="auth-btn {{templateReady ? '' : 'disabled'}}" bindtap="onRequestSubscribe">
-      <text>{{templateReady ? '去授权' : '通道准备中'}}</text>
+    <!-- 对齐优剪模式：每个模板单独续收，同时保留微信授权设置入口 -->
+    <view class="auth-actions">
+      <view class="auth-btn {{templateReady ? '' : 'disabled'}}" bindtap="onRequestSubscribe">
+        <text>{{templateReady ? '续收 +1' : '通道准备中'}}</text>
+      </view>
+      <view class="auth-btn secondary" bindtap="onOpenSubscribeSetting">
+        <text>微信授权设置</text>
+      </view>
     </view>
   </view>
 
   <!-- 说明 -->
   <view class="tips-card">
     <text class="tips-title">提醒机制说明</text>
-    <text class="tips-item">· 微信订阅消息为「一次性订阅」：每次授权对应可发送 1 条提醒，因此每次提交提醒时都会再确认一次。</text>
+    <text class="tips-item">· 微信订阅消息为「一次性订阅」：每次授权对应可发送 1 条放票提醒；可多次点击“续收 +1”积累，若微信侧拒收或耗尽会自动归零。</text>
     <text class="tips-item">· 短信提醒将在下个迭代上线，敬请期待。</text>
   </view>
 </view>
