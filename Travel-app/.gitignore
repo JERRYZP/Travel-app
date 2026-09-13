@@ -2,3 +2,8 @@
 miniprogram/miniprogram_npm/
 project.private.config.json
 miniprogram/project.private.config.json
+
+# Local editor/agent artifacts
+.DS_Store
+.zcode/
+.workbuddy-ai/

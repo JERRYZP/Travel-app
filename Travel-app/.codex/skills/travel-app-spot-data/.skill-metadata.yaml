@@ -1,0 +1,37 @@
+examples:
+  - id: export-full-table
+    title:
+      zh: 导出全量景点表
+      en: Export Full Attraction Table
+    description:
+      zh: 按标准格式生成最新的全量景点数据 Markdown 文档
+      en: Generate the latest full attraction data table in Markdown, standard format
+    prompt:
+      zh: |-
+        导出最新的全量景点数据，按标准格式生成 Markdown 文档。
+      en: |-
+        Export the latest full attraction data and generate a Markdown document in the standard format.
+  - id: export-with-project-copy
+    title:
+      zh: 导出并同步到产品运营目录
+      en: Export and Copy to Ops Folder
+    description:
+      zh: 生成全量景点表并在项目 产品运营/ 目录留存带日期副本
+      en: Generate the table and save a dated copy under the project's 产品运营/ folder
+    prompt:
+      zh: |-
+        重新导出全量景点数据文档，同时在项目「产品运营」目录下保存一份带日期的副本。
+      en: |-
+        Re-export the full attraction data document, and save a dated copy under the project's 产品运营/ folder.
+  - id: export-after-fix
+    title:
+      zh: 数据修正后重新导出
+      en: Re-export After Data Fix
+    description:
+      zh: 源数据（spots.json / rules.json）有改动后，从源数据重新生成表格
+      en: Regenerate the table from source data after spots.json / rules.json changes
+    prompt:
+      zh: |-
+        源数据刚改过，从 data/spots.json 和 data/rules.json 重新导出一份全量景点表，注意不要沿用旧文档的数据。
+      en: |-
+        The source data was just changed. Re-export the full attraction table from data/spots.json and data/rules.json; do not reuse values from old documents.

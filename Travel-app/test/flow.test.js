@@ -52,37 +52,38 @@ function freshDb() {
   console.log('=== 1. 行程创建与合并（TRIP-RULE-002）===');
   let db = freshDb();
 
-  const t1 = await trip.createOrMerge(db, USER, {
+  const t1 = await trip.create(db, USER, {
     startDate: '2026-05-31', endDate: '2026-06-04', spotIds: ['gugong', 'badaling'],
   });
   eq(t1.success, true, '创建行程成功');
   eq(t1.merged, false, '首个行程不合并');
   eq(t1.trip.name, '北京 5.31-6.4', '系统命名');
 
-  // 相接行程 → 合并
-  const t2 = await trip.createOrMerge(db, USER, {
+  // 相接行程 → 不再自动合并（2026-08-31 取消 TRIP-RULE-002 自动合并），严格按本次输入新建独立行程
+  const t2 = await trip.create(db, USER, {
     startDate: '2026-06-05', endDate: '2026-06-08', spotIds: ['guobo'],
   });
-  eq(t2.merged, true, '相接行程触发合并');
-  eq(t2.tripId, t1.tripId, '合并到既有行程');
-  eq(`${t2.trip.startDate}~${t2.trip.endDate}`, '2026-05-31~2026-06-08', '日期取并集');
-  eq([...t2.trip.spotIds].sort().join(','), 'badaling,gugong,guobo', '景点合并去重');
-  eq(db._size(COLLECTIONS.TRIPS), 1, '数据库中仍只有 1 个行程');
+  eq(t2.success, true, '创建行程成功');
+  eq(t2.merged, false, '相接行程不合并');
+  eq(t2.tripId !== t1.tripId, true, '新建独立行程（不合并到既有行程）');
+  eq(`${t2.trip.startDate}~${t2.trip.endDate}`, '2026-06-05~2026-06-08', '日期严格按本次输入');
+  eq(t2.trip.spotIds.join(','), 'guobo', '景点严格按本次输入');
+  eq(db._size(COLLECTIONS.TRIPS), 2, '现在有 2 个行程');
 
   // 不相接 → 新建
-  const t3 = await trip.createOrMerge(db, USER, {
+  const t3 = await trip.create(db, USER, {
     startDate: '2026-07-01', endDate: '2026-07-03', spotIds: ['tiantan'],
   });
   eq(t3.merged, false, '不相接行程新建');
-  eq(db._size(COLLECTIONS.TRIPS), 2, '现在有 2 个行程');
+  eq(db._size(COLLECTIONS.TRIPS), 3, '现在有 3 个行程');
 
-  // 给两个行程各加一条清单，避免被 trip.list 的空行程清理（TRIP-RULE-004）误删
-  for (const tid of [t1.tripId, t3.tripId]) {
+  // 给三个行程各加一条清单，避免被 trip.list 的空行程清理（TRIP-RULE-004）误删
+  for (const tid of [t1.tripId, t2.tripId, t3.tripId]) {
     await db.collection(COLLECTIONS.REMINDER_CART).add({
       data: { userId: USER, tripId: tid, spotId: 'gugong', visitDate: '2026-06-01', releaseAt: new Date('2026-06-01T10:00:00+08:00') },
     });
   }
-  eq(db._size(COLLECTIONS.REMINDER_CART), 2, '两个行程各 1 条清单');
+  eq(db._size(COLLECTIONS.REMINDER_CART), 3, '三个行程各 1 条清单');
 
   const listed = await trip.list(db, USER);
   eq(listed.showGroupTabs, true, '≥2 行程显示分组 Tab（TRIP-RULE-006）');
@@ -90,21 +91,25 @@ function freshDb() {
   /* ============ 2. 时间线生成 ============ */
   console.log('\n=== 2. 时间线生成（交叉积）===');
   db = freshDb();
-  const tr = await trip.createOrMerge(db, USER, {
+  const tr = await trip.create(db, USER, {
     startDate: RANGE.startDate, endDate: RANGE.endDate,
-    spotIds: ['gugong', 'tsinghua'], // 故宫周一闭馆(4条) + 清华不闭馆(5条) = 9
+    spotIds: ['gugong', 'tsinghua'], // 故宫周一闭馆(4条) + 清华周一闭馆(4条) = 8
   });
   const tl = await timeline.generate(db, USER, tr.tripId);
   eq(tl.success, true, '生成成功');
-  eq(tl.events.length, 9, '故宫4 + 清华5 = 9 条');
-  eq(tl.byDeparture.length, 5, '5 个出发日 Tab');
-  eq(tl.byDeparture.find(g => g.key === RANGE.monday).count, 1, '周一只有清华 1 条');
+  eq(tl.events.length, 8, '故宫4 + 清华4 = 8 条（清华唯一限制是周一闭馆）');
+  eq(tl.byDeparture.length, 4, '4 个出发日 Tab（周一无事件）');
+  eq(tl.byDeparture.some(g => g.key === RANGE.monday), false, '周一无事件（两馆周一都闭馆）');
   eq(tl.bySpot.length, 2, '2 个景点 Tab');
+  eq(tl.bySpot.find(g => g.key === 'tsinghua').count, 4, '清华 Tab 4 条（仅周一被跳过）');
   eq(tl.closedSpots.length, 0, '无全闭馆景点');
+  // 两者都是黑名单（周一闭馆），被跳过的日子都说「闭馆」
+  eq(tl.closedDaySkips.length, 2, '故宫与清华各有一条「已为你跳过」提示');
+  eq(tl.closedDaySkips.every(s => s.note.includes('闭馆')), true, '均用「闭馆」措辞（无白名单景点）');
   eq(tl.events.every(e => e.status === EventSelectStatus.SELECTABLE), true, '未来行程初始态全部可选');
 
   // B 层免预约景点不进时间线（reservationRequired=false，2026 政策取消预约）
-  const trB = await trip.createOrMerge(db, USER, {
+  const trB = await trip.create(db, USER, {
     startDate: time.addDays(RANGE.startDate, 14), endDate: time.addDays(RANGE.endDate, 14),
     spotIds: ['gugong', 'shoubo'],
   });
@@ -235,8 +240,8 @@ function freshDb() {
   /* ============ 8. 清空任务（task.clear 按 tab 清空 + TRIP-RULE-004 级联）============ */
   console.log('\n=== 8. 清空任务（按 tab 清空 + 级联删行程）===');
   db = freshDb();
-  const cTripA = await trip.createOrMerge(db, USER, { startDate: RANGE.startDate, endDate: RANGE.endDate, spotIds: ['gugong'] });
-  const cTripB = await trip.createOrMerge(db, USER, { startDate: time.addDays(RANGE.startDate, 20), endDate: time.addDays(RANGE.endDate, 20), spotIds: ['tiantan'] });
+  const cTripA = await trip.create(db, USER, { startDate: RANGE.startDate, endDate: RANGE.endDate, spotIds: ['gugong'] });
+  const cTripB = await trip.create(db, USER, { startDate: time.addDays(RANGE.startDate, 20), endDate: time.addDays(RANGE.endDate, 20), spotIds: ['tiantan'] });
   const nowTs = new Date();
   const pastDay = new Date(nowTs.getTime() - 2 * 86400000);
   const futureDay = new Date(nowTs.getTime() + 2 * 86400000);
@@ -277,9 +282,9 @@ function freshDb() {
   console.log('\n=== 9. 孤儿行程读取时清理 ===');
   db = freshDb();
   // 生成了时间线但从未提交 → 0 任务 0 清单的孤儿行程
-  const orphan = await trip.createOrMerge(db, USER, { startDate: RANGE.startDate, endDate: RANGE.endDate, spotIds: ['gugong'] });
+  const orphan = await trip.create(db, USER, { startDate: RANGE.startDate, endDate: RANGE.endDate, spotIds: ['gugong'] });
   // 有清单的行程（构建中）应保留
-  const withCart = await trip.createOrMerge(db, USER, { startDate: time.addDays(RANGE.startDate, 20), endDate: time.addDays(RANGE.endDate, 20), spotIds: ['tiantan'] });
+  const withCart = await trip.create(db, USER, { startDate: time.addDays(RANGE.startDate, 20), endDate: time.addDays(RANGE.endDate, 20), spotIds: ['tiantan'] });
   await db.collection(COLLECTIONS.REMINDER_CART).add({
     data: { userId: USER, tripId: withCart.tripId, spotId: 'tiantan', visitDate: time.addDays(RANGE.startDate, 20), releaseAt: new Date('2026-08-01T10:00:00+08:00') },
   });

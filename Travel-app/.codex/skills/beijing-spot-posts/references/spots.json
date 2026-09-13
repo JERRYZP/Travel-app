@@ -1,0 +1,20 @@
+[
+  {"name":"故宫博物院","n":7,"monday_closed":true,"time":"20:00","flames":4,"bookable":true},
+  {"name":"中国国家博物馆","n":7,"monday_closed":true,"time":"17:00","flames":5,"bookable":true},
+  {"name":"天安门城楼","n":7,"monday_closed":true,"time":"17:00","flames":5,"bookable":true},
+  {"name":"毛主席纪念堂","n":6,"monday_closed":true,"time":"12:30","flames":2,"bookable":true},
+  {"name":"天安门广场","n":7,"monday_closed":false,"time":"12:00","flames":2,"bookable":true},
+  {"name":"人民大会堂","n":3,"monday_closed":true,"time":"17:00","flames":2,"bookable":true},
+  {"name":"中国军事博物馆","n":8,"monday_closed":true,"time":"08:00/17:00/20:00","flames":2,"bookable":true},
+  {"name":"清华大学","n":7,"monday_closed":true,"time":"08:00","flames":3,"bookable":true},
+  {"name":"北京大学","n":7,"open":[5,6],"time":"08:00","time_note":"仅周末","flames":3,"bookable":true,"note":"平时工作日不可约，仅周末及法定节假日；寒暑假安排以学校公告为准"},
+  {"name":"中国科技馆","n":7,"monday_closed":true,"time":"18:00","flames":2,"bookable":true},
+  {"name":"中国美术馆","n":7,"monday_closed":true,"time":"16:00","flames":2,"bookable":true},
+  {"name":"国家自然博物馆","n":3,"monday_closed":true,"time":"11:00","flames":2,"bookable":true},
+  {"name":"中国考古博物馆","n":3,"monday_closed":true,"time":"09:00","flames":3,"bookable":true,"skip_tuesday":true},
+  {"name":"中国工艺美术馆·非遗馆","n":7,"monday_closed":true,"time":"00:00","flames":2,"bookable":true},
+  {"name":"八达岭长城","bookable":false,"time":"—","flames":3},
+  {"name":"天坛公园（随到）","bookable":false,"time":"—","flames":2},
+  {"name":"圆明园（随到）","bookable":false,"time":"—","flames":2},
+  {"name":"颐和园（随到）","bookable":false,"time":"—","flames":2}
+]
