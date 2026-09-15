@@ -73,21 +73,9 @@ function defaultDateRange() {
   return { start: fmt(start), end: fmt(end) };
 }
 
-/** TRIP-RULE-002 时间段合并判定：相交（有交集）或首尾相接（一方结束次日=另一方开始） */
-function rangesMerge(aStart, aEnd, bStart, bEnd) {
-  const DAY = 86400000;
-  const t = d => new Date(d + 'T00:00:00+08:00').getTime();
-  if (aStart <= bEnd && bStart <= aEnd) return true;
-  return t(aEnd) + DAY === t(bStart) || t(bEnd) + DAY === t(aStart);
-}
-
-/** 两个时间段取并集（合并后的周期标识） */
-function mergeRanges(aStart, aEnd, bStart, bEnd) {
-  return {
-    startDate: aStart < bStart ? aStart : bStart,
-    endDate: aEnd > bEnd ? aEnd : bEnd,
-  };
-}
+/* 2026-09-14：原 rangesMerge / mergeRanges（前端侧的 TRIP-RULE-002 合并判定与并集）
+   已删除——行程合并在云端 trip.create 内完成（含 canMerge/mergeRange/collapse），
+   前端不再持有第二份副本，避免口径分叉。 */
 
 /** 给景点卡数组打 selected 标记，供 WXML 直接绑定（WXML 不支持 indexOf 方法调用） */
 function markSpotsSelected(list, ids) {
@@ -100,5 +88,4 @@ module.exports = {
   WEEKDAYS, pad, formatDate, formatDateWithWeek,
   formatDateRange, dayDiff, formatTime, formatReleaseDate,
   countdown, difficultyClass, defaultDateRange, markSpotsSelected,
-  rangesMerge, mergeRanges,
 };

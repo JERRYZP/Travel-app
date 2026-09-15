@@ -60,6 +60,7 @@
   <view class="tips-card">
     <text class="tips-title">提醒机制说明</text>
     <text class="tips-item">· 微信订阅消息为「一次性订阅」：每次授权对应可发送 1 条放票提醒；可多次点击“续收 +1”积累，若微信侧拒收或耗尽会自动归零。</text>
+    <text class="tips-item">· 续收时微信会弹一次确认窗，这是微信一次性订阅的固定规则，小程序无法跳过。若弹窗里出现“总是保持以上选择，不再询问”，勾选它，之后续收就不再弹窗。</text>
     <text class="tips-item">· 短信提醒将在下个迭代上线，敬请期待。</text>
   </view>
 </view>

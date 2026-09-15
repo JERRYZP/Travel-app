@@ -120,14 +120,24 @@ Page({
   decorateTaskGroups(groups) {
     const collapsed = this.data.collapsedGroups || [];
     const STATUS_CLASS = { WAITING: 'waiting', TRIGGERED: 'done', MISSED: 'missed' };
+    /* REMINDER-RULE-005（2026-09-14 放宽）：WAITING 与 MISSED 可单条删除；仅 TRIGGERED 保留为历史记录 */
+    const DELETABLE = { WAITING: true, MISSED: true };
     return (groups || []).map(g => {
       const items = (g.items || []).map(t => {
         const m = /^(开抢)(.+?)(门票)$/.exec(t.grabLabel || '');
+        /* 已过放票时刻却仍是 WAITING = 未送达（REMINDER-RULE-004）。
+           云端新版已在 task.list 里收敛成 MISSED，这里再兜一次，
+           兼容未重新部署的旧云端——否则「已过期」列表里会显示「待提醒」且没有任何失败提示。 */
+        const status = (t.backendStatus === 'WAITING' && t.expired) ? 'MISSED' : t.backendStatus;
         return Object.assign({}, t, {
           grabPre: m ? m[1] : t.grabLabel,
           grabDate: m ? m[2] : '',
           grabPost: m ? m[3] : '',
-          statusClass: STATUS_CLASS[t.backendStatus] || 'done',
+          backendStatus: status,
+          statusClass: STATUS_CLASS[status] || 'done',
+          statusLabel: status === t.backendStatus ? t.statusLabel : '未送达',
+          missed: status === 'MISSED',
+          deletable: !!DELETABLE[status],
         });
       });
       return Object.assign({}, g, { items, collapsed: collapsed.indexOf(g.key) !== -1 });
@@ -154,20 +164,67 @@ Page({
     }).catch(err => { this.setData({ submitting: false }); api.toastError(err); });
   },
 
+  /* 显式删除空壳行程（TRIP-RULE-004）：清掉行程 + 其提醒任务 + 未提交的提醒清单 */
+  doDeleteEmptyTrip(tripId) {
+    if (this.data.submitting) return;
+    this.setData({ submitting: true });
+    api.reminder.trip.remove({ tripId }).then(() => {
+      this.setData({
+        submitting: false,
+        menuTaskId: '',
+        ...(this.data.activeTripTab === tripId ? { activeTripTab: '' } : {}),
+      });
+      wx.showToast({ title: '行程已删除', icon: 'none' });
+      this.loadHomeData();
+    }).catch(err => { this.setData({ submitting: false }); api.toastError(err); });
+  },
+
   onClearTasks() {
     if (this.data.submitting) return;
     /* 只清空当前 tab（状态筛选 + 行程分组），提示语带上 tab 名与条数 */
     const filter = this.data.activeFilter;
     const tripId = this.data.activeTripTab || undefined;
     api.reminder.task.list({ filter, tripId }).then(res => {
-      const n = res.counts ? (res.counts[filter] || 0) : 0;
+      const counts = res.counts || {};
+      const n = counts[filter] || 0;
+      const tabName = filter === 'expired' ? '已过期' : '进行中';
       if (n === 0) {
+        /* 产品需求（2026-09-14）：选中行程的「进行中 + 已过期」都为 0 = 已被清空，
+           行程不该继续占着 Tab。旧数据里可能留下这种空壳（清单还挂着未提交的提醒，
+           导致服务端兜底清理判为「非空」），这里给一个显式删除入口。 */
+        const totalLeft = (counts.active || 0) + (counts.expired || 0);
+        if (tripId && totalLeft === 0) {
+          const name = ((this.data.trips || []).find(t => t._id === tripId) || {}).name || '当前行程';
+          wx.showModal({
+            title: '删除这个空行程？',
+            content: `「${name}」已没有任何提醒任务，删除后该行程及其提醒清单都会被清掉，无法恢复。`,
+            confirmText: '删除行程',
+            confirmColor: '#C0392B',
+            success: r => { if (r.confirm) this.doDeleteEmptyTrip(tripId); },
+          });
+          return;
+        }
         wx.showToast({ title: '当前没有可清空的任务', icon: 'none' });
         return;
       }
-      const tabName = filter === 'expired' ? '已过期' : '进行中';
+      /* TRIP-RULE-004（2026-09-14）：清空后该行程若再无任何任务，行程本身
+         与其提醒清单会被一并删除。这里把结果提前讲清楚，避免用户点完发现
+         整个行程 Tab 消失而困惑。仅当选中了某个行程 Tab 时才会连带删行程，
+         「全部」视图只清任务、不动行程。 */
+      const otherKey = filter === 'expired' ? 'active' : 'expired';
+      const otherLeft = counts[otherKey] || 0;
+      const willDropTrip = Boolean(tripId) && otherLeft === 0;
+      const tripName = ((this.data.trips || []).find(t => t._id === tripId) || {}).name || '当前行程';
+      const content = willDropTrip
+        ? `清空后「${tripName}」将没有任何提醒任务，该行程及其提醒清单会被一并删除，无法恢复。`
+        : (tripId && otherLeft > 0
+          ? `清空后这 ${n} 条提醒记录无法恢复；「${tripName}」仍保留 ${otherLeft} 条其他任务。`
+          : `清空后这 ${n} 条提醒记录无法恢复。`);
       wx.showModal({
         title: `确认清空${tabName}的 ${n} 条任务？`,
+        content,
+        confirmText: '确认清空',
+        confirmColor: '#C0392B',
         success: r => { if (r.confirm) this.doClearTasks({ filter, tripId }); },
       });
     }).catch(err => api.toastError(err));
@@ -373,59 +430,28 @@ Page({
       return;
     }
     wx.showLoading({ title: '正在生成...' });
+    /* 任务分组第一性原则（TRIP-RULE-002，2026-09-14 恢复自动合并）：
+     * 服务端按「同城市 + 日期有交集 或 首尾相接」把本次输入与既有行程合并成一个行程
+     * （一个任务分组 Tab），日期取并集，但**各景点保留自己被选中时的日期段**，
+     * 所以时间线不会冒出用户没选过的日期/景点组合。
+     * adjustTripId：当前页已有内联时间线时表示「在这个行程上重新生成」，
+     * 该行程的景点段按本次输入替换（不是并集），其余相交/相接的行程仍会被并进来。 */
     const payload = {
       startDate: this.data.startDate,
       endDate: this.data.endDate,
       spotIds: this.data.selectedSpotIds,
       city: '北京',
+      adjustTripId: this.data.timelineTripId || '',
     };
-    /* 任务分组第一性原则：以本次生成的时间段与既有行程时间段是否相交/相接来判断合并（TRIP-RULE-002）。
-     * 相交/相接 → 视为在同一个行程上调整，严格按本次输入的日期与景点替换（不做并集扩展，
-     *   否则时间线会出现用户本次没选的日期）；否则新建行程（新任务组，顶部自动多一个 Tab）。
-     * 旧版云端 trip.create 仍会自动合并（merged:true）时，由 createTripStrict 兜底改回严格值 */
-    const req = this.data.timelineTripId
-      ? api.reminder.trip.list().then(res => {
-          const cur = (res.trips || []).find(t => t._id === this.data.timelineTripId);
-          if (cur && util.rangesMerge(cur.startDate, cur.endDate, payload.startDate, payload.endDate)) {
-            return Promise.all([
-              api.reminder.trip.updateRange({
-                tripId: cur._id,
-                startDate: payload.startDate,
-                endDate: payload.endDate,
-              }),
-              api.reminder.trip.updateSpots({
-                tripId: cur._id,
-                spotIds: payload.spotIds,
-              }),
-            ]).then(() => cur._id);
-          }
-          return this.createTripStrict(payload);
-        })
-      : this.createTripStrict(payload);
-    req.then(tripId => {
+    api.reminder.trip.create(payload).then(res => {
       wx.hideLoading();
+      const tripId = res.tripId;
       app.globalData.currentTripId = tripId;
       this.setData({ showTimeline: true });
       this.loadInlineTimeline(tripId);
     }).catch(err => {
       wx.hideLoading();
       api.toastError(err);
-    });
-  },
-
-  /* 创建行程（部署无关兜底）：新版云端 trip.create 严格按本次输入（merged:false）；
-   * 旧版云端 createOrMerge 会把相交/相接行程合并成日期/景点并集（merged:true），
-   * 与「严格按本次输入」冲突 → 检测到合并即用精确替换的 updateRange/updateSpots 改回，
-   * 保证时间线只含本次选中的日期与景点；新版云端不触发。 */
-  createTripStrict(payload) {
-    return api.reminder.trip.create(payload).then(res => {
-      if (res && res.merged === true) {
-        return Promise.all([
-          api.reminder.trip.updateRange({ tripId: res.tripId, startDate: payload.startDate, endDate: payload.endDate }),
-          api.reminder.trip.updateSpots({ tripId: res.tripId, spotIds: payload.spotIds }),
-        ]).then(() => res.tripId);
-      }
-      return res.tripId;
     });
   },
 
@@ -438,12 +464,13 @@ Page({
     if (!id || !this.data.showTimeline) return Promise.resolve(id);
     if ((trips || []).some(t => t._id === id)) return Promise.resolve(id);
     if (!this.data.startDate || this.data.selectedSpotIds.length === 0) return Promise.resolve(id);
-    return this.createTripStrict({
+    return api.reminder.trip.create({
       startDate: this.data.startDate,
       endDate: this.data.endDate,
       spotIds: this.data.selectedSpotIds,
       city: '北京',
-    }).then(newId => {
+    }).then(res => {
+      const newId = res.tripId;
       app.globalData.currentTripId = newId;
       this.loadInlineTimeline(newId);
       return newId;
@@ -676,9 +703,24 @@ Page({
     this.loadTasks();
   },
 
+  /* 在当前分组里按 _id 找任务（供状态解释弹窗、删除权限判断复用） */
+  findTask(taskId) {
+    for (const g of this.data.taskGroups || []) {
+      const hit = (g.items || []).find(i => i._id === taskId);
+      if (hit) return hit;
+    }
+    return null;
+  },
+
   onTaskDelete(e) {
     this.setData({ menuTaskId: '' });
     const taskId = e.currentTarget.dataset.id;
+    const task = this.findTask(taskId);
+    /* REMINDER-RULE-005（2026-09-14 放宽）：WAITING / MISSED 可单删，TRIGGERED 只能走「清空任务」 */
+    if (task && !task.deletable) {
+      wx.showToast({ title: '已提醒的任务可在「清空任务」中清理', icon: 'none' });
+      return;
+    }
     wx.showModal({
       title: '确认移除这条提醒？',
       success: res => {
@@ -691,21 +733,23 @@ Page({
     });
   },
 
-  /* MISSED 任务状态胶囊整体可点 → 弹未送达原因（quota / 通知权限）；其他状态不拦截 */
+  /* MISSED（含「已过放票时刻但未送达」）任务状态胶囊可点 → 弹未送达原因；其他状态不拦截 */
   onMissedExplain(e) {
-    const id = e.currentTarget.dataset.id;
-    let task = null;
-    for (const g of this.data.taskGroups || []) {
-      const hit = (g.items || []).find(i => i._id === id);
-      if (hit) { task = hit; break; }
-    }
-    if (!task || task.backendStatus !== 'MISSED') return;
+    const task = this.findTask(e.currentTarget.dataset.id);
+    if (!task || !task.missed) return;
     const reason = task.missedReason || '';
-    const content = /43101/.test(reason)
-      ? '微信订阅消息授权次数不足：每设置一次提醒需重新授权一次，本次发送被微信拒绝。下次设置提醒时，请在授权弹窗中点「允许」。'
-      : reason.includes('超过放票时间')
-        ? '已过放票时间仍未送达。常见原因：订阅消息授权次数不足，或微信通知权限未开启。'
-        : reason || '已过放票时间仍未送达，具体原因未知。';
+    let content;
+    if (/43101/.test(reason)) {
+      content = '微信订阅消息授权次数不足：每设置一次提醒需重新授权一次，本次发送被微信拒绝。下次设置提醒时，请在授权弹窗中点「允许」。';
+    } else if (/WX_APPSECRET|未配置/.test(reason)) {
+      content = '提醒服务未完成配置（订阅消息密钥缺失），通知发不出去。请在「意见反馈」里告知我们。';
+    } else if (reason.includes('超过放票时间') || reason.includes('已过放票时刻')) {
+      content = '已过放票时间仍未送达。常见原因：订阅消息授权次数不足，或微信通知权限未开启。';
+    } else if (reason) {
+      content = reason;
+    } else {
+      content = '这条提醒已过放票时间，但没有发出通知。可能是微信通知权限未开启，或提醒服务未正常运行；可在「意见反馈」里告知我们。';
+    }
     wx.showModal({
       title: '未送达原因',
       content,

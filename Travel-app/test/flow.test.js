@@ -48,7 +48,7 @@ function freshDb() {
 (async () => {
   console.log(`测试行程范围：${RANGE.startDate} ~ ${RANGE.endDate}（含周一 ${RANGE.monday}）\n`);
 
-  /* ============ 1. 行程创建与合并 ============ */
+  /* ============ 1. 行程创建与合并（TRIP-RULE-002，2026-09-14 恢复自动合并）============ */
   console.log('=== 1. 行程创建与合并（TRIP-RULE-002）===');
   let db = freshDb();
 
@@ -59,34 +59,62 @@ function freshDb() {
   eq(t1.merged, false, '首个行程不合并');
   eq(t1.trip.name, '北京 5.31-6.4', '系统命名');
 
-  // 相接行程 → 不再自动合并（2026-08-31 取消 TRIP-RULE-002 自动合并），严格按本次输入新建独立行程
+  // 相接（6.4 + 1 天 = 6.5）→ 自动合并成一个行程（一个任务分组 Tab），日期取并集
   const t2 = await trip.create(db, USER, {
     startDate: '2026-06-05', endDate: '2026-06-08', spotIds: ['guobo'],
   });
-  eq(t2.success, true, '创建行程成功');
-  eq(t2.merged, false, '相接行程不合并');
-  eq(t2.tripId !== t1.tripId, true, '新建独立行程（不合并到既有行程）');
-  eq(`${t2.trip.startDate}~${t2.trip.endDate}`, '2026-06-05~2026-06-08', '日期严格按本次输入');
-  eq(t2.trip.spotIds.join(','), 'guobo', '景点严格按本次输入');
-  eq(db._size(COLLECTIONS.TRIPS), 2, '现在有 2 个行程');
+  eq(t2.merged, true, '相接行程自动合并（2026-09-14 恢复）');
+  eq(t2.tripId, t1.tripId, '复用既有行程 ID（任务/清单无需改挂）');
+  eq(t2.mergedFrom.join(','), t1.tripId, 'mergedFrom 记录被并进来的行程');
+  eq(t2.trip.name, '北京 5.31-6.8', '合并后按并集重新命名（TRIP-RULE-003）');
+  eq(`${t2.trip.startDate}~${t2.trip.endDate}`, '2026-05-31~2026-06-08', '行程范围取并集');
+  eq(db._size(COLLECTIONS.TRIPS), 1, '合并后只剩 1 个行程');
+  // A 方案关键：景点不跟着取并集范围，各留自己被选中时的日期段
+  eq(t2.trip.spotIds.join(','), 'gugong,badaling,guobo', 'spotIds = 景点并集（想去列表/批量查询用）');
+  eq(
+    t2.trip.spots.map(s => `${s.spotId}:${s.startDate}~${s.endDate}`).join(' | '),
+    'gugong:2026-05-31~2026-06-04 | badaling:2026-05-31~2026-06-04 | guobo:2026-06-05~2026-06-08',
+    '各景点保留自己的日期段（时间线不会冒出没选过的组合）'
+  );
 
-  // 不相接 → 新建
+  // 继续相接 → 滚雪球合并；同景点跨段时把它自己的段接起来
+  const t2b = await trip.create(db, USER, {
+    startDate: '2026-06-09', endDate: '2026-06-10', spotIds: ['guobo'],
+  });
+  eq(t2b.merged, true, '继续相接仍合并（滚雪球 collapse）');
+  eq(t2b.tripId, t1.tripId, '仍复用同一行程');
+  eq(t2b.trip.spots.find(s => s.spotId === 'guobo').endDate, '2026-06-10', 'guobo 段接到 6.10');
+  eq(db._size(COLLECTIONS.TRIPS), 1, '仍是 1 个行程');
+
+  // 不相接（6.10 + 1 天 ≠ 7.1，隔了 6.11~6.30）→ 新建独立行程
   const t3 = await trip.create(db, USER, {
     startDate: '2026-07-01', endDate: '2026-07-03', spotIds: ['tiantan'],
   });
   eq(t3.merged, false, '不相接行程新建');
-  eq(db._size(COLLECTIONS.TRIPS), 3, '现在有 3 个行程');
+  eq(t3.tripId !== t2b.tripId, true, '新建独立行程（新任务分组 Tab）');
+  eq(db._size(COLLECTIONS.TRIPS), 2, '现在有 2 个行程');
+  eq(`${t3.trip.spots[0].startDate}~${t3.trip.spots[0].endDate}`, '2026-07-01~2026-07-03', '新行程景点段 = 本次输入范围');
 
-  // 给三个行程各加一条清单，避免被 trip.list 的空行程清理（TRIP-RULE-004）误删
-  for (const tid of [t1.tripId, t2.tripId, t3.tripId]) {
+  // adjustTripId：在该行程上重新生成 → 景点段按本次输入**替换**（不做并集）
+  const t4 = await trip.create(db, USER, {
+    startDate: '2026-05-31', endDate: '2026-06-10', spotIds: ['tiantan'],
+    adjustTripId: t2b.tripId,
+  });
+  eq(t4.tripId, t2b.tripId, 'adjustTripId 命中 → 复用该行程（不新建）');
+  eq(t4.trip.spotIds.join(','), 'tiantan', '调整行程时景点段被替换（严格按本次输入）');
+  eq(db._size(COLLECTIONS.TRIPS), 2, '调整不新增行程');
+
+  // 给两个行程各加一条清单，避免被 trip.list 的空行程清理（TRIP-RULE-004）误删
+  for (const tid of [t4.tripId, t3.tripId]) {
     await db.collection(COLLECTIONS.REMINDER_CART).add({
       data: { userId: USER, tripId: tid, spotId: 'gugong', visitDate: '2026-06-01', releaseAt: new Date('2026-06-01T10:00:00+08:00') },
     });
   }
-  eq(db._size(COLLECTIONS.REMINDER_CART), 3, '三个行程各 1 条清单');
+  eq(db._size(COLLECTIONS.REMINDER_CART), 2, '两个行程各 1 条清单');
 
   const listed = await trip.list(db, USER);
   eq(listed.showGroupTabs, true, '≥2 行程显示分组 Tab（TRIP-RULE-006）');
+  eq(listed.trips.every(t => Array.isArray(t.spots) && t.spots.length > 0), true, 'trip.list 兜底补出 spots 段');
 
   /* ============ 2. 时间线生成 ============ */
   console.log('\n=== 2. 时间线生成（交叉积）===');
@@ -228,6 +256,11 @@ function freshDb() {
   eq(missedItem.statusLabel, '未送达', 'MISSED 显示「未送达」而非「已提醒」（STATE-002）');
   eq(missedItem.missedReason, 'errCode=43101', 'missedReason 透传供前端解释');
 
+  // 2026-09-14 放宽 REMINDER-RULE-005：MISSED 也可单条删除（过期任务不再只能靠「清空任务」清理）
+  const rmMissed = await task.remove(db, USER, t0._id);
+  eq(rmMissed.success, true, 'MISSED 任务可单条删除（2026-09-14 放宽）');
+  eq(db._dump(COLLECTIONS.REMINDER_TASKS).some(t => t._id === t0._id), false, 'MISSED 任务已从库中移除');
+
   // 删光 → 行程自动删除
   await db.collection(COLLECTIONS.REMINDER_TASKS).where({ userId: USER }).remove();
   const removed = await trip.removeIfEmpty(db, USER, tr.tripId);
@@ -252,10 +285,10 @@ function freshDb() {
   await mkTask(cTripA.tripId, 'gugong', pastDay);     // A 已过期
   await mkTask(cTripB.tripId, 'tiantan', pastDay);    // B 已过期
 
-  // 模拟 index.js 分发：task.clear 后对 affectedTripIds 执行级联
+  // 模拟 index.js 分发：task.clear 后对 affectedTripIds 执行级联（主动删除口径 → purgeIfNoTask）
   const clearAll = async (params) => {
     const r = await task.clear(db, USER, params);
-    for (const tid of (r.affectedTripIds || [])) await trip.removeIfEmpty(db, USER, tid);
+    for (const tid of (r.affectedTripIds || [])) await trip.purgeIfNoTask(db, USER, tid);
     return r;
   };
 
@@ -295,6 +328,107 @@ function freshDb() {
   eq(after.trips[0]._id, withCart.tripId, '保留的是有清单的行程');
   eq(after.showGroupTabs, false, '只剩 1 个行程 → 不显示分组 Tab');
   eq(db._size(COLLECTIONS.TRIPS), 1, '孤儿行程已从库中删除');
+
+  /* ============ 10. 空壳行程：任务清零 → 行程连同提醒清单一起删（2026-09-14 产品需求）============ */
+  console.log('\n=== 10. 空壳行程清理（清空任务 → 行程 + 清单一并删除）===');
+  db = freshDb();
+  const shell = await trip.create(db, USER, { startDate: RANGE.startDate, endDate: RANGE.endDate, spotIds: ['gugong'] });
+  // 该行程既有任务，又挂着未提交的清单（清空任务后清单会残留 → 旧逻辑下行程永久占着 Tab）
+  await db.collection(COLLECTIONS.REMINDER_TASKS).add({
+    data: {
+      userId: USER, tripId: shell.tripId, spotId: 'gugong', visitDate: time.todayStr(),
+      releaseAt: futureDay, offsets: [5, 2], channels: [ChannelType.OFFICIAL_ACCOUNT],
+      backendStatus: ReminderBackendStatus.WAITING,
+    },
+  });
+  await db.collection(COLLECTIONS.REMINDER_CART).add({
+    data: { userId: USER, tripId: shell.tripId, spotId: 'tiantan', visitDate: time.todayStr(), releaseAt: futureDay },
+  });
+  eq(db._size(COLLECTIONS.REMINDER_CART), 1, '行程挂着 1 条未提交清单');
+
+  const shellClear = await clearAll({ filter: 'active', tripId: shell.tripId });
+  eq(shellClear.cleared, 1, '清空进行中 1 条');
+  eq(db._size(COLLECTIONS.REMINDER_TASKS), 0, '任务已清零');
+  eq(db._size(COLLECTIONS.REMINDER_CART), 0, '连带清掉该行程的提醒清单');
+  eq(db._size(COLLECTIONS.TRIPS), 0, '任务清零 → 行程一并删除（不再是 0/0 空壳 Tab）');
+
+  // 只清一半时不误删：行程还有已过期任务 → 行程与清单都保留
+  db = freshDb();
+  const half = await trip.create(db, USER, { startDate: RANGE.startDate, endDate: RANGE.endDate, spotIds: ['gugong'] });
+  await mkTask(half.tripId, 'gugong', futureDay);
+  await mkTask(half.tripId, 'gugong', pastDay);
+  await db.collection(COLLECTIONS.REMINDER_CART).add({
+    data: { userId: USER, tripId: half.tripId, spotId: 'tiantan', visitDate: time.todayStr(), releaseAt: futureDay },
+  });
+  await clearAll({ filter: 'active', tripId: half.tripId });
+  eq(db._size(COLLECTIONS.TRIPS), 1, '还有已过期任务 → 行程保留');
+  eq(db._size(COLLECTIONS.REMINDER_CART), 1, '行程未删 → 清单也保留');
+  await clearAll({ filter: 'expired', tripId: half.tripId });
+  eq(db._size(COLLECTIONS.TRIPS), 0, '再清已过期 → 行程与清单一起删');
+  eq(db._size(COLLECTIONS.REMINDER_CART), 0, '清单同步清空');
+
+  /* ============ 11. 显式删除空壳行程（trip.remove）============ */
+  console.log('\n=== 11. 显式删除行程（trip.remove）===');
+  db = freshDb();
+  const del = await trip.create(db, USER, { startDate: RANGE.startDate, endDate: RANGE.endDate, spotIds: ['gugong'] });
+  await mkTask(del.tripId, 'gugong', futureDay);
+  await db.collection(COLLECTIONS.REMINDER_CART).add({
+    data: { userId: USER, tripId: del.tripId, spotId: 'tiantan', visitDate: time.todayStr(), releaseAt: futureDay },
+  });
+  const delRes = await trip.remove(db, USER, del.tripId);
+  eq(delRes.success, true, 'trip.remove 成功');
+  eq(delRes.removedTasks, 1, '连带删除 1 条任务');
+  eq(delRes.removedCartItems, 1, '连带删除 1 条清单');
+  eq(db._size(COLLECTIONS.TRIPS), 0, '行程已删除');
+  eq(db._size(COLLECTIONS.REMINDER_TASKS), 0, '库中无残留任务');
+  eq(db._size(COLLECTIONS.REMINDER_CART), 0, '库中无残留清单');
+  const delMiss = await trip.remove(db, USER, 'not-exist-trip');
+  eq(delMiss.success, false, '不存在的行程 → 失败');
+
+  /* ============ 12. 合并后时间线不膨胀：景点各留自己的日期段（2026-09-14 A 方案核心）============ */
+  console.log('\n=== 12. 合并后时间线不膨胀（景点各留日期段）===');
+  db = freshDb();
+  const s1Start = RANGE.startDate;
+  const s1End = time.addDays(s1Start, 1);
+  const s2Start = time.addDays(s1Start, 2);
+  const s2End = time.addDays(s1Start, 3);
+
+  const p1 = await trip.create(db, USER, { startDate: s1Start, endDate: s1End, spotIds: ['gugong'] });
+  const p2 = await trip.create(db, USER, { startDate: s2Start, endDate: s2End, spotIds: ['tiantan'] });
+  eq(p2.merged, true, '相接两段自动合并');
+  eq(p2.tripId, p1.tripId, '复用第一个行程');
+  eq(db._size(COLLECTIONS.TRIPS), 1, '合并后 1 个行程（= 一个任务分组 Tab）');
+  eq(`${p2.trip.startDate}~${p2.trip.endDate}`, `${s1Start}~${s2End}`, '行程总范围 = 两段并集');
+
+  const tlSeg = await timeline.generate(db, USER, p2.tripId);
+  const segOf = { gugong: [s1Start, s1End], tiantan: [s2Start, s2End] };
+  eq(
+    tlSeg.events.every(e => { const r = segOf[e.spotId]; return Boolean(r) && e.visitDate >= r[0] && e.visitDate <= r[1]; }),
+    true,
+    '每条事件的 visitDate 都落在该景点自己的段内'
+  );
+  eq(
+    tlSeg.events.filter(e => e.spotId === 'gugong').every(e => e.visitDate <= s1End),
+    true,
+    '故宫不会延伸到第 2 段'
+  );
+  eq(
+    tlSeg.events.filter(e => e.spotId === 'tiantan').every(e => e.visitDate >= s2Start),
+    true,
+    '天坛不会回填到第 1 段'
+  );
+
+  // 与旧口径（行程整段 × 全部景点）对比：旧口径明显更多
+  const ruleOf = id => rulesSeed.find(r => r.spotId === id);
+  const spotOf = id => spotsSeed.find(s => s.spotId === id);
+  const wholeRange = { startDate: s1Start, endDate: s2End };
+  const oldStyle = timeline.buildEvents(spotOf('gugong'), ruleOf('gugong'), wholeRange).length
+    + timeline.buildEvents(spotOf('tiantan'), ruleOf('tiantan'), wholeRange).length;
+  eq(
+    oldStyle > tlSeg.events.length,
+    true,
+    `旧口径（整段×全部景点）${oldStyle} 条 > 现在 ${tlSeg.events.length} 条 —— 多出来的就是用户没选过的组合`
+  );
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);

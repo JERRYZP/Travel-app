@@ -20,6 +20,24 @@ function remindAtOf(releaseAt, offsetMinutes) {
 }
 
 /**
+ * REMINDER-RULE-004 生效状态（读取时口径）
+ *
+ * 「已过 releaseAt 而 backendStatus 仍是 WAITING」在语义上就是 MISSED
+ * （超过放票时刻仍未送达）。notifier 的 sweepMissed 是常规落库路径，
+ * 但它依赖「每分钟定时触发 + backendStatus+releaseAt 复合索引 + WX_APPSECRET 环境变量」
+ * 三者同时正常；任一处出问题，任务就会永久卡在 WAITING，前端只能显示成「待提醒」，
+ * 用户既收不到推送、也看不到任何失败提示（2026-09-14 实际踩过）。
+ * 因此这里在读取时再做一次兜底判定，让状态口径收敛到 backendStatus 一处。
+ */
+function effectiveStatusOf(backendStatus, releaseAt, nowTs = time.now()) {
+  const passed = new Date(releaseAt).getTime() <= nowTs.getTime();
+  if (backendStatus === ReminderBackendStatus.WAITING && passed) {
+    return ReminderBackendStatus.MISSED;
+  }
+  return backendStatus;
+}
+
+/**
  * STATE-002 UI 状态映射
  * WAITING → 「待提醒」；TRIGGERED → 「已提醒」；MISSED → 「未送达」（不伪装成功，供前端附原因解释）；CLOSED → 不展示
  */
@@ -86,6 +104,37 @@ function buildBanner(tasks, nowTs = time.now()) {
 }
 
 /* ============ 数据库操作区 ============ */
+
+/**
+ * REMINDER-RULE-004 读取时兜底补判（幂等，就地写库）
+ *
+ * 把「已过 releaseAt 仍是 WAITING」的任务补判为 MISSED，理由优先取 notifier 发送失败时
+ * 记下的真实原因（lastSendError），避免笼统文案把「WX_APPSECRET 未配置」「43101 配额不足」
+ * 这类可行动信息盖掉。写库失败也不影响本次响应——内存里的状态照样收敛，
+ * 保证 UI 不会出现「已过期却显示待提醒、且毫无提示」的静默状态。
+ *
+ * @returns {number} 本次补判条数
+ */
+async function sweepOverdue(db, tasks, nowTs = time.now()) {
+  const overdue = (tasks || []).filter(t =>
+    t.backendStatus === ReminderBackendStatus.WAITING &&
+    new Date(t.releaseAt).getTime() <= nowTs.getTime());
+
+  for (const t of overdue) {
+    const patch = {
+      backendStatus: ReminderBackendStatus.MISSED,
+      missedReason: t.missedReason || t.lastSendError || '超过放票时间点未触发成功',
+      cleanAt: new Date(nowTs.getTime() + V1.CLEAN_AFTER_DAYS * 86400000),
+    };
+    try {
+      await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).update({ data: patch });
+    } catch (e) {
+      console.error('[reminder] sweepOverdue 写库失败', t._id, e.message);
+    }
+    Object.assign(t, patch);
+  }
+  return overdue.length;
+}
 
 /**
  * FLOW-001 最后一步：清单 → 任务（PAGE-008 提交）
@@ -155,6 +204,11 @@ async function list(db, userId, { tripId = null, filter = 'active' } = {}) {
   const res = await db.collection(COLLECTIONS.REMINDER_TASKS).where(where).get();
   const all = (res.data || []).filter(t => t.backendStatus !== ReminderBackendStatus.CLOSED);
 
+  const nowTs = time.now();
+  /* 读取时兜底补判（见 sweepOverdue）：notifier 的 sweepMissed 没跑成功时，
+     用户一进首页也能看到真实状态，而不是「已过期 + 待提醒 + 无提示」。 */
+  await sweepOverdue(db, all, nowTs);
+
   const spotIds = [...new Set(all.map(t => t.spotId))];
   let spotMap = {};
   if (spotIds.length) {
@@ -163,21 +217,23 @@ async function list(db, userId, { tripId = null, filter = 'active' } = {}) {
     (spotsRes.data || []).forEach(s => { spotMap[s.spotId] = s; });
   }
 
-  const nowTs = time.now();
   const enriched = all.map(t => {
     const releaseAt = new Date(t.releaseAt);
     const msLeft = releaseAt.getTime() - nowTs.getTime();
     const totalMin = Math.max(0, Math.floor(msLeft / 60000));
+    // 生效状态 = 落库状态收敛后的结果（已过放票时刻的 WAITING 视为 MISSED）
+    const status = effectiveStatusOf(t.backendStatus, t.releaseAt, nowTs);
     // 「已过期」= MISSED 或已过放票时间点（PAGE-009 筛选定义）
-    const expired = t.backendStatus === ReminderBackendStatus.MISSED || msLeft <= 0;
+    const expired = status === ReminderBackendStatus.MISSED || msLeft <= 0;
     return {
       ...t,
+      backendStatus: status,
       spotName: spotMap[t.spotId] ? spotMap[t.spotId].name : '未知景点',
       difficultyScore: spotMap[t.spotId] ? spotMap[t.spotId].difficultyScore : null,
       releaseTimeLabel: time.formatHourMinute(releaseAt),
       releaseDateStr: time.toDateStr(releaseAt),
       grabLabel: `开抢${time.formatMonthDayWeekCn(t.visitDate)}门票`,
-      statusLabel: uiLabelOf(t.backendStatus),
+      statusLabel: uiLabelOf(status),
       countdown: msLeft > 0 && msLeft < 3 * 3600 * 1000
         ? { text: `还剩${String(Math.floor(totalMin / 60)).padStart(2, '0')}h ${String(totalMin % 60).padStart(2, '0')}m`, urgent: true }
         : null,
@@ -213,16 +269,22 @@ async function list(db, userId, { tripId = null, filter = 'active' } = {}) {
 }
 
 /**
- * REMINDER-RULE-005 删除任务：仅 WAITING 可删
- * 删除后同步删除未触发的 ICS 事件（由调用方重新生成 ICS 文件）
+ * REMINDER-RULE-005 单条删除任务
+ *
+ * 2026-09-14 放宽：**WAITING 与 MISSED 均可单条删除**。
+ * 原口径「仅 WAITING 可删」在「过期任务读取时收敛为 MISSED」上线后会变成死结——
+ * 一条已经失败的任务反而删不掉，只能靠「清空任务」连带清掉别的记录。
+ * 现在只有 TRIGGERED（已成功送达）保留为历史记录，不允许单删，走「清空任务」批量清理。
  */
+const DELETABLE_STATUS = [ReminderBackendStatus.WAITING, ReminderBackendStatus.MISSED];
+
 async function remove(db, userId, taskId) {
   const res = await db.collection(COLLECTIONS.REMINDER_TASKS)
     .where({ _id: taskId, userId }).get();
   const task = (res.data || [])[0];
   if (!task) return fail(ERRORS.BAD_PARAM);
-  if (task.backendStatus !== ReminderBackendStatus.WAITING) {
-    return fail({ code: 1012, message: '仅待提醒的任务可以删除' });
+  if (!DELETABLE_STATUS.includes(task.backendStatus)) {
+    return fail({ code: 1012, message: '已提醒的任务不可单条删除，可在「清空任务」中批量清理' });
   }
 
   await db.collection(COLLECTIONS.REMINDER_TASKS).doc(taskId).remove();
@@ -284,9 +346,11 @@ async function cleanup(db) {
 module.exports = {
   remindAtOf,
   uiLabelOf,
+  effectiveStatusOf,
   validateSubmit,
   staggerDelays,
   buildBanner,
+  sweepOverdue,
   submit,
   list,
   remove,

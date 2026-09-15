@@ -32,13 +32,21 @@ exports.main = async (event) => {
     switch (action) {
       /* ======== 行程 ======== */
       case 'trip.create':
+        // TRIP-RULE-002：同城市 + 日期相交/相接 → 自动合并成一个行程（任务分组）；
+        // event.adjustTripId 存在时表示「在该行程上重新生成」，其景点段按本次输入替换
         return await trip.create(db, userId, event);
       case 'trip.list':
         return await trip.list(db, userId);
       case 'trip.updateSpots':
-        return await trip.updateSpots(db, userId, event.tripId, event.spotIds || []);
+        return await trip.updateSpots(db, userId, event.tripId, event.spotIds || [], {
+          startDate: event.startDate,
+          endDate: event.endDate,
+        });
       case 'trip.updateRange':
         return await trip.updateRange(db, userId, event.tripId, event.startDate, event.endDate);
+      case 'trip.remove':
+        // 显式删除行程（含其任务与提醒清单）：清理「进行中 0 / 已过期 0」的空壳行程
+        return await trip.remove(db, userId, event.tripId);
 
       /* ======== 时间线 ======== */
       case 'timeline.generate':
@@ -81,8 +89,8 @@ exports.main = async (event) => {
       case 'task.remove': {
         const res = await task.remove(db, userId, event.taskId);
         if (!res.success) return res;
-        // TRIP-RULE-004 级联：行程内任务与清单均空则删除行程
-        const tripRemoved = await trip.removeIfEmpty(db, userId, res.tripId);
+        // TRIP-RULE-004 级联（主动删除口径）：行程内已无任何任务 → 行程与提醒清单一并删除
+        const tripRemoved = await trip.purgeIfNoTask(db, userId, res.tripId);
         return ok({ ...res, tripRemoved });
       }
       case 'task.clear': {
@@ -91,11 +99,13 @@ exports.main = async (event) => {
           tripId: event.tripId || null,
         });
         if (!res.success) return res;
-        // TRIP-RULE-004 级联：清空后行程内任务与清单均空则删除行程
+        // TRIP-RULE-004 级联（主动删除口径）：清空后行程内已无任何任务
+        // → 行程与提醒清单一并删除（前端弹窗已明确告知该结果）
+        const removedTripIds = [];
         for (const tid of (res.affectedTripIds || [])) {
-          await trip.removeIfEmpty(db, userId, tid);
+          if (await trip.purgeIfNoTask(db, userId, tid)) removedTripIds.push(tid);
         }
-        return ok(res);
+        return ok({ ...res, removedTripIds });
       }
 
       /* ======== 用户 ======== */
@@ -117,8 +127,9 @@ exports.main = async (event) => {
         return await seed();
       case 'admin.cleanup': {
         const r = await task.cleanup(db);
+        // 14 天前的历史任务被物理删除后，行程同样按「无任务即作废」口径清理
         for (const a of r.affected) {
-          await trip.removeIfEmpty(db, a.userId, a.tripId);
+          await trip.purgeIfNoTask(db, a.userId, a.tripId);
         }
         return ok(r);
       }
@@ -262,8 +273,8 @@ async function updateUserProfile(userId, data = {}) {
   return ok({ user: { ...u, nickname, avatarUrl, phone } });
 }
 
-/** 订阅消息模板 ID（与 miniprogram/utils/notify.js、cloudfunctions/notifier 兜底常量对齐） */
-const DEFAULT_SUBSCRIBE_TEMPLATE_ID = 'w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk';
+/** 订阅消息模板 ID（与 miniprogram/utils/notify.js、cloudfunctions/notifier 兜底常量对齐；2026-09-13 随换 appid 更新） */
+const DEFAULT_SUBSCRIBE_TEMPLATE_ID = 'V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q';
 
 /**
  * 读取某个模板的本地额度。

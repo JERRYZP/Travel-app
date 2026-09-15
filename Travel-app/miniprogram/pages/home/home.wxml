@@ -273,19 +273,20 @@
               </view>
               <view class="task-card-right">
                 <view class="task-card-status status-{{task.statusClass}}" catchtap="onMissedExplain" data-id="{{task._id}}">
-                  <svg-icon wx:if="{{task.backendStatus === 'MISSED'}}" name="alert-circle" size="10px" />
+                  <svg-icon wx:if="{{task.missed}}" name="alert-circle" size="10px" />
                   <text>{{task.statusLabel}}</text>
                 </view>
                 <text wx:if="{{task.countdown}}" class="task-countdown {{task.countdown.urgent ? 'urgent' : ''}}">{{task.countdown.text}}</text>
               </view>
               <view class="task-card-menu" bindtap="onTaskMenuTap" data-id="{{task._id}}">
                 <svg-icon name="menu-muted" size="14px" />
-                <!-- 三点菜单 → 删除弹层（在按钮下方展开，不遮挡按钮） -->
+                <!-- 三点菜单 → 删除弹层（在按钮下方展开，不遮挡按钮）；已提醒(TRIGGERED)不可单删，改给一句说明 -->
                 <view wx:if="{{menuTaskId === task._id}}" class="task-delete-popup" catchtap="onTaskMenuClose">
-                  <view class="task-delete-item" catchtap="onTaskDelete" data-id="{{task._id}}">
+                  <view wx:if="{{task.deletable}}" class="task-delete-item" catchtap="onTaskDelete" data-id="{{task._id}}">
                     <svg-icon name="trash" size="14px" />
                     <text>删除</text>
                   </view>
+                  <view wx:else class="task-delete-hint">已提醒 · 用「清空任务」清理</view>
                 </view>
               </view>
             </view>

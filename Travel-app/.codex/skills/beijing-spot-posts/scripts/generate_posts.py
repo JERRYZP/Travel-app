@@ -84,12 +84,14 @@ def render_day(d: date, spots, skip_tuesday: bool) -> str:
         "|---|---|---|---|",
     ]
     for s in spots:
+        # 免预约公园曾在旧数据中带「（随到）」后缀，渲染时统一去掉。
+        name = s["name"].removesuffix("（随到）")
         val, _ = earliest(d, s, skip_tuesday)
         t = s.get("time", "—") if s.get("bookable") else "—"
         # time_note：预约时间列的附注，渲染成「08:00（仅周末）」；缺省不加括号
         if s.get("bookable") and s.get("time_note"):
             t = f"{t}（{s['time_note']}）"
-        lines.append(f"| {s['name']} | {val} | {t} | {flames(s.get('flames', 0))} |")
+        lines.append(f"| {name} | {val} | {t} | {flames(s.get('flames', 0))} |")
     lines += ["", "> 收藏这份清单 · 出行不踩雷！", "", "> 热门景点 · 提前预约 · 祝你旅途愉快！"]
     return "\n".join(lines)
 

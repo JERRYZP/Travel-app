@@ -45,9 +45,9 @@ const SCAN_PAGE_SIZE = 100;          // 分页取数，避免 limit(500) 漏扫
 const SCAN_MAX_ROWS = 800;           // 单次巡检安全上限（时间窗只有约 6 分钟，超出的靠下分钟重扫补齐）
 const SEND_CONCURRENCY = 5;          // 同一时刻在途的微信请求数，错峰窗口内并发
 
-/** 订阅消息模板 ID（微信公众平台「活动开始通知」公共模板，2026-08-19 申请）。
+/** 订阅消息模板 ID（微信公众平台「活动开始通知」公共模板；2026-09-13 换 appid 到 wx05c160a589b97d76 后重新申请）。
  *  环境变量优先；控制台未配 env 时用兜底常量，保证重新部署不丢配置。与 miniprogram/utils/notify.js 对齐。 */
-const TEMPLATE_ID = process.env.SUBSCRIBE_TEMPLATE_ID || 'w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk';
+const TEMPLATE_ID = process.env.SUBSCRIBE_TEMPLATE_ID || 'V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q';
 
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
 
@@ -110,7 +110,7 @@ function collectDue(tasks, nowTs) {
 /* ============ 微信服务端 HTTP 传输（不依赖小程序端触发） ============ */
 
 const WX_BASE = 'https://api.weixin.qq.com';
-const WX_APPID = process.env.WX_APPID || 'wxfee99eee9c95bd15';
+const WX_APPID = process.env.WX_APPID || 'wx05c160a589b97d76';
 const WX_APPSECRET = process.env.WX_APPSECRET || '';
 
 let accessTokenCache = { token: null, expiresAt: 0 };
@@ -338,6 +338,11 @@ async function markResult(task, offset, sendResult, nowTs, state = {}) {
       data.cleanAt = new Date(nowTs + CLEAN_AFTER_DAYS * 86400000);
     }
   } else if (failed) {
+    // 无论是否已过放票时刻，都先把真实失败原因落库：
+    // 过点后 sweepMissed 会用它当 missedReason，否则只剩笼统的「超过放票时间点未触发成功」，
+    // 「WX_APPSECRET 未配置」「errCode=43101 配额不足」这类可行动信息会丢（2026-09-14 补）。
+    data.lastSendError = sendResult.reason || '发送失败';
+    data.lastSendErrorAt = new Date(nowTs);
     // 发送失败：若已过放票时刻则判 MISSED，否则留待下次扫描重试
     if (nowTs >= releaseAt) {
       backendStatus = ReminderBackendStatus.MISSED;
@@ -474,7 +479,9 @@ async function sweepMissed() {
     await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).update({
       data: {
         backendStatus: ReminderBackendStatus.MISSED,
-        missedReason: '超过放票时间点未触发成功',
+        // 优先用 markResult 记下的真实发送失败原因（如「WX_APPID/WX_APPSECRET 未配置」），
+        // 没有发送记录时才退回笼统文案
+        missedReason: t.lastSendError || '超过放票时间点未触发成功',
         cleanAt: new Date(nowTs + CLEAN_AFTER_DAYS * 86400000),
       },
     });
@@ -531,11 +538,23 @@ exports.main = async (event) => {
   try {
     switch (action) {
       case 'tick': {
-        const send = await scanAndSend();
-        const missed = await sweepMissed();
-        const cleaned = await cleanup();
-        console.log('[notifier] tick', JSON.stringify({ send, missed, cleaned }));
-        return { success: true, send, missed, cleaned, templateConfigured: Boolean(TEMPLATE_ID) };
+        /* 三步彼此隔离：任何一步抛错（典型是缺 backendStatus+releaseAt 复合索引，
+           `where + orderBy` 直接报错）都不能拖垮其余两步。
+           以前三步串行，scanAndSend 一失败 sweepMissed 就永远不执行，
+           结果「推送没发出」和「任务没被标 MISSED」同时发生，
+           用户侧表现为任务永久卡在「待提醒」，且没有任何失败提示（2026-09-14 实际踩过）。 */
+        const out = { send: null, missed: null, cleaned: null, errors: [] };
+        const steps = [['send', scanAndSend], ['missed', sweepMissed], ['cleaned', cleanup]];
+        for (const [key, fn] of steps) {
+          try {
+            out[key] = await fn();
+          } catch (e) {
+            out.errors.push(`${key}: ${e.message}`);
+            console.error(`[notifier] tick step ${key} failed`, e);
+          }
+        }
+        console.log('[notifier] tick', JSON.stringify(out));
+        return { success: out.errors.length === 0, ...out, templateConfigured: Boolean(TEMPLATE_ID) };
       }
       case 'sendNow':
         return { success: true, ...(await scanAndSend()) };

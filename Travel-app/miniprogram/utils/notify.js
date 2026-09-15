@@ -15,7 +15,7 @@ const SUBSCRIBE_TEMPLATES = Object.freeze([
     key: 'spot-release',
     name: '放票提醒',
     description: '放票前通知你，提醒你及时去官方渠道抢票',
-    templateId: 'w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk',
+    templateId: 'V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q',
   },
 ]);
 const PRIMARY_SUBSCRIBE_TEMPLATE = SUBSCRIBE_TEMPLATES[0];
@@ -99,9 +99,28 @@ function openSystemNotifySetting() {
 }
 
 /**
+ * 微信授权结果里只有 accept / acceptWithAudio 算「允许」。
+ * acceptWithAudio = 用户同时勾了「接收语音提醒」（iOS 上部分模板会出现），不能当成失败。
+ */
+function isAcceptedValue(value) {
+  return value === 'accept' || value === 'acceptWithAudio';
+}
+
+/** 授权结果 → 内部 reason，便于页面给准确文案（reject / ban / filter 含义完全不同） */
+function reasonOfValue(value) {
+  if (isAcceptedValue(value)) return undefined;
+  if (value === 'reject') return 'rejected';
+  if (value === 'ban') return 'banned';
+  if (value === 'filter') return 'template-filtered';
+  return 'request-failed';
+}
+
+/**
  * 请求订阅消息授权（必须在用户手势回调内调用）
- * @returns Promise<{ ok: Boolean, reason?: string }>
- *   reason: 'template-not-ready' 模板未配置 / 'master-switch-off' 用户关了订阅消息总开关(20004) / 'request-failed' 其他失败
+ * @returns Promise<{ ok: Boolean, reason?: string, value?: string }>
+ *   reason: 'template-not-ready' 模板未配置 / 'master-switch-off' 用户关了订阅消息总开关(20004)
+ *         / 'rejected' 用户点了取消 / 'banned' 模板被封禁 / 'template-filtered' 模板同名被后台过滤
+ *         / 'request-failed' 其他失败
  */
 function requestSubscribe(templateId) {
   const tpl = templateIdOf(templateId);
@@ -114,12 +133,12 @@ function requestSubscribe(templateId) {
       tmplIds: [tpl],
       success: res => {
         const value = res[tpl];
-        const ok = value === 'accept';
+        const ok = isAcceptedValue(value);
         if (ok) {
           // 授权成功 → 云端 +1 一次性订阅额度（best-effort，不影响提交流程）
           api.reminder.subscribe.add(tpl).catch(() => {});
         }
-        resolve({ ok, reason: ok ? undefined : (value === 'reject' ? 'rejected' : 'request-failed') });
+        resolve({ ok, reason: ok ? undefined : reasonOfValue(value), value });
       },
       fail: err => {
         // 20004 = 用户关闭了订阅消息总开关（微信设置-订阅消息），弹不出授权框，需引导去设置页开启
@@ -133,60 +152,96 @@ function requestSubscribe(templateId) {
   });
 }
 
-/**
- * 提交前确保本次任务的订阅额度（一次性订阅：1 次授权 = 可发 1 条）。
- * 只在「剩余额度不足本次需求」时才需要真弹授权窗：
- *  - 已勾「总是保持以上选择，不再询问」→ 微信不再弹窗，按记忆静默返回（照样攒额度，零打扰）
- *  - 未勾 → 弹系统授权窗
- *  剩余额度足够 → 既不弹也不调用。
- * @param {number} needed 本次提交需要的订阅消息条数（一般 = 提前量个数）
- * @returns Promise<{ ok: Boolean, reason?: string, called: Boolean, remembered: Boolean }>
- */
-function ensureSubscribe(needed, templateId) {
-  const tpl = templateIdOf(templateId);
-  const enough = q => q >= needed;
-  /* 额度不足：调用授权（未勾「总是保持」时微信会弹窗；勾过则静默返回） */
-  const call = remembered => requestSubscribe(tpl).then(r => ({
-    ok: r.ok,
-    reason: r.reason,
-    called: true,
-    remembered,
-  }));
+// 一次点击最多连发几次授权（只在「总是保持以上选择」已生效时才会连发，防止无上限刷额度）
+const MAX_BURST = 5;
+// 连发之间的间隔，给微信客户端留出处理时间
+const BURST_INTERVAL = 120;
 
+/**
+ * 连发订阅授权。
+ * ⚠️ 微信规则：`wx.requestSubscribeMessage` 一次调用 = 一次授权 = 1 条额度，要攒 N 条只能调 N 次。
+ * 弹窗是否出现，取决于用户有没有勾过「总是保持以上选择，不再询问」：
+ *  - 勾过 → 微信不再弹窗，静默按「允许」记账，连发多少次都零打扰（可安全补齐缺口）
+ *  - 没勾 → **每次调用必弹一次窗**（小程序端无法绕过），因此最多只调 1 次，绝不连环弹窗骚扰用户
+ * @param {number} times 目标次数（1~MAX_BURST）
+ * @returns Promise<{ ok, added, called, silent, shortfall, reason? }>
+ *   added = 实际拿到的额度条数；shortfall = 还差几条；silent = 本次调用是否全程没弹窗
+ */
+function requestSubscribeBurst(times, templateId) {
+  const tpl = templateIdOf(templateId);
+  const target = Math.max(1, Math.min(Number(times) || 1, MAX_BURST));
   return new Promise(resolve => {
     wx.getSetting({
       withSubscriptions: true,
       success: res => {
-        // 「总是保持」保持的是上一次选择，不能把 reject 当成可继续下发。
+        // 「总是保持」保持的是上一次选择，reject/ban 不能当成可继续下发
         const remembered = rememberedSubscribeValue(res, tpl);
         if (remembered === 'reject' || remembered === 'ban') {
-          resolve({ ok: false, reason: 'subscription-disabled', called: false, remembered: true });
+          resolve({ ok: false, added: 0, called: false, silent: false, shortfall: target, reason: 'subscription-disabled' });
           return;
         }
-        // 上一次选择为允许：调用不弹窗，尝试补充一次本期额度。
-        if (hasRememberedSubscribe(res, tpl)) {
-          call(true).then(resolve);
-          return;
-        }
-        getSubscribeQuota(tpl).then(r => {
-          if (r.ok && enough(r.quota)) {
-            resolve({ ok: true, called: false, remembered: false });
-          } else {
-            call(false).then(resolve);
-          }
-        });
+        fireBurst(target, tpl, hasRememberedSubscribe(res, tpl), resolve);
       },
-      fail: () => {
-        // getSetting 失败：退化为按额度判断
-        getSubscribeQuota(tpl).then(r => {
-          if (r.ok && enough(r.quota)) {
-            resolve({ ok: true, called: false, remembered: false });
-          } else {
-            call(false).then(resolve);
-          }
-        });
-      },
+      fail: () => fireBurst(target, tpl, false, resolve),
     });
+  });
+}
+
+/** 串行连发：静默时发满 target 次，未勾「总是保持」时只发 1 次（弹窗躲不掉，不能连环弹） */
+function fireBurst(target, tpl, silent, resolve) {
+  const rounds = silent ? target : 1;
+  let added = 0;
+  let reason;
+  const step = i => {
+    requestSubscribe(tpl).then(r => {
+      if (r.ok) {
+        added += 1;
+      } else if (!reason) {
+        reason = r.reason;
+      }
+      if (i + 1 >= rounds) {
+        resolve({
+          ok: added > 0,
+          added,
+          called: true,
+          silent,
+          shortfall: Math.max(0, target - added),
+          reason: added > 0 ? undefined : reason,
+        });
+        return;
+      }
+      setTimeout(() => step(i + 1), BURST_INTERVAL);
+    });
+  };
+  step(0);
+}
+
+/**
+ * 提交前确保本次任务的订阅额度（一次性订阅：1 次授权 = 可发 1 条）。
+ * 只在「剩余额度不足本次需求」时才真弹授权窗：
+ *  - 剩余额度足够 → 既不弹也不调用
+ *  - 已勾「总是保持以上选择，不再询问」→ 微信不弹窗，按缺口静默补齐
+ *  - 未勾 → 微信每次调用必弹窗，因此最多只弹 1 次，缺口由 shortfall 回报给页面提示用户去续收
+ * @param {number} needed 本次提交需要的订阅消息条数（一般 = 提前量个数）
+ * @returns Promise<{ ok, reason?, called, remembered, added, shortfall }>
+ */
+function ensureSubscribe(needed, templateId) {
+  const tpl = templateIdOf(templateId);
+  const want = Math.max(1, Number(needed) || 1);
+  return getSubscribeQuota(tpl).then(r => {
+    const quota = r.ok ? r.quota : 0;
+    const gap = want - quota;
+    if (gap <= 0) {
+      return { ok: true, called: false, remembered: false, added: 0, shortfall: 0 };
+    }
+    return requestSubscribeBurst(gap, tpl).then(b => ({
+      ok: b.ok,
+      reason: b.reason,
+      called: b.called,
+      remembered: b.silent,
+      added: b.added,
+      shortfall: b.shortfall,
+    }));
   });
 }
 
@@ -227,6 +282,7 @@ module.exports = {
   getNotifyStatus,
   openSystemNotifySetting,
   requestSubscribe,
+  requestSubscribeBurst,
   ensureSubscribe,
   getSubscribeQuota,
   guideOpenSubscribeSetting,

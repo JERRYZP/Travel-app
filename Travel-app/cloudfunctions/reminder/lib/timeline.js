@@ -10,6 +10,7 @@ const {
   difficultyOf, ok,
 } = require('./schema');
 const time = require('./time');
+const { normalizeSpots } = require('./trip');
 
 /* ============ 纯函数区 ============ */
 
@@ -29,19 +30,24 @@ function closedSpotNoteOf(rule) {
 /**
  * TIMELINE-RULE-001 + 005 为单个景点生成事件（交叉积）
  *
- * 景点 × 行程内每个非闭馆日 = N 个事件。
+ * 景点 × **该景点自己的日期段**内每个非闭馆日 = N 个事件。
  * visitDate = 该日；releaseAt = (visitDate − advanceDays) 当日 releaseTime（GMT+8）
+ *
+ * 注意第三参数是「段」而不是整个行程：2026-09-14 起行程支持合并（TRIP-RULE-002），
+ * 但每个景点保留自己被选中时的日期段（`trip.spots`），所以这里按段生成，
+ * 不会把时间线撑成「行程整段 × 全部景点」的交叉积。
  *
  * 不替用户推断出行日——用户通过 PAGE-005/006 的 Tab 选择实际要哪天的提醒。
  *
- * @returns {Array} 空数组表示该景点在行程内每天都不可约（TIMELINE-RULE-005）
+ * @param {{startDate:string,endDate:string}} seg 该景点的日期段
+ * @returns {Array} 空数组表示该景点在段内每天都不可约（TIMELINE-RULE-005）
  */
-function buildEvents(spot, rule, trip) {
+function buildEvents(spot, rule, seg) {
   if (!rule || !rule.advanceDays || !rule.releaseTime) return [];
 
   const events = [];
 
-  for (const visitDate of time.dateRange(trip.startDate, trip.endDate)) {
+  for (const visitDate of time.dateRange(seg.startDate, seg.endDate)) {
     // TIMELINE-RULE-005 按日判定：该日不可约则跳过这一天，其余日期照常生成
     // 判定统一走 time.isOpenOn —— openDays 白名单优先，用于北大/清华「仅周末可约」
     if (!time.isOpenOn(rule, time.dayNameOf(visitDate))) continue;
@@ -175,14 +181,18 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
   const trip = (tripRes.data || [])[0];
   if (!trip) return { success: false, error: '行程不存在' };
 
-  const spotIds = trip.spotIds || [];
-  if (spotIds.length === 0) {
+  /* TRIP-RULE-002 合并后每个景点有自己的日期段；老数据（只有 spotIds）按行程整段回退 */
+  const segs = normalizeSpots(trip);
+  if (segs.length === 0) {
     return ok({
       tripId, events: [], byDeparture: [], bySpot: [], closedSpots: [],
       empty: true, emptyReason: '先选择想去的景点',
     });
 
   }
+  const spotIds = segs.map(s => s.spotId);
+  const segMap = {};
+  segs.forEach(s => { segMap[s.spotId] = s; });
 
   const [spotsRes, rulesRes, cartRes, tasksRes] = await Promise.all([
     db.collection(COLLECTIONS.SPOTS).where({ spotId: db.command.in(spotIds) }).get(),
@@ -205,21 +215,23 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
   for (const spot of (spotsRes.data || [])) {
     // B 层免预约景点不进时间线（reservationRequired=false，2026 政策已取消预约）
     if (spot.reservationRequired === false) continue;
+    const seg = segMap[spot.spotId];
+    if (!seg) continue;
     const rule = ruleMap[spot.spotId];
-    const built = buildEvents(spot, rule, trip);
+    const built = buildEvents(spot, rule, seg);
     if (built.length === 0) {
-      // 区分两种「无事件」：规则不全（无放票时刻，如环球影城购票型）≠ 行程期间闭馆
+      // 区分两种「无事件」：规则不全（无放票时刻，如环球影城购票型）≠ 段内闭馆
       if (!rule || !rule.advanceDays || !rule.releaseTime) {
         closedSpots.push({ spotId: spot.spotId, spotName: spot.name, note: '无固定放票时刻，暂不生成提醒' });
       } else {
-        // TIMELINE-RULE-005：行程内每天都不可约 → 想去列表该行标注（闭馆 / 仅周末可约但行程不在周末）
+        // TIMELINE-RULE-005：段内每天都不可约 → 想去列表该行标注（闭馆 / 仅周末可约但段内不含周末）
         closedSpots.push({ spotId: spot.spotId, spotName: spot.name, note: closedSpotNoteOf(rule) });
       }
       continue;
     }
-    // TIMELINE-RULE-005 补充：该景点在行程内非每天不可约，但有若干天被跳过 → 记录这些日期供前端提示
+    // TIMELINE-RULE-005 补充：该景点在段内非每天不可约，但有若干天被跳过 → 记录这些日期供前端提示
     // 与 buildEvents 共用 time.isOpenOn，避免「生成事件用一套、提示用另一套」的口径漂移
-    const skipped = time.dateRange(trip.startDate, trip.endDate).filter(d => !time.isOpenOn(rule, time.dayNameOf(d)));
+    const skipped = time.dateRange(seg.startDate, seg.endDate).filter(d => !time.isOpenOn(rule, time.dayNameOf(d)));
     if (skipped.length > 0) {
       closedDaySkips.push({
         spotId: spot.spotId,
@@ -256,7 +268,7 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
 
   return ok({
     tripId,
-    trip: { _id: trip._id, name: trip.name, startDate: trip.startDate, endDate: trip.endDate, spotIds },
+    trip: { _id: trip._id, name: trip.name, startDate: trip.startDate, endDate: trip.endDate, spotIds, spots: segs },
     events,
     byDeparture: groupByDeparture(events, nowTs),
     bySpot: groupBySpot(events, nowTs),

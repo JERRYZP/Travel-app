@@ -20,8 +20,8 @@ const SPOTS = [
   {spotId:"gongwangfu",name:"恭王府",category:"古迹",district:"西城区",address:"前海西街17号",location:{latitude:39.9365,longitude:116.3852},officialAppid:"wxb222dd7f96712443",officialPath:"",officialWebUrl:"https://www.pgm.org.cn",officialAccount:"恭王府博物馆",qrCode:"/images/qrcodes/gongwangfu.jpg",difficultyScore:2,audienceTags:["elder"],popularityScore:3,hasWebVersion:true,scrapingUrl:"https://www.pgm.org.cn",reservationRequired:true },
   {spotId:"beihai",name:"北海公园",category:"公园",district:"西城区",address:"文津街1号",location:{latitude:39.9243,longitude:116.3888},officialAppid:"wxf0693a7822f75666",officialPath:"pages/home/home",officialWebUrl:"https://www.beihaipark.com.cn",officialAccount:"畅游公园",qrCode:"/images/qrcodes/beihai.jpg",difficultyScore:1,audienceTags:["family","elder"],popularityScore:3,hasWebVersion:true,scrapingUrl:"https://www.beihaipark.com.cn",reservationRequired:false },
   {spotId:"tiananmen-square",name:"天安门广场",category:"广场",district:"东城区",address:"东长安街天安门广场",location:{latitude:39.9087,longitude:116.3975},officialAppid:"wx784eb46174db6aed",officialPath:"",officialWebUrl:"http://yuyue.tamgw.beijing.gov.cn",officialAccount:"",qrCode:"",difficultyScore:2,audienceTags:["elder"],popularityScore:5,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["升旗","天安门升旗","看升旗"] },
-  {spotId:"maozhuxi-jiniantang",name:"毛主席纪念堂",category:"纪念场馆",district:"东城区",address:"天安门广场人民英雄纪念碑南侧",location:{latitude:39.9014,longitude:116.3956},officialAppid:"wx492b5d2f5b89c11e",officialPath:"",officialWebUrl:"https://cpc.people.com.cn/GB/143527/143528/",officialAccount:"",qrCode:"",difficultyScore:2,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["纪念堂"] },
-  {spotId:"renmin-dahuitang",name:"人民大会堂",category:"场馆",district:"西城区",address:"西长安街天安门广场西侧",location:{latitude:39.9064,longitude:116.3938},officialAppid:"wxb2809a187df8351b",officialPath:"",officialWebUrl:"",officialAccount:"",qrCode:"",difficultyScore:2,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:false,scrapingUrl:"",aliases:["大会堂"] },
+  {spotId:"maozhuxi-jiniantang",name:"毛主席纪念堂",category:"纪念场馆",district:"东城区",address:"天安门广场人民英雄纪念碑南侧",location:{latitude:39.9014,longitude:116.3956},officialAppid:"wx492b5d2f5b89c11e",officialPath:"",officialWebUrl:"https://cpc.people.com.cn/GB/143527/143528/",officialAccount:"",qrCode:"",difficultyScore:3,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["纪念堂"] },
+  {spotId:"renmin-dahuitang",name:"人民大会堂",category:"场馆",district:"西城区",address:"西长安街天安门广场西侧",location:{latitude:39.9064,longitude:116.3938},officialAppid:"wxb2809a187df8351b",officialPath:"",officialWebUrl:"",officialAccount:"",qrCode:"",difficultyScore:3,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:false,scrapingUrl:"",aliases:["大会堂"] },
   {spotId:"junbo",name:"中国人民革命军事博物馆",category:"博物馆",district:"海淀区",address:"复兴路9号",location:{latitude:39.9078,longitude:116.3211},officialAppid:"wxe7ab4bac193578d0",officialPath:"",officialWebUrl:"http://www.jb.mil.cn",officialAccount:"中国人民革命军事博物馆",qrCode:"/images/qrcodes/junbo.jpg",difficultyScore:2,audienceTags:["family","elder"],popularityScore:5,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["军博","军事博物馆"] },
   {spotId:"ziran-bowuguan",name:"国家自然博物馆",category:"博物馆",district:"东城区",address:"天桥南大街126号",location:{latitude:39.8796,longitude:116.3952},officialAppid:"wx3ccbf39dedcfc335",officialPath:"",officialWebUrl:"https://www.nnhm.org.cn",officialAccount:"国家自然博物馆",qrCode:"/images/qrcodes/ziran-bowuguan.jpg",difficultyScore:2,audienceTags:["family"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["自然博物馆","自然博"] },
   {spotId:"kaogu-bowuguan",name:"中国考古博物馆",category:"博物馆",district:"朝阳区",address:"国家体育场北路1号院1号楼",location:{latitude:39.9985,longitude:116.3835},officialAppid:"wx48b5cc9990544897",officialPath:"",officialWebUrl:"https://cam.zglsyjy.cn",officialAccount:"中国考古博物馆",qrCode:"/images/qrcodes/kaogu-bowuguan.png",difficultyScore:2,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["考古博物馆","考古博"] },
@@ -50,7 +50,7 @@ const RULES = [
   {spotId:"gongwangfu",advanceDays:10,releaseTime:"20:00",releaseFrequency:"daily",closedDays:["monday"],isRolling:false,bookingTips:"最早可于参观十日前20:00开始预订；每个证件每个入馆日限购1张（个人每订单限5张、每日2订单）；实行限流预售（单日最大承载量24000人次），节假日易约满，建议放票时卡点抢票",openTime:"08:30-17:00（16:00停止售票，16:10停止入馆），周一闭馆（法定节假日除外）",ticketPrice:"40元/人",idRequirement:"须持预约时使用的身份证件原件",ageLimit:"6周岁（含）以下或身高1.2米（含）以下儿童免费；60周岁以上老年人凭身份证半价（20元）",lastCheckedDate:"2026-08-24",specialNotice:"",cardPrice:"40元/人" },
   {spotId:"beihai",advanceDays:7,releaseTime:"00:00",releaseFrequency:"daily",closedDays:[],closedDaysNote:"公园本体全年开放，琼华岛等园中园周一闭馆（法定节假日除外）",isRolling:false,bookingTips:"琼华岛等园内景点周一闭馆（法定节假日除外）；白塔位于琼华岛山顶",openTime:"旺季06:00-21:00（20:30停止入园），淡季06:30-20:00（19:30停止入园）",ticketPrice:"旺季门票10元，联票20元；淡季门票5元，联票15元",idRequirement:"身份证原件",ageLimit:"6周岁（含）以下或身高1.2米（含）以下儿童免费；60周岁以上老年人凭身份证免费",lastCheckedDate:"2026-08-24",specialNotice:"",peakPrice:"旺季门票10元，联票20元",offPrice:"淡季门票5元，联票15元" },
   {advanceDays:7,releaseTime:"12:00",releaseFrequency:"daily",closedDays:[],isRolling:false,bookingTips:"可提前1-7天预约，每日12:00分批更新可预约票量，分升旗/上午/下午/降旗时段；观看升旗须单独预约升旗时段；节假日和暑期放票后几分钟即约满，建议设闹钟卡点",openTime:"升旗时段以官方当日公示为准；广场开放约 05:00-22:00（以官方为准）",ticketPrice:"免费",idRequirement:"须持预约时使用的有效身份证件原件",ageLimit:"全员实名预约，无免约通道",lastCheckedDate:"2026-09-11",specialNotice:"",spotId:"tiananmen-square" },
-  {advanceDays:6,releaseTime:"12:30",releaseFrequency:"daily",closedDays:["monday"],isRolling:false,bookingTips:"提前1-6天预约，每日12:30放票（12:38、12:50固定补放）；每账号最多约5人；严禁携带照相机、摄像机、平板电脑、水杯等，手机须关机或静音，须安检",openTime:"08:00-12:00（仅上午瞻仰，以官方公示为准）",ticketPrice:"免费",idRequirement:"须持预约时使用的有效身份证件原件",ageLimit:"全员实名预约，无免约通道",lastCheckedDate:"2026-09-11",specialNotice:"",spotId:"maozhuxi-jiniantang" },
+  {advanceDays:6,releaseTime:"12:30",releaseFrequency:"daily",closedDays:["monday"],isRolling:false,bookingTips:"提前1-6天预约，每日12:30放票；每账号最多约5人；严禁携带照相机、摄像机、平板电脑、水杯等，手机须关机或静音，须安检",openTime:"08:00-12:00（仅上午瞻仰，以官方公示为准）",ticketPrice:"免费",idRequirement:"须持预约时使用的有效身份证件原件",ageLimit:"全员实名预约，无免约通道",lastCheckedDate:"2026-09-11",specialNotice:"",spotId:"maozhuxi-jiniantang" },
   {advanceDays:3,releaseTime:"17:00",releaseFrequency:"daily",closedDays:["monday"],isRolling:false,bookingTips:"实名预约，不设现场售票，不售当日票和团队票；提前3天、每日17:00放第三日票；周一闭馆（法定节假日除外）；须按预约时段参观，携带身份证原件；单笔订单限5张，免票人群也需预约；遇全国两会、重大外事活动临时停止参观，开放安排以小程序当日公示为准",openTime:"09:00-15:00（14:30停止检票），周一闭馆，以小程序当日公示为准",ticketPrice:"30元/人（学生票15元）",idRequirement:"须持预约时使用的有效身份证件原件",ageLimit:"18周岁以下、60周岁（含）以上中国公民及现役军人、消防救援人员、残疾人预约后免费",lastCheckedDate:"2026-09-11",specialNotice:"",spotId:"renmin-dahuitang" },
   {advanceDays:8,releaseTime:"08:00",releaseFrequency:"daily",closedDays:["monday"],isRolling:false,bookingTips:"提前8天可约；常规每日8:00、17:00、20:00三个放票时段；2026暑期（7月27日至8月31日）每日9:00、17:00释放次日回流票，9月起以官网/公众号为准；卡点进入，约不上别退出持续刷新",openTime:"09:00-17:00（16:00停止入馆），周一闭馆",ticketPrice:"免费",idRequirement:"须持预约时使用的有效身份证件原件",ageLimit:"未满14周岁未成年人须由成年人陪同（以官方为准）",lastCheckedDate:"2026-08-24",specialNotice:"",spotId:"junbo",releaseTimes:["08:00","17:00","20:00"] },
   {advanceDays:3,releaseTime:"11:00",releaseFrequency:"daily",closedDays:["monday"],isRolling:false,bookingTips:"提前3天放票，每日11:00开抢（团体票10:00）；周末票比国博还难抢（场馆小票少），放票后几分钟约满；建议提前录好同行人信息、定闹钟卡点",openTime:"09:00-17:00（16:30停止入馆），周一闭馆",ticketPrice:"免费（收费临展另购）",idRequirement:"须持预约时使用的有效身份证件原件",ageLimit:"儿童无论年龄均需单独预约（以官方为准）",lastCheckedDate:"2026-08-24",specialNotice:"",spotId:"ziran-bowuguan" },
@@ -255,22 +255,99 @@ function buildCard(spot) {
   };
 }
 
-/* ===== 行程规则（镜像 lib/trip.js：TRIP-RULE-003；2026-08-31 取消自动合并 TRIP-RULE-002） ===== */
+/* ===== 行程规则（镜像 lib/trip.js：TRIP-RULE-002/003，2026-09-14 A 方案） ===== */
 function buildMockTripName(city, startDate, endDate) {
   const short = (d) => { const p = beijingParts(parseBeijing(d, '12:00')); return `${p.month}.${p.day}`; };
   return `${city} ${short(startDate)}-${short(endDate)}`;
 }
-/** 行程范围/景点变化后，清掉不再合法的清单项（镜像 timeline.generate 的残留清理） */
+
+/* ---------- 合并判定与景点段（镜像 lib/trip.js 纯函数区） ---------- */
+
+/** TRIP-RULE-002 合并判定：同城市，且（日期有交集 或 首尾相接） */
+function canMerge(a, b) {
+  if ((a.city || '') !== (b.city || '')) return false;
+  if (a.startDate <= b.endDate && b.startDate <= a.endDate) return true;
+  return addDays(a.endDate, 1) === b.startDate || addDays(b.endDate, 1) === a.startDate;
+}
+
+/** 日期段取并集 */
+function mergeRange(a, b) {
+  return {
+    startDate: a.startDate < b.startDate ? a.startDate : b.startDate,
+    endDate: a.endDate > b.endDate ? a.endDate : b.endDate,
+  };
+}
+
+/** 把「景点 × 日期段」摊平成行程的 spots 字段 */
+function makeSpotSegments(spotIds, startDate, endDate) {
+  return [...new Set(spotIds || [])].map(spotId => ({ spotId, startDate, endDate }));
+}
+
+/** 景点段归一化：新数据用 spots；老数据（只有 spotIds）按行程整段回退 */
+function normalizeSpots(trip) {
+  const segs = Array.isArray(trip.spots) ? trip.spots.filter(s => s && s.spotId) : [];
+  if (segs.length > 0) return segs.map(s => ({ spotId: s.spotId, startDate: s.startDate, endDate: s.endDate }));
+  return makeSpotSegments(trip.spotIds || [], trip.startDate, trip.endDate);
+}
+
+/** 景点段合并：同 spotId 取并集（mergeRange 只回日期，spotId 必须补回） */
+function mergeSpots(a, b) {
+  const map = new Map();
+  for (const s of [...(a || []), ...(b || [])]) {
+    if (!s || !s.spotId) continue;
+    const cur = map.get(s.spotId);
+    map.set(s.spotId, cur
+      ? { spotId: s.spotId, ...mergeRange(cur, s) }
+      : { spotId: s.spotId, startDate: s.startDate, endDate: s.endDate });
+  }
+  return [...map.values()];
+}
+
+/** 滚雪球式合并：新行程可能同时与多个既有行程相接 */
+function collapse(incoming, existing) {
+  let range = { city: incoming.city, startDate: incoming.startDate, endDate: incoming.endDate };
+  const mergedIds = [];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const t of existing) {
+      if (mergedIds.includes(t._id)) continue;
+      if (canMerge(range, t)) {
+        range = { city: range.city, ...mergeRange(range, t) };
+        mergedIds.push(t._id);
+        changed = true;
+      }
+    }
+  }
+  return { range, mergedIds };
+}
+
+/** 行程范围/景点变化后，清掉不再合法的清单项（按该景点自己的日期段判定） */
 function pruneStaleCart(tripId) {
   const trip = db.trips[tripId];
   if (!trip) return;
+  const segMap = {};
+  normalizeSpots(trip).forEach(s => { segMap[s.spotId] = s; });
   Object.keys(db.carts).forEach((id) => {
     const c = db.carts[id];
     if (c.tripId !== tripId) return;
-    const spotOk = (trip.spotIds || []).includes(c.spotId);
-    const dateOk = c.visitDate >= trip.startDate && c.visitDate <= trip.endDate;
-    if (!spotOk || !dateOk) delete db.carts[id];
+    const seg = segMap[c.spotId];
+    const dateOk = Boolean(seg) && c.visitDate >= seg.startDate && c.visitDate <= seg.endDate;
+    if (!seg || !dateOk) delete db.carts[id];
   });
+}
+
+/**
+ * TRIP-RULE-004（2026-09-14 补充口径）显式清理，镜像 lib/trip.js 的 purgeIfNoTask：
+ * 用户主动删除任务后，行程若已无任何任务 → 行程连同其提醒清单一并删除。
+ * 与 trip.list 读取时兜底（清单非空即保留，保护草稿行程）不同，这里不看清单。
+ */
+function purgeTripIfNoTask(tripId) {
+  if (!tripId) return false;
+  if (Object.values(db.tasks).some(t => t.tripId === tripId)) return false;
+  Object.keys(db.carts).forEach(id => { if (db.carts[id].tripId === tripId) delete db.carts[id]; });
+  delete db.trips[tripId];
+  return true;
 }
 
 /* ===== 时间线（镜像 lib/timeline.js：TIMELINE-RULE-001~005） ===== */
@@ -279,10 +356,11 @@ function difficultyOf(score) {
   if (score === 3) return { key: 'NORMAL', text: '较难约' };
   return { key: 'EASY', text: '容易约' };
 }
-function buildEvents(spot, rule, trip) {
+function buildEvents(spot, rule, seg) {
   if (!rule || !rule.advanceDays || !rule.releaseTime) return [];
   const events = [];
-  for (const visitDate of dateRange(trip.startDate, trip.endDate)) {
+  // seg = 该景点自己的日期段（合并行程后各景点段可能不同，见 A 方案）
+  for (const visitDate of dateRange(seg.startDate, seg.endDate)) {
     if (!isOpenOn(rule, dayNameOf(visitDate))) continue;
     const releaseDate = addDays(visitDate, -rule.advanceDays);
     events.push({
@@ -354,20 +432,25 @@ function groupBySpot(events, nowTs) {
 function generateTimeline(tripId) {
   const trip = db.trips[tripId];
   if (!trip) return { success: false, error: '行程不存在', errorCode: 1001 };
-  const spotIds = trip.spotIds || [];
+  const segs = normalizeSpots(trip);
+  const spotIds = segs.map(s => s.spotId);
   if (spotIds.length === 0) {
     return { success: true, tripId, events: [], byDeparture: [], bySpot: [], closedSpots: [], empty: true, emptyReason: '先选择想去的景点' };
   }
+  const segMap = {};
+  segs.forEach(s => { segMap[s.spotId] = s; });
   const nowTs = new Date();
   const events = [];
   const closedSpots = [];
   const closedDaySkips = [];
   for (const spotId of spotIds) {
+    const seg = segMap[spotId];
+    if (!seg) continue;
     const spot = SPOTS.find(s => s.spotId === spotId);
     if (!spot) continue;
     if (spot.reservationRequired === false) continue;
     const rule = RULES.find(r => r.spotId === spotId) || null;
-    const built = buildEvents(spot, rule, trip);
+    const built = buildEvents(spot, rule, seg);
     if (built.length === 0) {
       if (!rule || !rule.advanceDays || !rule.releaseTime) {
         closedSpots.push({ spotId, spotName: spot.name, note: '无固定放票时刻，暂不生成提醒' });
@@ -376,8 +459,8 @@ function generateTimeline(tripId) {
       }
       continue;
     }
-    // 与云端 timeline.generate 一致的 closedDaySkips
-    const skipped = dateRange(trip.startDate, trip.endDate).filter(d => !isOpenOn(rule, dayNameOf(d)));
+    // 与云端 timeline.generate 一致的 closedDaySkips（按该景点自己的段统计）
+    const skipped = dateRange(seg.startDate, seg.endDate).filter(d => !isOpenOn(rule, dayNameOf(d)));
     if (skipped.length > 0) {
       const isWhitelist = (rule.openDays || []).length > 0;
       closedDaySkips.push({
@@ -403,7 +486,7 @@ function generateTimeline(tripId) {
   return {
     success: true,
     tripId,
-    trip: { _id: tripId, name: trip.name, startDate: trip.startDate, endDate: trip.endDate, spotIds },
+    trip: { _id: tripId, name: trip.name, startDate: trip.startDate, endDate: trip.endDate, spotIds, spots: segs },
     events,
     byDeparture: groupByDeparture(events, nowTs),
     bySpot: groupBySpot(events, nowTs),
@@ -475,17 +558,62 @@ const handlers = {
 
   /* ----- trip ----- */
   'trip.create': (data) => {
-    /* 2026-08-31 取消自动合并（与云函数 trip.create 一致）：严格按本次输入的日期与景点创建独立行程 */
+    /* TRIP-RULE-002 创建或合并（2026-09-14 恢复自动合并，镜像云函数 trip.create）：
+       同城市且日期相交/相接 → 合并成一个行程（= 一个任务分组 Tab），日期取并集；
+       但各景点保留自己被选中时的日期段（spots），时间线不会冒出没选过的组合。 */
     const city = data.city || '北京';
-    const tripId = 'mock-trip-' + (++tripSeq);
-    db.trips[tripId] = {
-      _id: tripId, city,
-      startDate: data.startDate, endDate: data.endDate,
-      spotIds: data.spotIds || [],
-      name: buildMockTripName(city, data.startDate, data.endDate),
-      status: 'ACTIVE',
-    };
-    return { success: true, tripId, merged: false, mergedFrom: [], trip: db.trips[tripId] };
+    const startDate = data.startDate;
+    const endDate = data.endDate;
+    const incomingRange = { city, startDate, endDate };
+    const incomingSpots = makeSpotSegments(data.spotIds || [], startDate, endDate);
+
+    const existing = Object.values(db.trips).filter(t => t.city === city && t.status === 'ACTIVE');
+
+    /* adjustTripId：「在当前内联时间线的行程上重新生成」→ 该行程景点段按本次输入替换 */
+    const adjust = data.adjustTripId ? existing.find(t => t._id === data.adjustTripId) : null;
+    const adjustMerges = Boolean(adjust && canMerge(incomingRange, adjust));
+    const pool = adjustMerges ? existing.filter(t => t._id !== adjust._id) : existing;
+
+    const { range, mergedIds } = collapse(incomingRange, pool);
+
+    /* 景点段：被并进来的行程各自的段 + 本次输入的段。
+       调整模式本次输入在前（替换语义）；否则既有在前、本次追加在后（想去列表顺序稳定） */
+    const mergedTrips = pool.filter(t => mergedIds.includes(t._id));
+    const otherSpots = mergedTrips.reduce((acc, t) => acc.concat(normalizeSpots(t)), []);
+    const finalSpots = adjustMerges
+      ? mergeSpots(incomingSpots, otherSpots)
+      : mergeSpots(otherSpots, incomingSpots);
+    const finalSpotIds = finalSpots.map(s => s.spotId);
+    const name = buildMockTripName(city, range.startDate, range.endDate);
+
+    const keepId = adjustMerges ? adjust._id : (mergedIds[0] || '');
+
+    if (!keepId) {
+      const tripId = 'mock-trip-' + (++tripSeq);
+      db.trips[tripId] = {
+        _id: tripId, city,
+        startDate: range.startDate, endDate: range.endDate,
+        spotIds: finalSpotIds, spots: finalSpots,
+        name, status: 'ACTIVE',
+      };
+      return { success: true, tripId, merged: false, mergedFrom: [], trip: db.trips[tripId] };
+    }
+
+    const trip = db.trips[keepId];
+    trip.startDate = range.startDate;
+    trip.endDate = range.endDate;
+    trip.name = name;
+    trip.spotIds = finalSpotIds;
+    trip.spots = finalSpots;
+
+    mergedIds.filter(id => id !== keepId).forEach((id) => {
+      // 被吞并行程的任务与清单改挂到存续行程（提醒本身不受影响）
+      Object.keys(db.tasks).forEach(k => { if (db.tasks[k].tripId === id) db.tasks[k].tripId = keepId; });
+      Object.keys(db.carts).forEach(k => { if (db.carts[k].tripId === id) db.carts[k].tripId = keepId; });
+      delete db.trips[id];
+    });
+
+    return { success: true, tripId: keepId, merged: mergedIds.length > 0, mergedFrom: mergedIds, trip };
   },
   'trip.list': () => {
     /* TRIP-RULE-004 读取时兜底：任务与清单皆空的孤儿行程自动删除（同步云函数） */
@@ -497,23 +625,55 @@ const handlers = {
       return false;
     });
     const sorted = kept.sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
+    // 老数据只有 spotIds → 统一补出 spots 段（按行程整段），前端可放心依赖
+    sorted.forEach(t => { t.spots = normalizeSpots(t); });
     return { success: true, trips: sorted, showGroupTabs: sorted.length >= 2 };
   },
   'trip.updateSpots': (data) => {
     const trip = db.trips[data.tripId];
     if (!trip) return { success: false, error: '行程不存在', errorCode: 1001 };
-    trip.spotIds = data.spotIds || [];
+    /* 已在行程里的景点保留自己的日期段（不因一次增删被拉回整段）；
+       新加入的景点用本次传入的段，缺省则用行程当前范围 */
+    const startDate = data.startDate || trip.startDate;
+    const endDate = data.endDate || trip.endDate;
+    const next = [...new Set(data.spotIds || [])];
+    const prevMap = new Map(normalizeSpots(trip).map(s => [s.spotId, s]));
+    const spots = next.map(spotId => prevMap.get(spotId) || { spotId, startDate, endDate });
+    trip.spotIds = next;
+    trip.spots = spots;
     pruneStaleCart(data.tripId);
-    return { success: true, tripId: data.tripId, spotIds: trip.spotIds };
+    return { success: true, tripId: data.tripId, spotIds: next, spots };
   },
   'trip.updateRange': (data) => {
     const trip = db.trips[data.tripId];
     if (!trip) return { success: false, error: '行程不存在', errorCode: 1001 };
+    /* 行程总范围变了 → 各景点段裁剪到新范围内（无交集时收敛到新范围），
+       保证「景点段 ⊄ 行程范围」这种非法状态不出现 */
+    const spots = normalizeSpots(trip).map(s => {
+      const seg = {
+        spotId: s.spotId,
+        startDate: s.startDate > data.startDate ? s.startDate : data.startDate,
+        endDate: s.endDate < data.endDate ? s.endDate : data.endDate,
+      };
+      return seg.startDate > seg.endDate ? { spotId: s.spotId, startDate: data.startDate, endDate: data.endDate } : seg;
+    });
     trip.startDate = data.startDate;
     trip.endDate = data.endDate;
     trip.name = buildMockTripName(trip.city, data.startDate, data.endDate);
+    trip.spotIds = spots.map(s => s.spotId);
+    trip.spots = spots;
     pruneStaleCart(data.tripId);
-    return { success: true, tripId: data.tripId, startDate: trip.startDate, endDate: trip.endDate };
+    return { success: true, tripId: data.tripId, startDate: trip.startDate, endDate: trip.endDate, spots };
+  },
+  /* 显式删除行程（含其任务与提醒清单）：清理「进行中 0 / 已过期 0」的空壳行程（同步云函数 trip.remove） */
+  'trip.remove': (data) => {
+    if (!db.trips[data.tripId]) return { success: false, error: '参数不合法', errorCode: 1010 };
+    let removedTasks = 0;
+    let removedCartItems = 0;
+    Object.keys(db.tasks).forEach(id => { if (db.tasks[id].tripId === data.tripId) { delete db.tasks[id]; removedTasks += 1; } });
+    Object.keys(db.carts).forEach(id => { if (db.carts[id].tripId === data.tripId) { delete db.carts[id]; removedCartItems += 1; } });
+    delete db.trips[data.tripId];
+    return { success: true, tripId: data.tripId, removedTasks, removedCartItems };
   },
 
   /* ----- timeline ----- */
@@ -585,15 +745,19 @@ const handlers = {
     let all = Object.values(db.tasks);
     if (data.tripId) all = all.filter(t => t.tripId === data.tripId);
     const now = new Date();
+    /* 镜像 lib/task.js 的 effectiveStatusOf：已过 releaseAt 仍是 WAITING = 未送达（REMINDER-RULE-004） */
+    const LABELS = { WAITING: '待提醒', TRIGGERED: '已提醒', MISSED: '未送达' };
     const enriched = all.map(t => {
       const spot = SPOTS.find(s => s.spotId === t.spotId);
       const releaseAt = new Date(t.releaseAt);
       const msLeft = releaseAt.getTime() - now.getTime();
-      const expired = msLeft <= 0;
+      const status = (t.backendStatus === 'WAITING' && msLeft <= 0) ? 'MISSED' : t.backendStatus;
+      const expired = status === 'MISSED' || msLeft <= 0;
       return {
-        ...t, spotName: spot ? spot.name : '未知景点', difficultyScore: spot ? spot.difficultyScore : null,
+        ...t, backendStatus: status,
+        spotName: spot ? spot.name : '未知景点', difficultyScore: spot ? spot.difficultyScore : null,
         releaseTimeLabel: formatHourMinute(releaseAt), releaseDateStr: fmt(releaseAt),
-        grabLabel: `开抢${formatMonthDayWeekCn(t.visitDate)}门票`, statusLabel: '待提醒',
+        grabLabel: `开抢${formatMonthDayWeekCn(t.visitDate)}门票`, statusLabel: LABELS[status] || '待提醒',
         countdown: msLeft > 0 && msLeft < 3 * 3600000 ? { text: `还剩${pad(Math.floor(msLeft / 3600000))}h ${pad(Math.floor((msLeft % 3600000) / 60000))}m`, urgent: true } : null,
         expired,
       };
@@ -606,7 +770,18 @@ const handlers = {
     const groups = Object.keys(map).sort((a, b) => data.filter === 'expired' ? b.localeCompare(a) : a.localeCompare(b)).map(k => ({ key: k, label: formatMonthDay(k), items: map[k].sort((a, b) => new Date(a.releaseAt) - new Date(b.releaseAt)) }));
     return { success: true, groups, counts: { active: active.length, expired: past.length }, banner: buildMockBanner(enriched, now), homeMode: enriched.length === 0 ? 1 : 2 };
   },
-  'task.remove': (data) => { const t = db.tasks[data.taskId]; delete db.tasks[data.taskId]; return { success: true, taskId: data.taskId, tripId: t ? t.tripId : null, tripRemoved: false }; },
+  /* REMINDER-RULE-005（2026-09-14 放宽）：WAITING / MISSED 可单删，TRIGGERED 只能走「清空任务」 */
+  'task.remove': (data) => {
+    const t = db.tasks[data.taskId];
+    if (!t) return { success: false, error: '参数不合法', errorCode: 1010 };
+    if (t.backendStatus !== 'WAITING' && t.backendStatus !== 'MISSED') {
+      return { success: false, error: '已提醒的任务不可单条删除，可在「清空任务」中批量清理', errorCode: 1012 };
+    }
+    delete db.tasks[data.taskId];
+    /* TRIP-RULE-004（主动删除口径）：行程内已无任务 → 行程与提醒清单一并删除 */
+    const tripRemoved = purgeTripIfNoTask(t.tripId);
+    return { success: true, taskId: data.taskId, tripId: t.tripId, tripRemoved };
+  },
   'task.clear': (data) => {
     let targets = Object.values(db.tasks);
     if (data && data.tripId) targets = targets.filter(t => t.tripId === data.tripId);
@@ -614,19 +789,16 @@ const handlers = {
       const now = new Date();
       targets = targets.filter(t => {
         const msLeft = new Date(t.releaseAt).getTime() - now.getTime();
-        const expired = msLeft <= 0;
+        /* 镜像 lib/task.js clear：MISSED 或已过放票时刻点都算「已过期」 */
+        const expired = t.backendStatus === 'MISSED' || msLeft <= 0;
         return data.filter === 'expired' ? expired : !expired;
       });
     }
     const affectedTripIds = [...new Set(targets.map(t => t.tripId).filter(Boolean))];
     targets.forEach(t => { delete db.tasks[t._id]; });
-    /* TRIP-RULE-004 级联：行程内任务与清单均空则删除行程（同步云函数） */
-    affectedTripIds.forEach(tid => {
-      const hasTask = Object.values(db.tasks).some(t => t.tripId === tid);
-      const hasCart = Object.values(db.carts).some(c => c.tripId === tid);
-      if (!hasTask && !hasCart) delete db.trips[tid];
-    });
-    return { success: true, cleared: targets.length };
+    /* TRIP-RULE-004（主动删除口径）：清空后行程内已无任务 → 行程与提醒清单一并删除（同步云函数） */
+    const removedTripIds = affectedTripIds.filter(tid => purgeTripIfNoTask(tid));
+    return { success: true, cleared: targets.length, affectedTripIds, removedTripIds };
   },
 
   /* ----- user ----- */

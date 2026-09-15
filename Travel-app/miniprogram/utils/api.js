@@ -43,6 +43,7 @@ const reminder = {
     list: () => call('reminder', { action: 'trip.list' }),
     updateSpots: (p) => call('reminder', { action: 'trip.updateSpots', ...p }),
     updateRange: (p) => call('reminder', { action: 'trip.updateRange', ...p }),
+    remove: (p) => call('reminder', { action: 'trip.remove', ...p }),
   },
   timeline: {
     generate: (p) => call('reminder', { action: 'timeline.generate', ...p }),

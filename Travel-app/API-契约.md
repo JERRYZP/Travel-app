@@ -243,18 +243,24 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 ### 2.1 行程域（trip.*）
 
-#### `trip.create` — 创建行程（2026-08-31 起不自动合并）
+#### `trip.create` — 创建或合并行程（2026-09-14 恢复自动合并）
 
 ```
 用途：PAGE-001 首页形态1「生成预约时间线」→ 内部先创建行程
-说明：2026-08-31 起取消自动合并（TRIP-RULE-002）——日期/景点严格按本次输入创建独立行程；
-     `merged` 字段保留以兼容调用方（新版恒为 false；旧版为 true 时前端用 updateRange/updateSpots 兜底改回）
+说明：TRIP-RULE-002 —— 同城市 且（日期有交集 或 首尾相接）→ 合并成一个行程（= 一个任务分组 Tab），
+     日期取并集；新行程可能同时与多个既有行程相接，滚雪球式反复合并。
+     **合并的是行程，不是景点**：各景点保留自己被选中时的日期段（spots），
+     时间线不会冒出用户没选过的 (景点 × 日期) 组合。
+     被吞并行程的任务与提醒清单自动改挂到存续行程，存续行程复用第一个被合并行程的 tripId。
 调用：{
   action: 'trip.create',
   startDate: '2026-05-31',    // YYYY-MM-DD
   endDate: '2026-06-04',
   spotIds: ['gugong', 'tiantan'],
-  city: '北京'                 // 可选，默认 '北京'（V1 仅北京）
+  city: '北京',                // 可选，默认 '北京'（V1 仅北京）
+  adjustTripId: ''            // 可选：「在当前内联时间线的行程上重新生成」时传该 tripId
+                              //   → 该行程景点段按本次输入**替换**（而非并集），其余并入段保留；
+                              //     仍会与其它日期相交/相接的行程继续合并
 }
 ```
 
@@ -263,18 +269,24 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 {
   success: true,
   tripId: "abc123",
-  merged: false,                       // 兼容字段：新版恒为 false（2026-08-31 起取消自动合并）
-  mergedFrom: [],                      // 被合并的行程 ID 列表（新版恒为空）
+  merged: true,                        // 是否发生了合并（合并时复用存续行程的 tripId）
+  mergedFrom: ["old1", "old2"],        // 被并进来的行程 ID 列表（未合并时为空数组）
   trip: {
     _id: "abc123",
     city: "北京",
-    startDate: "2026-05-31",
-    endDate: "2026-06-04",
-    name: "北京 5.31-6.4",            // TRIP-RULE-003 系统自动命名
-    spotIds: ["gugong", "tiantan"],
+    startDate: "2026-05-31",           // 并集
+    endDate: "2026-06-08",
+    name: "北京 5.31-6.8",            // TRIP-RULE-003 系统自动命名（按并集重算）
+    spotIds: ["gugong", "badaling", "guobo"],   // spots 的去重派生字段
+    spots: [                          // 各景点自己的日期段（时间线按此生成）
+      { spotId: "gugong",   startDate: "2026-05-31", endDate: "2026-06-04" },
+      { spotId: "badaling", startDate: "2026-05-31", endDate: "2026-06-04" },
+      { spotId: "guobo",    startDate: "2026-06-05", endDate: "2026-06-08" }
+    ],
     status: "ACTIVE"
   }
 }
+// 失败：{ success: false, error: "行程日期不合法", errorCode: 1006 }
 ```
 
 #### `trip.list` — 行程列表
@@ -284,6 +296,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 调用：{ action: 'trip.list' }
 说明：读取时兜底执行 TRIP-RULE-004 级联——任务与清单均空的孤儿行程
      （如生成了时间线但从未提交提醒）会被自动删除，返回的行程都有内容。
+     老数据（只有 spotIds）会统一补出 spots 段（按行程整段回退），前端可放心依赖 spots。
 ```
 
 **返回：**
@@ -297,24 +310,44 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     endDate: "2026-06-04",
     name: "北京 5.31-6.4",
     spotIds: ["gugong", "tiantan"],
+    spots: [                            // 2026-09-14 起：各景点自己的日期段
+      { spotId: "gugong",  startDate: "2026-05-31", endDate: "2026-06-04" },
+      { spotId: "tiantan", startDate: "2026-05-31", endDate: "2026-06-04" }
+    ],
     status: "ACTIVE",
-    nextReminderAt: "2026-05-24T12:00:00.000Z"  // 最近待提醒时间，TRIP-RULE-005 排序用
+    nextReminderAt: "2026-05-24T12:00:00.000Z"  // 最近待提醒时间
   }],
   showGroupTabs: true                   // TRIP-RULE-006：≥2 个行程时 true
 }
-// 排序规则：TRIP-RULE-005，最近待提醒的排第一
+// 排序规则：TRIP-RULE-005，按 startDate 升序
 ```
 
 #### `trip.updateSpots` — 更新想去景点
 
 ```
 用途：PAGE-003 返回时带回已选景点
-调用：{ action: 'trip.updateSpots', tripId: 'abc123', spotIds: ['gugong', 'yiheyuan'] }
+调用：{
+  action: 'trip.updateSpots',
+  tripId: 'abc123',
+  spotIds: ['gugong', 'yiheyuan'],
+  startDate: '2026-06-01',   // 可选：新加入景点的日期段（缺省用行程当前范围）
+  endDate: '2026-06-05'
+}
+说明：已在行程里的景点**保留自己的日期段**（不因一次增删被拉回整段）；
+     新加入的景点用传入的段，缺省则用行程当前范围。
 ```
 
 **返回：**
 ```javascript
-{ success: true, tripId: "abc123", spotIds: ["gugong", "yiheyuan"] }
+{
+  success: true,
+  tripId: "abc123",
+  spotIds: ["gugong", "yiheyuan"],
+  spots: [
+    { spotId: "gugong",   startDate: "2026-05-31", endDate: "2026-06-04" },  // 保留原段
+    { spotId: "yiheyuan", startDate: "2026-06-01", endDate: "2026-06-05" }   // 新段
+  ]
+}
 ```
 
 #### `trip.updateRange` — 修改行程日期范围
@@ -322,11 +355,42 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```
 用途：用户修改日期（触发时间线重算，前端调用后需重新 timeline.generate）
 调用：{ action: 'trip.updateRange', tripId: 'abc123', startDate: '2026-06-01', endDate: '2026-06-05' }
+说明：行程总范围变化 → 各景点段裁剪到新范围内（无交集时收敛到新范围），
+     保证「景点段 ⊄ 行程范围」这种非法状态不出现。
 ```
 
 **返回：**
 ```javascript
-{ success: true, tripId: "abc123", startDate: "2026-06-01", endDate: "2026-06-05" }
+{
+  success: true,
+  tripId: "abc123",
+  startDate: "2026-06-01",
+  endDate: "2026-06-05",
+  spots: [
+    { spotId: "gugong", startDate: "2026-06-01", endDate: "2026-06-04" }   // 裁剪后
+  ]
+}
+```
+
+#### `trip.remove` — 显式删除行程（含其任务与提醒清单）
+
+```
+用途：删除「进行中 0 / 已过期 0」的空壳行程（TRIP-RULE-004，2026-09-14）。
+      这类行程已无任务，却因清单里还留着未提交的提醒而被读取时兜底清理判为「非空」，
+      会一直占着首页行程 Tab。首页「清空任务」按钮在该行程 0/0 时转为「删除这个空行程？」确认。
+调用：{ action: 'trip.remove', tripId: 'abc123' }
+说明：物理删除行程 + 该行程下全部提醒任务 + 全部提醒清单条目（不可恢复）。
+```
+
+**返回：**
+```javascript
+{
+  success: true,
+  tripId: "abc123",
+  removedTasks: 1,                     // 连带删除的任务数
+  removedCartItems: 2                  // 连带删除的未提交清单条数
+}
+// 失败：{ success: false, error: "参数不合法", errorCode: 1010 }（行程不存在或不属于该用户）
 ```
 
 ---
@@ -354,9 +418,13 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     name: "北京 5.31-6.4",
     startDate: "2026-05-31",
     endDate: "2026-06-04",
-    spotIds: ["gugong", "tiantan"]
+    spotIds: ["gugong", "tiantan"],
+    spots: [                           // 2026-09-14 起：各景点自己的日期段（事件按此生成）
+      { spotId: "gugong",  startDate: "2026-05-31", endDate: "2026-06-04" },
+      { spotId: "tiantan", startDate: "2026-05-31", endDate: "2026-06-04" }
+    ]
   },
-  events: [{                           // 全部事件（交叉积），扁平数组
+  events: [{                           // 全部事件（各景点 × 自己段内的非闭馆日），扁平数组
     spotId: "gugong",
     spotName: "故宫博物院",
     difficulty: { key: "EXTREME", text: "极难约" },
@@ -587,16 +655,17 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
       releaseAt: "...",
       offsets: [5, 2],
       channels: ["OFFICIAL_ACCOUNT"],
-      backendStatus: "WAITING",
+      backendStatus: "WAITING",       // 读取时已收敛：已过 releaseAt 的 WAITING 会返回 MISSED 并落库
+      missedReason: null,             // MISSED 时的原因；优先取 notifier 记下的真实失败原因（lastSendError）
       releaseTimeLabel: "20:00",
       releaseDateStr: "2026-05-24",
       grabLabel: "开抢 6月1日 (周一) 门票",
       statusLabel: "待提醒",          // STATE-002 映射：WAITING→待提醒，TRIGGERED→已提醒，MISSED→未送达
-      countdown: {                    // <1h 时出现倒计时
+      countdown: {                    // <1h 时出现倒计时（已过期任务恒为 null）
         text: "还剩0h 45m",
         urgent: true
       },
-      expired: false                  // filter='expired' 时为 true
+      expired: false                  // 已过 releaseAt 或 MISSED 时为 true
     }]
   }],
   counts: { active: 5, expired: 2 },  // 筛选 chip 数字
@@ -615,6 +684,9 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```
 用途：PAGE-009 三点菜单 → 删除（REMINDER-RULE-005）
 调用：{ action: 'task.remove', taskId: '...' }
+说明：WAITING / MISSED 均可单条删除（2026-09-14 放宽）；TRIGGERED 不可单删
+     （前端此时不显示「删除」项，改为提示走「清空任务」），
+     否则返回 1012「已提醒的任务不可单条删除，可在「清空任务」中批量清理」。
 ```
 
 **返回：**
@@ -623,8 +695,9 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   success: true,
   taskId: "...",
   tripId: "abc123",
-  tripRemoved: false                   // TRIP-RULE-004：任务删光后行程自动删除
+  tripRemoved: false                   // TRIP-RULE-004 主动删除级联：行程内已无任务 → 行程 + 提醒清单一并删除
 }
+// 失败：{ success: false, error: "...", errorCode: 1010（任务不存在）/ 1012（状态不可删） }
 ```
 
 #### `task.clear` — 清空提醒任务（可按当前 tab 范围）
@@ -636,7 +709,20 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
      filter/tripId 都不传 → 清空该用户全部任务（含已提醒/过期的历史记录）；
      传 filter → 只清空该状态 tab 的任务（过期判定与 task.list 一致：MISSED 或已过放票时间点）；
      传 tripId → 只清空该行程下的任务。两者可叠加，对应前端「只清空当前 tab」。
-     清空后对受影响的行程执行 TRIP-RULE-004 级联：行程内任务与清单均空则自动删除行程。
+     清空后对受影响的行程执行 TRIP-RULE-004 主动删除级联：行程内**已无任何提醒任务**
+     → 行程连同其提醒清单一并删除（purgeIfNoTask，不再以清单作为保留条件），
+     避免留下「进行中 0 / 已过期 0」却仍占着 Tab 的空壳行程。
+     前端调用前的二次确认弹窗必须把「行程也会被删」讲清楚（见 产品文档 PAGE-009）。
+```
+
+**返回：**
+```javascript
+{
+  success: true,
+  cleared: 3,                          // 本次清掉的任务数
+  affectedTripIds: ["abc123"],         // 受影响的行程（含未被删除的）
+  removedTripIds: ["abc123"]           // 实际被级联删除的行程
+}
 ```
 
 **返回：**
@@ -729,7 +815,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 **返回：**
 
 ```javascript
-{ success: true, quota: 3, totalQuota: 3, quotas: { "w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk": 3 }, templateId: "w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk" }
+{ success: true, quota: 3, totalQuota: 3, quotas: { "V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q": 3 }, templateId: "V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q" }
 ```
 
 **`subscribe.get`**（查询剩余额度，通知设置页展示）：
@@ -741,7 +827,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 **返回：**
 
 ```javascript
-{ success: true, quota: 3, totalQuota: 3, quotas: { "w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk": 3 }, templateId: "w5e9AIVe2oDidseGOX74CG2Z1-r0ikQTpUQAELcM1nk" }
+{ success: true, quota: 3, totalQuota: 3, quotas: { "V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q": 3 }, templateId: "V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q" }
 ```
 
 > 未授权/未落库时 quota 为 0，发送侧仍会尝试（微信侧按真实授权校验，返回 43101 即表示无额度/未订阅）。
@@ -753,7 +839,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 **云函数名：`notifier`**
 **说明：** 定时触发器（每分钟一次），前端不直接调用。走**微信服务端 HTTP 接口**发送订阅消息（不依赖小程序端触发，定时触发可用）。
 
-**环境变量（云函数配置）**：`WX_APPID`（小程序 AppID，缺省回退 `wxfee99eee9c95bd15`）、`WX_APPSECRET`（必填，小程序密钥）、`SUBSCRIBE_TEMPLATE_ID`（订阅模板 ID，缺省回退内置常量）。三者由 `sendOne` 读取，未配置时该任务记 `failed`（不会误标为 MISSED）。
+**环境变量（云函数配置）**：`WX_APPID`（小程序 AppID，缺省回退 `wx05c160a589b97d76`）、`WX_APPSECRET`（必填，小程序密钥）、`SUBSCRIBE_TEMPLATE_ID`（订阅模板 ID，缺省回退内置常量）。三者由 `sendOne` 读取，未配置时该任务记 `failed`（不会误标为 MISSED）。
 
 ### `notifier.testSend` — 发送测试订阅消息（排查/验证通道）
 
@@ -788,7 +874,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 **返回：**
 
 ```javascript
-{ success: true, openid: "<真实openid>", appid: "wxfee99eee9c95bd15" }
+{ success: true, openid: "<真实openid>", appid: "wx05c160a589b97d76" }
 ```
 
 ---
@@ -884,7 +970,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | 页面 | 需要调用的 API |
 |------|---------------|
 | **PAGE-001** 首页·创建态 | `spots.list`（热门景点卡）、`trip.create`（生成时间线时）、`timeline.generate` / `cart.*`（内联时间线，不跳转） |
-| **PAGE-009** 首页·任务列表 | `task.list`、`trip.list`（分组 Tab）、`task.remove`（删除）、`task.clear`（按 tab 清空） |
+| **PAGE-009** 首页·任务列表 | `task.list`、`trip.list`（分组 Tab）、`task.remove`（删除）、`task.clear`（按 tab 清空）、`trip.remove`（删除 0/0 空壳行程） |
 | **PAGE-002** 景点弹窗 | `spots.detail` |
 | **PAGE-003** 想去景点 | `spots.list`、`spots.batch`（已选行）、`spots.searchHistory`、`spots.clearSearchHistory`、`trip.updateSpots` |
 | **PAGE-004** 搜索态 | `spots.search` |

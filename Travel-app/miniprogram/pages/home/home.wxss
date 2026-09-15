@@ -563,6 +563,13 @@
   color: #7A5540;
   white-space: nowrap;
 }
+/* 已提醒(TRIGGERED) 不可单删时的说明行（REMINDER-RULE-005 2026-09-14 放宽后仅剩这一档） */
+.task-delete-hint {
+  padding: 14rpx 20rpx;
+  font-size: 22rpx;
+  color: #A99A8A;
+  white-space: nowrap;
+}
 
 /* ===== 空状态 ===== */
 .empty-state {

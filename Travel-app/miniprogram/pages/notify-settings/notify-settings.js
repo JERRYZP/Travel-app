@@ -19,6 +19,8 @@ Page({
   onLoad() {
     const g = app.globalData;
     const template = notify.SUBSCRIBE_TEMPLATES[0] || {};
+    /* 续收请求进行中标记（不参与渲染，只用于防连点，故不放进 data） */
+    this.renewing = false;
     this.setData({
       statusBarHeight: g.statusBarHeight,
       navBarHeight: g.navBarHeight,
@@ -59,13 +61,28 @@ Page({
       wx.showToast({ title: '推送通道准备中，请稍后再试', icon: 'none' });
       return;
     }
-    notify.requestSubscribe(this.data.templateId).then(res => {
+    /* 防连点：微信每次调用都会弹一次授权窗，狂点会连环弹窗（弹窗未关闭前的点击不算有效手势） */
+    if (this.renewing) return;
+    this.renewing = true;
+    /* 兜底解锁：微信回调异常缺失时，不至于把按钮永久锁死 */
+    const unlock = setTimeout(() => { this.renewing = false; }, 10000);
+    notify.requestSubscribeBurst(1, this.data.templateId).then(res => {
+      clearTimeout(unlock);
+      this.renewing = false;
       this.refresh();
       if (res.ok) {
-        wx.showToast({ title: '已增加 1 次提醒额度', icon: 'none' });
-      } else if (res.reason === 'master-switch-off' || res.reason === 'rejected') {
+        /* silent = 用户勾过「总是保持以上选择」，微信这次没弹窗直接记账 */
+        wx.showToast({ title: res.silent ? '已续收 1 次（未弹窗）' : '已续收 1 次', icon: 'none' });
+      } else if (res.reason === 'master-switch-off' || res.reason === 'subscription-disabled') {
         /* 总开关关闭或模板保持拒绝：弹不出有效授权框，引导去设置页开启 */
         notify.guideOpenSubscribeSetting(res.reason);
+      } else if (res.reason === 'banned') {
+        wx.showToast({ title: '该模板已被微信限制，暂无法续收', icon: 'none' });
+      } else if (res.reason === 'template-filtered') {
+        wx.showToast({ title: '模板未通过微信校验，请稍后再试', icon: 'none' });
+      } else if (res.reason === 'rejected') {
+        /* 用户在授权窗里点了取消：只做轻提示，不再追加弹窗（刚被拒就弹设置引导太打扰） */
+        wx.showToast({ title: '已取消，本次未增加额度', icon: 'none' });
       } else {
         wx.showToast({ title: '未完成授权，提醒可能收不到', icon: 'none' });
       }
