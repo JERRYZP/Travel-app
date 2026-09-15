@@ -1,7 +1,7 @@
-# Travel-app 前端接口契约 V1.2
+# Travel-app 前端接口契约 V1.3
 
 > 面向：前端（微信小程序页面开发）
-> 更新：2026-08-26（spots 返回新增 `remindable` / `weak`，卡片文案区分免预约「无需预约」、无放票时刻「随买随用」、弱提醒「票量充足，无需卡点」；首页有任务时改为导航栏双 Tab「提醒任务 / 添加提醒」，添加提醒内联在首页；编辑资料头像改 `open-type="chooseAvatar"`；此前 2026-08-19 feedback 域新增管理端接口 adminList / adminUpdateStatus + 反馈管理页；2026-08-14 去掉日历提醒通道 CALENDAR_ICS / ICS 同步；对照 `reminder/lib/*` / `spots/index.js` / `notifier/index.js` / `feedback/lib/*` 源码提取）
+> 更新：2026-09-16 首页行程化 V2 契约定稿。新增 `trip_items`、`tripItem.*`、`cart.commit` 与新版 `home.bootstrap`；旧第 2.0 / 2.1 / 2.3 / 2.4 中面向“提醒任务列表 / 双 Tab 首页”的接口在 V2 实现时由第 8 节取代。此前 2026-08-26 spots `remindable` / `weak`、2026-08-19 feedback 管理端、2026-08-14 日历通道下线等变更继续有效。
 > 调用方式：`wx.cloud.callFunction({ name: '<函数名>', data: { action: '<域>.<动作>', ...params } })`
 
 ---
@@ -35,7 +35,11 @@
 | 1009 | 清单位空 | Toast「先添加至少一条提醒」 |
 | 1010 | 参数不合法 | Toast 提示 |
 | 1011 | 提交事务失败 | Toast「提交失败，请重试」 |
-| 1012 | 非待提醒任务不可删 | Toast「仅待提醒的任务可以删除」 |
+| 1012 | 非待提醒任务不可删 | 旧任务接口兼容；V2 用户入口改用行程项删除 |
+| 1013 | 行程项不存在 | Toast「这条行程项已不存在」并刷新首页 |
+| 1014 | 当前行程项不可标记结果 | Toast「现在还不能标记结果」 |
+| 1015 | 撤销时间已过 | Toast「已超过撤销时间」并刷新状态 |
+| 1016 | 行程项所在日期已结束 | 关闭操作入口并刷新首页 |
 | 1020 | 反馈内容为空 | Toast「请填写反馈内容」 |
 | 1099 | 未知 action | Toast |
 | 1500 | 服务端异常 | Toast「服务异常，请稍后重试」 |
@@ -56,6 +60,15 @@ ChannelType: 'OFFICIAL_ACCOUNT' | 'SMS'  // CALENDAR_ICS 已于 2026-08-14 移�
 
 // ENUM-005 实时放票状态
 ReleaseStatus: 'NOT_RELEASED' | 'BOOKABLE' | 'FULL'
+
+// ENUM-007 行程项票务展示状态（读取时推导，前端直接渲染）
+TicketState: 'PENDING' | 'BOOKABLE' | 'SUCCESS' | 'FAILED' | 'UNMARKED' | 'NO_RESERVATION'
+
+// ENUM-008 行程项人工结果（仅这两种会持久化；null = 未人工标记）
+TicketResult: 'SUCCESS' | 'FAILED'
+
+// ENUM-009 提醒送达状态（与票务状态分离）
+ReminderDeliveryState: 'NOT_SET' | 'WAITING' | 'TRIGGERED' | 'MISSED'
 
 // ENUM-006 难度标签（后端返回 difficultyLabel 对象，前端直接用）
 DifficultyLabel: { key: 'EXTREME', text: '极难约' }
@@ -209,7 +222,9 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 ---
 
-### 2.0 首页聚合（home.*）
+### 2.0 首页聚合（home.*，V2 目标见第 8 节）
+
+> 以下旧返回结构只描述当前未迁移代码；首页改版实现后由第 8.2 节取代。
 
 #### `home.bootstrap` — 首页一次性聚合
 
@@ -969,15 +984,15 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 | 页面 | 需要调用的 API |
 |------|---------------|
-| **PAGE-001** 首页·创建态 | `spots.list`（热门景点卡）、`trip.create`（生成时间线时）、`timeline.generate` / `cart.*`（内联时间线，不跳转） |
-| **PAGE-009** 首页·任务列表 | `task.list`、`trip.list`（分组 Tab）、`task.remove`（删除）、`task.clear`（按 tab 清空）、`trip.remove`（删除 0/0 空壳行程） |
+| **PAGE-001** 首页·状态墙 / 创建态 | `home.bootstrap` V2；创建流程调 `spots.list`、`trip.create`、`timeline.generate`、`cart.*` |
+| **PAGE-009** 旧任务列表 | V2 已废弃；行程项管理改用 `tripItem.*` |
 | **PAGE-002** 景点弹窗 | `spots.detail` |
 | **PAGE-003** 想去景点 | `spots.list`、`spots.batch`（已选行）、`spots.searchHistory`、`spots.clearSearchHistory`、`trip.updateSpots` |
 | **PAGE-004** 搜索态 | `spots.search` |
 | **PAGE-005** 出发日视图（首页内联） | `timeline.generate`、`cart.add`、`cart.addAll`、`cart.list`（底部条） |
 | **PAGE-006** 景点视图（首页内联） | 同 PAGE-005 |
 | **PAGE-007** 清单弹窗 | `cart.list`、`cart.remove`、`cart.clear` |
-| **PAGE-008** 设置提醒 | `task.submit`（提交前检测通知授权，未开启就地引导，不跳个人中心） |
+| **PAGE-008** 设置提醒 | `cart.commit`（提交前检测通知授权，未开启就地引导，不跳个人中心） |
 | **PAGE-010** 我的 | `user.profile`、通知设置三态（`wx.getAppAuthorizeSetting` / `wx.getSetting`，非云函数） |
 | **PAGE-012** 编辑资料 | `user.profile`、`user.updateProfile`（头像走 `open-type="chooseAvatar"` + `wx.cloud.uploadFile` 上传） |
 | **PAGE-010-1** 通知设置 | 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`（模板未配置时「去授权」置灰） |
@@ -1026,3 +1041,245 @@ App.onLaunch / 首页.onShow：
 7. **scraper 未上线**：已放票事件 `stale: true` 时前端可展示「数据仅供参考」的轻提示。
 8. **导航实现**：V1 用页面内自绘 TabBar，暂不用 `app.json` 的 `tabBar`（见 `figma_design.md` §5）。
 9. **视觉基准**：设计稿 402px 宽，非 750rpx。换算 rpx 时以 402px = 100% 宽。
+
+---
+
+## 8. 首页行程化 V2 冻结契约（2026-09-16 P0）
+
+> 本节是下一阶段开发的唯一目标契约。实现切换完成后，旧首页双 Tab、任务列表和旧 `task.submit` 用户入口由本节取代。
+> 真实代码尚未完成迁移；P0 阶段先冻结字段、状态和接口形状。
+
+### 8.1 数据模型
+
+#### TABLE-008 `trip_items`
+
+```javascript
+{
+  _id,
+  userId,
+  tripId,
+  spotId,
+  visitDate: 'YYYY-MM-DD',       // 北京日期
+  backupGroupId: String,         // 同一 trip + 同一景点的备选日期组
+  remindOn: Boolean,             // 免预约景点恒 false
+  result: 'SUCCESS' | 'FAILED' | null,
+  resultAt: Date | null,
+  createdAt,
+  updatedAt
+}
+```
+
+约束与派生规则：
+
+- 逻辑唯一键：`(userId, tripId, spotId, visitDate)`，云函数查重，不做老数据合成迁移。
+- `releaseAt / reservationRequired / ticketState / reminderState` 均为读取时派生，不持久化到行程项。
+- `result` 只能从 `null` 写成 `SUCCESS/FAILED`；写入后仅允许 `resultAt + 10s` 内调用 `tripItem.undoResult`。
+- `backupGroupId` 由服务端按“同一行程 + 同一景点”生成，用于备选收束、进度分组和挽回建议。
+- 六个展示态的计算顺序：免预约 → 人工结果 → 放票时间前 → 放票后 24 小时内 → 未标记。
+- 放票后官方预约入口持续可点，直到 `visitDate` 北京时间 23:59；不因进入 `UNMARKED` 或写成 `FAILED` 而消失。
+
+#### 其他表变更
+
+- `reminder_tasks` 新增必填 `itemId`；`tripId / spotId / visitDate / releaseAt` 保留为通知扫描所需的冗余字段。
+- `reminder_cart` 新增 `remindOn`；`releaseAt` 对免预约项允许为 `null`；逻辑唯一键改为 `(userId, tripId, spotId, visitDate)`。
+- `trips` 继续保存城市和日期范围；行程项是首页状态墙的事实来源，行程是否为空改看 `trip_items`，不再看提醒任务。
+- 不做旧数据合成兼容；开发环境可以直接清空测试集合并重新 seed。
+
+### 8.2 `home.bootstrap` V2
+
+```javascript
+调用：{
+  action: 'home.bootstrap',
+  includeSpots: true
+}
+
+返回：{
+  success: true,
+  serverNow: '2026-09-16T...',
+  primaryTripId: 'trip_a',
+  trips: [{
+    _id, city, startDate, endDate, name,
+    progress: {
+      done: 2,                    // 已成的预约需求组数
+      total: 3,                   // 需预约的需求组总数，免预约不计
+      noReservationCount: 1       // 另有 X 处随到随玩
+    },
+    items: [/* 见 8.3 item 结构 */]
+  }],
+  history: [{
+    _id, city, startDate, endDate, name,
+    progress: { done, total, noReservationCount }
+  }],
+  stickyBanner: {
+    releaseAt, spotName, visitDate, itemId, countdownText
+  } | null,
+  hotSpots: [/* spots.list */]
+}
+```
+
+- `trips` 只包含未结束行程，按 `startDate` 升序。
+- `history` 只包含 `endDate` 次日起的历史行程，按 `startDate` 降序。
+- 一个行程结束后仍在 `endDate` 当天保留在主墙；次日按北京时间读取时归入历史，不依赖定时任务。
+- 首页结构：一张 `primaryTripId` 全局摘要卡 + 纵向分段墙；其他行程只显示紧凑分段标题，不用横向 Tab。
+- 顶部吸顶 Banner 跨全部当前/未来行程取全局最近 1–2 个放票项。
+
+### 8.3 行程项返回结构
+
+```javascript
+{
+  itemId: 'item_1',
+  tripId: 'trip_a',
+  spotId: 'gugong',
+  spotName: '故宫博物院',
+  visitDate: '2026-10-02',
+  backupGroupId: 'trip_a:gugong',
+  reservationRequired: true,
+  remindOn: true,
+  releaseAt: '2026-09-25T12:00:00.000Z',
+  ticketState: 'BOOKABLE',
+  ticketStateLabel: '可抢',
+  bookingEntryEnabled: true,       // 免预约或其他不可预约景点为 false
+  result: null,
+  resultAt: null,
+  undoUntil: null,
+  reminder: {
+    state: 'WAITING',
+    stateLabel: '待提醒',
+    reason: null,
+    channels: ['OFFICIAL_ACCOUNT'],
+    offsets: [5]
+  } | null
+}
+```
+
+状态文案固定为：`待抢 / 可抢 / 已成 / 未成 / 开过票了 / 免预约`。`UNMARKED` 的 `ticketStateLabel` 为“开过票了”，语义为中性态，不叫“未成”。
+
+### 8.4 行程项接口
+
+#### `tripItem.markResult`
+
+```javascript
+调用：{ action: 'tripItem.markResult', itemId, result: 'SUCCESS' | 'FAILED' }
+返回：{
+  success: true,
+  item,                         // 更新后的 item
+  backupPrompt: [{ itemId, visitDate, ticketState }] | null
+}
+```
+
+规则：
+
+- 只能标记出票后且尚未人工标记、日期未结束的行程项。
+- 标记成功返回 `backupPrompt`，前端用内联提示询问删除或保留备选；没有备选时为 `null`。
+- 保留备选后继续按原提醒配置抢票。
+- 提醒失败/未送达不影响 `tripItem.markResult`。
+
+#### `tripItem.undoResult`
+
+```javascript
+调用：{ action: 'tripItem.undoResult', itemId, expectedResultAt }
+返回：{ success: true, item }
+```
+
+- 仅 `resultAt + 10s` 内允许，且 `expectedResultAt` 必须匹配，防止覆盖后续操作。
+- 前端用页面底部 Snackbar `已标记为抢到了 [撤销]`，不使用系统 Toast。
+
+#### `tripItem.updateReminder`
+
+```javascript
+调用：{
+  action: 'tripItem.updateReminder',
+  itemId,
+  remindOn,
+  channels: ['OFFICIAL_ACCOUNT'],
+  offsets: [5]
+}
+返回：{ success: true, item }
+```
+
+- 免预约行程项拒绝开启提醒。
+- 已有任务时更新相关任务；`remindOn=false` 时关闭/删除未触发任务。
+- 已发送任务的微信授权额度不退还。
+
+#### `tripItem.remove`
+
+```javascript
+调用：{ action: 'tripItem.remove', itemId }
+返回：{ success: true, itemId, tripId, removedTasks, tripRemoved }
+```
+
+#### `tripItem.removeVisitDate`
+
+```javascript
+调用：{ action: 'tripItem.removeVisitDate', tripId, visitDate }
+返回：{ success: true, tripId, visitDate, removedItems, removedTasks, tripRemoved }
+```
+
+- 前端必须先明确提示“该日期下的行程项和提醒会一并删除”。
+- `tripRemoved=true` 表示行程下已无任何行程项，行程随之删除。
+
+#### `tripItem.recoveryCandidates`
+
+```javascript
+调用：{ action: 'tripItem.recoveryCandidates', itemId }
+返回：{
+  success: true,
+  candidates: [{
+    visitDate,
+    releaseAt: Date | null,
+    action: 'BOOK_NOW' | 'SET_REMINDER',
+    label
+  }]
+}
+```
+
+- 只返回目的地开放且可行动的日期。
+- `BOOK_NOW` 文案为“已开票，去官方渠道预约”，不承诺实时有余票。
+- 没有可靠余票数据时不返回“约满”结论。
+- 已过、闭馆、无固定放票规则不返回。
+
+### 8.5 购物车 V2
+
+#### `cart.add`
+
+```javascript
+调用：{
+  action: 'cart.add',
+  tripId,
+  spotId,
+  visitDate,
+  releaseAt: Date | null,       // 免预约为 null
+  remindOn: Boolean             // 免预约必须 false
+}
+```
+
+#### `cart.commit`
+
+```javascript
+调用：{
+  action: 'cart.commit',
+  tripId,
+  channels: ['OFFICIAL_ACCOUNT'],   // 有 remindOn=true 项时必填
+  offsets: [5]                      // 有 remindOn=true 项时必填
+}
+返回：{
+  success: true,
+  createdItems: N,
+  createdTasks: M,
+  noReminder: N - M,
+  tripId,
+  toast: '已加入行程 · 其中 M 个已设提醒'
+}
+```
+
+- 购物车中 `remindOn=true` 的需预约项进入设置提醒页；如果全部 `remindOn=false`，直接提交并创建行程项。
+- 服务端在一次提交中创建全部 `trip_items`；仅为 `remindOn=true` 且可提醒的项创建 `reminder_tasks`。
+- 旧 `task.submit` 在 V2 实现完成后只作为内部兼容代码，不再由首页/设置页调用。
+
+### 8.6 不可漂移的实现约束
+
+1. 状态在读取时推导，`UNMARKED` 不落库，不依赖定时任务。
+2. 票务结果与提醒送达状态必须分字段、分 UI 展示。
+3. 进度分母按 `backupGroupId` 去重，免预约项不计入分母。
+4. 一行程项一个 `itemId`；任务、删除、提醒状态和推送落地全部按 `itemId` 关联。
+5. 首页不出现提醒任务一级 Tab；旧任务列表仅保留代码兼容期，不进入新 UI。

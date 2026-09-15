@@ -4,6 +4,8 @@
 ## 当前状态（2026-09-14 已同步：行程自动合并恢复（TRIP-RULE-002）+ 各景点保留自己的日期段；行程删除两条口径、过期任务状态收敛/未送达提示；此前 2026-09-13 订阅消息按模板台账/43101 自愈 + notifier 60 秒、spot-hub 请求与渲染异常分离、2026-09-03 数据准确性、2026-08-31 首页聚合均保留）
 
 **代码已是新形态**（行程 → 时间线 → 提醒清单 → 提醒任务，PAGE-001~011）。
+**⚠️ 2026-09-16 首页行程化 P0 契约已冻结，代码尚未迁移。** 目标模型为 `trips + trip_items + reminder_cart + reminder_tasks`：`trip_items` 是首页状态墙、票务结果、提醒关联和删除动线的事实来源；提醒任务挂 `itemId`，不再作为用户一级列表。六个展示态为 `PENDING / BOOKABLE / SUCCESS / FAILED / UNMARKED / NO_RESERVATION`，人工结果只落 `result=SUCCESS|FAILED`，10 秒内可撤销；票务状态与提醒送达状态分离。首页为单形态、全局摘要卡 + 纵向多行程分段 + 历史折叠，不做横向行程 Tab。当前代码仍是下方旧任务形态，P1 之前不要按文档误判为已实现。开发前以 `API-契约.md` 第 8 节、产品文档 1.6/3.11 和确定版决策文档为准。
+
 
 **数据准确性（2026-09-03 定稿，把「准确性」从运营表做成用户可见功能）**：
 - **闭馆数据校正**：`data/rules.json`（与部署副本/seed/mock 四份一致）——**清华 `closedDays` → `["monday"]`，唯一限制就是周一闭馆，工作日可约**（2026-09-11 用户核实；`openDays` 已回滚，见下）；北大 `openDays` → `["saturday","sunday"]`（平时工作日不可约、仅周末及法定节假日；用白名单而非 `closedDays:["monday"]`，因为周一至周五都不可约，黑名单表达不了）；人民大会堂 `closedDays` → `["monday"]`（2026-09-11 用户核实）；首都博物馆 `closedDays` → `["monday"]`（2026-09-11 核实，原为 `tuesday`）；天坛/北海 → `[]` + `closedDaysNote`（公园本体周一正常开放，闭的是祈年殿/琼华岛等园中园）。
@@ -73,7 +75,7 @@ UI-V1.0/             页面导出图 01~11.png（对应 PAGE-001~011，缺 06）
 - 构建 npm：微信开发者工具 →「工具」→「构建 npm」（Vant 必需）
 - 云函数部署：右键 `cloudfunctions/<name>` →「创建并部署：云端安装依赖」
 - 运行：微信开发者工具打开 `Travel-app/` 目录
-- 测试：`test/` 下 `flow.test.js`（FLOW-001 全链路，含第 1 节行程创建/合并与第 12 节「合并后时间线不膨胀」）/ `timeline.test.js`（时间线交叉积）/ `opendays.test.js`（开放日与公告过期）/ `feedback.test.js`（意见反馈/信息纠错）/ `notifier.test.js`（时间窗与错峰）/ `home-bootstrap.test.js`（首页聚合）/ `task-status.test.js`（过期任务状态收敛）/ `mock-mirror.test.js`（mock 后端与云端合并/时间线口径一致），前七套用 `test/mock-db.js` 内存云数据库桩跑 `cloudfunctions/reminder/lib/*`，第八套直接 require `miniprogram/utils/mock.js`；运行 `npm test`（八套）
+- 测试：`test/` 下 `flow.test.js`（FLOW-001 全链路，含第 1 节行程创建/合并与第 12 节「合并后时间线不膨胀」）/ `timeline.test.js`（时间线交叉积）/ `opendays.test.js`（开放日与公告过期）/ `feedback.test.js`（意见反馈/信息纠错）/ `notifier.test.js`（时间窗与错峰）/ `home-bootstrap.test.js`（首页聚合）/ `task-status.test.js`（过期任务状态收敛）/ `mock-mirror.test.js`（mock 后端与云端合并/时间线口径一致），前七套用 `test/mock-db.js` 内存云数据库桩跑 `cloudfunctions/reminder/lib/*`，第八套直接 require `miniprogram/utils/mock.js`；另有 `trip-wall-contract.test.js` 锁定 P0 枚举与状态窗口；运行 `npm test`（九套）
 
 ## 部署
 微信小程序 + 腾讯云云开发。云环境 id `cloud1-d9g9f4hja396d6e92` 写在 `miniprogram/app.js` 的 `cloudEnv`（**2026-09-13 换 AppID 到 `wx05c160a589b97d76` 后新建**；旧环境 `cloud1-d5givb65417e3b8c9` 属旧号，已弃用）。**⚠️ appid 与 cloudEnv 必须成对更换**：只改 `project.config.json` 的 appid 而不改 `cloudEnv`，会让所有 `wx.cloud.callFunction` 失败，页面表现是「景点数据加载失败，请检查云端」且顶部 Banner 整块消失（2026-09-13 实际踩过）。**2026-08-31 已重新部署 `reminder` 云函数**（含 `home.bootstrap` 聚合）；**⚠️ 2026-09-14 的行程合并改动（`lib/trip.js` / `lib/timeline.js` / `index.js`）需重新部署 `reminder` 云函数才生效**——云端未更新时，`trip.create` 仍按「不合并」建独立行程，且时间线仍按「整段 × 全部景点」生成。尚未真机验证。

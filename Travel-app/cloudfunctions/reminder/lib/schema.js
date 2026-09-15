@@ -5,7 +5,7 @@
  * 避免出现 'rules' / 'release_rules' 这类新旧混用。
  */
 
-/** TABLE-001~007 集合名 */
+/** TABLE-001~008 集合名 */
 const COLLECTIONS = {
   TRIPS: 'trips',                   // TABLE-001
   REMINDER_TASKS: 'reminder_tasks', // TABLE-002
@@ -14,6 +14,7 @@ const COLLECTIONS = {
   USERS: 'users',                   // TABLE-005
   SEARCH_HISTORY: 'search_history', // TABLE-006
   REMINDER_CART: 'reminder_cart',   // TABLE-007
+  TRIP_ITEMS: 'trip_items',         // TABLE-008（2026-09-16 首页行程状态墙）
 };
 
 /** ENUM-001 行程状态 */
@@ -38,6 +39,30 @@ const EventSelectStatus = {
   REMINDERED: 'REMINDERED',   // 已提醒
   BOOKABLE: 'BOOKABLE',       // 「立即预约」
   FULL: 'FULL',               // 置灰「已约满」
+};
+
+/** ENUM-007 行程项票务展示状态（2026-09-16 首页行程状态墙） */
+const TicketState = {
+  PENDING: 'PENDING',                 // 待抢
+  BOOKABLE: 'BOOKABLE',               // 可抢（放票后 24 小时内未标记）
+  SUCCESS: 'SUCCESS',                 // 已成
+  FAILED: 'FAILED',                   // 未成
+  UNMARKED: 'UNMARKED',               // 未标记（放票 24 小时后仍未标记）
+  NO_RESERVATION: 'NO_RESERVATION',   // 免预约
+};
+
+/** ENUM-008 行程项人工结果（只持久化人工结果，展示态读取时推导） */
+const TicketResult = {
+  SUCCESS: 'SUCCESS',
+  FAILED: 'FAILED',
+};
+
+/** ENUM-009 提醒送达状态（与票务状态分离） */
+const ReminderDeliveryState = {
+  NOT_SET: 'NOT_SET',
+  WAITING: 'WAITING',
+  TRIGGERED: 'TRIGGERED',
+  MISSED: 'MISSED',
 };
 
 /** ENUM-004 提醒通道 */
@@ -81,6 +106,10 @@ const ERRORS = {
   // 非文档编号的通用错误
   UNAUTHORIZED: { code: 1000, message: '未登录' },
   CART_EMPTY: { code: 1009, message: '先添加至少一条提醒' },
+  ITEM_NOT_FOUND: { code: 1013, message: '行程项不存在' },
+  ITEM_RESULT_INVALID: { code: 1014, message: '当前行程项不可标记结果' },
+  ITEM_UNDO_EXPIRED: { code: 1015, message: '撤销时间已过' },
+  ITEM_ENDED: { code: 1016, message: '行程项已结束' },
   BAD_PARAM: { code: 1010, message: '参数不合法' },
   UNKNOWN_ACTION: { code: 1099, message: 'unknown action' },
 };
@@ -111,6 +140,8 @@ const V1 = {
   BANNER_WINDOW_HOURS: 1,       // REMINDER-RULE-008
   STAGGER_WINDOW_SECONDS: 30,   // REMINDER-RULE-003
   MEMBER_LEVEL_DEFAULT: 'NORMAL',
+  RESULT_UNDO_SECONDS: 10,       // 首页行程项人工结果撤销窗口
+  UNMARKED_AFTER_HOURS: 24,      // 放票后未标记转为中性态的时间
 };
 
 /** 统一响应包装 */
@@ -128,6 +159,9 @@ module.exports = {
   TripStatus,
   ReminderBackendStatus,
   EventSelectStatus,
+  TicketState,
+  TicketResult,
+  ReminderDeliveryState,
   ChannelType,
   ReleaseStatus,
   DifficultyLabel,
