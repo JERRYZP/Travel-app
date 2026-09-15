@@ -39,6 +39,7 @@ const EventSelectStatus = {
   REMINDERED: 'REMINDERED',   // 已提醒
   BOOKABLE: 'BOOKABLE',       // 「立即预约」
   FULL: 'FULL',               // 置灰「已约满」
+  COMMITTED: 'COMMITTED',     // 已加入行程（行程项已落库）
 };
 
 /** ENUM-007 行程项票务展示状态（2026-09-16 首页行程状态墙） */
@@ -97,7 +98,7 @@ function difficultyOf(score) {
 /** 3.9 错误码 */
 const ERRORS = {
   SPOT_NOT_FOUND: { code: 1001, message: '景点不存在' },
-  REMINDER_EXISTS: { code: 1002, message: '这条提醒已经在清单里啦' },
+  REMINDER_EXISTS: { code: 1002, message: '这条已经在清单里啦' },
   OA_AUTH_FAILED: { code: 1004, message: '公众号授权失败' },
   SCRAPE_STALE: { code: 1005, message: '数据更新中' },
   TRIP_DATE_INVALID: { code: 1006, message: '行程日期不合法' },

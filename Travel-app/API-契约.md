@@ -26,7 +26,7 @@
 |--------|------|---------|
 | 1000 | 未登录 | 引导登录 |
 | 1001 | 景点不存在 | Toast + 卡片隐藏 |
-| 1002 | 提醒已存在（重复） | Toast「这条提醒已经在清单里啦」 |
+| 1002 | 已存在（重复加入） | Toast「这条已经在清单里啦」 |
 | 1004 | 公众号授权失败 | 软引导弹窗，可跳过 |
 | 1005 | 数据更新中 | 景点卡标注「数据更新中」 |
 | 1006 | 行程日期非法 | Toast 校验提示 |
@@ -53,7 +53,7 @@
 ReminderBackendStatus: 'WAITING' | 'TRIGGERED' | 'MISSED' | 'CLOSED'
 
 // ENUM-003 时间线事件按钮态
-EventSelectStatus: 'SELECTABLE' | 'IN_CART' | 'WAITING' | 'REMINDERED' | 'BOOKABLE' | 'FULL'
+EventSelectStatus: 'SELECTABLE' | 'IN_CART' | 'WAITING' | 'REMINDERED' | 'BOOKABLE' | 'FULL' | 'COMMITTED'
 
 // ENUM-004 提醒通道
 ChannelType: 'OFFICIAL_ACCOUNT' | 'SMS'  // CALENDAR_ICS 已于 2026-08-14 移除
@@ -110,6 +110,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     popularityScore: 95,
     reservationRequired: true,          // 2026 分层：是否需预约（false = 免预约，不进提醒流程）
     remindable: true,                   // 2026-08-26：需预约且有放票时刻 → 可进时间线/清单/任务
+    addable: true,                      // 2026-09-16：可加入行程（可提醒项或免预约项）
     weak: false,                        // 需预约且 difficultyScore≤2 → 弱提醒，标签行显示「票量充足，无需卡点」
     cardDesc: "随到随买，当前旺季门票10元，联票20元",  // 免预约 B 层：「随到随买…」；弱提醒可提醒景点：「提前N天 HH:MM放票 · 票量充足，无需卡点」；需预约但无放票时刻：「无固定放票时刻，随买随用」
     tags: ["提前7天放票", "20:00放票"],
@@ -124,7 +125,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     stale: true                        // scraper 未上线时为 true，前端可选「数据仅供参考」提示
   }]
 }
-// 排序：popularityScore 降序；前端按 remindable 分流：true → 难度/放票标签+选择按钮；false → 免预约显示「无需预约」、无放票时刻显示「随买随用」，均不可选
+// 排序：popularityScore 降序；前端按 addable 分流：可提醒项显示「选择」，免预约项显示「加入行程」；无固定放票时刻的需预约项显示「随买随用」且不可选
 ```
 
 ### 1.2 `detail` — 景点详情弹窗
@@ -394,7 +395,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
       这类行程已无任务，却因清单里还留着未提交的提醒而被读取时兜底清理判为「非空」，
       会一直占着首页行程 Tab。首页「清空任务」按钮在该行程 0/0 时转为「删除这个空行程？」确认。
 调用：{ action: 'trip.remove', tripId: 'abc123' }
-说明：物理删除行程 + 该行程下全部提醒任务 + 全部提醒清单条目（不可恢复）。
+说明：物理删除行程 + 该行程下全部提醒任务 + 全部提醒清单条目 + 全部行程项（不可恢复）。
 ```
 
 **返回：**
@@ -403,7 +404,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   success: true,
   tripId: "abc123",
   removedTasks: 1,                     // 连带删除的任务数
-  removedCartItems: 2                  // 连带删除的未提交清单条数
+  removedCartItems: 2,                 // 连带删除的未提交清单条数
+  removedItems: 2                      // 连带删除的行程项数（2026-09-16）
 }
 // 失败：{ success: false, error: "参数不合法", errorCode: 1010 }（行程不存在或不属于该用户）
 ```
@@ -1046,8 +1048,7 @@ App.onLaunch / 首页.onShow：
 
 ## 8. 首页行程化 V2 冻结契约（2026-09-16 P0）
 
-> 本节是下一阶段开发的唯一目标契约。实现切换完成后，旧首页双 Tab、任务列表和旧 `task.submit` 用户入口由本节取代。
-> 真实代码尚未完成迁移；P0 阶段先冻结字段、状态和接口形状。
+> 本节是本次开发的唯一目标契约。P1（2026-09-16）已实现 `trip_items`、免预约加入、`remindOn` 分流、`cart.commit` 和任务挂 `itemId`；结果回填、迁移与新首页仍待 P2/P3。
 
 ### 8.1 数据模型
 
@@ -1081,7 +1082,7 @@ App.onLaunch / 首页.onShow：
 #### 其他表变更
 
 - `reminder_tasks` 新增必填 `itemId`；`tripId / spotId / visitDate / releaseAt` 保留为通知扫描所需的冗余字段。
-- `reminder_cart` 新增 `remindOn`；`releaseAt` 对免预约项允许为 `null`；逻辑唯一键改为 `(userId, tripId, spotId, visitDate)`。
+- `reminder_cart` 新增 `remindOn` 与 `reservationRequired`；`releaseAt` 对免预约项为 `null`；逻辑唯一键为 `(userId, tripId, spotId, visitDate)`。
 - `trips` 继续保存城市和日期范围；行程项是首页状态墙的事实来源，行程是否为空改看 `trip_items`，不再看提醒任务。
 - 不做旧数据合成兼容；开发环境可以直接清空测试集合并重新 seed。
 
@@ -1252,6 +1253,15 @@ App.onLaunch / 首页.onShow：
   remindOn: Boolean             // 免预约必须 false
 }
 ```
+
+#### `cart.updateRemindOn`
+
+```javascript
+调用：{ action: 'cart.updateRemindOn', cartId, remindOn: Boolean }
+返回：{ success: true, cartId, remindOn }
+```
+
+- 仅需预约项可切换；免预约项强制 `false`。
 
 #### `cart.commit`
 

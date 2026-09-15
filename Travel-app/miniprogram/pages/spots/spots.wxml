@@ -57,7 +57,7 @@
             </block>
           </view>
         </view>
-        <view wx:if="{{item.remindable}}"
+        <view wx:if="{{item.addable || item.remindable || item.reservationRequired === false}}"
           class="spot-card-select {{item.selected ? 'selected' : ''}}"
           bindtap="onSpotToggle"
           data-id="{{item.spotId}}"
@@ -65,9 +65,11 @@
         >
          <svg-icon wx:if="{{item.selected}}" name="check" size="12px" />
           <svg-icon wx:else name="plus" size="12px" />
-         <text>{{item.selected ? '已选' : '选择'}}</text>
+         <text wx:if="{{item.selected}}">已选</text>
+          <text wx:elif="{{item.reservationRequired}}">选择</text>
+          <text wx:else>加入行程</text>
        </view>
-       <view wx:else class="spot-card-nobook">{{item.reservationRequired ? '随买随用' : '无需预约'}}</view>
+       <view wx:else class="spot-card-nobook">随买随用</view>
      </view>
    </view>
    <view wx:elif="{{hasSearched}}" class="empty-state">
@@ -139,7 +141,7 @@
               </block>
             </view>
           </view>
-          <view wx:if="{{item.remindable}}"
+          <view wx:if="{{item.addable || item.remindable || item.reservationRequired === false}}"
             class="spot-card-select {{item.selected ? 'selected' : ''}}"
             bindtap="onSpotToggle"
             data-id="{{item.spotId}}"
@@ -147,9 +149,11 @@
           >
            <svg-icon wx:if="{{item.selected}}" name="check" size="12px" />
             <svg-icon wx:else name="plus" size="12px" />
-           <text>{{item.selected ? '已选' : '选择'}}</text>
+           <text wx:if="{{item.selected}}">已选</text>
+          <text wx:elif="{{item.reservationRequired}}">选择</text>
+          <text wx:else>加入行程</text>
          </view>
-         <view wx:else class="spot-card-nobook">{{item.reservationRequired ? '随买随用' : '无需预约'}}</view>
+         <view wx:else class="spot-card-nobook">随买随用</view>
         </view>
       </view>
     </view>

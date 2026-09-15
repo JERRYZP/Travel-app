@@ -55,7 +55,24 @@ const call = (name, data) => mock.mockCall(name, data);
   eq(t3.merged, false, '不相接行程不合并');
   eq(t3.tripId !== t1.tripId, true, '新建独立行程（新任务分组 Tab）');
   eq(segOf(t3.trip, 'tiantan').startDate, '2026-10-01', '新行程景点段 = 本次输入范围');
-  await call('cart.add', { tripId: t3.tripId, spotId: 'tiantan', visitDate: '2026-10-01', releaseAt: '2026-09-24T21:00:00+08:00' });
+  const tlFree = await call('timeline.generate', { tripId: t3.tripId });
+  const free = tlFree.events.filter(e => e.spotId === 'tiantan');
+  eq(free.length, 3, '免预约景点按日期生成候选项');
+  eq(free.every(e => e.releaseAt === null && e.button.text === '加入行程'), true, '免预约候选项无 releaseAt，按钮为「加入行程」');
+
+  await call('cart.add', { tripId: t3.tripId, spotId: 'tiantan', visitDate: '2026-10-01', releaseAt: null, remindOn: false });
+  const cartFree = await call('cart.list', { tripId: t3.tripId });
+  eq(cartFree.summary.reminderCount, 0, '免预约项不产生提醒数');
+  const committedFree = await call('cart.commit', { tripId: t3.tripId });
+  eq(committedFree.createdItems, 1, '免预约项提交后创建行程项');
+  eq(committedFree.createdTasks, 0, '免预约项不创建任务');
+  const tlFreeCommitted = await call('timeline.generate', { tripId: t3.tripId });
+  eq(tlFreeCommitted.events.find(e => e.visitDate === '2026-10-01').status, 'COMMITTED', '提交后免预约项显示已加入行程');
+  const t3b = await call('trip.create', { startDate: '2026-10-04', endDate: '2026-10-05', spotIds: ['guobo'] });
+  eq(t3b.merged, true, '免预约行程项所在行程仍可继续合并');
+  eq(t3b.tripId, t3.tripId, '合并后复用存续行程');
+  const tlAfterMerge = await call('timeline.generate', { tripId: t3.tripId });
+  eq(tlAfterMerge.events.find(e => e.visitDate === '2026-10-01').status, 'COMMITTED', '合并后行程项状态保留');
 
   const list2 = await call('trip.list', {});
   eq(list2.trips.length, 2, '现在有 2 个行程');

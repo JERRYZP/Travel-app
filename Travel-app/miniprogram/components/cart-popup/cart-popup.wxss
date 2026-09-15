@@ -147,6 +147,36 @@
   color: var(--color-primary);
 }
 
+/* 提醒开关：仅需预约项出现 */
+.cart-remind-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6rpx;
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: #A68045;
+}
+.cart-remind-checkbox {
+  width: 34rpx;
+  height: 34rpx;
+  border: 1rpx solid #D7BF96;
+  border-radius: 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+.cart-remind-checkbox.checked {
+  background: #B8904A;
+  border-color: #B8904A;
+}
+.cart-no-remind {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: #B09878;
+}
+
 /* 删除按钮：浅色描边、更小 */
 .cart-item-delete {
   width: 48rpx;

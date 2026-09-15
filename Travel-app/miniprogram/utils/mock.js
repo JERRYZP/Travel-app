@@ -72,12 +72,14 @@ const db = {
   trips: {},
   carts: {},
   tasks: {},
+  items: {},
   feedbacks: {},
   searchHistory: [],
 };
 let tripSeq = 0;
 let cartSeq = 0;
 let taskSeq = 0;
+let itemSeq = 0;
 let feedbackSeq = 0;
 let subscribeSeq = 0;
 const subscribeQuotas = {};
@@ -236,6 +238,7 @@ function buildCard(spot) {
     popularityScore: spot.popularityScore,
     reservationRequired: spot.reservationRequired !== false,
     remindable,
+    addable: remindable || spot.reservationRequired === false,
     weak,
     cardDesc,
     tags: rule ? buildTags(rule) : [],
@@ -345,6 +348,7 @@ function pruneStaleCart(tripId) {
 function purgeTripIfNoTask(tripId) {
   if (!tripId) return false;
   if (Object.values(db.tasks).some(t => t.tripId === tripId)) return false;
+  if (Object.values(db.items).some(i => i.tripId === tripId)) return false;
   Object.keys(db.carts).forEach(id => { if (db.carts[id].tripId === tripId) delete db.carts[id]; });
   delete db.trips[tripId];
   return true;
@@ -357,15 +361,35 @@ function difficultyOf(score) {
   return { key: 'EASY', text: '容易约' };
 }
 function buildEvents(spot, rule, seg) {
-  if (!rule || !rule.advanceDays || !rule.releaseTime) return [];
+  const base = {
+    spotId: spot.spotId,
+    spotName: spot.name,
+    reservationRequired: spot.reservationRequired !== false,
+    weak: spot.reservationRequired !== false && (spot.difficultyScore || 0) <= 2,
+    officialAppid: spot.officialAppid || '',
+    officialPath: spot.officialPath || '',
+    officialWebUrl: spot.officialWebUrl || '',
+  };
+  if (spot.reservationRequired === false) {
+    return dateRange(seg.startDate, seg.endDate).map(visitDate => ({
+      ...base,
+      difficulty: null,
+      visitDate,
+      releaseAt: null,
+      releaseDateStr: '',
+      releaseTimeStr: '',
+      visitDateLabel: formatMonthDayWeek(visitDate),
+      advanceDays: null,
+      remindOnDefault: false,
+    }));
+  }
+  if (!rule || !rule.advanceDays || (!rule.releaseTime && !(rule.releaseTimes || []).length)) return [];
   const events = [];
-  // seg = 该景点自己的日期段（合并行程后各景点段可能不同，见 A 方案）
   for (const visitDate of dateRange(seg.startDate, seg.endDate)) {
     if (!isOpenOn(rule, dayNameOf(visitDate))) continue;
     const releaseDate = addDays(visitDate, -rule.advanceDays);
     events.push({
-      spotId: spot.spotId,
-      spotName: spot.name,
+      ...base,
       difficulty: difficultyOf(spot.difficultyScore),
       visitDate,
       releaseAt: parseBeijing(releaseDate, rule.releaseTime),
@@ -373,36 +397,42 @@ function buildEvents(spot, rule, seg) {
       releaseTimeStr: rule.releaseTime,
       visitDateLabel: formatMonthDayWeek(visitDate),
       advanceDays: rule.advanceDays,
-      officialAppid: spot.officialAppid || '',
-      officialPath: spot.officialPath || '',
-      officialWebUrl: spot.officialWebUrl || '',
+      remindOnDefault: !base.weak,
     });
   }
   return events;
 }
 function resolveStatus(event, ctx, nowTs = new Date()) {
-  const { inCart = false, task = null } = ctx || {};
+  const { inCart = false, task = null, committed = false } = ctx || {};
+  if (event.reservationRequired === false) {
+    if (committed) return 'COMMITTED';
+    if (inCart) return 'IN_CART';
+    return 'SELECTABLE';
+  }
   if (event.releaseAt.getTime() > nowTs.getTime()) {
     if (task) return task.backendStatus === 'WAITING' ? 'WAITING' : 'REMINDERED';
+    if (committed) return 'COMMITTED';
     if (inCart) return 'IN_CART';
     return 'SELECTABLE';
   }
   return 'BOOKABLE';
 }
-function buttonOf(status) {
+function buttonOf(status, event = {}) {
+  const noReservation = event.reservationRequired === false;
   switch (status) {
-    case 'SELECTABLE': return { text: '+ 添加提醒', enabled: true };
-    case 'IN_CART': return { text: '已加清单', enabled: true, openCart: true };
+    case 'SELECTABLE': return noReservation ? { text: '加入行程', enabled: true } : { text: '+ 添加提醒', enabled: true };
+    case 'IN_CART': return { text: noReservation ? '已加入清单' : '已加清单', enabled: true, openCart: true };
     case 'WAITING': return { text: '待提醒', enabled: false };
     case 'REMINDERED': return { text: '已提醒', enabled: false };
     case 'BOOKABLE': return { text: '立即预约', enabled: true, booking: true };
     case 'FULL': return { text: '已约满', enabled: false };
+    case 'COMMITTED': return { text: '已加入行程', enabled: false };
     default: return { text: '', enabled: false };
   }
 }
 function defaultScrollIndex(events, nowTs = new Date()) {
   const sorted = [...events].sort((a, b) => a.releaseAt - b.releaseAt);
-  const idx = sorted.findIndex(e => e.releaseAt.getTime() > nowTs.getTime());
+  const idx = sorted.findIndex(e => e.releaseAt && e.releaseAt.getTime() > nowTs.getTime());
   return idx === -1 ? Math.max(0, sorted.length - 1) : idx;
 }
 function groupByDeparture(events, nowTs) {
@@ -414,7 +444,7 @@ function groupByDeparture(events, nowTs) {
   return [...map.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([visitDate, list]) => {
-      const sorted = list.sort((a, b) => a.releaseAt - b.releaseAt);
+      const sorted = list.sort((a, b) => (a.releaseAt ? a.releaseAt.getTime() : Number.MAX_SAFE_INTEGER) - (b.releaseAt ? b.releaseAt.getTime() : Number.MAX_SAFE_INTEGER));
       return { key: visitDate, label: formatMonthDayWeek(visitDate), events: sorted, count: sorted.length, scrollIndex: defaultScrollIndex(sorted, nowTs) };
     });
 }
@@ -425,9 +455,9 @@ function groupBySpot(events, nowTs) {
     map.get(e.spotId).push(e);
   }
   return [...map.entries()].map(([spotId, list]) => {
-    const sorted = list.sort((a, b) => a.releaseAt - b.releaseAt);
+    const sorted = list.sort((a, b) => (a.releaseAt ? a.releaseAt.getTime() : Number.MAX_SAFE_INTEGER) - (b.releaseAt ? b.releaseAt.getTime() : Number.MAX_SAFE_INTEGER));
     return { key: spotId, label: sorted[0].spotName, events: sorted, count: sorted.length, scrollIndex: defaultScrollIndex(sorted, nowTs) };
-  }).sort((a, b) => a.events[0].releaseAt - b.events[0].releaseAt);
+  }).sort((a, b) => (a.events[0].releaseAt ? a.events[0].releaseAt.getTime() : Number.MAX_SAFE_INTEGER) - (b.events[0].releaseAt ? b.events[0].releaseAt.getTime() : Number.MAX_SAFE_INTEGER));
 }
 function generateTimeline(tripId) {
   const trip = db.trips[tripId];
@@ -448,7 +478,6 @@ function generateTimeline(tripId) {
     if (!seg) continue;
     const spot = SPOTS.find(s => s.spotId === spotId);
     if (!spot) continue;
-    if (spot.reservationRequired === false) continue;
     const rule = RULES.find(r => r.spotId === spotId) || null;
     const built = buildEvents(spot, rule, seg);
     if (built.length === 0) {
@@ -460,7 +489,9 @@ function generateTimeline(tripId) {
       continue;
     }
     // 与云端 timeline.generate 一致的 closedDaySkips（按该景点自己的段统计）
-    const skipped = dateRange(seg.startDate, seg.endDate).filter(d => !isOpenOn(rule, dayNameOf(d)));
+    const skipped = rule
+      ? dateRange(seg.startDate, seg.endDate).filter(d => !isOpenOn(rule, dayNameOf(d)))
+      : [];
     if (skipped.length > 0) {
       const isWhitelist = (rule.openDays || []).length > 0;
       closedDaySkips.push({
@@ -473,8 +504,9 @@ function generateTimeline(tripId) {
       const key = `${event.spotId}|${event.visitDate}`;
       const inCart = Object.values(db.carts).some(c => c.tripId === tripId && `${c.spotId}|${c.visitDate}` === key);
       const task = Object.values(db.tasks).find(t => t.tripId === tripId && `${t.spotId}|${t.visitDate}` === key) || null;
-      const status = resolveStatus(event, { inCart, task }, nowTs);
-      events.push({ ...event, status, button: buttonOf(status), stale: event.releaseAt.getTime() <= nowTs.getTime() });
+      const committed = Object.values(db.items).some(i => i.tripId === tripId && `${i.spotId}|${i.visitDate}` === key);
+      const status = resolveStatus(event, { inCart, task, committed }, nowTs);
+      events.push({ ...event, status, button: buttonOf(status, event), stale: !!event.releaseAt && event.releaseAt.getTime() <= nowTs.getTime() });
     }
   }
   const validKeys = new Set(events.map(e => `${e.spotId}|${e.visitDate}`));
@@ -482,7 +514,7 @@ function generateTimeline(tripId) {
     const c = db.carts[id];
     if (c.tripId === tripId && !validKeys.has(`${c.spotId}|${c.visitDate}`)) delete db.carts[id];
   });
-  events.sort((a, b) => a.releaseAt - b.releaseAt);
+  events.sort((a, b) => (a.releaseAt ? a.releaseAt.getTime() : Number.MAX_SAFE_INTEGER) - (b.releaseAt ? b.releaseAt.getTime() : Number.MAX_SAFE_INTEGER));
   return {
     success: true,
     tripId,
@@ -610,6 +642,11 @@ const handlers = {
       // 被吞并行程的任务与清单改挂到存续行程（提醒本身不受影响）
       Object.keys(db.tasks).forEach(k => { if (db.tasks[k].tripId === id) db.tasks[k].tripId = keepId; });
       Object.keys(db.carts).forEach(k => { if (db.carts[k].tripId === id) db.carts[k].tripId = keepId; });
+      Object.keys(db.items).forEach(k => {
+        if (db.items[k].tripId !== id) return;
+        db.items[k].tripId = keepId;
+        db.items[k].backupGroupId = keepId + ':' + db.items[k].spotId;
+      });
       delete db.trips[id];
     });
 
@@ -620,7 +657,8 @@ const handlers = {
     const kept = Object.values(db.trips).filter(t => {
       const hasTask = Object.values(db.tasks).some(x => x.tripId === t._id);
       const hasCart = Object.values(db.carts).some(c => c.tripId === t._id);
-      if (hasTask || hasCart) return true;
+      const hasItem = Object.values(db.items).some(i => i.tripId === t._id);
+      if (hasTask || hasCart || hasItem) return true;
       delete db.trips[t._id];
       return false;
     });
@@ -670,10 +708,12 @@ const handlers = {
     if (!db.trips[data.tripId]) return { success: false, error: '参数不合法', errorCode: 1010 };
     let removedTasks = 0;
     let removedCartItems = 0;
+    let removedItems = 0;
     Object.keys(db.tasks).forEach(id => { if (db.tasks[id].tripId === data.tripId) { delete db.tasks[id]; removedTasks += 1; } });
     Object.keys(db.carts).forEach(id => { if (db.carts[id].tripId === data.tripId) { delete db.carts[id]; removedCartItems += 1; } });
+    Object.keys(db.items).forEach(id => { if (db.items[id].tripId === data.tripId) { delete db.items[id]; removedItems += 1; } });
     delete db.trips[data.tripId];
-    return { success: true, tripId: data.tripId, removedTasks, removedCartItems };
+    return { success: true, tripId: data.tripId, removedTasks, removedCartItems, removedItems };
   },
 
   /* ----- timeline ----- */
@@ -681,22 +721,56 @@ const handlers = {
 
   /* ----- cart ----- */
   'cart.add': (data) => {
+    const spot = SPOTS.find(s => s.spotId === data.spotId);
+    if (!spot) return { success: false, error: '景点不存在', errorCode: 1001 };
+    const rule = RULES.find(r => r.spotId === data.spotId) || null;
+    const reservationRequired = spot.reservationRequired !== false;
+    const remindable = reservationRequired && !!(rule && rule.advanceDays && rule.releaseTime);
+    if (reservationRequired && (!remindable || !data.releaseAt)) return { success: false, error: '参数不合法', errorCode: 1010 };
     const exists = Object.values(db.carts).some(c => c.tripId === data.tripId && c.spotId === data.spotId && c.visitDate === data.visitDate);
-    if (exists) return { success: false, error: '这条提醒已经在清单里啦', errorCode: 1002 };
+    const itemExists = Object.values(db.items).some(i => i.tripId === data.tripId && i.spotId === data.spotId && i.visitDate === data.visitDate);
+    if (exists || itemExists) return { success: false, error: '这条已经在清单里啦', errorCode: 1002 };
+    const weak = reservationRequired && (spot.difficultyScore || 0) <= 2;
+    const remindOn = reservationRequired
+      ? (typeof data.remindOn === 'boolean' ? data.remindOn : !weak)
+      : false;
     const cartId = 'mock-cart-' + (++cartSeq);
-    db.carts[cartId] = { _id: cartId, tripId: data.tripId, spotId: data.spotId, visitDate: data.visitDate, releaseAt: data.releaseAt };
-    return { success: true, cartId };
+    db.carts[cartId] = {
+      _id: cartId,
+      tripId: data.tripId,
+      spotId: data.spotId,
+      visitDate: data.visitDate,
+      releaseAt: reservationRequired ? data.releaseAt : null,
+      remindOn,
+      reservationRequired,
+    };
+    return { success: true, cartId, remindOn };
   },
   'cart.addAll': (data) => {
     const tl = generateTimeline(data.tripId);
     const inScope = data.scope === 'departure' ? (e => e.visitDate === data.scopeKey) : (e => e.spotId === data.scopeKey);
     let added = 0;
+    const skipped = [];
     tl.events.filter(e => e.status === 'SELECTABLE' && inScope(e)).forEach(e => {
-      const cartId = 'mock-cart-' + (++cartSeq);
-      db.carts[cartId] = { _id: cartId, tripId: data.tripId, spotId: e.spotId, visitDate: e.visitDate, releaseAt: e.releaseAt };
-      added += 1;
+      const r = handlers['cart.add']({
+        tripId: data.tripId,
+        spotId: e.spotId,
+        visitDate: e.visitDate,
+        releaseAt: e.releaseAt,
+        remindOn: e.remindOnDefault,
+      });
+      if (r.success) added += 1;
+      else skipped.push({ spotId: e.spotId, visitDate: e.visitDate, reason: r.error });
     });
-    return { success: true, added, skipped: [], total: added, scope: data.scope, scopeKey: data.scopeKey };
+    return { success: true, added, skipped, total: added + skipped.length, scope: data.scope, scopeKey: data.scopeKey };
+  },
+  'cart.updateRemindOn': (data) => {
+    const item = db.carts[data.cartId];
+    if (!item || (item.reservationRequired === false && data.remindOn)) {
+      return { success: false, error: '参数不合法', errorCode: 1010 };
+    }
+    item.remindOn = data.remindOn === true;
+    return { success: true, cartId: data.cartId, remindOn: item.remindOn };
   },
   'cart.remove': (data) => { delete db.carts[data.cartId]; return { success: true, cartId: data.cartId }; },
   'cart.clear': (data) => { Object.keys(db.carts).forEach(id => { if (!data.tripId || db.carts[id].tripId === data.tripId) delete db.carts[id]; }); return { success: true, removed: 0 }; },
@@ -705,6 +779,19 @@ const handlers = {
     const now = new Date();
     const enriched = items.map(c => {
       const spot = SPOTS.find(s => s.spotId === c.spotId);
+      const reservationRequired = c.reservationRequired !== false && (!spot || spot.reservationRequired !== false);
+      if (!reservationRequired) {
+        return {
+          ...c,
+          reservationRequired: false,
+          remindOn: false,
+          spotName: spot ? spot.name : '未知景点',
+          releaseAt: null,
+          releaseTimeLabel: '无需预约',
+          visitDateLabel: formatMonthDayWeek(c.visitDate) + ' · 随到随玩',
+          countdown: null,
+        };
+      }
       const releaseAt = new Date(c.releaseAt);
       const msLeft = releaseAt.getTime() - now.getTime();
       const expired = msLeft <= 0;
@@ -712,6 +799,8 @@ const handlers = {
       const m = Math.max(0, Math.floor((msLeft % 3600000) / 60000));
       return {
         ...c,
+        reservationRequired: true,
+        remindOn: c.remindOn === true,
         spotName: spot ? spot.name : '未知景点',
         releaseTimeLabel: formatHourMinute(releaseAt),
         visitDateLabel: '约 ' + formatMonthDayWeek(c.visitDate) + ' 门票',
@@ -720,26 +809,87 @@ const handlers = {
           : { hours: h, minutes: m, text: '还剩' + h + 'h ' + m + 'm', urgent: msLeft < 3600000, expired: false },
       };
     });
+    const reserved = enriched.filter(c => c.reservationRequired !== false);
+    const noReservation = enriched.filter(c => c.reservationRequired === false);
+    const groups = [];
     const map = {};
-    enriched.forEach(c => { const ds = String(c.releaseAt || '').slice(0, 10); (map[ds] = map[ds] || []).push(c); });
-    const groups = Object.keys(map).sort().map(k => ({ key: k, label: formatMonthDay(k), items: map[k].sort((a, b) => new Date(a.releaseAt) - new Date(b.releaseAt)) }));
+    reserved.forEach(c => { const ds = fmt(c.releaseAt); (map[ds] = map[ds] || []).push(c); });
+    Object.keys(map).sort().forEach(k => groups.push({ key: k, label: formatMonthDay(k), items: map[k].sort((a, b) => new Date(a.releaseAt) - new Date(b.releaseAt)) }));
+    if (noReservation.length) groups.push({ key: '__no_reservation__', label: '无需预约', items: noReservation.sort((a, b) => a.visitDate.localeCompare(b.visitDate)) });
     const spotCount = new Set(items.map(c => c.spotId)).size;
-    const summary = { count: items.length, spotCount, text: `已选 ${items.length} 项，覆盖 ${spotCount} 个景点` };
+    const reminderCount = enriched.filter(c => c.remindOn).length;
+    const summary = {
+      count: items.length,
+      spotCount,
+      reminderCount,
+      noReminderCount: items.length - reminderCount,
+      text: reminderCount > 0 ? `已选 ${items.length} 项，其中 ${reminderCount} 个将设提醒` : `已选 ${items.length} 项，均无需提醒`,
+    };
     return { success: true, items: enriched, groups, summary };
   },
 
   /* ----- task ----- */
+  'cart.commit': (data) => handlers['task.submit'](data),
   'task.submit': (data) => {
     const cartItems = Object.values(db.carts).filter(c => !data.tripId || c.tripId === data.tripId);
     if (cartItems.length === 0) return { success: false, error: '先添加至少一条提醒', errorCode: 1009 };
+    const reminderItems = cartItems.filter(c => c.reservationRequired !== false && c.remindOn === true);
+    const channels = data.channels || [];
+    const offsets = data.offsets || [];
+    if (reminderItems.length > 0 && (channels.length === 0 || offsets.length === 0 || reminderItems.some(c => !c.releaseAt))) {
+      return { success: false, error: '参数不合法', errorCode: 1010 };
+    }
     let created = 0;
+    let createdItems = 0;
     cartItems.forEach(c => {
-      const taskId = 'mock-task-' + (++taskSeq);
-      db.tasks[taskId] = { _id: taskId, tripId: c.tripId, spotId: c.spotId, visitDate: c.visitDate, releaseAt: c.releaseAt, offsets: data.offsets, channels: data.channels, backendStatus: 'WAITING' };
+      const remindOn = c.reservationRequired !== false && c.remindOn === true;
+      let item = Object.values(db.items).find(i => i.tripId === c.tripId && i.spotId === c.spotId && i.visitDate === c.visitDate);
+      if (!item) {
+        const itemId = 'mock-item-' + (++itemSeq);
+        item = {
+          _id: itemId,
+          userId: 'mock-user',
+          tripId: c.tripId,
+          spotId: c.spotId,
+          visitDate: c.visitDate,
+          backupGroupId: c.tripId + ':' + c.spotId,
+          remindOn,
+          result: null,
+          resultAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        db.items[itemId] = item;
+        createdItems += 1;
+      } else {
+        item.remindOn = remindOn;
+      }
+      if (remindOn) {
+        const taskId = 'mock-task-' + (++taskSeq);
+        db.tasks[taskId] = {
+          _id: taskId,
+          itemId: item._id,
+          tripId: c.tripId,
+          spotId: c.spotId,
+          visitDate: c.visitDate,
+          releaseAt: c.releaseAt,
+          offsets,
+          channels,
+          backendStatus: 'WAITING',
+        };
+        created += 1;
+      }
       delete db.carts[c._id];
-      created += 1;
     });
-    return { success: true, created, needsOaAuth: (data.channels || []).includes('OFFICIAL_ACCOUNT') };
+    return {
+      success: true,
+      created,
+      createdItems,
+      createdTasks: created,
+      noReminder: cartItems.length - reminderItems.length,
+      toast: created > 0 ? `已加入行程 · 其中 ${created} 个已设提醒` : `已加入行程 · ${createdItems} 项`,
+      needsOaAuth: channels.includes('OFFICIAL_ACCOUNT'),
+    };
   },
   'task.list': (data) => {
     let all = Object.values(db.tasks);

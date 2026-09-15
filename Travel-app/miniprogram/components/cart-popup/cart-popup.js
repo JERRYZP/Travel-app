@@ -142,12 +142,29 @@ Component({
       this.setData({ showClearDialog: false });
     },
 
+    onToggleRemind(e) {
+      const cartId = e.currentTarget.dataset.id;
+      const remindOn = e.currentTarget.dataset.remind === true || e.currentTarget.dataset.remind === 'true';
+      api.reminder.cart.updateRemindOn({ cartId, remindOn: !remindOn }).then(() => {
+        this.loadCart();
+        this.triggerEvent('change');
+      }).catch(err => api.toastError(err));
+    },
+
     onSubmit() {
-      if (!this.data.summary || this.data.summary.count === 0) {
-        wx.showToast({ title: '先添加至少一条提醒', icon: 'none' });
+      const summary = this.data.summary;
+      if (!summary || summary.count === 0) {
+        wx.showToast({ title: '先添加至少一项', icon: 'none' });
         return;
       }
       this.onClose();
+      if (summary.reminderCount === 0) {
+        api.reminder.cart.commit({ tripId: this.data.tripId }).then(res => {
+          wx.showToast({ title: res.toast || `已加入行程 · ${res.createdItems || 0} 项`, icon: 'none' });
+          this.triggerEvent('change');
+        }).catch(err => api.toastError(err));
+        return;
+      }
       wx.navigateTo({ url: '/pages/setup/setup?tripId=' + this.data.tripId });
     },
   },

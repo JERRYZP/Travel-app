@@ -62,7 +62,7 @@ Page({
   },
 
   applyHotPool(list) {
-    const pool = (list || []).filter(s => s.remindable); // 仅可提醒景点（S+A，含无放票时刻者挡出）
+    const pool = (list || []).filter(s => s.addable === true || s.remindable || s.reservationRequired === false); // 可加入行程；无放票时刻的环球影城仍挡出
     this.setData({
       hotPool: pool,
       shuffleRound: 0,
@@ -70,13 +70,14 @@ Page({
     });
   },
 
-  /* 混搭一批：S 全取占满，其余用 A 补足到目标数（凑满 10），合并后按热度降序。
+  /* 混搭一批：S 全取占满，其余用 A/B 交替补足到目标数（凑满 10），合并后按热度降序。
    * 用轮次平移（round × count 取模）代替「排除当前批」——当前池子 S 仅 3 个、A 存量充足，
    * 排除后不足目标数会回退整表，导致每次换一批都是同一批。 */
   mixBatch(pool, selectedIds, round = 0) {
     const COUNT = 10;
-    const sList = pool.filter(s => (s.difficultyScore || 0) >= 4);
-    const aList = pool.filter(s => (s.difficultyScore || 0) <= 3);
+    const sList = pool.filter(s => s.remindable && (s.difficultyScore || 0) >= 4);
+    const aList = pool.filter(s => s.remindable && (s.difficultyScore || 0) <= 3);
+    const bList = pool.filter(s => s.reservationRequired === false);
     const rotate = (list, count) => {
       if (list.length <= count) return list.slice(); // 不足 count 直接全展示
       const start = (round * count) % list.length;
@@ -85,8 +86,15 @@ Page({
       return picked;
     };
     const s = sList.slice(); // S 全取占满（现仅 3 个，不足 COUNT）
-    const a = rotate(aList, Math.max(0, COUNT - s.length));
-    const batch = s.concat(a).sort((x, y) => (y.popularityScore || 0) - (x.popularityScore || 0));
+    const rest = Math.max(0, COUNT - s.length);
+    const mixedRest = [];
+    const maxLen = Math.max(aList.length, bList.length);
+    for (let i = 0; i < maxLen; i += 1) {
+      if (aList[i]) mixedRest.push(aList[i]);
+      if (bList[i]) mixedRest.push(bList[i]);
+    }
+    const filler = rotate(mixedRest, rest);
+    const batch = s.concat(filler).sort((x, y) => (y.popularityScore || 0) - (x.popularityScore || 0));
     return util.markSpotsSelected(batch, selectedIds);
   },
 
@@ -160,12 +168,9 @@ Page({
   onSpotToggle(e) {
     const spotId = e.currentTarget.dataset.id;
     const spot = e.currentTarget.dataset.spot;
-    // 免预约或无放票时刻景点不可选（UI 已是 tag，此处兜底）
-    if (spot && !spot.remindable) {
-      wx.showToast({
-        title: spot.reservationRequired ? '该景点无固定放票时刻，随买随用即可' : '该景点无需预约，现场购票即可',
-        icon: 'none',
-      });
+    const addable = spot && (spot.addable === true || spot.remindable || spot.reservationRequired === false);
+    if (spot && !addable) {
+      wx.showToast({ title: '该景点无固定放票时刻，随买随用即可', icon: 'none' });
       return;
     }
     const ids = [].concat(this.data.selectedSpotIds);

@@ -396,12 +396,10 @@ Page({
   onSpotSelectToggle(e) {
     const spotId = e.currentTarget.dataset.id;
     const spot = e.currentTarget.dataset.spot;
-    // 免预约或无放票时刻景点不可选（UI 已是 tag，此处兜底）
-    if (spot && !spot.remindable) {
-      wx.showToast({
-        title: spot.reservationRequired ? '该景点无固定放票时刻，随买随用即可' : '该景点无需预约，现场购票即可',
-        icon: 'none',
-      });
+    // 免预约景点可加入行程；仅“需预约但无固定放票时刻”的景点不可选。
+    const addable = spot && (spot.addable === true || spot.remindable || spot.reservationRequired === false);
+    if (spot && !addable) {
+      wx.showToast({ title: '该景点无固定放票时刻，随买随用即可', icon: 'none' });
       return;
     }
     const ids = [].concat(this.data.selectedSpotIds);
@@ -563,9 +561,11 @@ Page({
         }
       }
       let btnSub = '';
-      if (ev.status === 'BOOKABLE') {
+      if (ev.reservationRequired === false) {
+        releaseDateLabel = '无需预约';
+      } else if (ev.status === 'BOOKABLE') {
         btnSub = '该景点已开票';
-      } else if (ev.status === 'SELECTABLE') {
+      } else if (ev.status === 'SELECTABLE' && ev.releaseAt) {
         /* 倒计时只在「添加提醒」状态、距开票时间 3 小时以内时出现 */
         const ms = new Date(ev.releaseAt).getTime() - now.getTime();
         if (ms > 0 && ms <= 3 * 3600000) {
@@ -586,7 +586,7 @@ Page({
       scope: 'departure',
       scopeKey: this.data.timelineActiveTab,
     }).then(res => {
-      wx.showToast({ title: '已加入' + res.added + '条提醒', icon: 'none' });
+      wx.showToast({ title: '已加入 ' + res.added + ' 项', icon: 'none' });
       this.loadInlineTimeline(this.data.timelineTripId, true, true);
       this.setData({ submitting: false });
     }).catch(err => {
@@ -615,8 +615,9 @@ Page({
       spotId: event.spotId,
       visitDate: event.visitDate,
       releaseAt: event.releaseAt,
+      remindOn: event.remindOnDefault,
     }).then(() => {
-      wx.showToast({ title: '已加入清单', icon: 'none' });
+      wx.showToast({ title: event.reservationRequired === false ? '已加入行程清单' : '已加入提醒清单', icon: 'none' });
       this.loadInlineTimeline(this.data.timelineTripId, true, true);
       this.setData({ submitting: false });
     }).catch(err => {
@@ -639,12 +640,28 @@ Page({
   },
 
   onInlineStartReminder() {
-    if (this.data.timelineCartCount === 0) {
-      wx.showToast({ title: '先添加至少一条提醒', icon: 'none' });
+    const summary = this.data.timelineCartSummary;
+    if (!summary || summary.count === 0) {
+      wx.showToast({ title: '先添加至少一项', icon: 'none' });
       return;
     }
-    /* 关闭提醒清单浮窗，避免提交返回后残留遮挡任务页 */
     this.setData({ showCartPopup: false });
+
+    // 全是免预约 / 未勾提醒的项：直接创建行程项，不再进入提醒设置页。
+    if (summary.reminderCount === 0) {
+      if (this.data.submitting) return;
+      this.setData({ submitting: true });
+      api.reminder.cart.commit({ tripId: this.data.timelineTripId }).then(res => {
+        wx.showToast({ title: res.toast || `已加入行程 · ${res.createdItems || 0} 项`, icon: 'none' });
+        this.setData({ submitting: false });
+        this.loadInlineTimeline(this.data.timelineTripId, true, true);
+      }).catch(err => {
+        this.setData({ submitting: false });
+        api.toastError(err);
+      });
+      return;
+    }
+
     wx.navigateTo({ url: '/pages/setup/setup?tripId=' + this.data.timelineTripId });
   },
 

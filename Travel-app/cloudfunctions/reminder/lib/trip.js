@@ -6,6 +6,7 @@
 
 const { COLLECTIONS, TripStatus, V1, ERRORS, ok, fail } = require('./schema');
 const time = require('./time');
+const tripItem = require('./trip-item');
 
 /* ============ 纯函数区：可脱离云环境测试 ============ */
 
@@ -226,6 +227,17 @@ async function create(db, userId, { startDate, endDate, spotIds = [], city = V1.
     await db.collection(COLLECTIONS.REMINDER_CART)
       .where({ userId, tripId: id })
       .update({ data: { tripId: keepId } });
+    const movedItems = await db.collection(COLLECTIONS.TRIP_ITEMS)
+      .where({ userId, tripId: id }).get();
+    for (const item of (movedItems.data || [])) {
+      await db.collection(COLLECTIONS.TRIP_ITEMS).doc(item._id).update({
+        data: {
+          tripId: keepId,
+          backupGroupId: tripItem.backupGroupIdOf(keepId, item.spotId),
+          updatedAt: nowTs,
+        },
+      });
+    }
     await db.collection(COLLECTIONS.TRIPS).doc(id).remove();
   }
 
@@ -308,6 +320,10 @@ async function removeIfEmpty(db, userId, tripId) {
     .where({ userId, tripId }).count();
   if (taskCount.total > 0) return false;
 
+  const itemCount = await db.collection(COLLECTIONS.TRIP_ITEMS)
+    .where({ userId, tripId }).count();
+  if (itemCount.total > 0) return false;
+
   const cartCount = await db.collection(COLLECTIONS.REMINDER_CART)
     .where({ userId, tripId }).count();
   if (cartCount.total > 0) return false;
@@ -317,19 +333,15 @@ async function removeIfEmpty(db, userId, tripId) {
 }
 
 /**
- * TRIP-RULE-004（2026-09-14 补充口径）显式清理：行程下已无任何提醒任务
- * → 行程**连同其提醒清单**一并删除。
+ * TRIP-RULE-004：主动删除提醒后的空行程清理。
+ * 2026-09-16 行程项成为事实来源后，只有“无任务且无行程项”才允许删除；
+ * 此时提醒清单作为未提交草稿一并清掉。
  *
- * 与 removeIfEmpty 的分工（两者不可互换）：
- *  - removeIfEmpty = 读取时兜底的孤儿清理，把「清单非空」当作保留条件，
- *    保护「刚生成时间线、正在挑提醒、还没提交任务」的草稿行程（清单 = 待提交的提醒）。
- *  - purgeIfNoTask = 用户**主动删除**路径（清空任务 / 单条删除任务）的级联：
- *    用户已经明确要作废这些提醒，行程里再没有任何任务 → 行程本身失去意义，
- *    连带的提醒清单也一并清掉，避免留下「0 任务 + 有清单」的空壳行程 Tab
- *    （表现为首页「进行中 0 / 已过期 0」但 Tab 仍在，且点进去什么都做不了）。
- *
- * 为什么清空任务时要连清单一起删：清单是「还没提交的提醒」，行程都作废了，
- * 清单留着只会让行程被 removeIfEmpty 判为「非空」而永久残留。
+ * 与 removeIfEmpty 的分工：
+ *  - removeIfEmpty = 读取时孤儿清理，任务、行程项、清单都空才删除；
+ *  - purgeIfNoTask = 用户主动删除提醒后的级联，任务和行程项都空才删除，
+ *    再连提醒清单一并清掉。
+ * 函数名保留以兼容旧调用；判断条件已补上 trip_items。
  *
  * @returns {boolean} 是否发生了删除
  */
@@ -339,6 +351,11 @@ async function purgeIfNoTask(db, userId, tripId) {
   const taskCount = await db.collection(COLLECTIONS.REMINDER_TASKS)
     .where({ userId, tripId }).count();
   if (taskCount.total > 0) return false;
+
+  // 行程项是 V2 的事实来源；即使没有任务（例如只加入免预约景点），行程也不能删。
+  const itemCount = await db.collection(COLLECTIONS.TRIP_ITEMS)
+    .where({ userId, tripId }).count();
+  if (itemCount.total > 0) return false;
 
   const cartRes = await db.collection(COLLECTIONS.REMINDER_CART)
     .where({ userId, tripId }).get();
@@ -370,12 +387,17 @@ async function remove(db, userId, tripId) {
   for (const c of (cartRes.data || [])) {
     await db.collection(COLLECTIONS.REMINDER_CART).doc(c._id).remove();
   }
+  const itemRes = await db.collection(COLLECTIONS.TRIP_ITEMS).where({ userId, tripId }).get();
+  for (const item of (itemRes.data || [])) {
+    await db.collection(COLLECTIONS.TRIP_ITEMS).doc(item._id).remove();
+  }
 
   await db.collection(COLLECTIONS.TRIPS).doc(tripId).remove();
   return ok({
     tripId,
     removedTasks: (taskRes.data || []).length,
     removedCartItems: (cartRes.data || []).length,
+    removedItems: (itemRes.data || []).length,
   });
 }
 

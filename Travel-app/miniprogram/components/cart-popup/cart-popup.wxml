@@ -6,7 +6,7 @@
   <view class="cart-sheet" style="bottom: {{bottomOffset}};" catchtap="onSheetTap">
     <!-- 头部 -->
     <view class="cart-header" catchtouchmove="noop">
-      <text class="cart-title">提醒清单：共{{summary ? summary.count : 0}}项</text>
+      <text class="cart-title">加入行程：共{{summary ? summary.count : 0}}项</text>
       <view class="cart-clear-btn" bindtap="onClearTap">
         <svg-icon name="trash" size="14px" />
         <text>清空</text>
@@ -23,7 +23,7 @@
         </block>
         <block wx:elif="{{groups.length === 0}}">
           <view class="cart-empty">
-            <text>清单还是空的，去添加提醒吧</text>
+            <text>清单还是空的，去时间线选择景点吧</text>
           </view>
         </block>
         <block wx:else>

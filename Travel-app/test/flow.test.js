@@ -136,15 +136,18 @@ function freshDb() {
   eq(tl.closedDaySkips.every(s => s.note.includes('闭馆')), true, '均用「闭馆」措辞（无白名单景点）');
   eq(tl.events.every(e => e.status === EventSelectStatus.SELECTABLE), true, '未来行程初始态全部可选');
 
-  // B 层免预约景点不进时间线（reservationRequired=false，2026 政策取消预约）
+  // B 层免预约景点进入时间线，但没有 releaseAt，也不进提醒任务；
   const trB = await trip.create(db, USER, {
     startDate: time.addDays(RANGE.startDate, 14), endDate: time.addDays(RANGE.endDate, 14),
     spotIds: ['gugong', 'shoubo'],
   });
   const tlB = await timeline.generate(db, USER, trB.tripId);
   eq(tlB.success, true, '含 B 层景点的行程生成成功');
-  eq(tlB.events.length, 4, 'shoubo(免预约) 被排除，只剩故宫 4 条');
-  eq(tlB.bySpot.length, 1, '仅 1 个景点 Tab');
+  eq(tlB.events.length, 9, '故宫 4 条 + 首博免预约 5 条');
+  eq(tlB.bySpot.length, 2, '故宫与首博各 1 个景点 Tab');
+  const freeEvents = tlB.events.filter(e => e.spotId === 'shoubo');
+  eq(freeEvents.every(e => e.reservationRequired === false && e.releaseAt === null), true, '免预约事件无 releaseAt');
+  eq(freeEvents.every(e => e.status === EventSelectStatus.SELECTABLE && e.button.text === '加入行程'), true, '免预约事件可直接加入行程');
   eq(tlB.closedSpots.length, 0, '免预约景点不计入「闭馆」');
   await trip.removeIfEmpty(db, USER, trB.tripId); // 清理测试行程，避免影响后续级联断言
 
@@ -174,7 +177,7 @@ function freshDb() {
   const cl = await cart.list(db, USER, tr.tripId);
   eq(cl.summary.count, 2, '清单 2 项');
   eq(cl.summary.spotCount, 1, '覆盖 1 个景点');
-  eq(cl.summary.text, '已选 2 项，覆盖 1 个景点', 'CART-RULE-002 文案');
+  eq(cl.summary.text, '已选 2 项，其中 2 个将设提醒', 'CART-RULE-002 文案');
 
   // CART-RULE-004 批量限定 Tab
   await cart.clear(db, USER, tr.tripId);
@@ -261,11 +264,15 @@ function freshDb() {
   eq(rmMissed.success, true, 'MISSED 任务可单条删除（2026-09-14 放宽）');
   eq(db._dump(COLLECTIONS.REMINDER_TASKS).some(t => t._id === t0._id), false, 'MISSED 任务已从库中移除');
 
-  // 删光 → 行程自动删除
+  // 任务删光后仍有 trip_items：V2 行程不能因任务清空而消失。
   await db.collection(COLLECTIONS.REMINDER_TASKS).where({ userId: USER }).remove();
   const removed = await trip.removeIfEmpty(db, USER, tr.tripId);
-  eq(removed, true, '任务清单皆空 → 行程自动删除');
-  eq(db._size(COLLECTIONS.TRIPS), 0, '行程已删');
+  eq(removed, false, '仍有行程项 → 不自动删除行程');
+  eq(db._size(COLLECTIONS.TRIPS), 1, '行程保留');
+  const cleanupTrip = await trip.remove(db, USER, tr.tripId);
+  eq(cleanupTrip.success, true, '显式删除行程成功');
+  eq(cleanupTrip.removedItems, sub.created, '显式删除连带清掉行程项');
+  eq(db._size(COLLECTIONS.TRIPS), 0, '显式删除后行程消失');
 
   const tksEmpty = await task.list(db, USER, {});
   eq(tksEmpty.homeMode, 1, '无任务 → 首页形态1');

@@ -94,7 +94,7 @@ Page({
 
   submitTask({ tripId, channelList, offsets }) {
     wx.showLoading({ title: '正在提交...' });
-    api.reminder.task.submit({ tripId, channels: channelList, offsets }).then(res => {
+    api.reminder.cart.commit({ tripId, channels: channelList, offsets }).then(res => {
       wx.hideLoading();
       this.setData({ submitting: false });
       if (res.needsOaAuth) {
@@ -110,7 +110,10 @@ Page({
           },
         });
       }
-      wx.showToast({ title: '提醒已设置，放票前见', icon: 'none' });
+      const toast = res.createdTasks > 0
+        ? (res.noReminder > 0 ? '已加入行程，提醒也设置好了' : '提醒已设置，放票前见')
+        : '已加入行程';
+      wx.showToast({ title: toast, icon: 'none' });
       /* 标记提交成功，首页 onShow 据此切回「提醒任务」Tab */
       app.globalData.reminderSubmitted = true;
       setTimeout(() => {

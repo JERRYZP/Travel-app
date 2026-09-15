@@ -11,6 +11,7 @@ const {
 } = require('./schema');
 const time = require('./time');
 const { normalizeSpots } = require('./trip');
+const tripItem = require('./trip-item');
 
 /* ============ 纯函数区 ============ */
 
@@ -43,10 +44,34 @@ function closedSpotNoteOf(rule) {
  * @returns {Array} 空数组表示该景点在段内每天都不可约（TIMELINE-RULE-005）
  */
 function buildEvents(spot, rule, seg) {
-  if (!rule || !rule.advanceDays || !rule.releaseTime) return [];
+  const base = {
+    spotId: spot.spotId,
+    spotName: spot.name,
+    reservationRequired: spot.reservationRequired !== false,
+    weak: tripItem.isWeakSpot(spot),
+    officialAppid: spot.officialAppid || '',
+    officialPath: spot.officialPath || '',
+    officialWebUrl: spot.officialWebUrl || '',
+  };
+
+  // 免预约景点不生成放票事件，但仍为每个行程日生成可加入行程的候选项。
+  if (spot.reservationRequired === false) {
+    return time.dateRange(seg.startDate, seg.endDate).map(visitDate => ({
+      ...base,
+      difficulty: null,
+      visitDate,
+      releaseAt: null,
+      releaseDateStr: '',
+      releaseTimeStr: '',
+      visitDateLabel: time.formatMonthDayWeek(visitDate),
+      advanceDays: null,
+      remindOnDefault: false,
+    }));
+  }
+
+  if (!rule || !rule.advanceDays || (!rule.releaseTime && !(rule.releaseTimes || []).length)) return [];
 
   const events = [];
-
   for (const visitDate of time.dateRange(seg.startDate, seg.endDate)) {
     // TIMELINE-RULE-005 按日判定：该日不可约则跳过这一天，其余日期照常生成
     // 判定统一走 time.isOpenOn —— openDays 白名单优先，用于北大/清华「仅周末可约」
@@ -54,8 +79,7 @@ function buildEvents(spot, rule, seg) {
 
     const releaseDate = time.addDays(visitDate, -rule.advanceDays);
     events.push({
-      spotId: spot.spotId,
-      spotName: spot.name,
+      ...base,
       difficulty: difficultyOf(spot.difficultyScore),
       visitDate,
       releaseAt: time.parseBeijing(releaseDate, rule.releaseTime),
@@ -64,9 +88,7 @@ function buildEvents(spot, rule, seg) {
       releaseTimeStr: rule.releaseTime,
       visitDateLabel: time.formatMonthDayWeek(visitDate),
       advanceDays: rule.advanceDays,
-      officialAppid: spot.officialAppid || '',
-      officialPath: spot.officialPath || '',
-      officialWebUrl: spot.officialWebUrl || '',
+      remindOnDefault: tripItem.defaultRemindOn(spot),
     });
   }
 
@@ -82,7 +104,14 @@ function buildEvents(spot, rule, seg) {
  * @param {object} ctx { inCart:boolean, task:object|null, releaseStatus:string|null }
  */
 function resolveStatus(event, ctx, nowTs = time.now()) {
-  const { inCart = false, task = null, releaseStatus = null } = ctx || {};
+  const { inCart = false, task = null, releaseStatus = null, committed = false } = ctx || {};
+
+  // 免预约项没有放票时刻，只区分未加入、清单中、已加入行程。
+  if (event.reservationRequired === false) {
+    if (committed) return EventSelectStatus.COMMITTED;
+    if (inCart) return EventSelectStatus.IN_CART;
+    return EventSelectStatus.SELECTABLE;
+  }
 
   if (event.releaseAt.getTime() > nowTs.getTime()) {
     if (task) {
@@ -90,6 +119,7 @@ function resolveStatus(event, ctx, nowTs = time.now()) {
         ? EventSelectStatus.WAITING
         : EventSelectStatus.REMINDERED;
     }
+    if (committed) return EventSelectStatus.COMMITTED;
     if (inCart) return EventSelectStatus.IN_CART;
     return EventSelectStatus.SELECTABLE;
   }
@@ -100,14 +130,24 @@ function resolveStatus(event, ctx, nowTs = time.now()) {
 }
 
 /** 按钮态 → 前端按钮文案与可点性 */
-function buttonOf(status) {
+function buttonOf(status, event = {}) {
+  const noReservation = event.reservationRequired === false;
   switch (status) {
-    case EventSelectStatus.SELECTABLE: return { text: '+ 添加提醒', enabled: true };
-    case EventSelectStatus.IN_CART: return { text: '已加清单', enabled: true, openCart: true };
+    case EventSelectStatus.SELECTABLE:
+      return noReservation
+        ? { text: '加入行程', enabled: true }
+        : { text: '+ 添加提醒', enabled: true };
+    case EventSelectStatus.IN_CART:
+      return {
+        text: noReservation ? '已加入清单' : '已加清单',
+        enabled: true,
+        openCart: true,
+      };
     case EventSelectStatus.WAITING: return { text: '待提醒', enabled: false };
     case EventSelectStatus.REMINDERED: return { text: '已提醒', enabled: false };
     case EventSelectStatus.BOOKABLE: return { text: '立即预约', enabled: true, booking: true };
     case EventSelectStatus.FULL: return { text: '已约满', enabled: false };
+    case EventSelectStatus.COMMITTED: return { text: '已加入行程', enabled: false };
     default: return { text: '', enabled: false };
   }
 }
@@ -128,7 +168,7 @@ function groupByDeparture(events, nowTs = time.now()) {
   return [...map.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([visitDate, list]) => {
-      const sorted = list.sort((a, b) => a.releaseAt - b.releaseAt);
+      const sorted = list.sort((a, b) => (a.releaseAt ? a.releaseAt.getTime() : Number.MAX_SAFE_INTEGER) - (b.releaseAt ? b.releaseAt.getTime() : Number.MAX_SAFE_INTEGER));
       return {
         key: visitDate,
         label: time.formatMonthDayWeek(visitDate),
@@ -146,7 +186,7 @@ function groupBySpot(events, nowTs = time.now()) {
     map.get(e.spotId).push(e);
   }
   return [...map.entries()].map(([spotId, list]) => {
-    const sorted = list.sort((a, b) => a.releaseAt - b.releaseAt);
+    const sorted = list.sort((a, b) => (a.releaseAt ? a.releaseAt.getTime() : Number.MAX_SAFE_INTEGER) - (b.releaseAt ? b.releaseAt.getTime() : Number.MAX_SAFE_INTEGER));
     return {
       key: spotId,
       label: sorted[0].spotName,
@@ -154,15 +194,15 @@ function groupBySpot(events, nowTs = time.now()) {
       count: sorted.length,
       scrollIndex: defaultScrollIndex(sorted, nowTs),
     };
-  }).sort((a, b) => a.events[0].releaseAt - b.events[0].releaseAt);
+  }).sort((a, b) => (a.events[0].releaseAt ? a.events[0].releaseAt.getTime() : Number.MAX_SAFE_INTEGER) - (b.events[0].releaseAt ? b.events[0].releaseAt.getTime() : Number.MAX_SAFE_INTEGER));
 }
 
 /**
  * UI-006 默认滚动位置 = 最近的未提醒事件在扁平序列中的下标
  */
 function defaultScrollIndex(events, nowTs = time.now()) {
-  const sorted = [...events].sort((a, b) => a.releaseAt - b.releaseAt);
-  const idx = sorted.findIndex(e => e.releaseAt.getTime() > nowTs.getTime());
+  const sorted = [...events].sort((a, b) => (a.releaseAt ? a.releaseAt.getTime() : Number.MAX_SAFE_INTEGER) - (b.releaseAt ? b.releaseAt.getTime() : Number.MAX_SAFE_INTEGER));
+  const idx = sorted.findIndex(e => e.releaseAt && e.releaseAt.getTime() > nowTs.getTime());
   return idx === -1 ? Math.max(0, sorted.length - 1) : idx;
 }
 
@@ -194,11 +234,12 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
   const segMap = {};
   segs.forEach(s => { segMap[s.spotId] = s; });
 
-  const [spotsRes, rulesRes, cartRes, tasksRes] = await Promise.all([
+  const [spotsRes, rulesRes, cartRes, tasksRes, itemsRes] = await Promise.all([
     db.collection(COLLECTIONS.SPOTS).where({ spotId: db.command.in(spotIds) }).get(),
     db.collection(COLLECTIONS.RELEASE_RULES).where({ spotId: db.command.in(spotIds) }).get(),
     db.collection(COLLECTIONS.REMINDER_CART).where({ userId, tripId }).get(),
     db.collection(COLLECTIONS.REMINDER_TASKS).where({ userId, tripId }).get(),
+    db.collection(COLLECTIONS.TRIP_ITEMS).where({ userId, tripId }).get(),
   ]);
 
   const ruleMap = {};
@@ -206,6 +247,7 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
   const cartKeys = new Set((cartRes.data || []).map(c => `${c.spotId}|${c.visitDate}`));
   const taskMap = {};
   (tasksRes.data || []).forEach(t => { taskMap[`${t.spotId}|${t.visitDate}`] = t; });
+  const itemKeys = new Set((itemsRes.data || []).map(i => `${i.spotId}|${i.visitDate}`));
 
   const nowTs = time.now();
   const events = [];
@@ -213,8 +255,6 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
   const closedDaySkips = [];
 
   for (const spot of (spotsRes.data || [])) {
-    // B 层免预约景点不进时间线（reservationRequired=false，2026 政策已取消预约）
-    if (spot.reservationRequired === false) continue;
     const seg = segMap[spot.spotId];
     if (!seg) continue;
     const rule = ruleMap[spot.spotId];
@@ -231,7 +271,9 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
     }
     // TIMELINE-RULE-005 补充：该景点在段内非每天不可约，但有若干天被跳过 → 记录这些日期供前端提示
     // 与 buildEvents 共用 time.isOpenOn，避免「生成事件用一套、提示用另一套」的口径漂移
-    const skipped = time.dateRange(seg.startDate, seg.endDate).filter(d => !time.isOpenOn(rule, time.dayNameOf(d)));
+    const skipped = rule
+      ? time.dateRange(seg.startDate, seg.endDate).filter(d => !time.isOpenOn(rule, time.dayNameOf(d)))
+      : [];
     if (skipped.length > 0) {
       closedDaySkips.push({
         spotId: spot.spotId,
@@ -245,15 +287,16 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
       const status = resolveStatus(event, {
         inCart: cartKeys.has(key),
         task: taskMap[key] || null,
+        committed: itemKeys.has(key),
         releaseStatus: spotStatusMap[event.spotId] || null,
       }, nowTs);
 
       events.push({
         ...event,
         status,
-        button: buttonOf(status),
+        button: buttonOf(status, event),
         // scraper 未上线：已放票事件的「已约满」判定缺失，标记 stale 供前端提示
-        stale: event.releaseAt.getTime() <= nowTs.getTime() && !spotStatusMap[event.spotId],
+        stale: !!event.releaseAt && event.releaseAt.getTime() <= nowTs.getTime() && !spotStatusMap[event.spotId],
       });
     }
   }

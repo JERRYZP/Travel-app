@@ -74,9 +74,17 @@ exports.main = async (event) => {
         return await cart.clear(db, userId, event.tripId || null);
       case 'cart.list':
         return await cart.list(db, userId, event.tripId || null);
+      case 'cart.updateRemindOn':
+        return await cart.updateRemindOn(db, userId, event.cartId, event.remindOn === true);
+      case 'cart.commit': {
+        const res = await task.submit(db, userId, event);
+        if (!res.success) return res;
+        return ok(res);
+      }
 
       /* ======== 提醒任务 ======== */
       case 'task.submit': {
+        // 兼容旧页面；语义已与 cart.commit 相同。
         const res = await task.submit(db, userId, event);
         if (!res.success) return res;
         return ok(res);

@@ -190,6 +190,8 @@ function buildCard(spot, rule, now) {
     reservationRequired: spot.reservationRequired !== false,
     // 无放票时刻的需预约景点（如环球影城）也不可添加，按钮位显示「随买随用」tag
     remindable,
+    // 可加入行程：可提醒的需预约景点，或免预约景点；无放票时刻的环球影城仍不可选。
+    addable: remindable || spot.reservationRequired === false,
     // 弱提醒：需预约但非常好约（difficulty≤2），标签行给平和描述而非紧迫放票标签
     weak,
     cardDesc,

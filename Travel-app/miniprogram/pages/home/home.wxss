@@ -841,6 +841,7 @@
 .event-btn-IN_CART { background: #FAF7F2; border: 1rpx solid #D7BF96; color: #A68045; }
 .event-btn-WAITING, .event-btn-REMINDERED { background: var(--color-surface); border: 1rpx solid #E8E0D0; color: #A99180; }
 .event-btn-BOOKABLE { background: #B8904A; color: #fff; }
+.event-btn-COMMITTED { background: var(--color-surface); border: 1rpx solid #E8E0D0; color: #A99180; }
 .event-btn-FULL { background: #EDE5D2; color: #B8904A; }
 .event-btn-sub {
   font-size: 20rpx;

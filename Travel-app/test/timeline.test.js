@@ -21,7 +21,7 @@ const eq = (a, b, m) => {
 const trip = { startDate: '2026-05-31', endDate: '2026-06-04' }; // 5天，6/1 是周一
 
 console.log('--- 交叉积总数 ---');
-// 时间线只对需预约景点生成（B 层免预约由 generate() 层排除）
+// 本文件直接对需预约景点做纯函数断言；B 层免预约加入链路由 trip-items.test.js 覆盖。
 const reserveSpots = spots.filter(s => s.reservationRequired !== false);
 const all = reserveSpots.flatMap(s => TL.buildEvents(s, rm[s.spotId], trip));
 // 规则形态计数（改数据时从这里看出影响面，避免总数断言变成黑盒）

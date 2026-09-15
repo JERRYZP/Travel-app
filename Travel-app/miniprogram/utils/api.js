@@ -51,6 +51,8 @@ const reminder = {
   cart: {
     add: (p) => call('reminder', { action: 'cart.add', ...p }),
     addAll: (p) => call('reminder', { action: 'cart.addAll', ...p }),
+    updateRemindOn: (p) => call('reminder', { action: 'cart.updateRemindOn', ...p }),
+    commit: (p) => call('reminder', { action: 'cart.commit', ...p }),
     remove: (cartId) => call('reminder', { action: 'cart.remove', cartId }),
     clear: (tripId) => call('reminder', { action: 'cart.clear', tripId }),
     list: (tripId) => call('reminder', { action: 'cart.list', tripId }),
@@ -89,7 +91,7 @@ const ics = {
 function toastError(result) {
   const map = {
     1001: '景点不存在',
-    1002: '这条提醒已经在清单里啦',
+    1002: '这条已经在清单里啦',
     1005: '数据更新中',
     1006: '行程日期不合法',
     1007: '跳转失败，已复制链接',
@@ -97,6 +99,10 @@ function toastError(result) {
     1010: '请检查输入',
     1011: '提交失败，请重试',
     1012: '仅待提醒的任务可以删除',
+    1013: '这条行程项已不存在',
+    1014: '现在还不能标记结果',
+    1015: '已超过撤销时间',
+    1016: '行程项所在日期已结束',
     1500: '服务异常，请稍后重试',
   };
   const msg = (result && map[result.errorCode]) || (result && result.error) || '操作失败';

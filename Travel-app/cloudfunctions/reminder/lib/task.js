@@ -1,7 +1,7 @@
 /**
  * 提醒任务规则 REMINDER-RULE-001 ~ 008 + STATE-001/002（产品文档 3.5）
  *
- * 任务是最小执行单元：一条任务 = 某日某时对某景点的一次提醒。
+ * 行程项是最小业务单元；提醒任务是行程项下的一条后台执行记录。
  * 一个清单项按用户勾选的提前量集合展开为多条任务（每个 offset 各一条）。
  */
 
@@ -9,6 +9,7 @@ const {
   COLLECTIONS, ReminderBackendStatus, ChannelType, V1, ERRORS, ok, fail,
 } = require('./schema');
 const time = require('./time');
+const tripItem = require('./trip-item');
 
 /* ============ 纯函数区 ============ */
 
@@ -145,40 +146,73 @@ async function sweepOverdue(db, tasks, nowTs = time.now()) {
  * 云开发事务要求所有读写都在事务内，且不支持 where 批量删除，
  * 因此这里逐条 doc() 操作。
  */
-async function submit(db, userId, { tripId, channels, offsets }) {
-  if (!validateSubmit(channels, offsets)) return fail(ERRORS.BAD_PARAM);
-
+async function submit(db, userId, { tripId, channels = [], offsets = [] }) {
   const cartWhere = tripId ? { userId, tripId } : { userId };
   const cartRes = await db.collection(COLLECTIONS.REMINDER_CART).where(cartWhere).get();
   const cartItems = cartRes.data || [];
   if (cartItems.length === 0) return fail(ERRORS.CART_EMPTY);
 
+  const reminderItems = cartItems.filter(i =>
+    i.reservationRequired !== false && i.remindOn === true);
+  if (reminderItems.length > 0 && !validateSubmit(channels, offsets)) return fail(ERRORS.BAD_PARAM);
+  if (reminderItems.some(i => !i.releaseAt)) return fail(ERRORS.BAD_PARAM);
+
   const nowTs = time.now();
-  const created = [];
+  const itemMap = await tripItem.existingItemMap(db, userId, tripId || null);
+  const createdTasks = [];
+  const createdItems = [];
   const transaction = await db.startTransaction();
 
   try {
-    for (const item of cartItems) {
-      // 同一 (spotId, visitDate) 只建一条任务，offsets 存数组（TABLE-002 结构）
-      const taskData = {
-        userId,
-        tripId: item.tripId,
-        spotId: item.spotId,
-        visitDate: item.visitDate,
-        releaseAt: new Date(item.releaseAt),
-        offsets: [...offsets].sort((a, b) => b - a), // 大在前：5 分钟先于 2 分钟触发
-        channels,
-        backendStatus: ReminderBackendStatus.WAITING,
-        triggeredAt: null,
-        missedReason: null,
-        cleanAt: null,
-        // 记录每个 offset 的发送情况，供 notifier 幂等判断
-        sentOffsets: [],
-        createdAt: nowTs,
-      };
-      const res = await transaction.collection(COLLECTIONS.REMINDER_TASKS).add({ data: taskData });
-      created.push({ _id: res._id, ...taskData });
-      await transaction.collection(COLLECTIONS.REMINDER_CART).doc(item._id).remove();
+    for (const cartItem of cartItems) {
+      const remindOn = cartItem.reservationRequired !== false && cartItem.remindOn === true;
+      const key = `${cartItem.tripId}|${cartItem.spotId}|${cartItem.visitDate}`;
+      const existing = itemMap[key];
+      let itemId = existing && existing._id;
+
+      if (existing) {
+        if (existing.remindOn !== remindOn) {
+          await transaction.collection(COLLECTIONS.TRIP_ITEMS).doc(itemId).update({
+            data: { remindOn, updatedAt: nowTs },
+          });
+        }
+      } else {
+        const itemData = tripItem.makeItemData({
+          userId,
+          tripId: cartItem.tripId,
+          spotId: cartItem.spotId,
+          visitDate: cartItem.visitDate,
+          remindOn,
+          nowTs,
+        });
+        const itemRes = await transaction.collection(COLLECTIONS.TRIP_ITEMS).add({ data: itemData });
+        itemId = itemRes._id;
+        createdItems.push({ _id: itemId, ...itemData });
+      }
+
+      // 免预约项只落行程项；仅需预约且勾选提醒的项生成任务。
+      if (remindOn) {
+        const taskData = {
+          userId,
+          itemId,
+          tripId: cartItem.tripId,
+          spotId: cartItem.spotId,
+          visitDate: cartItem.visitDate,
+          releaseAt: new Date(cartItem.releaseAt),
+          offsets: [...offsets].sort((a, b) => b - a),
+          channels,
+          backendStatus: ReminderBackendStatus.WAITING,
+          triggeredAt: null,
+          missedReason: null,
+          cleanAt: null,
+          sentOffsets: [],
+          createdAt: nowTs,
+        };
+        const taskRes = await transaction.collection(COLLECTIONS.REMINDER_TASKS).add({ data: taskData });
+        createdTasks.push({ _id: taskRes._id, ...taskData });
+      }
+
+      await transaction.collection(COLLECTIONS.REMINDER_CART).doc(cartItem._id).remove();
     }
     await transaction.commit();
   } catch (err) {
@@ -186,9 +220,17 @@ async function submit(db, userId, { tripId, channels, offsets }) {
     return fail({ code: 1011, message: `提交失败：${err.message}` });
   }
 
+  const noReminder = cartItems.length - reminderItems.length;
   return ok({
-    created: created.length,
-    tasks: created,
+    created: createdTasks.length,
+    createdItems: createdItems.length,
+    createdTasks: createdTasks.length,
+    noReminder,
+    items: createdItems,
+    tasks: createdTasks,
+    toast: createdTasks.length > 0
+      ? `已加入行程 · 其中 ${createdTasks.length} 个已设提醒`
+      : `已加入行程 · ${createdItems.length} 项`,
     needsOaAuth: channels.includes(ChannelType.OFFICIAL_ACCOUNT),
   });
 }

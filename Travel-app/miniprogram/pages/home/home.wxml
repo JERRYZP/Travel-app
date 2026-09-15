@@ -85,10 +85,10 @@
 
           <!-- 说明 + 本页全部提醒 -->
           <view class="timeline-meta">
-            <text class="timeline-caption">为您生成该出游日下意向景点的最早放票时间</text>
+            <text class="timeline-caption">为需预约景点标出放票时间，免预约景点直接选日期加入行程</text>
             <view class="timeline-batch-btn" bindtap="onInlineAddAll">
               <svg-icon name="bell-plus" size="12px" />
-              <text>本页全部提醒</text>
+              <text>本页全部加入</text>
             </view>
           </view>
         </view>
@@ -101,7 +101,7 @@
 
         <!-- 空状态 -->
         <view wx:elif="{{timelineEmpty || timelineEvents.length === 0}}" class="empty-state">
-          <text>{{timelineEmptyReason || '这一天暂无可提醒的放票时间'}}</text>
+          <text>{{timelineEmptyReason || '这一天暂无可加入行程的景点'}}</text>
         </view>
 
         <!-- 时间线事件 -->
@@ -110,20 +110,23 @@
           <view class="timeline-event">
             <!-- 左侧时间列：日期+时间，中间为连接两日期的虚线 -->
             <view class="event-rail">
-              <text class="event-rail-date">{{event.releaseDateLabel}}</text>
-              <text class="event-rail-time">{{event.releaseTimeStr}}</text>
+              <text class="event-rail-date">{{event.reservationRequired === false ? event.visitDateLabel : event.releaseDateLabel}}</text>
+              <text class="event-rail-time">{{event.reservationRequired === false ? '免预约' : event.releaseTimeStr}}</text>
               <view wx:if="{{idx < timelineEvents.length - 1}}" class="event-rail-line"></view>
             </view>
 
             <!-- 事件卡：左侧信息 + 竖虚线 + 右侧按钮 -->
             <view class="event-card">
               <view class="event-info">
-                <text class="event-status">可约</text>
+                <text class="event-status">{{event.reservationRequired === false ? '无需预约' : '可约'}}</text>
                 <view class="event-name-row">
                   <text class="event-name" bindtap="onSpotNameTap" data-id="{{event.spotId}}">{{event.spotName}}</text>
-                  <view class="event-diff diff-{{event.difficulty.key}}">{{event.difficulty.text}}</view>
+                  <view wx:if="{{event.difficulty}}" class="event-diff diff-{{event.difficulty.key}}">{{event.difficulty.text}}</view>
                 </view>
-                <view class="event-visit"><text class="event-visit-date">{{event.visitDateLabel}}</text><text class="event-visit-ticket"> 门票</text></view>
+                <view class="event-visit">
+                  <text class="event-visit-date">{{event.visitDateLabel}}</text>
+                  <text class="event-visit-ticket">{{event.reservationRequired === false ? ' 随到随玩，不设提醒' : ' 门票'}}</text>
+                </view>
               </view>
               <view class="event-divider"></view>
               <view class="event-action">
@@ -133,7 +136,8 @@
                   data-event="{{event}}"
                 >
                   <svg-icon wx:if="{{event.status === 'BOOKABLE'}}" name="ticket-white" size="12px" />
-                  <svg-icon wx:elif="{{event.status === 'IN_CART'}}" name="check-gold" size="12px" />
+                  <svg-icon wx:elif="{{event.status === 'IN_CART' || event.status === 'COMMITTED'}}" name="check-gold" size="12px" />
+                  <svg-icon wx:elif="{{event.reservationRequired === false && event.status === 'SELECTABLE'}}" name="plus" size="12px" />
                   <svg-icon wx:elif="{{event.status === 'SELECTABLE' || event.status === 'WAITING' || event.status === 'REMINDERED'}}" name="bell-plus" size="12px" />
                   <text>{{event.button.text}}</text>
                 </view>
@@ -208,10 +212,10 @@
       <svg-icon name="list-white" size="20px" />
       <view wx:if="{{timelineCartCount > 0}}" class="cart-bar-badge">{{timelineCartCount}}</view>
     </view>
-    <text class="cart-bar-text">{{timelineCartSummary ? '已选 ' + timelineCartSummary.count + ' 项，覆盖 ' + timelineCartSummary.spotCount + ' 个景点' : '清单为空'}}</text>
+    <text class="cart-bar-text">{{timelineCartSummary ? timelineCartSummary.text : '清单为空'}}</text>
     <view class="cart-bar-btn" bindtap="onInlineStartReminder">
-      <svg-icon name="stopwatch-white" size="14px" />
-      <text>开始提醒</text>
+      <svg-icon name="{{timelineCartSummary && timelineCartSummary.reminderCount ? 'stopwatch-white' : 'plus-white'}}" size="14px" />
+      <text>{{timelineCartSummary && timelineCartSummary.reminderCount ? '开始提醒' : '加入行程'}}</text>
     </view>
   </view>
 </block>
