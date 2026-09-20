@@ -24,12 +24,20 @@ const ADVANCE = 1;
 const VISIT = time.addDays(TODAY, 2);          // releaseAt = TODAY+1 20:00（未来 → PENDING）
 const RELEASE_AT = new Date(time.addDays(TODAY, 1) + 'T20:00:00+08:00');
 
-/* 把行程项的出行日挪到「放票刚过去几小时」的位置：releaseAt = 今天 20:00 之前 24h 内 → BOOKABLE。
-   做法是用 advanceDays 与 visitDate 反推，避免写死日期在时间流逝后失效。 */
-function visitDateForReleaseAt(targetReleaseAt) {
-  // 目标 releaseAt = visitDate − ADVANCE 的当天 20:00 → visitDate = 当天 + ADVANCE
-  const d = time.toDateStr(targetReleaseAt);
-  return time.addDays(d, ADVANCE);
+/**
+ * 造一个「放票时刻刚过去、且仍在 24h 窗口内」的出行日。
+ *
+ * ⚠️ 不要用「今天+7」这类写法：故宫 advanceDays=7 时 releaseAt = 今天 20:00，
+ * 而 20:00 之前跑测试它其实是**未来**（PENDING 而不是 BOOKABLE）。
+ * 这个 helper 取「最近一个已经过去的 releaseTime 点」，年龄恒在 (0, 24h] 内，
+ * 任意时刻跑都成立。
+ */
+function bookableVisitDate(advanceDays, releaseTime = '20:00') {
+  const now = new Date();
+  let rel = time.parseBeijing(time.toDateStr(now), releaseTime);
+  if (rel.getTime() > now.getTime()) rel = new Date(rel.getTime() - 86400000);
+  const visit = time.addDays(time.toDateStr(rel), advanceDays);
+  return { visit, releaseAt: time.parseBeijing(time.addDays(visit, -advanceDays), releaseTime) };
 }
 const CURRENT_DB = createDb(); // 必须在 require reminder 前创建（模块顶层 const db = cloud.database()）
 
@@ -123,10 +131,10 @@ const seedSpot = async () => {
 
   /* ===== 场景 3：刚开票几小时 → 可抢（24h 窗口内），且过期的 WAITING 兜底收敛 =====
      V2 首页不再调 task.list，若不在这里 sweep，定时链路故障时就会静默显示「待提醒」 ===== */
-  const bookableVisit = visitDateForReleaseAt(time.now()); // releaseAt ≈ 今天 20:00（刚过）
-  await CURRENT_DB.collection(COLLECTIONS.TRIP_ITEMS).doc('ITEM1').update({ data: { visitDate: bookableVisit } });
+  const past = bookableVisitDate(ADVANCE);
+  await CURRENT_DB.collection(COLLECTIONS.TRIP_ITEMS).doc('ITEM1').update({ data: { visitDate: past.visit } });
   await CURRENT_DB.collection(COLLECTIONS.REMINDER_TASKS).doc('TASK1').update({
-    data: { visitDate: bookableVisit, releaseAt: time.parseBeijing(time.todayStr(), '20:00'), lastSendError: 'errCode=43101' },
+    data: { visitDate: past.visit, releaseAt: past.releaseAt, lastSendError: 'errCode=43101' },
   });
   res = await reminder.main({ action: 'home.bootstrap' });
   eq(res.trips[0].items[0].reminder.state, 'MISSED', '过期未送达 → MISSED');

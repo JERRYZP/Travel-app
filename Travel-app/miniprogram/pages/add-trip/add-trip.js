@@ -243,7 +243,10 @@ Page({
     }).then(res => {
       wx.showToast({ title: '已加入 ' + res.added + ' 项', icon: 'none' });
       this.setData({ submitting: false });
+      /* ⚠️ reloadPreview 里只更新事件；清单条计数要单独刷，否则批量加完
+         底部还显示「0 项」，看起来也是没生效 */
       this.reloadPreview();
+      this.loadCart();
     }).catch(err => {
       api.toastError(err);
       this.setData({ submitting: false });

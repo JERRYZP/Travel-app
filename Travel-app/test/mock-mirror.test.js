@@ -162,14 +162,16 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
   {
     const m = freshMock();
     const c = (n, d) => m.mockCall(n, d);
-    /* 造一条「已开票且在 24h 窗口内」的行程项：故宫 advanceDays=7，
-       出行日取今天+7 → releaseAt = 今天 20:00 */
+    /* 造一条「放票刚过去、仍在 24h 窗口内」的行程项：故宫 advanceDays=7。
+       ⚠️ 不能写「今天+7」——那等于 releaseAt = 今天 20:00，在 20:00 之前跑其实是未来。 */
     const pad = n => String(n).padStart(2, '0');
-    const d0 = new Date();
     const iso = x => x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate());
-    const visit = iso(new Date(d0.getTime() + 7 * 86400000));
+    const nowB = new Date(Date.now() + 8 * 3600000);
+    let relToday = Date.UTC(nowB.getUTCFullYear(), nowB.getUTCMonth(), nowB.getUTCDate(), 20, 0) - 8 * 3600000;
+    if (relToday > Date.now()) relToday -= 86400000;    // 今天 20:00 未到 → 取昨天
+    const visit = iso(new Date(relToday + 7 * 86400000)); // visitDate − 7 天 = 那个 20:00
     const trip = await c('trip.create', { startDate: visit, endDate: visit, spotIds: ['gugong'] });
-    await c('cart.add', { spotId: 'gugong', visitDate: visit, releaseAt: new Date(Date.now() - 3600000), remindOn: true });
+    await c('cart.add', { spotId: 'gugong', visitDate: visit, releaseAt: new Date(relToday), remindOn: true });
     await c('cart.commit', { channels: ['OFFICIAL_ACCOUNT'], offsets: [5] });
 
     let bs = await c('home.bootstrap', {});

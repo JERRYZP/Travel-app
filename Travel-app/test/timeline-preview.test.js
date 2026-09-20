@@ -57,15 +57,19 @@ function digest(res) {
     eq(db._dump(COLLECTIONS.REMINDER_CART).length, 0, '没有写清单');
   }
 
-  console.log('=== 2. 同一输入在「干净库」与「已提交过」两种状态下结果完全一致 ===');
+  console.log('=== 2. 纯预览只读「当前暂存清单」，不读已落库的行程项 ===');
   {
-    // 干净库的基准
+    /* 这条界线是这次改版的关键，两个方向都要钉住：
+       ① 已落库的 trip_items **绝不能**带进预览（否则换一批日期重新生成时，
+          会看到一条属于另一趟行程的「已在行程」）；
+       ② 当前暂存清单**必须**反映到预览（否则点了「加入清单」按钮页面毫无变化，
+          按钮仍写「添加提醒」、再点一次提示「已经在清单里啦」，看起来就是坏的）。 */
     const dbA = freshDb();
     const base = await timeline.preview(dbA, USER, { startDate: START, endDate: END, spotIds: ['gugong'] });
+    const targetDate = base.events[0].visitDate;
 
-    // 同一个输入先落一条已提交的行程项，再预览
+    /* --- ① 落一条已提交的行程项+任务：预览必须与干净库逐字一致 --- */
     const dbB = freshDb();
-    const visitDate = base.events[0].visitDate;
     await dbB.collection(COLLECTIONS.TRIPS).add({
       data: {
         _id: 'T9', userId: USER, city: '北京', startDate: START, endDate: END, name: '已有行程',
@@ -74,19 +78,32 @@ function digest(res) {
     });
     await dbB.collection(COLLECTIONS.TRIP_ITEMS).add({
       data: {
-        _id: 'I9', userId: USER, tripId: 'T9', spotId: 'gugong', visitDate,
+        _id: 'I9', userId: USER, tripId: 'T9', spotId: 'gugong', visitDate: targetDate,
         backupGroupId: 'T9:gugong', remindOn: true, result: null, resultAt: null,
         createdAt: time.now(), updatedAt: time.now(),
       },
     });
-    // 清单里也放一条
-    await cart.add(dbB, USER, {
-      spotId: 'gugong', visitDate: base.events[1].visitDate,
-      releaseAt: base.events[1].releaseAt, remindOn: true,
+    await dbB.collection(COLLECTIONS.REMINDER_TASKS).add({
+      data: {
+        _id: 'K9', userId: USER, itemId: 'I9', tripId: 'T9', spotId: 'gugong', visitDate: targetDate,
+        releaseAt: time.now(), offsets: [5], channels: ['OFFICIAL_ACCOUNT'],
+        backendStatus: 'WAITING', sentOffsets: [], createdAt: time.now(),
+      },
     });
-    const after = await timeline.preview(dbB, USER, { startDate: START, endDate: END, spotIds: ['gugong'] });
+    const afterCommitted = await timeline.preview(dbB, USER, { startDate: START, endDate: END, spotIds: ['gugong'] });
+    eq(digest(afterCommitted), digest(base), '已落库的行程项与任务**不带入**预览（逐字一致）');
 
-    eq(digest(after), digest(base), '同一输入 → 结果逐字一致（历史状态未带入预览）');
+    /* --- ② 往暂存清单加一条：那一条必须变成「已加清单」 --- */
+    const dbC = freshDb();
+    await cart.add(dbC, USER, {
+      spotId: 'gugong', visitDate: targetDate,
+      releaseAt: base.events[0].releaseAt, remindOn: true,
+    });
+    const afterCart = await timeline.preview(dbC, USER, { startDate: START, endDate: END, spotIds: ['gugong'] });
+    const hit = afterCart.events.find(e => e.visitDate === targetDate);
+    eq(hit.status, 'IN_CART', '当前暂存清单**要**反映到预览（按钮显示「已加清单」）');
+    const others = afterCart.events.filter(e => e.visitDate !== targetDate);
+    eq(others.every(e => e.status === 'SELECTABLE'), true, '清单外的日期不受影响');
   }
 
   console.log('=== 3. 预览里不会出现 COMMITTED（已在行程） ===');
@@ -109,7 +126,7 @@ function digest(res) {
     });
     const res = await timeline.preview(db, USER, { startDate: START, endDate: END, spotIds: ['gugong'] });
     eq(res.events.some(e => e.status === 'COMMITTED'), false, '预览不出现「已在行程」');
-    eq(res.events.every(e => e.status === 'SELECTABLE'), true, '全部回到可选');
+    eq(res.events.every(e => e.status === 'SELECTABLE'), true, '该日的项全部可选（清单里没有它）');
   }
 
   console.log('=== 4. 重复加入由 cart.add 兜底（按 spotId+visitDate 跨行程查）===');

@@ -11,6 +11,7 @@ const {
 } = require('./schema');
 const time = require('./time');
 const trip = require('./trip');
+const cart = require('./cart');
 const { normalizeSpots } = trip;
 const tripItem = require('./trip-item');
 
@@ -196,6 +197,24 @@ async function preview(db, userId, { startDate, endDate, spotIds = [], segments 
   const ruleMap = {};
   (rulesRes.data || []).forEach(r => { ruleMap[r.spotId] = r; });
 
+  /**
+   * ⚠️ 预览**只读当前暂存清单**，不读 trip_items / reminder_tasks。
+   *
+   * 这条界线是这次改版的关键，两者不能混为一谈：
+   *   - **暂存清单** = 用户正在这一页做的、还没提交的工作。不反映它，用户点了
+   *     「加入清单」按钮却看不到任何变化（按钮仍写「添加提醒」，再点一次提示
+   *     「已经在清单里啦」），页面看起来就是坏的。
+   *   - **trip_items / reminder_tasks** = 别的行程的既成事实。读它就会把历史状态
+   *     带进预览：换一批日期重新生成时，用户看到一条标着「已在行程」的日期，
+   *     其实属于另一趟行程。这正是本次要修的问题。
+   *
+   * 所以去重兜底仍在 cart.add（跨行程按 (spotId, visitDate) 查 trip_items）——
+   * 预览里看不到「已在行程」，但真的重复加也加不进去。
+   */
+  const cartRes = await db.collection(COLLECTIONS.REMINDER_CART)
+    .where({ userId, tripId: cart.cartTripIdOf(null) }).get();
+  const cartKeys = new Set((cartRes.data || []).map(c => `${c.spotId}|${c.visitDate}`));
+
   const nowTs = time.now();
   const events = [];
   const closedSpots = [];
@@ -225,10 +244,12 @@ async function preview(db, userId, { startDate, endDate, spotIds = [], segments 
       });
     }
     for (const event of built) {
-      /* ⚠️ 上下文一律为空：预览不知道也不关心任何已落库状态。
-         这就是「历史行程与已提交项的状态不带入预览」的落点。 */
+      /* inCart 反映**当前暂存清单**；committed 恒为 false（不读 trip_items） */
       const status = resolveStatus(event, {
-        inCart: false, task: null, committed: false, releaseStatus: null,
+        inCart: cartKeys.has(`${event.spotId}|${event.visitDate}`),
+        task: null,
+        committed: false,
+        releaseStatus: null,
       }, nowTs);
       events.push({
         ...event,

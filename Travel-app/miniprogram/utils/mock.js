@@ -5,7 +5,7 @@
  * 内存数据在小程序一次运行内连贯，重新编译会重置。
  */
 
-const USE_MOCK = false;
+const USE_MOCK = true;
 
 /* ===== 景点数据（spotId 与 images/spots/*.jpg 对齐） ===== */
 const SPOTS = [
@@ -710,6 +710,16 @@ function previewTimeline(input) {
     return { success: true, events: [], byDeparture: [], bySpot: [], closedSpots: [], closedDaySkips: [], empty: true, emptyReason: '先选择想去的景点' };
   }
 
+  /* ⚠️ 预览**只读当前暂存清单**，不读 db.items / db.tasks。
+     界线：暂存清单是用户正在这一页做的、还没提交的工作，不反映它按钮就像坏的
+     （点了没变化、再点提示「已经在清单里啦」）；而 db.items 是别的行程的既成事实，
+     读它就会把历史状态带进预览——换一批日期重新生成时看到属于另一趟行程的「已在行程」。 */
+  const want = cartTripIdOf(null);
+  const cartKeys = {};
+  Object.values(db.carts).forEach(c => {
+    if (c.tripId === want) cartKeys[c.spotId + '|' + c.visitDate] = true;
+  });
+
   const nowTs = new Date();
   const events = [];
   const closedSpots = [];
@@ -738,8 +748,11 @@ function previewTimeline(input) {
       });
     }
     built.forEach(event => {
-      /* ⚠️ 上下文一律为空：预览不知道也不关心任何已落库状态 */
-      const status = resolveStatus(event, { inCart: false, task: null, committed: false }, nowTs);
+      /* inCart 反映当前暂存清单；committed 恒为 false（不读 db.items） */
+      const status = resolveStatus(event, {
+        inCart: !!cartKeys[event.spotId + '|' + event.visitDate],
+        task: null, committed: false,
+      }, nowTs);
       events.push({ ...event, status, button: buttonOf(status, event), stale: false });
     });
   });

@@ -1315,8 +1315,9 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 调用：{ action: 'timeline.preview', startDate, endDate, spotIds, city, segments? }
 返回：{ success: true, events, byDeparture, bySpot, closedSpots, closedDaySkips, empty, emptyReason }
 ```
-   - 按当前所选日期段与景点**独立计算**，不创建/改写任何行程，**不读任何已落库状态**
-     （所以预览里不会出现 `COMMITTED`「已在行程」）。
+   - 按当前所选日期段与景点**独立计算**，不创建/改写任何行程。
+   - **读**当前用户的暂存清单（`reminder_cart` 的 `PENDING_CART_TRIP_ID` 那批）→ 清单里的项返回 `IN_CART`；
+     **不读** `trip_items` / `reminder_tasks` → 所以预览里不会出现 `COMMITTED`「已在行程」。
    - `segments` 可选：`[{spotId, startDate, endDate}]`，不传则按 `spotIds × [startDate,endDate]`。
    - 旧 `timeline.generate({tripId})` 保留为兼容代码，新流程不再调用。
 
