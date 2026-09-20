@@ -30,8 +30,6 @@ Component({
     openDropdown: '',
     /* 下拉里那一行（用于回显当前值） */
     dropItem: null,
-    /* 下拉里的**预选**值：点选项改它，点「确定」才落库 */
-    dropChoice: false,
     /* 下拉浮层的内联定位（px）。在 JS 里按触发按钮的位置算——
        见 onToggleDropdown 的注释：它必须在最外层，不能放 scroll-view 里 */
     dropStyle: '',
@@ -55,7 +53,7 @@ Component({
         this.computeHeights();
         this.loadCart();
       } else {
-        this.setData({ openDropdown: '', dropItem: null, dropChoice: false, dropStyle: '' });
+        this.setData({ openDropdown: '', dropItem: null, dropStyle: '' });
       }
     },
     aboveTabbar: function () { this.computeHeights(); },
@@ -153,7 +151,6 @@ Component({
           openDropdown: cartId,
           dropItem: item,
           /* 只**预选**当前值，不提交 —— 必须点「确定」才生效 */
-          dropChoice: item.remindOn === true,
           dropStyle: 'top:' + top + 'px; right:' + right + 'px;',
         });
       }).exec();
@@ -161,7 +158,7 @@ Component({
 
     closeDropdown() {
       if (!this.data.openDropdown) return;
-      this.setData({ openDropdown: '', dropItem: null, dropChoice: false, dropStyle: '' });
+      this.setData({ openDropdown: '', dropItem: null, dropStyle: '' });
     },
 
     /* 列表一滚，触发按钮就移位了 —— fixed 浮层不会跟着走，直接收起来 */
@@ -169,28 +166,20 @@ Component({
       this.closeDropdown();
     },
 
-    /** 点选项：只改**预选**，不提交 */
-    onPickRemind(e) {
-      const remind = e.currentTarget.dataset.remind === true
-        || e.currentTarget.dataset.remind === 'true';
-      this.setData({ dropChoice: remind });
-    },
-
     /**
-     * 「确定」才真正写库。
+     * 点选项 = **立即生效并关闭**。
      *
-     * 为什么不点选项直接生效：下拉只有两项，点哪一项都立刻落库的话，
-     * 用户点开只是想看一眼当前设置、随手点一下别处（或误触）就已经改掉了，
-     * 而且没有任何确认步骤。改成「预选 → 确定」后，这个控件是可预测的：
-     * 点 X 或者点空白 = 什么都没发生。
+     * 这是手机端的手指交互：只有两项，点哪一项就是选它，不需要额外的确认步骤。
+     * 「点开看一眼」也不会误改——点空白只关闭、不改动。
      */
-    onConfirmRemind() {
+    onPickRemind(e) {
       const cartId = this.data.openDropdown;
       const item = this.data.dropItem;
       if (!cartId || !item) return;
-      const remind = this.data.dropChoice === true;
+      const remind = e.currentTarget.dataset.remind === true
+        || e.currentTarget.dataset.remind === 'true';
       this.closeDropdown();
-      if (item.remindOn === remind) return;   // 没改就什么都不做
+      if (item.remindOn === remind) return;   // 点的就是当前值，不用白跑一趟
       api.reminder.cart.updateRemindOn({ cartId, remindOn: remind }).then(() => {
         this.loadCart();
         this.triggerEvent('change');

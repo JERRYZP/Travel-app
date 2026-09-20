@@ -147,7 +147,7 @@
   border-radius: 14rpx;
   box-shadow: 0 8rpx 24rpx rgba(100,60,20,.22);
   min-width: 300rpx;
-  padding: 8rpx 0 0;
+  padding: 8rpx 0;
   animation: drop-in .16s cubic-bezier(.22,1,.36,1);
 }
 @keyframes drop-in {
@@ -169,16 +169,6 @@
 }
 .cart-drop-opt.active { color: var(--color-primary); font-weight: 600; background: rgba(192,71,42,.06); }
 
-/* 确定条：给这个控件一个明确的提交点，避免「点哪都是改」 */
-.cart-drop-confirm {
-  margin-top: 8rpx;
-  border-top: 1rpx solid var(--color-border);
-  padding: 18rpx 24rpx;
-  text-align: center;
-  font-size: 25rpx;
-  font-weight: 600;
-  color: var(--color-primary);
-}
 
 /* 免预约项：说明必须与按钮同屏可见，不能只靠弹窗解释 */
 .cart-no-remind {

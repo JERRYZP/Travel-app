@@ -53,28 +53,26 @@ console.log('=== 2. 浮层坐标由 JS 按触发按钮算 ===');
 
 console.log('=== 2b. 浮层与遮罩的交互契约 ===');
 {
-  /* 这三条是用户实测「点选项没反应、点空白也不消失」之后定的。
-     遮罩是满屏 fixed，与浮层叠在一起；真机上仅靠类里的 z-index
-     在部分基础库下会判错、遮罩抢走点击 —— 所以层级必须内联写死。 */
+  /* 这些是用户实测「点选项没反应、点空白也不消失」之后定的。
+     根因：遮罩是满屏 fixed，与浮层同为 fixed；真机上仅靠类里的 z-index
+     在部分基础库下会判错、遮罩抢走点击 —— 层级必须内联写死。 */
   eq(/class="cart-drop-mask" style="z-index: 900;"/.test(WXML), true,
     '遮罩 z-index 内联写死（不靠类选择器）');
   eq(/class="cart-drop-pop" style="\{\{dropStyle\}\} z-index: 901;"/.test(WXML), true,
     '浮层 z-index 内联写死且高于遮罩');
-  eq(/catchtap="closeDropdown"/.test(WXML), true, '点遮罩收起');
+  eq(/catchtap="closeDropdown"/.test(WXML), true, '点空白收起浮层');
 
-  /* 「预选 → 确定」而不是「点哪都立刻生效」：
-     只有两项的下拉，点开看一眼就误改掉、且没有确认步骤，是不可预测的 */
-  eq(/onPickRemind/.test(WXML) && !/data-id="\{\{item\._id\}\}"\s+catchtap="onPickRemind"/.test(WXML), true,
-    '选项只做预选，不直接提交');
-  eq(/catchtap="onConfirmRemind"/.test(WXML), true, '有明确的「确定」提交点');
-  eq(/dropChoice/.test(WXML), true, '选项的选中态绑 dropChoice（预选值）而不是 dropItem.remindOn');
-}
-{
+  /* 手机端手指交互：点选项**立即生效并关闭**，不要确认步骤。
+     「点开看一眼」不误改靠的是「点空白只关闭、不改动」。 */
+  eq(/catchtap="onPickRemind"/.test(WXML), true, '两个选项可点');
+  eq(/cart-drop-confirm|onConfirmRemind/.test(WXML), false, '没有多余的确认按钮');
+  eq(/data-remind="\{\{true\}\}"/.test(WXML) && /data-remind="\{\{false\}\}"/.test(WXML), true,
+    '两个选项各自带目标值');
+
   const js = JS;
-  eq(/onPickRemind\(e\)[\s\S]{0,200}?setData\(\{ dropChoice/.test(js), true, 'onPickRemind 只改预选');
-  eq(/onConfirmRemind\(\)/.test(js), true, 'onConfirmRemind 存在');
-  eq(/updateRemindOn/.test(js.slice(js.indexOf('onConfirmRemind'))), true,
-    '落库发生在 onConfirmRemind 里');
+  eq(/onPickRemind\(e\)[\s\S]{0,400}?closeDropdown\(\)[\s\S]{0,400}?updateRemindOn/.test(js), true,
+    'onPickRemind 里「先关闭再落库」');
+  eq(/dropChoice|onConfirmRemind/.test(js), false, 'JS 里没有残留的预选/确认态');
   eq(/noop\(\)/.test(js), true, 'noop 已定义（catchtap="noop" 不会静默落空）');
 }
 

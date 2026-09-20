@@ -79,12 +79,11 @@
          「点选项没反应、点空白也不消失」。内联写死并拉开层级最稳。 -->
     <view class="cart-drop-mask" style="z-index: 900;" catchtap="closeDropdown" catchtouchmove="noop"></view>
     <view class="cart-drop-pop" style="{{dropStyle}} z-index: 901;" catchtap="noop">
-      <view class="cart-drop-opt {{dropChoice ? 'active' : ''}}"
+      <!-- 手指点一下即生效并关闭；点空白只关闭、不改动 -->
+      <view class="cart-drop-opt {{dropItem.remindOn ? 'active' : ''}}"
             catchtap="onPickRemind" data-remind="{{true}}">{{OPTION_ON}}</view>
-      <view class="cart-drop-opt {{!dropChoice ? 'active' : ''}}"
+      <view class="cart-drop-opt {{!dropItem.remindOn ? 'active' : ''}}"
             catchtap="onPickRemind" data-remind="{{false}}">{{OPTION_OFF}}</view>
-      <!-- 点确定才落库；点空白/点 X = 什么都不发生 -->
-      <view class="cart-drop-confirm" catchtap="onConfirmRemind">确定</view>
     </view>
   </block>
 </view>
