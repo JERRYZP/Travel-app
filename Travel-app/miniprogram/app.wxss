@@ -19,6 +19,30 @@ page {
   --diff-easy-bg: #D8EAD8;
   --diff-easy-text: #4A7C59;
 
+  /* ===== 行程状态墙（2026-09-20 首页行程化改版）=====
+     口径来自 UI/V.0.2 设计稿与 demo/ticket-board-home 的既有迭代：
+     状态标签用「浅底 + 深字」的对称色，底色走低饱和暖调，与难度标签同一族。
+     ⚠️ 历史区的「没抢到」**不用红色**——红色是行动召唤色，
+     历史里的失败已经无法挽回，用行动色只会让用户以为还能做点什么。 */
+  --state-pending-bg: #F5DDD5;      /* 待抢：还没到点，最需要盯着 → 朱砂 */
+  --state-pending-text: #C0472A;
+  --state-bookable-bg: #F5D9A8;     /* 可抢：该动手了 → 金 */
+  --state-bookable-text: #8A5A12;
+  --state-success-bg: #D8EAD8;      /* 已成 */
+  --state-success-text: #3E7D4F;
+  --state-failed-bg: #F5DDD5;       /* 未成 */
+  --state-failed-text: #C0472A;
+  --state-unmarked-bg: #EDE5D2;     /* 开过票了：中性态，不判失败 */
+  --state-unmarked-text: #7A5540;
+  --state-free-bg: #EDE5D2;         /* 免预约 */
+  --state-free-text: #7A5540;
+  --state-history-bg: #EFE8DA;      /* 历史区灰化 */
+  --state-history-text: #A89882;
+
+  --bubble-bg: #F6E3DC;             /* 回填气泡：品牌浅底 */
+  --bubble-text: #96331F;
+  --snackbar-bg: rgba(51,41,31,.92);
+
   /* shadows */
   --shadow-card: 0 2rpx 8rpx rgba(100,60,20,0.08);
   --shadow-input: 0 2rpx 16rpx rgba(100,60,20,0.08);

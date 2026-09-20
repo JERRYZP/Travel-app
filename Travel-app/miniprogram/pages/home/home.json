@@ -1,12 +1,16 @@
 {
   "usingComponents": {
     "tabbar": "/components/tabbar/tabbar",
-    "spot-popup": "/components/spot-popup/spot-popup",
-    "cart-popup": "/components/cart-popup/cart-popup",
-    "van-icon": "@vant/weapp/icon/index",
     "svg-icon": "/components/svg-icon/svg-icon",
-    "van-loading": "@vant/weapp/loading/index",
-    "date-range-picker": "/components/date-range-picker/index"
+    "spot-popup": "/components/spot-popup/spot-popup",
+    "date-range-picker": "/components/date-range-picker/index",
+    "release-banner": "/components/release-banner/release-banner",
+    "trip-summary-card": "/components/trip-summary-card/trip-summary-card",
+    "trip-section": "/components/trip-section/trip-section",
+    "result-sheet": "/components/result-sheet/result-sheet",
+    "date-picker-sheet": "/components/date-picker-sheet/date-picker-sheet",
+    "snackbar": "/components/snackbar/snackbar",
+    "van-loading": "@vant/weapp/loading/index"
   },
   "navigationStyle": "custom"
 }

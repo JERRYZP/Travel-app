@@ -1,0 +1,5 @@
+<view wx:if="{{banner}}" class="rb">
+  <view class="rb-dot"></view>
+  <text class="rb-text">{{banner.text}}</text>
+  <text class="rb-go" catchtap="onTap">去看看</text>
+</view>

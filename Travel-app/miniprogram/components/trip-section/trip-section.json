@@ -1,0 +1,7 @@
+{
+  "component": true,
+  "usingComponents": {
+    "svg-icon": "/components/svg-icon/svg-icon",
+    "trip-card": "/components/trip-card/trip-card"
+  }
+}

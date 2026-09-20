@@ -1,0 +1,5 @@
+<view wx:if="{{show}}" class="snackbar">
+  <text class="sb-text">{{text}}</text>
+  <view class="sb-undo" catchtap="onUndo">撤销</view>
+  <view class="sb-bar"><view class="sb-bar-fill" style="width: {{progress}}%;"></view></view>
+</view>

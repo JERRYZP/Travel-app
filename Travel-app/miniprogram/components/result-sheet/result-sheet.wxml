@@ -1,0 +1,24 @@
+<view wx:if="{{show}}" class="rs-mask" bindtap="onClose" catchtouchmove="noop">
+  <view class="rs-sheet" catchtap="noop">
+    <view class="rs-head">
+      <text class="rs-title">标记结果</text>
+      <text class="rs-sub">{{spotName}}</text>
+    </view>
+
+    <view class="rs-opts">
+      <view class="rs-opt {{choice === 'SUCCESS' ? 'active' : ''}}" catchtap="onChoose" data-value="SUCCESS">
+        <view class="rs-radio {{choice === 'SUCCESS' ? 'on' : ''}}"></view>
+        <text>买到了</text>
+      </view>
+      <view class="rs-opt {{choice === 'FAILED' ? 'active' : ''}}" catchtap="onChoose" data-value="FAILED">
+        <view class="rs-radio {{choice === 'FAILED' ? 'on' : ''}}"></view>
+        <text>没抢到</text>
+      </view>
+    </view>
+
+    <view class="rs-acts">
+      <view class="rs-confirm {{choice ? '' : 'disabled'}}" catchtap="onConfirm">确定</view>
+      <view class="rs-skip" catchtap="onSkip">忽略</view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,17 @@
+<view wx:if="{{trip}}" class="summary">
+  <view class="sm-top">
+    <text class="sm-name">{{trip.name}}</text>
+    <text class="sm-countdown">{{countdown}}</text>
+  </view>
+  <text class="sm-dates">{{dateRange}}</text>
+
+  <view class="sm-progress">
+    <view class="sm-progress-row">
+      <text class="sm-progress-label">门票搞定</text>
+      <text class="sm-progress-num">{{trip.progress.done}}/{{trip.progress.total}}</text>
+    </view>
+    <view class="sm-bar"><view class="sm-bar-fill" style="width: {{percent}}%;"></view></view>
+    <!-- 免预约项另起一行，不冒充完成度，也不能直接消失 -->
+    <text wx:if="{{noReservation > 0}}" class="sm-free">另有 {{noReservation}} 处随到随玩</text>
+  </view>
+</view>

@@ -1,0 +1,69 @@
+.dp-mask {
+  position: fixed; inset: 0; z-index: 250;
+  background: rgba(40,30,18,.45);
+  display: flex; align-items: flex-end;
+}
+.dp-sheet {
+  width: 100%;
+  background: var(--color-surface);
+  border-radius: 32rpx 32rpx 0 0;
+  padding: 32rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
+  animation: dp-up .24s cubic-bezier(.22,1,.36,1);
+  max-height: 78vh;
+  display: flex;
+  flex-direction: column;
+}
+@keyframes dp-up { from { transform: translateY(100%); } to { transform: none; } }
+
+.dp-head { margin-bottom: 24rpx; }
+.dp-title { font-size: 32rpx; font-weight: 700; color: var(--color-ink); display: block; }
+.dp-sub { font-size: 24rpx; color: var(--color-muted); margin-top: 4rpx; display: block; }
+
+.dp-loading { padding: 60rpx 0; display: flex; justify-content: center; }
+.dp-empty {
+  padding: 60rpx 0;
+  text-align: center;
+  font-size: 25rpx;
+  color: var(--color-muted);
+}
+
+.dp-list { max-height: 46vh; }
+.dp-opt {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 22rpx 20rpx;
+  border: 1rpx solid var(--color-border);
+  border-radius: 18rpx;
+  margin-bottom: 14rpx;
+}
+.dp-opt.active { border-color: var(--color-primary); background: rgba(192,71,42,.06); }
+.dp-radio {
+  width: 26rpx; height: 26rpx; border-radius: 13rpx;
+  border: 2rpx solid var(--color-placeholder);
+  flex-shrink: 0;
+}
+.dp-radio.on { border-color: var(--color-primary); background: var(--color-primary); }
+.dp-opt-body { flex: 1; min-width: 0; }
+.dp-opt-date { display: block; font-size: 27rpx; font-weight: 600; color: var(--color-ink); }
+.dp-opt-label { display: block; font-size: 22rpx; color: var(--color-text); margin-top: 4rpx; }
+.dp-opt-tag {
+  flex-shrink: 0;
+  font-size: 21rpx;
+  font-weight: 600;
+  padding: 5rpx 12rpx;
+  border-radius: 8rpx;
+}
+/* 「现在就能约」比「到点放票」更值得行动，用更强的底色 */
+.tag-now { background: var(--state-bookable-bg); color: var(--state-bookable-text); }
+.tag-later { background: var(--color-cream); color: var(--color-text); }
+
+.dp-acts { display: flex; gap: 16rpx; margin-top: 24rpx; align-items: center; }
+.dp-confirm {
+  flex: 1; text-align: center;
+  background: var(--color-primary); color: #FDF6EE;
+  border-radius: 18rpx; padding: 22rpx 0;
+  font-size: 28rpx; font-weight: 600;
+}
+.dp-confirm.disabled { background: var(--color-placeholder); }
+.dp-cancel { flex: 0 0 auto; padding: 22rpx 24rpx; font-size: 26rpx; color: var(--color-muted); }

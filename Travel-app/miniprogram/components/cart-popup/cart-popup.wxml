@@ -1,61 +1,80 @@
 <view wx:if="{{show}}" class="cart-popup {{aboveTabbar ? 'above-tabbar' : ''}}">
-  <!-- 遮罩层：点击关闭，并拦截背景滚动（不影响弹层内列表滚动） -->
   <view class="cart-mask" style="bottom: {{bottomOffset}};" bindtap="onMaskTap" catchtouchmove="noop"></view>
 
-  <!-- 底部弹层：从底部升起；高度 = 头部 + 列表（列表高度由 JS 按 80% 屏高限制，px 内联） -->
   <view class="cart-sheet" style="bottom: {{bottomOffset}};" catchtap="onSheetTap">
-    <!-- 头部 -->
+    <!-- 头部：标题 + 清空 -->
     <view class="cart-header" catchtouchmove="noop">
-      <text class="cart-title">加入行程：共{{summary ? summary.count : 0}}项</text>
+      <text class="cart-title">行程清单：共{{summary ? summary.count : 0}}项</text>
       <view class="cart-clear-btn" bindtap="onClearTap">
         <svg-icon name="trash" size="14px" />
         <text>清空</text>
       </view>
     </view>
 
-    <!-- 列表：米色底 + 日期白卡；listStyle 为 JS 计算的确定性高度（px），超高内部滚动 -->
     <scroll-view scroll-y class="cart-list" style="{{listStyle}}">
       <view class="cart-list-inner">
         <block wx:if="{{loading}}">
-          <view class="cart-loading">
-            <van-loading size="40rpx" color="#B8904A" />
-          </view>
+          <view class="cart-loading"><van-loading size="40rpx" color="#B8904A" /></view>
         </block>
         <block wx:elif="{{groups.length === 0}}">
-          <view class="cart-empty">
-            <text>清单还是空的，去时间线选择景点吧</text>
-          </view>
+          <view class="cart-empty"><text>清单还是空的，去时间线选择景点吧</text></view>
         </block>
         <block wx:else>
+          <!-- 按放票日期分组；免预约项单独一组 -->
           <view wx:for="{{groups}}" wx:key="key" wx:for-item="group" class="cart-group">
             <view class="cart-group-header">{{group.label}}</view>
             <view class="cart-group-card">
-              <view wx:for="{{group.items}}" wx:key="_id" wx:for-item="item" class="cart-item">
-                <view class="cart-item-time">
-                  <text class="cart-item-clock">{{item.releaseTimeLabel}}</text>
-                  <text wx:if="{{item.countdown && !item.countdown.expired && item.countdown.hours < 12}}" class="cart-item-countdown">
-                    {{item.countdown.text}}
-                  </text>
-                </view>
-                <view class="cart-item-body">
-                  <text class="cart-item-name">{{item.spotName}}</text>
-                  <view class="cart-item-visit">
-                    <text class="cart-item-visit-pre">约 </text>
-                    <text class="cart-item-visit-date">{{item.visitDate}}</text>
-                    <text class="cart-item-visit-suf">{{item.visitRest}}</text>
+            <view wx:for="{{group.items}}" wx:key="_id" wx:for-item="item" class="cart-row">
+              <image class="cart-row-thumb" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" />
+
+              <view class="cart-row-body">
+                <text class="cart-row-name">{{item.spotName}}</text>
+                <text class="cart-row-sub">{{item.subline}}</text>
+              </view>
+
+              <!-- 动作下拉二选一。免预约项固定不可改（不是置灰，是压根没有这个选择） -->
+              <view class="cart-row-action">
+                <view
+                  wx:if="{{item.canToggle}}"
+                  class="cart-drop {{openDropdown === item._id ? 'open' : ''}}"
+                  catchtap="onToggleDropdown"
+                  data-id="{{item._id}}"
+                >
+                  <text>{{item.remindText}}</text>
+                  <svg-icon name="{{openDropdown === item._id ? 'chevron-up' : 'chevron-down'}}" size="11px" />
+                  <view wx:if="{{openDropdown === item._id}}" class="cart-drop-pop" catchtap="noop">
+                    <view class="cart-drop-opt {{item.remindOn ? 'active' : ''}}"
+                          catchtap="onPickRemind" data-id="{{item._id}}" data-remind="{{true}}">
+                      {{OPTION_ON}}
+                    </view>
+                    <view class="cart-drop-opt {{!item.remindOn ? 'active' : ''}}"
+                          catchtap="onPickRemind" data-id="{{item._id}}" data-remind="{{false}}">
+                      {{OPTION_OFF}}
+                    </view>
                   </view>
                 </view>
-                <view class="cart-item-delete" bindtap="onRemove" data-id="{{item._id}}">
-                  <svg-icon name="trash" size="14px" />
-                </view>
+                <!-- 免预约：同屏说明，不能只靠弹窗解释 -->
+                <text wx:else class="cart-no-remind">无需预约，随到随玩，不设提醒</text>
               </view>
+
+              <!-- 清单是一次性任务，不做中间态管理：右侧直接给垃圾桶 -->
+              <view class="cart-row-delete" catchtap="onRemove" data-id="{{item._id}}">
+                <svg-icon name="trash" size="15px" />
+              </view>
+            </view>
             </view>
           </view>
         </block>
       </view>
     </scroll-view>
 
-    <!-- 底部操作栏：复用页面自身的清单栏模块（弹窗从该模块上方开始） -->
+    <!-- 底部提交条：已选 N 项，覆盖 M 个景点 + 提交行程清单 -->
+    <view class="cart-foot" catchtouchmove="noop">
+      <text class="cart-foot-text">已选 {{summary ? summary.count : 0}} 项，覆盖 {{summary ? summary.spotCount : 0}} 个景点</text>
+      <view class="cart-foot-btn {{summary && summary.count ? '' : 'disabled'}}" bindtap="onSubmit">
+        提交行程清单
+      </view>
+    </view>
   </view>
 </view>
 
@@ -69,5 +88,5 @@
   bind:confirm="onClearConfirm"
   bind:cancel="onClearCancel"
 >
-  <view class="dialog-body">确认清空提醒清单？</view>
+  <view class="dialog-body">确认清空行程清单？</view>
 </van-dialog>

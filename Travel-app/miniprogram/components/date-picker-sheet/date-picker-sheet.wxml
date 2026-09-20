@@ -1,0 +1,37 @@
+<view wx:if="{{show}}" class="dp-mask" bindtap="onClose" catchtouchmove="noop">
+  <view class="dp-sheet" catchtap="noop">
+    <view class="dp-head">
+      <text class="dp-title">约其他日</text>
+      <text class="dp-sub">{{spotName}}</text>
+    </view>
+
+    <view wx:if="{{loading}}" class="dp-loading"><van-loading size="36rpx" color="#B8904A" /></view>
+
+    <!-- 没有候选时给一句实话，不给空转建议 -->
+    <view wx:elif="{{options.length === 0}}" class="dp-empty">
+      <text>这个世界暂时没有别的可约日期了</text>
+    </view>
+
+    <scroll-view wx:else scroll-y class="dp-list">
+      <view
+        wx:for="{{options}}"
+        wx:key="visitDate"
+        class="dp-opt {{choice === item.visitDate ? 'active' : ''}}"
+        catchtap="onChoose"
+        data-date="{{item.visitDate}}"
+      >
+        <view class="dp-radio {{choice === item.visitDate ? 'on' : ''}}"></view>
+        <view class="dp-opt-body">
+          <text class="dp-opt-date">{{item.dateText}}</text>
+          <text class="dp-opt-label">{{item.label}}</text>
+        </view>
+        <view class="dp-opt-tag tag-{{item.actionClass}}">{{item.actionText}}</view>
+      </view>
+    </scroll-view>
+
+    <view class="dp-acts">
+      <view class="dp-confirm {{choice ? '' : 'disabled'}}" catchtap="onConfirm">确定</view>
+      <view class="dp-cancel" catchtap="onClose">取消</view>
+    </view>
+  </view>
+</view>

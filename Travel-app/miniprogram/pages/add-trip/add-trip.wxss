@@ -1,0 +1,877 @@
+/* ===== 自定义导航栏 ===== */
+.navbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 90;
+  background: transparent;
+  overflow: hidden;
+}
+.navbar::after {
+  content: '';
+  position: absolute;
+  top: 0; right: -40rpx;
+  width: 360rpx; height: 100%;
+  background: radial-gradient(ellipse at 70% 30%, rgba(234,160,145,0.12), transparent 70%);
+  pointer-events: none;
+}
+.navbar-content {
+  display: flex;
+  align-items: center;
+  padding-left: 30rpx;
+  position: relative;
+}
+.navbar-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+
+.navbar-back {
+  width: 60rpx;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  margin-left: -8rpx;
+}
+.navbar-back:active { opacity: .6; }
+
+/* ===== 页面主体 ===== */
+.page-scroll { width: 100%; }
+.page-body {
+  padding: 24rpx 30rpx 240rpx;
+  position: relative;
+}
+/* 创建态：提示语「为你生成专属抢票时间线」到底部 Tab 间距 ≤ 20px（37rpx），并补偿安全区 */
+.page-body-create {
+  padding-bottom: calc(137rpx + env(safe-area-inset-bottom));
+}
+
+/* 城市背景装饰图 */
+.city-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 485rpx;
+  z-index: 0;
+  pointer-events: none;
+}
+/* 表单内容浮于背景图之上 */
+.form-section, .primary-btn, .hot-section, .more-spots, .helper-text {
+  position: relative;
+  z-index: 1;
+}
+/* 任务列表形态：Banner/Tab/筛选/列表同样浮于背景图之上 */
+.banner, .trip-tabs, .filter-row, .task-group, .empty-state {
+  position: relative;
+  z-index: 1;
+}
+
+/* ===== 表单模块 ===== */
+.form-section { margin-bottom: 30rpx; }
+.form-section-first { margin-top: 60rpx; } /* 30px */
+.form-label {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 16rpx;
+}
+.form-row {
+  display: flex;
+  align-items: stretch;
+  gap: 16rpx;
+}
+.form-city-card {
+  flex-shrink: 0;
+  width: 180rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 0 16rpx;
+  height: 88rpx;
+  background: var(--color-surface);
+  border: 1rpx solid var(--color-border);
+  border-radius: 24rpx;
+  box-shadow: var(--shadow-input);
+}
+.form-city-name {
+  font-size: 24rpx;
+  font-weight: 500;
+  color: var(--color-ink);
+}
+.form-input-card {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 0 24rpx;
+  height: 88rpx;
+  background: var(--color-surface);
+  border: 1rpx solid var(--color-border);
+  border-radius: 24rpx;
+  box-shadow: var(--shadow-input);
+}
+.form-date-card {
+  flex: 1;
+  min-width: 0;
+}
+.form-placeholder {
+  font-size: 26rpx;
+  color: var(--color-placeholder);
+  flex: 1;
+}
+.form-value {
+  font-size: 26rpx;
+  color: var(--color-ink);
+  flex: 1;
+}
+.form-tags-scroll {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+}
+.form-tags {
+  display: inline-flex;
+  gap: 8rpx;
+}
+.form-tag {
+  flex-shrink: 0;
+  padding: 4rpx 16rpx;
+  background: var(--color-cream);
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  color: var(--color-text);
+}
+.form-count {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: var(--color-placeholder);
+}
+.form-date-row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.form-day-count {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: var(--color-placeholder);
+}
+
+/* ===== 主按钮 ===== */
+.primary-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  height: 88rpx;
+  background: var(--color-primary);
+  border-radius: 24rpx;
+  color: #fff;
+  font-size: 28rpx;
+  font-weight: 600;
+  margin-bottom: 36rpx;
+  box-shadow: 0 4rpx 12rpx rgba(192,71,42,0.2);
+}
+
+/* ===== 热门景点网格 ===== */
+.hot-section { margin-bottom: 32rpx; }
+.hot-title {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 20rpx;
+}
+.hot-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+.spot-card {
+  width: 337rpx;
+  margin-bottom: 16rpx;
+  background: var(--color-surface);
+  border-radius: 24rpx;
+  box-shadow: var(--shadow-card);
+  padding: 16rpx;
+  position: relative;
+  box-sizing: border-box;
+}
+.spot-card-img {
+  width: 100%;
+  height: 127rpx;
+  border-radius: 12rpx;
+  display: block;
+  background: linear-gradient(135deg, #EDE0C8, #DBCDBB);
+  margin-bottom: 12rpx;
+}
+.spot-card-img-text {
+  font-size: 20rpx;
+  color: var(--color-muted);
+  max-width: 90%;
+  text-align: center;
+  overflow: hidden;
+}
+.spot-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+.spot-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+.spot-card-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 26rpx;
+  font-weight: 500;
+  color: var(--color-text);
+  text-decoration: underline;
+}
+.spot-card-diff {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 2rpx 12rpx;
+  border-radius: 8rpx;
+  font-size: 20rpx;
+  width: fit-content;
+}
+.diff-EXTREME { background: var(--diff-extreme-bg); color: var(--diff-extreme-text); }
+.diff-NORMAL { background: var(--diff-normal-bg); color: var(--diff-normal-text); }
+.diff-EASY { background: var(--diff-easy-bg); color: var(--diff-easy-text); }
+.spot-card-tags {
+  display: flex;
+  gap: 8rpx;
+  flex-wrap: wrap;
+}
+.spot-card-tag {
+  font-size: 20rpx;
+  color: var(--color-muted);
+}
+.card-desc { line-height: 1.5; }
+.spot-card-select {
+  position: absolute;
+  top: 24rpx;
+  right: 24rpx;
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 6rpx 16rpx;
+  border-radius: 24rpx;
+  border: 1rpx solid var(--color-primary);
+  font-size: 20rpx;
+  color: var(--color-primary);
+  background: rgba(255,255,255,0.9);
+}
+.spot-card-select.selected {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary-soft);
+  color: #fff;
+}
+
+/* B 层免预约：选择按钮位置改为信息 tag */
+.spot-card-nobook {
+  position: absolute;
+  top: 24rpx;
+  right: 24rpx;
+  display: flex;
+  align-items: center;
+  padding: 6rpx 16rpx;
+  border-radius: 24rpx;
+  border: 1rpx solid var(--color-border);
+  font-size: 20rpx;
+  color: var(--color-muted);
+  background: rgba(255,255,255,0.9);
+}
+
+/* ===== 更多景点 / 辅助文案 ===== */
+.more-spots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  margin: 0 auto;
+  width: 374rpx;
+  height: 84rpx;
+  background: var(--color-surface);
+  border: 1rpx solid var(--color-border);
+  border-radius: 24rpx;
+  font-size: 26rpx;
+  color: var(--color-primary);
+}
+.helper-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  font-size: 24rpx;
+  color: var(--color-muted);
+  margin-top: 24rpx;
+}
+
+/* ===== Banner（设计稿：通栏浅黄条，喇叭图标 + 主色文字） ===== */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 20rpx 30rpx;
+  margin: 0 -30rpx 24rpx;
+  background: #FFF2CC;
+  border-top: 1rpx solid #EAD9A8;
+  border-bottom: 1rpx solid #EAD9A8;
+  box-shadow: 0 2rpx 8rpx rgba(100, 60, 20, 0.08);
+}
+.banner-text {
+  flex: 1;
+  font-size: 24rpx;
+  color: var(--color-primary);
+  line-height: 1.5;
+}
+
+/* ===== 行程分组 Tab（设计稿：胶囊选中态 + 竖分隔线） ===== */
+.trip-tabs {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: -4px;
+  margin-bottom: 16rpx;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.trip-tab {
+  position: relative;
+  padding: 8rpx 24rpx;
+  border-radius: 24rpx;
+  font-size: 24rpx;
+  color: #876551;
+  flex-shrink: 0;
+}
+.trip-tab.active {
+  background: var(--color-primary);
+  color: #fff;
+}
+.trip-tab + .trip-tab::before {
+  content: '';
+  position: absolute;
+  left: -8rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1rpx;
+  height: 20rpx;
+  background: #EAD9A8;
+}
+
+/* ===== 状态筛选 + 清空任务 ===== */
+.filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28rpx;
+}
+.filter-chips {
+  display: flex;
+  gap: 16rpx;
+}
+.filter-chip {
+  padding: 8rpx 24rpx;
+  border-radius: 24rpx;
+  border: 1rpx solid var(--color-border);
+  background: #FDF9EE;
+  font-size: 24rpx;
+  color: var(--color-text);
+}
+.filter-chip.active {
+  border-color: var(--color-primary);
+  background: #F5DDD5;
+  color: var(--color-primary);
+}
+.clear-tasks {
+  font-size: 24rpx;
+  color: #B09878;
+}
+
+/* ===== 任务列表：按日期分组白面板 ===== */
+.task-group { margin-bottom: 24rpx; }
+.task-group-header {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  font-size: 26rpx;
+  color: var(--color-text);
+  padding: 8rpx 0 16rpx;
+}
+.task-group-arrow {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+  border: 1rpx solid var(--color-border);
+  background: var(--color-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.task-panel {
+  background: var(--color-surface);
+  border-radius: 16rpx;
+  box-shadow: var(--shadow-card);
+}
+.task-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  padding: 24rpx 20rpx;
+}
+.task-card-time {
+  width: 80rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  flex-shrink: 0;
+}
+.task-clock {
+  font-size: 26rpx;
+  color: var(--color-text);
+}
+.task-countdown {
+  font-size: 20rpx;
+  color: var(--color-primary);
+}
+.task-card-img {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 12rpx;
+  display: block;
+  background: linear-gradient(135deg, #EDE0C8, #DBCDBB);
+  flex-shrink: 0;
+}
+.task-card-img-text {
+  font-size: 18rpx;
+  color: var(--color-muted);
+  max-width: 72rpx;
+  text-align: center;
+  overflow: hidden;
+}
+.task-card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+.task-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 2rpx;
+}
+.task-card-name {
+  font-size: 26rpx;
+  color: var(--color-ink);
+  text-decoration: underline;
+}
+.task-card-visit {
+  font-size: 22rpx;
+  color: var(--color-text);
+}
+.task-card-visit-date {
+  color: var(--color-primary);
+}
+.task-card-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8rpx;
+  flex-shrink: 0;
+}
+.task-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 6rpx 14rpx;
+  border-radius: 24rpx;
+  font-size: 20rpx;
+}
+.status-waiting { background: #F2E4C0; color: #C26B0C; }
+.status-done { background: #F3F1EE; color: #7A5540; }
+.status-missed { background: #F5DDD5; color: #C0472A; }
+.task-card-menu {
+  position: relative;
+  width: 40rpx;
+  height: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.task-delete-popup {
+  position: absolute;
+  top: calc(100% + 6rpx);
+  right: 0;
+  z-index: 30;
+  background: var(--color-surface);
+  border: 1rpx solid #EDE0C8;
+  border-radius: 12rpx;
+  box-shadow: 0 4rpx 16rpx rgba(100, 60, 20, 0.14);
+}
+.task-delete-item {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 14rpx 20rpx;
+  font-size: 24rpx;
+  color: #7A5540;
+  white-space: nowrap;
+}
+/* 已提醒(TRIGGERED) 不可单删时的说明行（REMINDER-RULE-005 2026-09-14 放宽后仅剩这一档） */
+.task-delete-hint {
+  padding: 14rpx 20rpx;
+  font-size: 22rpx;
+  color: #A99A8A;
+  white-space: nowrap;
+}
+
+/* ===== 空状态 ===== */
+.empty-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 120rpx 0;
+  font-size: 26rpx;
+  color: var(--color-placeholder);
+}
+
+/* ===== FAB 按钮 ===== */
+.fab-btn {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(140rpx + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 20rpx 48rpx;
+  background: var(--color-primary);
+  border-radius: 44rpx;
+  color: #fff;
+  font-size: 26rpx;
+  box-shadow: 0 4rpx 16rpx rgba(192,71,42,0.3);
+  z-index: 110;
+}
+
+/* ===== 内联时间线（形态1 生成后展示） ===== */
+/* 生成时间线后页面底部需让开「清单条 + 底部导航」 */
+.page-body-timeline {
+  padding-bottom: calc(240rpx + env(safe-area-inset-bottom));
+}
+
+/* 预约时间线模块：背景通栏白，内容左右 30rpx padding */
+.timeline-section {
+  margin: 0 -30rpx;
+  padding: 0 0 8rpx;
+  background: var(--color-surface);
+}
+
+/* 时间线标题区：滚动越过导航栏下方后吸顶 */
+.timeline-panel {
+  padding: 24rpx 0 8rpx;
+  margin-bottom: 16rpx;
+}
+.timeline-panel-fixed {
+  position: fixed;
+  left: 0;
+  right: 0;
+  padding: 24rpx 0 8rpx;
+  box-sizing: border-box;
+  background: var(--color-surface);
+  z-index: 85;
+  border-bottom: 1rpx solid var(--color-border);
+  box-shadow: 0 4rpx 12rpx rgba(100,60,20,0.08);
+}
+.timeline-header-spacer { width: 100%; }
+
+.timeline-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 30rpx;
+  margin-bottom: 16rpx;
+}
+.timeline-title-wrap { display: flex; align-items: center; gap: 8rpx; }
+.timeline-title { font-size: 28rpx; font-weight: 600; color: var(--color-primary); }
+
+/* 视图切换：米色容器 + 白色选中项 */
+.view-switcher {
+  display: flex;
+  gap: 0;
+  background: #F3EEE3;
+  border-radius: 12rpx;
+  padding: 4rpx;
+}
+.view-switcher-item {
+  padding: 8rpx 24rpx;
+  font-size: 22rpx;
+  color: #A99180;
+  border-radius: 8rpx;
+  line-height: 1.4;
+}
+.view-switcher-item.active {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-weight: 600;
+  box-shadow: 0 2rpx 6rpx rgba(100,60,20,0.08);
+}
+
+/* 出游日 Tab */
+.tab-row {
+  white-space: nowrap;
+  margin-bottom: 16rpx;
+}
+.tab-row-inner {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 30rpx;
+}
+.tab-prefix {
+  font-size: 22rpx;
+  color: #B59E80;
+  margin-right: 12rpx;
+}
+.tab-item {
+  display: inline-block;
+  padding: 8rpx 20rpx;
+  margin-right: 12rpx;
+  border-radius: 12rpx;
+  font-size: 22rpx;
+  color: #9B7F6F;
+  background: var(--color-surface);
+  border: 1rpx solid var(--color-border);
+}
+.tab-item.active {
+  background: #F7E7E1;
+  border-color: #F7E7E1;
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+/* 说明 + 一键全部提醒 */
+.timeline-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  padding: 0 30rpx;
+}
+.timeline-caption {
+  flex: 1;
+  font-size: 22rpx;
+  color: #B59E80;
+}
+.timeline-batch-btn {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 8rpx 20rpx;
+  background: #F5DDD5;
+  border-radius: 24rpx;
+  font-size: 22rpx;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+/* ===== 时间线事件 ===== */
+.timeline-list { padding: 4rpx 30rpx 0; }
+.timeline-event {
+  display: flex;
+  align-items: stretch;
+  margin-bottom: 8rpx;
+}
+
+/* 左侧时间列：白底（模块白底），日期与时间同字号、不加粗；虚线连接两个日期 */
+.event-rail {
+  width: 112rpx;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 20rpx;
+}
+.event-rail-date {
+  font-size: 24rpx;
+  color: #6B5248;
+}
+.event-rail-time {
+  font-size: 24rpx;
+  color: var(--color-primary);
+}
+.event-rail-line {
+  flex: 1;
+  width: 2rpx;
+  margin: 12rpx 0 0 18rpx;
+  background: #DDD0B5;
+}
+
+/* 事件卡：左侧信息 + 竖虚线 + 右侧按钮 */
+.event-card {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  background: #F8F3EA;
+  border: 1rpx solid rgba(237,224,200,0.55);
+  border-radius: 16rpx;
+  padding: 24rpx 20rpx;
+  margin-bottom: 16rpx;
+  box-shadow: 0 2rpx 6rpx rgba(100,60,20,0.04);
+}
+.event-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  padding-right: 20rpx;
+}
+.event-status {
+  font-size: 20rpx;
+  color: #8A6955;
+}
+.event-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+.event-name {
+  max-width: 300rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 28rpx;
+  font-weight: 500;
+  color: var(--color-ink);
+  text-decoration: underline;
+}
+.event-diff {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 2rpx 12rpx;
+  border-radius: 8rpx;
+  font-size: 20rpx;
+  width: fit-content;
+}
+.event-visit {
+  font-size: 24rpx;
+  color: var(--color-primary);
+}
+.event-visit-ticket {
+  color: #997D6B;
+}
+
+/* 竖虚线分隔 */
+.event-divider {
+  width: 2rpx;
+  background-image: linear-gradient(to bottom, #DDD0B5 50%, transparent 50%);
+  background-size: 2rpx 8rpx;
+  background-repeat: repeat-y;
+  margin: 4rpx 0;
+  flex-shrink: 0;
+}
+
+/* 右侧按钮区 */
+.event-action {
+  width: 190rpx;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  padding-left: 16rpx;
+}
+.event-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  padding: 10rpx 0;
+  width: 100%;
+  border-radius: 12rpx;
+  font-size: 24rpx;
+  box-sizing: border-box;
+}
+.event-btn-SELECTABLE { background: #F5DDD5; color: var(--color-primary); }
+.event-btn-IN_CART { background: #FAF7F2; border: 1rpx solid #D7BF96; color: #A68045; }
+.event-btn-WAITING, .event-btn-REMINDERED { background: var(--color-surface); border: 1rpx solid #E8E0D0; color: #A99180; }
+.event-btn-BOOKABLE { background: #B8904A; color: #fff; }
+.event-btn-COMMITTED { background: var(--color-surface); border: 1rpx solid #E8E0D0; color: #A99180; }
+.event-btn-FULL { background: #EDE5D2; color: #B8904A; }
+.event-btn-sub {
+  font-size: 20rpx;
+  color: #B59E80;
+  text-align: center;
+}
+
+.closed-spots { margin-top: 24rpx; }
+.closed-spot { display: flex; align-items: center; gap: 8rpx; padding: 12rpx 0; font-size: 24rpx; color: var(--color-muted); }
+
+.loading-wrap { display: flex; justify-content: center; padding: 80rpx 0; }
+
+/* ===== 内联时间线清单条（置于底部导航之上） ===== */
+.cart-bar {
+  position: fixed;
+  bottom: calc(100rpx + env(safe-area-inset-bottom));
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 30rpx;
+  background: var(--color-surface);
+  box-shadow: 0 -2rpx 12rpx rgba(100,60,20,0.06);
+  z-index: 80;
+}
+.cart-bar-icon {
+  position: relative;
+  width: 60rpx;
+  height: 60rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #B8904A;
+  border-radius: 50%;
+}
+.cart-bar-badge {
+  position: absolute;
+  top: -4rpx;
+  right: -8rpx;
+  min-width: 28rpx;
+  height: 28rpx;
+  line-height: 28rpx;
+  padding: 0 6rpx;
+  border-radius: 14rpx;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 18rpx;
+  text-align: center;
+}
+.cart-bar-text { flex: 1; font-size: 24rpx; color: var(--color-text); }
+.cart-bar-btn {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 16rpx 36rpx;
+  background: var(--color-primary);
+  border-radius: 32rpx;
+  color: #fff;
+  font-size: 26rpx;
+  font-weight: 500;
+}

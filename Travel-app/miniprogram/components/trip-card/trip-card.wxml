@@ -1,0 +1,74 @@
+<view class="trip-card {{history ? 'is-history' : ''}}">
+  <!-- 主行：缩略图 + 景点名 + 放票行 + 状态标签 + 三点菜单 -->
+  <view class="tc-main">
+    <image class="tc-thumb" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" bindtap="onTapSpot" />
+
+    <view class="tc-info">
+      <view class="tc-name-row">
+        <text class="tc-name" bindtap="onTapSpot">{{item.spotName}}</text>
+        <svg-icon name="chevron-right-ink" size="11px" />
+        <view wx:if="{{item.difficulty}}" class="tc-diff diff-{{item.difficulty.key}}">{{item.difficulty.text}}</view>
+      </view>
+
+      <view class="tc-sub">
+        <text class="tc-release">{{releaseLine}}</text>
+        <text wx:if="{{!history && !item.ended}}" class="tc-countdown">{{countdown}}</text>
+      </view>
+
+      <!-- 提醒送达态：独立于票务态。未送达是**状态**，必须直接可见，
+           不能只藏进菜单——否则又回到「静默失败」 -->
+      <view
+        wx:if="{{!history && item.remindOn && item.reminder.state !== 'NOT_SET'}}"
+        class="tc-reminder tc-reminder-{{reminderClass}}"
+        catchtap="onReminderTap"
+      >
+        <svg-icon wx:if="{{item.reminder.state === 'MISSED'}}" name="alert-circle" size="11px" />
+        <text>{{item.reminder.stateLabel || item.reminder.state}}</text>
+        <text wx:if="{{item.reminder.state === 'MISSED'}}" class="tc-reminder-more">查看原因</text>
+      </view>
+    </view>
+
+    <!-- 票务状态标签：卡上直显，点不进菜单 -->
+    <view class="tc-state tc-state-{{stateClass}}">{{stateChip}}</view>
+
+    <view wx:if="{{!history}}" class="tc-menu" catchtap="onMenuToggle">
+      <svg-icon name="menu-muted" size="14px" />
+      <!-- 三点菜单：**只放操作项**。状态类信息一律在卡片上直接展示，不进菜单 -->
+      <view wx:if="{{menuOpen}}" class="tc-menu-pop" catchtap="onMenuClose">
+        <view wx:if="{{item.canMark}}" class="tc-menu-item" catchtap="onMark">
+          <svg-icon name="check-muted" size="14px" /><text>标记结果</text>
+        </view>
+        <!-- 仅「已设提醒且尚未开票」显示：开票后提醒已发完，改了也没用 -->
+        <view wx:if="{{item.remindOn && item.ticketState === 'PENDING'}}" class="tc-menu-item" catchtap="onEditReminder">
+          <svg-icon name="bell-plus" size="14px" /><text>修改提醒设置</text>
+        </view>
+        <view class="tc-menu-item tc-menu-danger" catchtap="onRemove">
+          <svg-icon name="trash" size="14px" /><text>删除行程</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 回填气泡：**开票后才出现**（开票前不问结果），可抢态的主入口 -->
+  <view wx:if="{{!history && item.canMark && !bubbleDismissed}}" class="tc-bubble">
+    <text class="tc-bubble-q">票抢到了吗？</text>
+    <text class="tc-bubble-hint">标记一下，陪你把这趟的票盯完</text>
+    <view class="tc-bubble-acts">
+      <view class="tc-bubble-btn tc-bubble-yes" catchtap="onResult" data-result="SUCCESS">抢到了</view>
+      <view class="tc-bubble-btn tc-bubble-no" catchtap="onResult" data-result="FAILED">没抢到</view>
+      <view class="tc-bubble-skip" catchtap="onDismissBubble">忽略</view>
+    </view>
+  </view>
+
+  <!-- 「没抢到且还有别的日期可约」时，卡片下方的固定挽回入口。
+       有没有候选由页面调 recoveryCandidates 判定（三层规则在服务端）；
+       什么都不建议是合法的——没有候选时这块整个不出现。 -->
+  <view
+    wx:if="{{!history && item.result === 'FAILED' && recoverable}}"
+    class="tc-recover"
+    catchtap="onRecover"
+  >
+    <text class="tc-recover-text">{{recoverHint}}</text>
+    <view class="tc-recover-btn">约其他日</view>
+  </view>
+</view>

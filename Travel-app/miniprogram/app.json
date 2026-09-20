@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/home/home",
+    "pages/add-trip/add-trip",
     "pages/spots/spots",
     "pages/spot-hub/spot-hub",
     "pages/spot-rule/spot-rule",

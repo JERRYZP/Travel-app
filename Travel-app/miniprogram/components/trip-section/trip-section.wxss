@@ -1,0 +1,82 @@
+.trip-section { margin-bottom: 40rpx; }
+.ts-spacer { width: 100%; }
+.trip-section.is-history { opacity: .78; }
+
+/* 行程分段标题：吸顶态给底色，否则会透出下面滚过去的卡片 */
+.ts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 12rpx 0 16rpx;
+}
+.ts-head.is-sticky {
+  position: fixed;
+  left: 0; right: 0;
+  z-index: 85;
+  background: var(--color-page);
+  padding: 12rpx 30rpx 16rpx;
+  border-bottom: 1rpx solid var(--color-border);
+}
+/* 只有一趟行程时弱化：看起来就是一堵干净的墙，而不是「有个分组要管」 */
+.ts-head.is-weak { padding-top: 0; }
+.ts-head.is-weak .ts-city { font-size: 26rpx; }
+.ts-head.is-weak .ts-progress { display: none; }
+
+.ts-head-left { display: flex; align-items: baseline; gap: 14rpx; min-width: 0; }
+.ts-city { font-size: 30rpx; font-weight: 700; color: var(--color-ink); }
+.ts-range { font-size: 23rpx; color: var(--color-text); }
+.ts-progress {
+  font-size: 22rpx;
+  color: var(--color-muted);
+  background: var(--color-cream);
+  border-radius: 8rpx;
+  padding: 2rpx 10rpx;
+}
+.ts-manage {
+  display: flex; align-items: center; gap: 6rpx;
+  font-size: 23rpx;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+/* 日期分段标题 */
+.ts-day { margin-bottom: 8rpx; }
+.ts-day-head {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin: 16rpx 2rpx 14rpx;
+}
+.ts-day-title { font-size: 27rpx; font-weight: 700; color: var(--color-ink); }
+.ts-day-badge {
+  font-size: 21rpx;
+  font-weight: 600;
+  color: var(--color-muted);
+  background: var(--color-cream);
+  border-radius: 8rpx;
+  padding: 2rpx 10rpx;
+}
+/* 细分割线把日期标题和右侧菜单拉开 */
+.ts-day-line { flex: 1; height: 1rpx; background: var(--color-border); }
+
+.ts-day-menu { position: relative; padding: 6rpx; }
+.ts-day-pop {
+  position: absolute;
+  top: 44rpx;
+  right: 0;
+  z-index: 30;
+  background: var(--color-surface);
+  border: 1rpx solid var(--color-border);
+  border-radius: 16rpx;
+  box-shadow: 0 8rpx 24rpx rgba(100,60,20,.16);
+  min-width: 280rpx;
+  padding: 8rpx 0;
+}
+.ts-day-pop-item {
+  display: flex; align-items: center; gap: 12rpx;
+  padding: 18rpx 24rpx;
+  font-size: 26rpx;
+  color: #C0392B;
+}
+.ts-day-pop-item:active { background: var(--color-page); }

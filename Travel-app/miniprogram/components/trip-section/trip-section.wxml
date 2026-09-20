@@ -1,0 +1,61 @@
+<view class="trip-section {{history ? 'is-history' : ''}}">
+  <!-- 吸顶时标题脱离文档流，撑一个等高的占位防止内容跳动 -->
+  <view wx:if="{{sticky}}" class="ts-spacer" style="height: {{headHeight}}px;"></view>
+
+  <!-- 行程分段：城市 + 日期范围 + 紧凑进度 + 右侧行程管理入口 -->
+  <view
+    id="sec-{{trip._id}}"
+    class="ts-head {{sticky ? 'is-sticky' : ''}} {{weak ? 'is-weak' : ''}}"
+    style="{{sticky ? 'top: ' + stickyTop + 'px;' : ''}}"
+  >
+    <view class="ts-head-left">
+      <text class="ts-city">{{trip.city}}</text>
+      <text class="ts-range">{{dateRange}}</text>
+      <text class="ts-progress">{{progressText}}</text>
+    </view>
+    <view wx:if="{{!history}}" class="ts-manage" catchtap="onManage">
+      <svg-icon name="list" size="14px" />
+      <text>行程管理</text>
+    </view>
+  </view>
+
+  <view wx:for="{{days}}" wx:key="key" wx:for-item="day" class="ts-day">
+    <!-- 日期分段标题：带「删除当天行程」菜单（删除动线第二层） -->
+    <view class="ts-day-head">
+      <text class="ts-day-title">{{day.title}}</text>
+      <view class="ts-day-badge">{{day.badge}}</view>
+      <view class="ts-day-line"></view>
+      <view wx:if="{{!history}}" class="ts-day-menu" catchtap="onDateMenuToggle" data-date="{{day.key}}">
+        <svg-icon name="menu-muted" size="13px" />
+        <view wx:if="{{day.menuOpen}}" class="ts-day-pop" catchtap="onMenuClose">
+          <view class="ts-day-pop-item" catchtap="onRemoveDate" data-date="{{day.key}}">
+            <svg-icon name="trash" size="14px" /><text>删除当天行程</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- ⚠️ wx:key 用 itemId：同一景点可以有多个备选日期，用 spotId 会重键 -->
+    <trip-card
+      wx:for="{{day.items}}"
+      wx:key="itemId"
+      wx:for-item="it"
+      item="{{it}}"
+      history="{{history}}"
+      menu-id="{{menuId}}"
+      bubble-dismissed="{{it.bubbleDismissed}}"
+      recoverable="{{it.recoverable}}"
+      recover-hint="{{it.recoverHint}}"
+      bind:spot="onCardSpot"
+      bind:menu="onCardMenu"
+      bind:menuclose="onMenuClose"
+      bind:mark="onCardMark"
+      bind:editreminder="onCardEditReminder"
+      bind:remove="onCardRemove"
+      bind:result="onCardResult"
+      bind:dismiss="onCardDismiss"
+      bind:recover="onCardRecover"
+      bind:missedreason="onCardMissedReason"
+    />
+  </view>
+</view>

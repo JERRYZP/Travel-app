@@ -1,0 +1,30 @@
+.rb {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  background: #F7EAD3;
+  border: 1rpx solid #EAD9A8;
+  border-radius: 14rpx;
+  padding: 16rpx 20rpx;
+  margin-bottom: 20rpx;
+}
+/* 小红点：横幅是「眼下要发生的事」，用它标记时效性 */
+.rb-dot {
+  width: 12rpx; height: 12rpx; border-radius: 6rpx;
+  background: var(--color-primary);
+  flex-shrink: 0;
+}
+.rb-text {
+  flex: 1; min-width: 0;
+  font-size: 24rpx;
+  color: #8A5A12;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rb-go {
+  flex-shrink: 0;
+  font-size: 23rpx;
+  font-weight: 600;
+  color: var(--color-primary);
+}

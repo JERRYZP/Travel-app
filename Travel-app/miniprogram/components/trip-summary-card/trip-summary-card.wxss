@@ -1,0 +1,26 @@
+/* 朱砂渐变摘要卡：首页唯一的「完整」摘要，视觉上必须压得住下方的白卡墙 */
+.summary {
+  background: linear-gradient(135deg, var(--color-primary) 0%, #96331F 100%);
+  color: #FDF6EE;
+  border-radius: 28rpx;
+  padding: 32rpx;
+  box-shadow: 0 10rpx 28rpx rgba(150,51,31,.26);
+  margin-bottom: 24rpx;
+}
+.sm-top { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; }
+.sm-name { font-size: 38rpx; font-weight: 700; letter-spacing: 1rpx; }
+.sm-countdown { font-size: 24rpx; opacity: .92; flex-shrink: 0; }
+.sm-dates { display: block; font-size: 25rpx; opacity: .88; margin-top: 8rpx; }
+
+.sm-progress { margin-top: 26rpx; }
+.sm-progress-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  font-size: 24rpx; opacity: .95; margin-bottom: 12rpx;
+}
+.sm-progress-num { font-size: 30rpx; font-weight: 700; }
+.sm-bar { height: 12rpx; border-radius: 6rpx; background: rgba(255,255,255,.22); overflow: hidden; }
+.sm-bar-fill {
+  height: 100%; border-radius: 6rpx; background: #F5D9A8;
+  transition: width .5s cubic-bezier(.22,1,.36,1);
+}
+.sm-free { display: block; font-size: 22rpx; opacity: .8; margin-top: 12rpx; }

@@ -84,8 +84,86 @@ function markSpotsSelected(list, ids) {
   return (list || []).map(s => Object.assign({}, s, { selected: !!set[s.spotId] }));
 }
 
+/* ===== 行程状态墙视图层（2026-09-20 首页行程化改版）=====
+   只做「云端返回值 → 模板字符串」的映射。
+   ⚠️ 状态本身（ticketState / canMark / progress）一律用云端算好的，
+   前端不重新推导一遍——那必然会漂。 */
+
+const DAY_CN = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+/** 把 "YYYY-MM-DD" 按北京时间解析（避免设备时区把日期移一天） */
+function parseDay(dateStr) {
+  const [y, m, d] = String(dateStr).split('-').map(Number);
+  return { y, m, d, weekday: new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay() };
+}
+
+/** 「10月2日 · 周五」（状态墙的日期分段标题） */
+function dayTitleOf(dateStr) {
+  const p = parseDay(dateStr);
+  return p.m + '月' + p.d + '日 · ' + DAY_CN[p.weekday];
+}
+
+/** 「10月3日 20:00」（放票行 / 挽回候选） */
+function monthDayTime(date) {
+  if (!date) return '';
+  const d = new Date(date);
+  // 用北京时间读，避免跨时区把 20:00 显示成 12:00
+  const b = new Date(d.getTime() + 8 * 3600000);
+  return (b.getUTCMonth() + 1) + '月' + b.getUTCDate() + '日 ' + pad(b.getUTCHours()) + ':' + pad(b.getUTCMinutes());
+}
+
+/** 「10月2日 ~ 10月4日」（摘要卡日期范围） */
+function monthDayRange(start, end) {
+  const s = parseDay(start); const e = parseDay(end);
+  return s.m + '月' + s.d + '日 ~ ' + e.m + '月' + e.d + '日';
+}
+
+/** 距出行日还有几天（倒计时）。当天 = 0，已过为负 */
+function daysUntil(dateStr) {
+  const t = new Date(); const b = new Date(t.getTime() + 8 * 3600000);
+  const today = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate(), 12);
+  const p = parseDay(dateStr);
+  const target = Date.UTC(p.y, p.m - 1, p.d, 12);
+  return Math.round((target - today) / 86400000);
+}
+
+/** 倒计时文案：「还有27天」/「今天出发」/「已结束」 */
+function countdownTextOf(dateStr) {
+  const n = daysUntil(dateStr);
+  if (n > 0) return '还有' + n + '天';
+  if (n === 0) return '就是今天';
+  return '已结束';
+}
+
+/** 票务展示态 → 样式类（与 app.wxss 的 --state-* 对应） */
+function stateClass(state) {
+  const map = {
+    PENDING: 'pending', BOOKABLE: 'bookable', SUCCESS: 'success',
+    FAILED: 'failed', UNMARKED: 'unmarked', NO_RESERVATION: 'free',
+  };
+  return map[state] || 'pending';
+}
+
+/** 提醒送达态 → 样式类 */
+function reminderClass(state) {
+  const map = { NOT_SET: 'none', WAITING: 'waiting', TRIGGERED: 'done', MISSED: 'miss' };
+  return map[state] || 'none';
+}
+
+/**
+ * 行程项卡片的副行文案（放票行）。
+ * 免预约项没有放票时刻，说「无需预约」——不能留空，留空用户会以为数据没加载出来。
+ */
+function releaseLineOf(item) {
+  if (!item || item.reservationRequired === false) return '无需预约 · 随到随玩';
+  if (!item.releaseAt) return '暂无固定放票时刻';
+  return monthDayTime(item.releaseAt) + ' 放票';
+}
+
 module.exports = {
-  WEEKDAYS, pad, formatDate, formatDateWithWeek,
+  WEEKDAYS, DAY_CN, pad, formatDate, formatDateWithWeek,
   formatDateRange, dayDiff, formatTime, formatReleaseDate,
   countdown, difficultyClass, defaultDateRange, markSpotsSelected,
+  parseDay, dayTitleOf, monthDayTime, monthDayRange, daysUntil,
+  countdownTextOf, stateClass, reminderClass, releaseLineOf,
 };

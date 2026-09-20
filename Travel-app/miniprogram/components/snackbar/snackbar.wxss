@@ -1,0 +1,39 @@
+.snackbar {
+  position: fixed;
+  left: 32rpx;
+  right: 32rpx;
+  /* 抬到底部导航之上，避免被 tabbar 压住 */
+  bottom: calc(140rpx + env(safe-area-inset-bottom));
+  background: var(--snackbar-bg);
+  color: #FBF7EF;
+  border-radius: 18rpx;
+  padding: 22rpx 24rpx 24rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  z-index: 300;
+  box-shadow: 0 8rpx 24rpx rgba(40,30,18,.28);
+  overflow: hidden;
+  animation: sb-in .22s cubic-bezier(.22,1,.36,1);
+}
+@keyframes sb-in {
+  from { opacity: 0; transform: translateY(16rpx); }
+  to   { opacity: 1; transform: none; }
+}
+.sb-text { flex: 1; min-width: 0; font-size: 25rpx; }
+.sb-undo {
+  flex-shrink: 0;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #F5D9A8;
+  padding: 4rpx 8rpx;
+}
+.sb-undo:active { opacity: .7; }
+/* 底部进度条：把剩余时间画出来 */
+.sb-bar {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 4rpx;
+  background: rgba(255,255,255,.18);
+}
+.sb-bar-fill { height: 100%; background: #F5D9A8; transition: width .05s linear; }

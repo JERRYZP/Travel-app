@@ -1,0 +1,196 @@
+/* ===== 行程项卡片 =====
+   视觉基准 402px（figma §4）：卡片圆角 24rpx、内边距 24rpx、模块间距 24rpx。
+   卡片是白的（--color-surface），页面底色是米色（--color-page），靠白卡浮起来。 */
+
+.trip-card {
+  background: var(--color-surface);
+  border-radius: 24rpx;
+  box-shadow: var(--shadow-card);
+  margin-bottom: 20rpx;
+  overflow: hidden;
+}
+
+/* 历史行程：整体灰化、无操作按钮，只能点进景点详情回看。
+   ⚠️ 「没抢到」在这里也不用红色——红色是行动召唤色，
+   历史里的失败已经无法挽回，用行动色只会让用户以为还能做点什么。 */
+.trip-card.is-history { opacity: .72; box-shadow: none; background: #F4EEE2; }
+
+.tc-main {
+  display: flex;
+  align-items: center;
+  padding: 24rpx;
+  gap: 20rpx;
+}
+
+.tc-thumb {
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 16rpx;
+  flex-shrink: 0;
+  background: var(--color-cream);
+}
+
+.tc-info { flex: 1; min-width: 0; }
+
+.tc-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+}
+
+.tc-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--color-primary);
+  text-underline-offset: 6rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tc-diff {
+  font-size: 20rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  flex-shrink: 0;
+}
+.diff-EXTREME { background: var(--diff-extreme-bg); color: var(--diff-extreme-text); }
+.diff-NORMAL  { background: var(--diff-normal-bg);  color: var(--diff-normal-text); }
+.diff-EASY    { background: var(--diff-easy-bg);    color: var(--diff-easy-text); }
+
+.tc-sub {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 8rpx;
+}
+.tc-release { font-size: 24rpx; color: var(--color-text); }
+.tc-countdown { font-size: 22rpx; color: var(--color-muted); }
+
+/* 提醒送达态：独立于票务态的一行。未送达要显眼——
+   静默失败正是旧版被诟病的点 */
+.tc-reminder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  padding: 3rpx 12rpx;
+  border-radius: 8rpx;
+}
+.tc-reminder-waiting { background: var(--color-cream); color: var(--color-text); }
+.tc-reminder-done    { background: var(--state-success-bg); color: var(--state-success-text); }
+.tc-reminder-miss    { background: var(--state-failed-bg); color: var(--state-failed-text); font-weight: 600; }
+.tc-reminder-more    { margin-left: 4rpx; text-decoration: underline; }
+
+/* 票务状态标签：卡上直显 */
+.tc-state {
+  font-size: 22rpx;
+  font-weight: 600;
+  padding: 6rpx 14rpx;
+  border-radius: 10rpx;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.tc-state-pending   { background: var(--state-pending-bg);   color: var(--state-pending-text); }
+.tc-state-bookable  { background: var(--state-bookable-bg);  color: var(--state-bookable-text); }
+.tc-state-success   { background: var(--state-success-bg);   color: var(--state-success-text); }
+.tc-state-failed    { background: var(--state-failed-bg);    color: var(--state-failed-text); }
+.tc-state-unmarked  { background: var(--state-unmarked-bg);  color: var(--state-unmarked-text); }
+.tc-state-free      { background: var(--state-free-bg);      color: var(--state-free-text); }
+.trip-card.is-history .tc-state { background: var(--state-history-bg); color: var(--state-history-text); }
+
+/* 三点菜单 */
+.tc-menu { position: relative; padding: 8rpx 4rpx 8rpx 8rpx; flex-shrink: 0; }
+.tc-menu-pop {
+  position: absolute;
+  top: 48rpx;
+  right: 0;
+  z-index: 30;
+  background: var(--color-surface);
+  border: 1rpx solid var(--color-border);
+  border-radius: 16rpx;
+  box-shadow: 0 8rpx 24rpx rgba(100,60,20,.16);
+  min-width: 240rpx;
+  padding: 8rpx 0;
+}
+.tc-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 18rpx 24rpx;
+  font-size: 26rpx;
+  color: var(--color-text);
+}
+.tc-menu-item:active { background: var(--color-page); }
+.tc-menu-danger { color: #C0392B; }
+
+/* ===== 回填气泡 =====
+   开票后才出现。开票前不问结果——用户还没抢，问他也答不上来。 */
+.tc-bubble {
+  margin: 0 24rpx 24rpx;
+  background: var(--bubble-bg);
+  border-radius: 16rpx;
+  padding: 20rpx 24rpx;
+  position: relative;
+  animation: tc-rise .3s cubic-bezier(.22,1,.36,1);
+}
+/* 小尖角指向卡片主行，让气泡「属于这张卡」的归属关系一眼可读 */
+.tc-bubble::before {
+  content: "";
+  position: absolute;
+  top: -8rpx;
+  left: 40rpx;
+  width: 16rpx;
+  height: 16rpx;
+  background: var(--bubble-bg);
+  transform: rotate(45deg);
+  border-radius: 3rpx;
+}
+@keyframes tc-rise {
+  from { opacity: 0; transform: translateY(-8rpx); }
+  to   { opacity: 1; transform: none; }
+}
+
+.tc-bubble-q { font-size: 27rpx; font-weight: 600; color: var(--bubble-text); display: block; }
+.tc-bubble-hint { font-size: 22rpx; color: var(--color-text); margin-top: 4rpx; display: block; }
+
+.tc-bubble-acts { display: flex; align-items: center; gap: 16rpx; margin-top: 16rpx; }
+.tc-bubble-btn {
+  flex: 1;
+  text-align: center;
+  border-radius: 12rpx;
+  padding: 16rpx 0;
+  font-size: 25rpx;
+  font-weight: 600;
+}
+.tc-bubble-btn:active { opacity: .85; }
+.tc-bubble-yes { background: var(--color-primary); color: #FDF6EE; }
+.tc-bubble-no  { background: rgba(255,255,255,.85); color: var(--color-primary); }
+/* 「忽略」是次级动作，不占等分宽度，避免和两键抢注意力 */
+.tc-bubble-skip { flex: 0 0 auto; padding: 16rpx 8rpx; font-size: 24rpx; color: var(--color-muted); }
+
+/* ===== 挽回快捷入口 ===== */
+.tc-recover {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin: 0 24rpx 24rpx;
+  padding: 16rpx 20rpx;
+  background: var(--color-page);
+  border-radius: 14rpx;
+}
+.tc-recover-text { font-size: 23rpx; color: var(--color-text); flex: 1; min-width: 0; }
+.tc-recover-btn {
+  flex-shrink: 0;
+  font-size: 23rpx;
+  font-weight: 600;
+  color: var(--color-primary);
+  border: 1rpx solid var(--color-primary);
+  border-radius: 999rpx;
+  padding: 8rpx 20rpx;
+}
+.tc-recover-btn:active { background: rgba(192,71,42,.08); }
