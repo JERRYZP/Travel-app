@@ -23,7 +23,7 @@
 - **`closedDaysNote`（2026-09-11）**：纯**展示**字段，表达「园中园周一闭馆、公园本体全开」（天坛祈年殿、北海琼华岛）。**不要**因此把 `closedDays` 改成 `["monday"]` —— 那会让 App 对公园本体报「周一闭馆」而它其实开着，属假提醒（与人民大会堂那类错误同性质）。该字段**不参与** `isOpenOn` 判定，只影响标签文案。
 - **公告自动过期 `specialNoticeUntil`（2026-09-11 新增，规则）**：`specialNotice` 必须配 `specialNoticeUntil`（YYYY-MM-DD），过期后**自动**不再下发（`time.activeNoticeOf`，含当天有效；`spots/index.js` 与 `mock.js` 各镜像一份）。缺省 = 无到期日（向后兼容）。**起因**：毛主席纪念堂的闭馆公告有效期只写在自由文本里，8/31 到期却在 App 上继续顶红条显示「暂停对外开放」11 天。纪念堂 **2026-09-01 已正式恢复开放**，公告已下掉，`lastCheckedDate` 已更新。新增任何公告都要填这个字段。
 - **核验溯源**：`miniprogram/utils/verify.js`（新）`verifiedLabel()` 从 `lastCheckedDate` 派生「数据已核验·更新于X月X日」/「尚未复核，以官方为准」。未核验景点**自动**按 `lastCheckedDate` 为空判定（当前 0 个），不硬编码清单。
-- **规则详情可信区块**：景点 Tab 卡片与今日放票 Banner 进入 `spot-rule` 完整规则页（核验状态 +「来源：官方渠道」+「我要纠错」预选景点 + 设置提醒）；`spot-popup` 继续服务首页/时间线的快捷浮窗，并展示「数据」核验行。两套入口职责分离：完整决策走 `spot-rule`，轻量查看走 `spot-popup`。
+- **规则详情可信区块**：全站统一为 `spot-popup` **浮窗**形态（景点 Tab 卡片、今日放票 Banner、首页/时间线景点名共用），内容含核验状态 +「数据·核验行」+「我要纠错」。⚠️ **2026-09-20 订正**：原文写的「完整决策走 `spot-rule`、轻量查看走 `spot-popup`」两套入口**已不成立**——`spot-rule` 已被浮窗取代、**全站无入口**（文件与路由保留但不再维护，见下方页面清单），不要再按两套入口描述去改代码。
 - **闭馆日贯穿提醒流程**：`timeline.generate` 新增返回 `closedDaySkips`（非全闭馆景点在行程内被闭馆跳过的日期，含 note「X月X日 周一 闭馆，已为你跳过」），`home.js` 合并进现有 `timelineClosedSpots`；mock 的 `generateTimeline` 同步镜像。
 - **集合权限澄清（重要）**：微信云开发里**云函数读集合不受集合权限限制**（走服务端管理员凭据），集合权限只管小程序端直接读写。所以「景点 Tab 加载失败」**不是**集合权限问题。
 - **`spot-hub` 加载误报修复（2026-09-13）**：`spots.list` 成功后只更新数据，再用 `setData` callback 单独执行 Banner/列表渲染；渲染异常只写 `console.error`，不会再被请求 catch 误写成 `loadFailed=true`。仍需真机/模拟器复测成功页，但结构上已区分“云端请求失败”和“拿到数据后的展示异常”。`spots`/`reminder` 云端已部署 + seed 后确认 `tsinghua closedDays=["monday"]`、`lastCheckedDate="2026-09-11"`。
@@ -111,4 +111,4 @@ UI-V1.0/             页面导出图 01~11.png（对应 PAGE-001~011，缺 06）
 - `reminder`：新增 `lib/item.js` / `lib/trip-item-actions.js` / `lib/recovery.js`，`index.js` 新增 6 个 `tripItem.*` action 与 `timeline.preview`，`home.bootstrap` 换成 V2 返回体，`cart` 改暂存区语义，行程判空改看 `trip_items`。**不部署则首页整块拿不到新数据。**
 - `notifier`：`cleanup()` 的行程清空判据补上 `trip_items`（少这一条会把只有免预约景点的行程当空壳删掉）。
 - 小程序端（新组件 7 个 + `pages/home` / `pages/add-trip` 重写 + `cart-popup` 改版）只需重新编译。
-- 上线前确认 `trip_items` 集合与三条索引已建（`数据库索引.md` 第 2 节）。
+- 上线前确认 `trip_items` 集合与索引已建（`数据库索引.md` 第 2 节，**共 5 条**；其中 `userId+spotId+visitDate` 与 `userId+backupGroupId` 是 2026-09-20 新增，前者是 `cart.add` 跨行程去重的唯一拦截，缺了会直接报错）。
