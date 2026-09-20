@@ -7,10 +7,11 @@
 
 const {
   COLLECTIONS, EventSelectStatus, ReleaseStatus, ReminderBackendStatus,
-  difficultyOf, ok,
+  ERRORS, difficultyOf, ok, fail,
 } = require('./schema');
 const time = require('./time');
-const { normalizeSpots } = require('./trip');
+const trip = require('./trip');
+const { normalizeSpots } = trip;
 const tripItem = require('./trip-item');
 
 /* ============ 纯函数区 ============ */
@@ -150,6 +151,105 @@ function buttonOf(status, event = {}) {
     case EventSelectStatus.COMMITTED: return { text: '已加入行程', enabled: false };
     default: return { text: '', enabled: false };
   }
+}
+
+/**
+ * TIMELINE-RULE-002 纯预览（2026-09-20）
+ *
+ * 「生成专属放票时间线」按**当前所选日期段与景点**独立计算，**不创建、不改写任何行程**，
+ * 也**不读任何已落库的状态**（trip_items / reminder_cart / reminder_tasks）。
+ *
+ * 为什么必须不读状态：旧实现拿 tripId 去查「已在行程 / 已加清单」，于是换一批日期或景点
+ * 重新生成时，上一条时间线的状态会被带进来——用户看到「已在行程」的日期其实属于另一趟行程，
+ * 或者刚清空的清单仍然显示已加。纯预览的语义是「这只是个预览」，历史状态一律不带入。
+ *
+ * 代价（已确认接受）：预览里看不到「已在行程」。同一 (spotId, visitDate) 重复加入由
+ * cart.add 的去重拦截（它按 (userId, spotId, visitDate) 跨行程查）。
+ *
+ * 行程的创建与合并判定挪到 cart.commit（TRIP-RULE-002 合并规则本身不变）。
+ * 老口径 adjustTripId（在当前行程上重新生成＝替换景点段）**废止**。
+ *
+ * @param {Array<{spotId,startDate,endDate}>} segments 每个景点自己的日期段
+ */
+async function preview(db, userId, { startDate, endDate, spotIds = [], segments = null }) {
+  if (!trip.validateRange(startDate, endDate)) return fail(ERRORS.TRIP_DATE_INVALID);
+
+  const segs = (Array.isArray(segments) && segments.length > 0)
+    ? segments.filter(sg => sg && sg.spotId && sg.startDate && sg.endDate)
+    : trip.makeSpotSegments(spotIds, startDate, endDate);
+
+  if (segs.length === 0) {
+    return ok({
+      events: [], byDeparture: [], bySpot: [], closedSpots: [], closedDaySkips: [],
+      empty: true, emptyReason: '先选择想去的景点',
+    });
+  }
+
+  const ids = segs.map(s => s.spotId);
+  const segMap = {};
+  segs.forEach(s => { segMap[s.spotId] = s; });
+
+  const [spotsRes, rulesRes] = await Promise.all([
+    db.collection(COLLECTIONS.SPOTS).where({ spotId: db.command.in(ids) }).get(),
+    db.collection(COLLECTIONS.RELEASE_RULES).where({ spotId: db.command.in(ids) }).get(),
+  ]);
+  const ruleMap = {};
+  (rulesRes.data || []).forEach(r => { ruleMap[r.spotId] = r; });
+
+  const nowTs = time.now();
+  const events = [];
+  const closedSpots = [];
+  const closedDaySkips = [];
+
+  for (const spot of (spotsRes.data || [])) {
+    const seg = segMap[spot.spotId];
+    if (!seg) continue;
+    const rule = ruleMap[spot.spotId];
+    const built = buildEvents(spot, rule, seg);
+    if (built.length === 0) {
+      if (!rule || !rule.advanceDays || !rule.releaseTime) {
+        closedSpots.push({ spotId: spot.spotId, spotName: spot.name, note: '无固定放票时刻，暂不生成提醒' });
+      } else {
+        closedSpots.push({ spotId: spot.spotId, spotName: spot.name, note: closedSpotNoteOf(rule) });
+      }
+      continue;
+    }
+    const skipped = rule
+      ? time.dateRange(seg.startDate, seg.endDate).filter(d => !time.isOpenOn(rule, time.dayNameOf(d)))
+      : [];
+    if (skipped.length > 0) {
+      closedDaySkips.push({
+        spotId: spot.spotId,
+        spotName: spot.name,
+        note: skipped.map(d => time.formatMonthDayWeek(d)).join('、') + skipReasonOf(rule),
+      });
+    }
+    for (const event of built) {
+      /* ⚠️ 上下文一律为空：预览不知道也不关心任何已落库状态。
+         这就是「历史行程与已提交项的状态不带入预览」的落点。 */
+      const status = resolveStatus(event, {
+        inCart: false, task: null, committed: false, releaseStatus: null,
+      }, nowTs);
+      events.push({
+        ...event,
+        status,
+        button: buttonOf(status, event),
+        stale: false,
+      });
+    }
+  }
+
+  return ok({
+    events,
+    byDeparture: groupByDeparture(events, nowTs),
+    bySpot: groupBySpot(events, nowTs),
+    closedSpots,
+    closedDaySkips,
+    empty: events.length === 0,
+    emptyReason: events.length === 0
+      ? (closedSpots.length > 0 ? '该日期段暂无可提醒的放票时间' : '先选择想去的景点')
+      : null,
+  });
 }
 
 /**
@@ -334,4 +434,5 @@ module.exports = {
   groupBySpot,
   defaultScrollIndex,
   generate,
+  preview,
 };

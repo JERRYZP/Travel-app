@@ -7,6 +7,7 @@
 const { COLLECTIONS, TripStatus, V1, ERRORS, ok, fail } = require('./schema');
 const time = require('./time');
 const tripItem = require('./trip-item');
+const item = require('./item');
 
 /* ============ 纯函数区：可脱离云环境测试 ============ */
 
@@ -147,11 +148,19 @@ function sortTrips(trips) {
  *   它仍会与其它日期相交/相接的行程继续合并。
  * @returns {{tripId, merged: boolean, mergedFrom: string[], trip}}
  */
-async function create(db, userId, { startDate, endDate, spotIds = [], city = V1.CITY, adjustTripId = '' }) {
+async function create(db, userId, {
+  startDate, endDate, spotIds = [], city = V1.CITY, adjustTripId = '', spotSegments = null,
+}) {
   if (!validateRange(startDate, endDate)) return fail(ERRORS.TRIP_DATE_INVALID);
 
   const incomingRange = { city, startDate, endDate };
-  const incomingSpots = makeSpotSegments(spotIds, startDate, endDate);
+  /* spotSegments：提交清单时由每个景点自己的 visitDate 集合推导出的段
+     （故宫 10月2日+10月3日 → 故宫 10.2-10.3）。不传时回退成「整段 × 全部景点」，
+     与老调用方口径一致。 */
+  const incomingSpots = (Array.isArray(spotSegments) && spotSegments.length > 0)
+    ? spotSegments.filter(sg => sg && sg.spotId && sg.startDate && sg.endDate)
+      .map(sg => ({ spotId: sg.spotId, startDate: sg.startDate, endDate: sg.endDate }))
+    : makeSpotSegments(spotIds, startDate, endDate);
 
   const existRes = await db.collection(COLLECTIONS.TRIPS)
     .where({ userId, city, status: TripStatus.ACTIVE }).get();
@@ -229,14 +238,30 @@ async function create(db, userId, { startDate, endDate, spotIds = [], city = V1.
       .update({ data: { tripId: keepId } });
     const movedItems = await db.collection(COLLECTIONS.TRIP_ITEMS)
       .where({ userId, tripId: id }).get();
-    for (const item of (movedItems.data || [])) {
-      await db.collection(COLLECTIONS.TRIP_ITEMS).doc(item._id).update({
+    for (const moved of (movedItems.data || [])) {
+      await db.collection(COLLECTIONS.TRIP_ITEMS).doc(moved._id).update({
         data: {
           tripId: keepId,
-          backupGroupId: tripItem.backupGroupIdOf(keepId, item.spotId),
+          backupGroupId: tripItem.backupGroupIdOf(keepId, moved.spotId),
           updatedAt: nowTs,
         },
       });
+      /* ⚠️ 行程项 _id 不变，所以任务上的 itemId 仍然有效——但任务的冗余字段
+         tripId/visitDate/releaseAt 会跟着行程范围一起过期（releaseAt 依赖 visitDate
+         与规则推算）。这里同步 tripId 并**按新行程段重算 releaseAt**，
+         否则合并后的行程在首页会显示错误的放票时间。
+         itemId 保持不动，是 V2 里 tasks join items 的唯一键。 */
+      const itemTasks = await db.collection(COLLECTIONS.REMINDER_TASKS)
+        .where({ userId, itemId: moved._id }).get();
+      if ((itemTasks.data || []).length > 0) {
+        const { spotMap, ruleMap } = await item.loadSpotContext(db, [moved.spotId]);
+        const releaseAt = item.deriveReleaseAt(spotMap[moved.spotId], ruleMap[moved.spotId], moved.visitDate);
+        const patch = { tripId: keepId };
+        if (releaseAt) patch.releaseAt = releaseAt;
+        await db.collection(COLLECTIONS.REMINDER_TASKS)
+          .where({ userId, itemId: moved._id })
+          .update({ data: patch });
+      }
     }
     await db.collection(COLLECTIONS.TRIPS).doc(id).remove();
   }
@@ -312,7 +337,7 @@ async function updateRange(db, userId, tripId, startDate, endDate) {
 }
 
 /**
- * TRIP-RULE-004 级联删除：行程下任务与清单均空 → 行程自动删除
+ * TRIP-RULE-004 级联删除：行程下任务、行程项与清单均空 → 行程自动删除
  * @returns {boolean} 是否发生了删除
  */
 async function removeIfEmpty(db, userId, tripId) {
@@ -327,6 +352,33 @@ async function removeIfEmpty(db, userId, tripId) {
   const cartCount = await db.collection(COLLECTIONS.REMINDER_CART)
     .where({ userId, tripId }).count();
   if (cartCount.total > 0) return false;
+
+  await db.collection(COLLECTIONS.TRIPS).doc(tripId).remove();
+  return true;
+}
+
+/**
+ * 清理「已无任何行程项、也没任务」的行程（V2 主动删除口径）。
+ *
+ * 与 removeIfEmpty 的区别：**不看提醒清单**。
+ * V2 里清单是「提交前的暂存区」，不再挂在行程上；行程是否为空**只看 trip_items**
+ * （决策文档第六节：不能用「还有没有提醒任务」判定，否则只有免预约景点、
+ * 没设提醒的行程会被误判成空的删掉）。
+ *
+ * 还要额外保护一种情形：行程下**还有未提交的清单草稿**时也不能删——
+ * 用户正在「添加提醒」页挑日期，行程是提交时才会创建的，
+ * 此时若把行程删掉，草稿就没了归属。
+ */
+async function purgeIfNoItem(db, userId, tripId) {
+  if (!tripId) return false;
+
+  const taskCount = await db.collection(COLLECTIONS.REMINDER_TASKS)
+    .where({ userId, tripId }).count();
+  if (taskCount.total > 0) return false;
+
+  const itemCount = await db.collection(COLLECTIONS.TRIP_ITEMS)
+    .where({ userId, tripId }).count();
+  if (itemCount.total > 0) return false;
 
   await db.collection(COLLECTIONS.TRIPS).doc(tripId).remove();
   return true;
@@ -453,6 +505,7 @@ module.exports = {
   updateSpots,
   updateRange,
   removeIfEmpty,
+  purgeIfNoItem,
   purgeIfNoTask,
   remove,
   list,

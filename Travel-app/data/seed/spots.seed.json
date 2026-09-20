@@ -18,7 +18,10 @@
     "popularityScore": 5,
     "hasWebVersion": true,
     "scrapingUrl": "https://www.dpm.org.cn/Home.html",
-    "reservationRequired": true
+    "reservationRequired": true,
+    "audienceTags": [
+      "elder"
+    ]
   },
   {
     "spotId": "tiananmen-chenglou",
@@ -39,7 +42,10 @@
     "popularityScore": 5,
     "hasWebVersion": true,
     "scrapingUrl": "https://www.tiananmenchenglou.com",
-    "reservationRequired": true
+    "reservationRequired": true,
+    "audienceTags": [
+      "elder"
+    ]
   },
   {
     "spotId": "guobo",
@@ -60,7 +66,10 @@
     "popularityScore": 5,
     "hasWebVersion": true,
     "scrapingUrl": "https://www.chnmuseum.cn",
-    "reservationRequired": true
+    "reservationRequired": true,
+    "audienceTags": [
+      "elder"
+    ]
   },
   {
     "spotId": "yiheyuan",
@@ -81,7 +90,11 @@
     "popularityScore": 5,
     "hasWebVersion": true,
     "scrapingUrl": "https://www.summerpalace-china.com",
-    "reservationRequired": false
+    "reservationRequired": false,
+    "audienceTags": [
+      "family",
+      "elder"
+    ]
   },
   {
     "spotId": "tiantan",
@@ -102,7 +115,11 @@
     "popularityScore": 4,
     "hasWebVersion": true,
     "scrapingUrl": "https://www.tiantanpark.com",
-    "reservationRequired": false
+    "reservationRequired": false,
+    "audienceTags": [
+      "family",
+      "elder"
+    ]
   },
   {
     "spotId": "badaling",
@@ -123,7 +140,10 @@
     "popularityScore": 5,
     "hasWebVersion": true,
     "scrapingUrl": "https://www.badaling.cn",
-    "reservationRequired": true
+    "reservationRequired": true,
+    "audienceTags": [
+      "family"
+    ]
   },
   {
     "spotId": "yuanmingyuan",
@@ -144,7 +164,10 @@
     "popularityScore": 4,
     "hasWebVersion": true,
     "scrapingUrl": "https://www.yuanmingyuanpark.cn",
-    "reservationRequired": false
+    "reservationRequired": false,
+    "audienceTags": [
+      "family"
+    ]
   },
   {
     "spotId": "beijing-zoo",
@@ -165,7 +188,10 @@
     "popularityScore": 4,
     "hasWebVersion": true,
     "scrapingUrl": "https://www.bjzoo.com",
-    "reservationRequired": false
+    "reservationRequired": false,
+    "audienceTags": [
+      "family"
+    ]
   },
   {
     "spotId": "gongwangfu",
@@ -186,7 +212,10 @@
     "popularityScore": 3,
     "hasWebVersion": true,
     "scrapingUrl": "https://www.pgm.org.cn",
-    "reservationRequired": true
+    "reservationRequired": true,
+    "audienceTags": [
+      "elder"
+    ]
   },
   {
     "spotId": "beihai",
@@ -207,7 +236,11 @@
     "popularityScore": 3,
     "hasWebVersion": true,
     "scrapingUrl": "https://www.beihaipark.com.cn",
-    "reservationRequired": false
+    "reservationRequired": false,
+    "audienceTags": [
+      "family",
+      "elder"
+    ]
   },
   {
     "spotId": "tiananmen-square",
@@ -233,6 +266,9 @@
       "升旗",
       "天安门升旗",
       "看升旗"
+    ],
+    "audienceTags": [
+      "elder"
     ]
   },
   {
@@ -257,6 +293,9 @@
     "scrapingUrl": "",
     "aliases": [
       "纪念堂"
+    ],
+    "audienceTags": [
+      "elder"
     ]
   },
   {
@@ -281,6 +320,9 @@
     "scrapingUrl": "",
     "aliases": [
       "大会堂"
+    ],
+    "audienceTags": [
+      "elder"
     ]
   },
   {
@@ -306,6 +348,10 @@
     "aliases": [
       "军博",
       "军事博物馆"
+    ],
+    "audienceTags": [
+      "family",
+      "elder"
     ]
   },
   {
@@ -331,6 +377,9 @@
     "aliases": [
       "自然博物馆",
       "自然博"
+    ],
+    "audienceTags": [
+      "family"
     ]
   },
   {
@@ -356,6 +405,9 @@
     "aliases": [
       "考古博物馆",
       "考古博"
+    ],
+    "audienceTags": [
+      "elder"
     ]
   },
   {
@@ -381,6 +433,9 @@
     "aliases": [
       "清华",
       "清华大学参观"
+    ],
+    "audienceTags": [
+      "elder"
     ]
   },
   {
@@ -406,6 +461,9 @@
     "aliases": [
       "北大",
       "北京大学参观"
+    ],
+    "audienceTags": [
+      "elder"
     ]
   },
   {
@@ -431,6 +489,9 @@
     "aliases": [
       "科技馆",
       "中国科学技术馆"
+    ],
+    "audienceTags": [
+      "family"
     ]
   },
   {
@@ -455,6 +516,9 @@
     "scrapingUrl": "",
     "aliases": [
       "美术馆"
+    ],
+    "audienceTags": [
+      "elder"
     ]
   },
   {
@@ -481,6 +545,10 @@
       "工艺美术馆",
       "非遗馆",
       "工美馆"
+    ],
+    "audienceTags": [
+      "family",
+      "elder"
     ]
   },
   {
@@ -505,6 +573,10 @@
     "scrapingUrl": "",
     "aliases": [
       "首博"
+    ],
+    "audienceTags": [
+      "family",
+      "elder"
     ]
   },
   {
@@ -529,6 +601,9 @@
     "scrapingUrl": "",
     "aliases": [
       "慕田峪"
+    ],
+    "audienceTags": [
+      "family"
     ]
   },
   {
@@ -554,6 +629,10 @@
     "aliases": [
       "孔庙",
       "国子监"
+    ],
+    "audienceTags": [
+      "family",
+      "elder"
     ]
   },
   {
@@ -578,6 +657,9 @@
     "scrapingUrl": "",
     "aliases": [
       "天文馆"
+    ],
+    "audienceTags": [
+      "family"
     ]
   },
   {
@@ -603,6 +685,9 @@
     "aliases": [
       "环球影城",
       "环球度假区"
+    ],
+    "audienceTags": [
+      "family"
     ]
   }
 ]

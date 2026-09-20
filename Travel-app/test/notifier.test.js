@@ -71,5 +71,18 @@ eq(d5.length, 5, '5 条错误分布');
 eq(d5[4] < 30000, true, '最晚一次仍在 30s 窗口内');
 eq(d5.every((v, i) => i === 0 || v >= d5[i - 1]), true, '延迟单调非递减');
 
+console.log('--- spotLandingPage 订阅消息落地页 ---');
+// 订阅消息只能寻址「页面路径 + ?查询串」，浮窗是页面内状态，靠 spotId 让首页自己弹。
+eq(_internal.spotLandingPage('gugong'), 'pages/home/home?spotId=gugong', '带景点落首页并带 spotId');
+eq(_internal.spotLandingPage(''), 'pages/home/home', '空 spotId 退回裸首页');
+eq(_internal.spotLandingPage(undefined), 'pages/home/home', 'undefined 退回裸首页');
+eq(_internal.spotLandingPage('a&b=c'), 'pages/home/home?spotId=a%26b%3Dc', 'spotId 做 URL 编码');
+
+// 源码级：发送路径必须真的用上它，防止改回硬编码裸首页（同 quota-heal 的比对手法）
+const notifierSrc = require('fs').readFileSync(
+  require('path').join(__dirname, '../cloudfunctions/notifier/index.js'), 'utf8');
+eq(notifierSrc.includes('page: spotLandingPage(task.spotId)'), true,
+  'sendOne 的 page 由 spotLandingPage 产出');
+
 console.log('\n' + (fail === 0 ? 'ALL PASS' : ('FAIL ' + fail)));
 process.exit(fail === 0 ? 0 : 1);

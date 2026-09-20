@@ -117,6 +117,8 @@ Page({
     banner: null,
     bannerCurrent: 0,
     bannerAutoplay: true,
+    showSpotPopup: false,
+    popupSpotId: '',
   },
 
   onLoad() {
@@ -280,13 +282,19 @@ Page({
     this.openDetail(e.currentTarget.dataset.id);
   },
 
-  /* ===== 完整规则详情页（卡片 / Banner 共用） ===== */
+  /* ===== 景点详情浮窗（卡片 / 今日放票 Banner 共用） =====
+   * 全站统一为浮窗形态；内页 spot-rule 保留文件与路由，已无入口。
+   * 浮窗底部行动栏（加入提醒 / 加入行程）维持视觉占位，交互待首页改版后统一接。 */
   onCardTap(e) {
     this.openDetail(e.detail.spotId);
   },
 
   openDetail(spotId) {
     if (!spotId) return;
-    wx.navigateTo({ url: '/pages/spot-rule/spot-rule?spotId=' + spotId });
+    this.setData({ showSpotPopup: true, popupSpotId: spotId });
+  },
+
+  onSpotPopupClose() {
+    this.setData({ showSpotPopup: false });
   },
 });

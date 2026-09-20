@@ -46,7 +46,12 @@ Page({
         systemOk: s.systemOk,
         subscribeOk: s.subscribeOk || hasQuota,
         subscribeQuota: q.quota,
-        quotaLabel: hasQuota ? `可提醒 ${q.quota} 次` : (s.subscribeOk ? '已允许，待续收' : '未生效'),
+        /* ⚠️ 文案是「已授权」不是「可提醒」（2026-09-16 定规）：
+           本地台账只是我们按「授权 +1 / 发送成功 -1 / 43101 清零」推测出来的计数，
+           微信侧真实余额不提供查询接口，必然存在漂移。写「可提醒 N 次」等于向用户
+           承诺「这 N 次一定会送到」，而实际可能因拒收、换模板等原因送不出去。
+           标签只陈述状态（已授权），具体次数放在下方说明行（数量 + 每次授权的换算关系）。 */
+        quotaLabel: hasQuota ? '已授权' : (s.subscribeOk ? '已允许，待续收' : '未生效'),
         loading: false,
       });
     });
@@ -73,6 +78,9 @@ Page({
       if (res.ok) {
         /* silent = 用户勾过「总是保持以上选择」，微信这次没弹窗直接记账 */
         wx.showToast({ title: res.silent ? '已续收 1 次（未弹窗）' : '已续收 1 次', icon: 'none' });
+        /* 没勾过 → 这次是真弹了窗。趁用户刚有体感，提示一次「勾了以后就不用再点」，
+           让后续「一次提交 N 条静默补满」能真的零弹窗（一辈子只提示一次） */
+        if (!res.silent) notify.hintKeepAlwaysChoice(this.data.templateId);
       } else if (res.reason === 'master-switch-off' || res.reason === 'subscription-disabled') {
         /* 总开关关闭或模板保持拒绝：弹不出有效授权框，引导去设置页开启 */
         notify.guideOpenSubscribeSetting(res.reason);

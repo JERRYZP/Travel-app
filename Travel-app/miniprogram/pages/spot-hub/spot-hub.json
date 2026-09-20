@@ -3,6 +3,7 @@
     "tabbar": "/components/tabbar/tabbar",
     "svg-icon": "/components/svg-icon/svg-icon",
     "spot-card": "/components/spot-card/spot-card",
+    "spot-popup": "/components/spot-popup/spot-popup",
     "van-loading": "@vant/weapp/loading/index"
   },
   "navigationStyle": "custom"

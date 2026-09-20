@@ -1,7 +1,9 @@
 <wxs module="fmt" src="../../utils/format.wxs"></wxs>
 <view wx:if="{{show}}" class="popup-mask" bindtap="onMaskTap" catchtouchmove="onSheetTap">
-  <view class="popup-sheet" catchtap="onSheetTap">
-
+  <view class="popup-sheet {{showActions ? 'popup-sheet--actions' : ''}}" catchtap="onSheetTap">
+    <!-- 滚动区：底部留白由 .popup-sheet--actions > .popup-scroll 给，
+         保证正文能滚到操作栏上方 32px 处，不被按钮压住。 -->
+    <view class="popup-scroll">
     <block wx:if="{{loading}}">
       <view class="popup-loading">
         <van-loading size="40rpx" color="#B8904A" />
@@ -117,16 +119,27 @@
           <text class="popup-tips-label">优惠政策</text>
           <text>{{spot.ageLimit}}</text>
         </view>
-        <!-- 规则更新时间（V3.1：仅更新时间，不含来源等级）固定在注意事项末尾 -->
+        <!-- 规则更新时间（V3.1：仅更新时间，不含来源等级）固定在注意事项末尾；
+             纠错入口同排右对齐，与内页版 spot-rule 的 onCorrect 同口径 -->
         <view class="popup-tips-row">
           <text class="popup-tips-label">数据</text>
           <text class="popup-verify {{spot.verified ? 'verify-ok' : 'verify-warn'}}">{{spot.verifiedLabel}}</text>
+          <view class="popup-correct-link" bindtap="onCorrect">
+            <svg-icon name="edit" size="14px" />
+            <text class="popup-correct-text">我要纠错</text>
+            <svg-icon name="chevron-right" size="12px" />
+          </view>
         </view>
       </view>
     </block>
+    </view>
 
-    <!-- 底部操作栏（V3.0 本期仅视觉占位，不接交互）：内容不超屏随流收尾，超屏 sticky 吸底 -->
-    <view wx:if="{{spot && !loading}}" class="popup-actions-bar">
+    <!-- 底部操作栏（V3.0 本期仅视觉占位，不接交互）：固定在弹窗底缘，不参与滚动。
+         首页触发的浮窗不渲染此栏（showActions=false），其余入口保持带 btn。
+         上方的 .popup-actions-fade 是白色→透明的渐隐层，正文从它下面滚过时淡出，
+         避免出现「按钮硬切在文字中间」的观感。 -->
+    <view wx:if="{{spot && !loading && showActions}}" class="popup-actions-fade"></view>
+    <view wx:if="{{spot && !loading && showActions}}" class="popup-actions-bar">
       <view wx:if="{{!spot.remindable}}" class="popup-actions-note">
         {{spot.reservationRequired ? '暂无固定放票时刻，不设提醒' : '无需预约，随到随玩，不设提醒'}}
       </view>

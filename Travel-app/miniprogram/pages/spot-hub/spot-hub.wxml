@@ -119,7 +119,7 @@
     <text>{{searchMode ? '没有找到相关景点，换个词试试' : '该分类下暂无景点'}}</text>
   </view>
 
-  <!-- 两列宫格（卡片无选择按钮，进入完整规则详情页） -->
+  <!-- 两列宫格（卡片无选择按钮，点击进详情浮窗） -->
   <view wx:else class="spot-grid">
     <block wx:if="{{searchMode}}">
       <spot-card wx:for="{{searchResults}}" wx:key="spotId" spot="{{item}}" bind:cardtap="onCardTap" />
@@ -131,3 +131,6 @@
 </view>
 
 <tabbar active="spots" />
+
+<!-- 景点详情浮窗（卡片 / 今日放票 Banner 共用，全站统一形态；此入口保留底部操作栏） -->
+<spot-popup show="{{showSpotPopup}}" spot-id="{{popupSpotId}}" bind:close="onSpotPopupClose" />

@@ -13,12 +13,15 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const _ = db.command;
 
-const { COLLECTIONS, V1, ERRORS, ChannelType, ok, fail } = require('./lib/schema');
+const { COLLECTIONS, V1, ERRORS, ChannelType, PENDING_CART_TRIP_ID, ok, fail } = require('./lib/schema');
 const time = require('./lib/time');
 const trip = require('./lib/trip');
 const timeline = require('./lib/timeline');
 const cart = require('./lib/cart');
 const task = require('./lib/task');
+const item = require('./lib/item');
+const itemActions = require('./lib/trip-item-actions');
+const recovery = require('./lib/recovery');
 
 exports.main = async (event) => {
   const { action } = event || {};
@@ -50,9 +53,27 @@ exports.main = async (event) => {
 
       /* ======== 时间线 ======== */
       case 'timeline.generate':
+        // 旧口径：按已落库的行程算。首页改纯预览后已无调用方，保留兼容。
         return await timeline.generate(db, userId, event.tripId, {
           spotStatusMap: event.spotStatusMap || {},
         });
+      case 'timeline.preview':
+        // 2026-09-20：按当前所选日期段与景点独立计算，不创建/改写行程，不带入任何已落库状态
+        return await timeline.preview(db, userId, event);
+
+      /* ======== 行程项（API-契约 8.4） ======== */
+      case 'tripItem.markResult':
+        return await itemActions.markResult(db, userId, event);
+      case 'tripItem.undoResult':
+        return await itemActions.undoResult(db, userId, event);
+      case 'tripItem.updateReminder':
+        return await itemActions.updateReminder(db, userId, event);
+      case 'tripItem.remove':
+        return await itemActions.remove(db, userId, event);
+      case 'tripItem.removeVisitDate':
+        return await itemActions.removeVisitDate(db, userId, event);
+      case 'tripItem.recoveryCandidates':
+        return await recovery.candidates(db, userId, event.itemId);
 
       /* ======== 首页聚合（一次调用返回全部，减少冷启动） ======== */
       case 'home.bootstrap':
@@ -62,9 +83,10 @@ exports.main = async (event) => {
       case 'cart.add':
         return await cart.add(db, userId, event);
       case 'cart.addAll': {
-        // CART-RULE-004 仅作用于当前 Tab：服务端重新生成时间线，避免信任前端传入的事件
+        // CART-RULE-004「一键加入待选清单」：仅作用于当前 Tab。
+        // 服务端按同一份输入重新算一遍预览事件，避免信任前端传来的事件与状态。
         // scope: 'departure'（scopeKey = visitDate）| 'spot'（scopeKey = spotId）
-        const tl = await timeline.generate(db, userId, event.tripId, {});
+        const tl = await timeline.preview(db, userId, event);
         if (!tl.success) return tl;
         return await cart.addBatch(db, userId, event.tripId, tl.events, event.scope, event.scopeKey);
       }
@@ -97,8 +119,9 @@ exports.main = async (event) => {
       case 'task.remove': {
         const res = await task.remove(db, userId, event.taskId);
         if (!res.success) return res;
-        // TRIP-RULE-004 级联（主动删除口径）：行程内已无任何任务 → 行程与提醒清单一并删除
-        const tripRemoved = await trip.purgeIfNoTask(db, userId, res.tripId);
+        // TRIP-RULE-004 级联：行程是否为空**只看 trip_items**，
+        // 否则只有免预约景点、没设提醒的行程会被误判成空的删掉（决策文档第六节）
+        const tripRemoved = await trip.purgeIfNoItem(db, userId, res.tripId);
         return ok({ ...res, tripRemoved });
       }
       case 'task.clear': {
@@ -111,7 +134,7 @@ exports.main = async (event) => {
         // → 行程与提醒清单一并删除（前端弹窗已明确告知该结果）
         const removedTripIds = [];
         for (const tid of (res.affectedTripIds || [])) {
-          if (await trip.purgeIfNoTask(db, userId, tid)) removedTripIds.push(tid);
+          if (await trip.purgeIfNoItem(db, userId, tid)) removedTripIds.push(tid);
         }
         return ok({ ...res, removedTripIds });
       }
@@ -137,7 +160,7 @@ exports.main = async (event) => {
         const r = await task.cleanup(db);
         // 14 天前的历史任务被物理删除后，行程同样按「无任务即作废」口径清理
         for (const a of r.affected) {
-          await trip.purgeIfNoTask(db, a.userId, a.tripId);
+          await trip.purgeIfNoItem(db, a.userId, a.tripId);
         }
         return ok(r);
       }
@@ -152,45 +175,101 @@ exports.main = async (event) => {
 };
 
 /**
- * home.bootstrap —— 首页一次调用聚合，替代 3~5 次串行 callFunction。
- * 并行拉取：全部任务(算 homeMode/counts/banner)、选中行程分组、行程列表、内联清单、热门景点。
- * 热门景点内部复用 spots 云函数（难度标签/卡片逻辑单一真身留在 spots），失败不阻断整体，
- * 前端在 hotSpots 为空时回退 loadHotSpots()。
+ * home.bootstrap V2 —— 首页行程状态墙一次调用聚合（API-契约 8.2）
+ *
+ * 并行拉取：行程项（含派生状态）、行程列表、全部任务（算送达状态与兜底收敛）、热门景点。
+ *
+ * 与 V1 的三点结构差异：
+ *  ① 主数据从「提醒任务」换成「行程项」——首页的主体是「这趟成了没」，不是「什么时候动手」；
+ *  ② 行程按 endDate 在**读取时**拆成进行中 / 历史，不依赖任何定时任务落状态；
+ *  ③ 吸顶横幅跨全部当前/未来行程取全局最近，不按行程分开算。
+ *
+ * 热门景点内部复用 spots 云函数（难度标签/卡片逻辑的单一真身留在 spots），
+ * 失败不阻断整体——首页少几个推荐卡片不该白屏。
+ *
+ * @returns 8.2 的返回体 + 一个版本兼容期的 homeMode
  */
 async function homeBootstrap(db, userId, event = {}) {
-  const filter = event.filter || 'active';
-  const activeTripTab = event.activeTripTab || '';
-  const tripId = event.tripId || '';       // 内联时间线的清单 tripId（keepInline 时）
   const includeSpots = event.includeSpots !== false;
+  const nowTs = time.now();
+  const today = time.todayStr();
 
-  const tasksAllP = task.list(db, userId, { tripId: null, filter });
-  const tripsP = trip.list(db, userId);
-  const cartP = tripId ? cart.list(db, userId, tripId) : Promise.resolve(null);
-  const tripTasksP = activeTripTab
-    ? task.list(db, userId, { tripId: activeTripTab, filter })
-    : Promise.resolve(null);
-  const spotsP = includeSpots
-    ? cloud.callFunction({ name: 'spots', data: { action: 'list' } }).catch(() => null)
-    : Promise.resolve(null);
-
-  const [tasksAll, trips, cart, tripTasks, spotsCall] = await Promise.all([
-    tasksAllP, tripsP, cartP, tripTasksP, spotsP,
+  const [tripsRes, items, spotsCall] = await Promise.all([
+    trip.list(db, userId),
+    item.listItemsByUser(db, userId),
+    includeSpots
+      ? cloud.callFunction({ name: 'spots', data: { action: 'list' } }).catch(() => null)
+      : Promise.resolve(null),
   ]);
 
+  const trips = (tripsRes && tripsRes.trips) || [];
+
+  /* 读取时兜底收敛（REMINDER-RULE-004）：
+     V2 首页不再调 task.list，而 task.list 原本是 sweepOverdue 的唯一读取侧调用方。
+     少了这一步，一旦 notifier 的定时链路出问题（缺索引 / 缺环境变量 / 触发器停用），
+     过期任务会静默显示成「待提醒」且毫无提示 —— 正是 2026-09-14 踩过的坑。
+     幂等，写库失败也不影响本次响应。 */
+  const taskRes = await db.collection(COLLECTIONS.REMINDER_TASKS).where({ userId }).get();
+  const allTasks = taskRes.data || [];
+  const { spotMap, ruleMap } = await item.loadSpotContext(db, items.map(i => i.spotId));
+  await task.sweepOverdue(db, allTasks, nowTs, userId, (t) => {
+    const spot = spotMap[t.spotId];
+    return spot ? item.deriveReleaseAt(spot, ruleMap[t.spotId], t.visitDate) : null;
+  });
+
+  const taskMap = item.taskMapByItemId(allTasks);
+  const decorated = items.map(it => item.decorateItem({
+    item: it,
+    spot: spotMap[it.spotId],
+    rule: ruleMap[it.spotId],
+    task: taskMap[it._id] || null,
+    nowTs,
+  }));
+
+  // 行程按结束日拆进行中 / 历史（读取时计算，不落库、不依赖定时任务）
+  const activeTrips = [];
+  const historyTrips = [];
+  for (const t of trips) {
+    const mine = decorated.filter(d => d.tripId === t._id);
+    const progress = item.backupGroupProgress(mine);
+    const entry = {
+      _id: t._id,
+      city: t.city,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      name: t.name,
+      progress,
+      itemCount: mine.length,
+    };
+    // 结束日**当天仍属于进行中**，用户还能回看和补标；次日才归入历史
+    if (t.endDate >= today) activeTrips.push({ ...entry, items: item.sortItems(mine) });
+    else historyTrips.push(entry);
+  }
+  activeTrips.sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
+  historyTrips.sort((a, b) => String(b.startDate).localeCompare(String(a.startDate)));
+
+  // 全局摘要卡用最近的一趟；历史区只给统计，不重复整张卡
+  const primaryTripId = activeTrips.length ? activeTrips[0]._id : '';
+  const scrollTargetId = item.scrollTargetOf(decorated, nowTs);
+
   return ok({
-    // 首页形态与任务主数据（未按行程筛选）
-    homeMode: (tasksAll && tasksAll.homeMode) || 1,
-    groups: (tasksAll && tasksAll.groups) || [],
-    counts: (tasksAll && tasksAll.counts) || { active: 0, expired: 0 },
-    banner: (tasksAll && tasksAll.banner) || null,
-    // 选中行程 Tab 时的分组（可能为 null）
-    tripTasks: tripTasks && tripTasks.success ? tripTasks : null,
-    trips: (trips && trips.trips) || [],
-    showGroupTabs: (trips && trips.showGroupTabs) || false,
-    // 内联清单（形态1/2 保留时间线时）
-    cart,
-    // 热门景点（内部调用 spots 云函数，失败不阻断整体）
-    hotSpots: spotsCall && spotsCall.result && Array.isArray(spotsCall.result.data) ? spotsCall.result.data : [],
+    serverNow: nowTs,
+    primaryTripId,
+    scrollTargetId,
+    trips: activeTrips,
+    history: historyTrips,
+    stickyBanner: task.buildReleaseBanner(decorated, nowTs),
+    // 兼容期：新首页靠 trips.length 判断要不要出创建引导，旧前端仍读 homeMode
+    homeMode: decorated.length === 0 ? 1 : 2,
+    hotSpots: spotsCall && spotsCall.result && Array.isArray(spotsCall.result.data)
+      ? spotsCall.result.data : [],
+    // 旧字段保留一个版本，避免未升级的调用方读不到东西；新首页不消费
+    groups: [],
+    counts: { active: 0, expired: 0 },
+    banner: null,
+    cart: null,
+    tripTasks: null,
+    showGroupTabs: false,
   });
 }
 
@@ -281,29 +360,13 @@ async function updateUserProfile(userId, data = {}) {
   return ok({ user: { ...u, nickname, avatarUrl, phone } });
 }
 
-/** 订阅消息模板 ID（与 miniprogram/utils/notify.js、cloudfunctions/notifier 兜底常量对齐；2026-09-13 随换 appid 更新） */
-const DEFAULT_SUBSCRIBE_TEMPLATE_ID = 'V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q';
-
-/**
- * 读取某个模板的本地额度。
- * 新数据用 subscribeQuotas[templateId]；旧数据单模板回退到 subscribeQuota。
- */
-function subscribeQuotaOf(user, templateId) {
-  const quotas = user.subscribeQuotas || {};
-  if (Object.prototype.hasOwnProperty.call(quotas, templateId)) {
-    return Number(quotas[templateId]) || 0;
-  }
-  const legacyTemplateId = user.subscribeTemplateId || DEFAULT_SUBSCRIBE_TEMPLATE_ID;
-  if (legacyTemplateId === templateId) return Number(user.subscribeQuota) || 0;
-  return 0;
-}
-
-/** 各模板额度之和；无模板 map 时回退旧总数 */
-function totalSubscribeQuota(quotas, fallback = 0) {
-  const values = Object.values(quotas || {}).filter(v => typeof v === 'number' && v >= 0);
-  if (!values.length) return Math.max(0, Number(fallback) || 0);
-  return values.reduce((sum, v) => sum + v, 0);
-}
+/* 订阅消息额度台账的唯一真身（2026-09-16 从本文件内联抽出到 lib/quota.js，
+   因为 lib/task.js 的读取时兜底 sweepOverdue 也需要同一套判定） */
+const {
+  DEFAULT_SUBSCRIBE_TEMPLATE_ID,
+  subscribeQuotaOf,
+  totalSubscribeQuota,
+} = require('./lib/quota');
 
 /**
  * subscribe.add —— 用户授权某个模板后 +1 一次性额度。

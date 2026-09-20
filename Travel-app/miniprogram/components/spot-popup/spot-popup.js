@@ -5,6 +5,10 @@ Component({
   properties: {
     show: { type: Boolean, value: false },
     spotId: { type: String, value: '' },
+    /* 底部操作栏（加入提醒 / 加入行程）是否渲染。
+     * 首页触发的浮窗传 false —— 首页本身就是提醒动线的起点，无需再从浮窗进入；
+     * 其余入口（景点 Tab 等）保持默认 true。 */
+    showActions: { type: Boolean, value: true },
   },
 
   data: {
@@ -103,6 +107,19 @@ Component({
 
     closeQr() {
       this.setData({ showQr: false, qrSpot: null });
+    },
+
+    /* 我要纠错：与内页版详情页 spot-rule 的 onCorrect 同口径，带景点信息跳转纠错页自动预选。
+     * 先关浮窗，避免纠错页返回时它仍盖在最上层。 */
+    onCorrect() {
+      const spot = this.data.spot;
+      if (!spot) return;
+      this.onClose();
+      wx.navigateTo({
+        url: '/pages/spot-correction/spot-correction?spotId=' + spot.spotId
+          + '&spotName=' + encodeURIComponent(spot.name)
+          + '&district=' + encodeURIComponent(spot.district || ''),
+      });
     },
 
     noop() {},

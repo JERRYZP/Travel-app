@@ -117,20 +117,49 @@ eq(activeNoticeOf(rm.gugong, bj(2026, 9, 11, 10, 0)) !== '', true, '故宫公告
 eq(activeNoticeOf(rm.gugong, bj(2026, 9, 15, 10, 0)), '', '故宫公告 9/15 起自动过期，无需人工清理');
 eq(rm.gugong.specialNoticeUntil, '2026-09-14', '故宫公告带到期日（结构化，不再只写在自由文本里）');
 
-console.log('\n--- 一致性：四份数据副本同步 ---');
+console.log('\n--- 一致性：真身 / seed 夹具 / 部署副本 ---');
+// 三份的定位（2026-09-17）：
+//   真身      data/spots.json + data/rules.json          带包装键 {"spots":[...]} / {"rules":[...]}
+//   seed 夹具 data/seed/*.seed.json                      裸数组，仅本测试引用，由 scripts/sync-seed-copies.py 生成
+//   部署副本  cloudfunctions/reminder/data/*.json        随函数打包，admin.seed 读它
+// 断言比的是**全字段**（旧版只比 rules 的 8 个字段，spots 从没比过，导致
+// spots.seed.json 缺 audienceTags 26/26 条长期无人发现）。
+const seedSpots = require('../data/seed/spots.seed.json');
 const seedRules = require('../data/seed/rules.seed.json');
+const deploySpots = require('../cloudfunctions/reminder/data/spots.json').spots;
 const deployRules = require('../cloudfunctions/reminder/data/rules.json').rules;
-const seedRm = {}; seedRules.forEach(r => { seedRm[r.spotId] = r; });
-const depRm = {}; deployRules.forEach(r => { depRm[r.spotId] = r; });
-const FIELDS = ['closedDays', 'openDays', 'closedDaysNote', 'openTime', 'bookingTips', 'lastCheckedDate', 'specialNotice', 'specialNoticeUntil'];
-let diff = [];
-for (const id of Object.keys(rm)) {
-  for (const f of FIELDS) {
-    if (JSON.stringify(rm[id][f]) !== JSON.stringify(seedRm[id][f])) diff.push(`seed:${id}.${f}`);
-    if (JSON.stringify(rm[id][f]) !== JSON.stringify(depRm[id][f])) diff.push(`deploy:${id}.${f}`);
+
+const indexBy = (arr) => arr.reduce((m, x) => (m[x.spotId] = x, m), {});
+
+function compareAll(label, truthMap, testMap, ids) {
+  const diffs = [];
+  for (const id of ids) {
+    const t = truthMap[id], c = testMap[id];
+    if (!c) { diffs.push(`${id}:缺失`); continue; }
+    const tKeys = Object.keys(t).sort(), cKeys = Object.keys(c).sort();
+    if (tKeys.join(',') !== cKeys.join(',')) {
+      diffs.push(`${id}:字段集不同(缺[${tKeys.filter(k => !cKeys.includes(k))}] 多[${cKeys.filter(k => !tKeys.includes(k))}])`);
+    }
+    for (const k of tKeys) {
+      if (JSON.stringify(t[k]) !== JSON.stringify(c[k])) diffs.push(`${id}.${k}`);
+    }
   }
+  return diffs;
 }
-eq(diff.length, 0, `真身/seed/部署副本 全字段一致（差异：${diff.join(',') || '无'}）`);
+
+const spotIds = Object.keys(sm).sort();
+const ruleIds = Object.keys(rm).sort();
+const allDiff = [
+  ...compareAll('seed', sm, indexBy(seedSpots), spotIds).map(d => `seed.spots:${d}`),
+  ...compareAll('deploy', sm, indexBy(deploySpots), spotIds).map(d => `deploy.spots:${d}`),
+  ...compareAll('seed', rm, indexBy(seedRules), ruleIds).map(d => `seed.rules:${d}`),
+  ...compareAll('deploy', rm, indexBy(deployRules), ruleIds).map(d => `deploy.rules:${d}`),
+];
+eq(allDiff.length, 0, `真身/seed/部署副本 全字段一致（差异：${allDiff.slice(0, 8).join(',') || '无'}${allDiff.length > 8 ? ` …共${allDiff.length}处` : ''}）`);
+
+// 夹具形态：必须是裸数组——真身带包装键，逐字拷贝会把夹具变成对象，
+// 而本文件上面是直接 .forEach / 下标访问的。
+eq(Array.isArray(seedSpots) && Array.isArray(seedRules), true, 'seed 夹具保持裸数组形态（非包装对象）');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
 process.exit(fail ? 1 : 0);

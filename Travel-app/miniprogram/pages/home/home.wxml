@@ -313,8 +313,8 @@
   </view>
 </block>
 
-<!-- 景点弹窗 -->
-<spot-popup show="{{showSpotPopup}}" spot-id="{{popupSpotId}}" bind:close="onSpotPopupClose" />
+<!-- 景点弹窗（首页入口不渲染底部操作栏：首页即提醒动线起点） -->
+<spot-popup show="{{showSpotPopup}}" spot-id="{{popupSpotId}}" show-actions="{{false}}" bind:close="onSpotPopupClose" />
 <date-range-picker
   show="{{showCalendar}}"
   min-date="{{minDate}}"

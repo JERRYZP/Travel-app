@@ -2,7 +2,9 @@
  * 行程项规则（2026-09-16 首页行程状态墙 P1）
  *
  * 行程项 = tripId + spotId + visitDate，是首页状态墙、票务结果和提醒任务的事实来源。
- * 本模块在 P1 先提供纯函数与持久化辅助，不实现结果回填/挽回/删除（P2）。
+ *
+ * 本模块只放**纯函数与持久化辅助**；展示态推导在 `lib/item.js`，
+ * 用户操作（标记/撤销/改提醒/删除）在 `lib/trip-item-actions.js`。
  */
 
 const { COLLECTIONS } = require('./schema');
@@ -40,7 +42,7 @@ function makeItemData({ userId, tripId, spotId, visitDate, remindOn, nowTs = tim
   };
 }
 
-/** 读取某行程下已有行程项，按 spotId|visitDate 建立映射，供提交去重和状态推导 */
+/** 读取某行程下已有行程项，按 tripId|spotId|visitDate 建立映射，供提交去重和状态推导 */
 async function existingItemMap(db, userId, tripId = null) {
   const where = tripId ? { userId, tripId } : { userId };
   const res = await db.collection(COLLECTIONS.TRIP_ITEMS).where(where).get();

@@ -64,7 +64,7 @@ Page({
   /* 滚动位置（px），供吸顶测量使用，不参与渲染 */
   _scrollTop: 0,
 
-  onLoad() {
+  onLoad(options) {
     const g = app.globalData;
     const win = wx.getWindowInfo();
     const now = new Date();
@@ -75,6 +75,10 @@ Page({
       minDate: this.fmtDate(now),
       maxDate: this.fmtDate(new Date(now.getTime() + 90 * 86400000)),
     });
+    /* 从订阅消息点进来：落在首页并自动弹出该景点的详情浮窗（notifier 的 page 带 spotId）。
+     * 浮窗是页面内状态、不是路由，所以只能靠参数让页面自己弹。 */
+    const spotId = options && options.spotId;
+    if (spotId) this.openSpotPopup(decodeURIComponent(spotId));
   },
 
   onShow() {

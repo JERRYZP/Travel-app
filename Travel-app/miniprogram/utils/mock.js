@@ -84,6 +84,32 @@ let feedbackSeq = 0;
 let subscribeSeq = 0;
 const subscribeQuotas = {};
 
+/**
+ * 台账自愈判定（镜像 cloudfunctions/reminder/lib/quota.js 的 shouldHealQuota，
+ * 以及 cloudfunctions/notifier/index.js 的同名副本）。
+ * ⚠️ 必须带 lastSendError 前置条件：为空 = 从未尝试发送 = 链路故障，额度在微信侧依然有效，
+ * 清零等于白丢用户已授权的额度；失败原因是本地配置/网络时同理。
+ */
+const LOCAL_FAILURE_HINTS = ['未配置', '未设置', 'access_token', 'accesstoken', '网络', 'timeout', '超时', 'empty response'];
+
+function shouldHealQuota(lastSendError) {
+  const reason = String(lastSendError == null ? '' : lastSendError).trim();
+  if (!reason) return false;
+  const lower = reason.toLowerCase();
+  return !LOCAL_FAILURE_HINTS.some(hint => lower.includes(hint.toLowerCase()));
+}
+
+/** 清零本地台账（mock 单模板世界，直接清所有模板键），返回是否真的清过 */
+function healSubscribeQuotas() {
+  const keys = Object.keys(subscribeQuotas).filter(k => subscribeQuotas[k] > 0);
+  if (!keys.length) return false;
+  keys.forEach(k => { subscribeQuotas[k] = 0; });
+  subscribeSeq = 0;
+  mockUser.subscribeQuota = 0;
+  mockUser.subscribeQuotas = subscribeQuotas;
+  return true;
+}
+
 /* ===== GMT+8 统一时间层（镜像 cloudfunctions/reminder/lib/time.js，TIME-RULE-001） ===== */
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -914,6 +940,14 @@ const handlers = {
     });
     const active = enriched.filter(t => !t.expired);
     const past = enriched.filter(t => t.expired);
+    /* 台账自愈（镜像 lib/task.js 的 sweepOverdue + quota.js 的 shouldHealQuota）：
+       任务已过期未送达、且本地台账仍记有额度 → 清零，避免页面显示假额度让用户以为覆盖到了 */
+    if (all.some(t =>
+      t.backendStatus === 'WAITING' &&
+      new Date(t.releaseAt).getTime() <= now.getTime() &&
+      shouldHealQuota(t.lastSendError))) {
+      healSubscribeQuotas();
+    }
     const shown = data.filter === 'expired' ? past : active;
     const map = {};
     shown.forEach(t => { (map[t.releaseDateStr] = map[t.releaseDateStr] || []).push(t); });

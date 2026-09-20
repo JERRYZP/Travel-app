@@ -12,8 +12,28 @@
   max-height: 80vh;
   background: var(--color-surface);
   border-radius: 32rpx 32rpx 0 0;
-  padding: 32rpx 32rpx 0;
+  /* 纵向 flex：滚动区占满剩余高度，操作栏固定在底部不参与滚动。
+     sheet 自身不滚动、也不给内边距（内容留白全在 .popup-scroll 上）。
+     position: relative 供 .popup-actions-fade 绝对定位。 */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  padding: 0;
+}
+
+/* 滚动区：左右与顶部内边距在此，底部留白单独给。
+   不带 btn 时 = 32px 内容留白；带 btn 时收窄成 48rpx，
+   配合操作栏的 32rpx 顶部间距，正文恰好在按钮上方 32px 处停住。 */
+.popup-scroll {
+  min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 32rpx 32rpx calc(32px + env(safe-area-inset-bottom));
+}
+
+.popup-sheet--actions > .popup-scroll {
+  padding-bottom: 48rpx;
 }
 
 .popup-loading {
@@ -220,6 +240,20 @@
 .verify-ok { color: #2f6b3d; }
 .verify-warn { color: #b8860b; }
 
+/* 我要纠错：贴「数据」核验行右侧，红色下划线链接形态 */
+.popup-correct-link {
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.popup-correct-text {
+  font-size: 24rpx;
+  color: #C0392B;
+  text-decoration: underline;
+}
+
 /* ===== 公众号二维码弹层 ===== */
 .qr-mask {
   position: fixed;
@@ -297,14 +331,24 @@
 }
 
 /* ===== 底部操作栏（V3.0：本期仅视觉占位，不接交互） =====
-   sticky 吸底：内容不超屏时随流收尾；超屏时恒贴弹窗底缘，滚动中按钮可见。
-   打开/展开折叠无需 JS 判定——sticky 在两种形态下天然成立，滚动过程不切换。 */
+   flex 尾部固定，不参与滚动：正文滚到底时停在它上方 32rpx 处，不会被按钮压住。
+   顶衬满宽实底（--color-surface = #FFFEFB），左下右三边与 sheet 对齐。 */
 .popup-actions-bar {
-  position: sticky;
-  bottom: 0;
-  margin-top: 8rpx;
-  padding: 20rpx 0 calc(24rpx + env(safe-area-inset-bottom));
+  flex-shrink: 0;
+  padding: 32rpx 32rpx calc(16px + env(safe-area-inset-bottom));
   background: var(--color-surface);
+}
+
+/* 按钮上方的白色→透明渐隐层：正文从它下面滚过时淡出，避免硬切在文字中间。
+   绝对定位在操作栏正上方，高度 48rpx，不占布局空间。 */
+.popup-actions-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% - 1rpx);
+  height: 48rpx;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(255, 254, 251, 1), rgba(255, 254, 251, 0));
 }
 
 .popup-actions {
@@ -312,14 +356,16 @@
   gap: 20rpx;
 }
 
+/* 按钮高度 = 中档（72rpx ≈ 39px @402px 基准）：
+   小于 88rpx 的常规主按钮，仍高于 44px 触控下限的安全余量。 */
 .popup-btn {
   flex: 1;
-  height: 88rpx;
+  height: 72rpx;
   border-radius: 999rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 30rpx;
+  font-size: 28rpx;
   font-weight: 600;
 }
 
@@ -336,5 +382,5 @@
   text-align: center;
   font-size: 22rpx;
   color: var(--color-muted);
-  margin-bottom: 16rpx;
+  margin-bottom: 14rpx;
 }

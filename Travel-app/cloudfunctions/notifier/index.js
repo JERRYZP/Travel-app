@@ -20,6 +20,7 @@ const COLLECTIONS = {
   SPOTS: 'spots',
   TRIPS: 'trips',
   REMINDER_CART: 'reminder_cart',
+  TRIP_ITEMS: 'trip_items',
   USERS: 'users',
 };
 
@@ -234,6 +235,14 @@ async function invalidateSubscribeQuota(openid, templateId, errCode, errMsg) {
 }
 
 /**
+ * 订阅消息落地页：首页 + 该景点 id（首页 onLoad 读到后自动弹详情浮窗）。
+ * spotId 缺失时退回裸首页，不产出 pages/home/home?spotId= 这种空参数地址。
+ */
+function spotLandingPage(spotId) {
+  return spotId ? `pages/home/home?spotId=${encodeURIComponent(spotId)}` : 'pages/home/home';
+}
+
+/**
  * 发送单条订阅消息。
  * 模板未配置时返回 skipped，不算失败（避免把任务错误标记为 MISSED）。
  */
@@ -256,7 +265,9 @@ async function sendOne(task, spot, offset) {
   const payload = {
     touser: task.userId,
     template_id: TEMPLATE_ID,
-    page: 'pages/home/home',
+    // 落首页并自动弹出该景点的详情浮窗（全站统一浮窗形态）。
+    // 微信只支持「页面路径 + ?查询串」，浮窗是页面内状态、无法直接寻址，靠 spotId 让页面自己弹。
+    page: spotLandingPage(task.spotId),
     miniprogram_state: 'formal',
     lang: 'zh_CN',
     data: {
@@ -361,6 +372,64 @@ async function markResult(task, offset, sendResult, nowTs, state = {}) {
 
   await db.collection(COLLECTIONS.REMINDER_TASKS).doc(task._id).update({ data });
   return { sentOffsets: sent, backendStatus };
+}
+
+/**
+ * 台账自愈判定：任务已判 MISSED、且本地台账仍记有额度时，是否该把额度清零。
+ *
+ * ⚠️ 本函数与 `cloudfunctions/reminder/lib/quota.js` 的 `shouldHealQuota` 是**同规则的副本**：
+ * notifier 与 reminder 是两个独立部署单元，无法互相 require，只能各留一份。
+ * 两份必须行为一致，由 `test/quota-heal.test.js` 对同一组输入交叉断言（不一致即失败）。
+ *
+ * 清零的语义 = 「本地记着有额度，实际却发不出去」→ 台账在骗人，清零让 UI 诚实、
+ * 让下次提交重新走授权。**必须带 lastSendError 前置条件**：
+ *   ① 从未尝试发送（为空）→ 定时器没建/索引缺失/云函数没部署 = 链路故障，
+ *      微信侧额度依然有效，清零等于白丢用户已授权的额度；
+ *   ② 失败原因是本地配置/网络 → 与额度无关，修好配置后额度照样能用。
+ */
+const LOCAL_FAILURE_HINTS = ['未配置', '未设置', 'access_token', 'accesstoken', '网络', 'timeout', '超时', 'empty response'];
+
+function shouldHealQuota(lastSendError) {
+  const reason = String(lastSendError == null ? '' : lastSendError).trim();
+  if (!reason) return false;
+  const lower = reason.toLowerCase();
+  return !LOCAL_FAILURE_HINTS.some(hint => lower.includes(hint.toLowerCase()));
+}
+
+const AUTO_ZERO_WARN_THRESHOLD = 3;
+
+/**
+ * 执行台账自愈清零。只在「台账确实 > 0」时才写库。
+ * 连续清零 ≥ 3 次打告警：说明自愈在反复触发，模板/发送链路大概率有系统性问题，不要静默。
+ */
+async function healSubscribeQuota(openid, templateId = TEMPLATE_ID) {
+  try {
+    const res = await db.collection(COLLECTIONS.USERS).where({ openId: openid }).get();
+    const doc = (res.data || [])[0];
+    if (!doc) return false;
+    const quota = subscribeQuotaOf(doc, templateId);
+    if (quota <= 0) return false;
+
+    const quotas = Object.assign({}, doc.subscribeQuotas || {});
+    quotas[templateId] = 0;
+    const zeroCount = (Number(doc.subscribeAutoZeroCount) || 0) + 1;
+    await db.collection(COLLECTIONS.USERS).doc(doc._id).update({
+      data: {
+        subscribeQuota: totalSubscribeQuota(quotas, 0),
+        subscribeQuotas: quotas,
+        subscribeLastError: `台账自愈清零：任务已过期未送达，但本地仍记 ${quota} 次授权`,
+        subscribeLastErrorAt: new Date(),
+        subscribeAutoZeroCount: zeroCount,
+      },
+    });
+    if (zeroCount >= AUTO_ZERO_WARN_THRESHOLD) {
+      console.warn('[notifier] quota-auto-zero-repeated', JSON.stringify({ openid, templateId, zeroCount, quota }));
+    }
+    return true;
+  } catch (e) {
+    console.error('[notifier] heal-quota-failed', e.message);
+    return false;
+  }
 }
 
 /**
@@ -475,6 +544,7 @@ async function sweepMissed() {
   });
 
   let marked = 0;
+  const healCandidates = new Set();
   for (const t of tasks) {
     await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).update({
       data: {
@@ -486,8 +556,17 @@ async function sweepMissed() {
       },
     });
     marked += 1;
+    // 台账自愈候选：确实发过（lastSendError 非空）且失败原因不是本地配置/链路问题
+    if (t.userId && shouldHealQuota(t.lastSendError)) healCandidates.add(t.userId);
   }
-  return { marked };
+
+  // 台账自愈（见 shouldHealQuota）：把「本地记着有额度、任务却 MISSED」的假额度清零，
+  // 否则页面一直写「已授权 N 次」，用户以为覆盖到了，实际条条收不到
+  let zeroed = 0;
+  for (const openid of healCandidates) {
+    if (await healSubscribeQuota(openid, TEMPLATE_ID)) zeroed += 1;
+  }
+  return { marked, zeroed };
 }
 
 /**
@@ -520,6 +599,12 @@ async function cleanup() {
     const taskCount = await db.collection(COLLECTIONS.REMINDER_TASKS)
       .where({ userId: a.userId, tripId: a.tripId }).count();
     if (taskCount.total > 0) continue;
+    /* ⚠️ 行程项是 V2 判断「行程是否为空」的唯一依据（API-契约 8.1）。
+       少这一条会把「只有免预约景点、没设提醒」的行程当成空壳删掉——
+       而这类行程恰恰是本次改版要补齐的那部分内容。 */
+    const itemCount = await db.collection(COLLECTIONS.TRIP_ITEMS)
+      .where({ userId: a.userId, tripId: a.tripId }).count();
+    if (itemCount.total > 0) continue;
     const cartCount = await db.collection(COLLECTIONS.REMINDER_CART)
       .where({ userId: a.userId, tripId: a.tripId }).count();
     if (cartCount.total > 0) continue;
@@ -559,13 +644,14 @@ exports.main = async (event) => {
       case 'sendNow':
         return { success: true, ...(await scanAndSend()) };
       case 'testSend': {
-        const { touser, miniprogramState = 'formal', lang = 'zh_CN', data, templateId } = event || {};
+        const { touser, miniprogramState = 'formal', lang = 'zh_CN', data, templateId, spotId } = event || {};
         if (!touser) return { success: false, error: 'testSend 需要 touser（已授权订阅的 openid）' };
         if (!WX_APPID || !WX_APPSECRET) return { success: false, error: 'WX_APPID/WX_APPSECRET 未配置' };
         const payload = {
           touser,
           template_id: templateId || TEMPLATE_ID,
-          page: 'pages/home/home',
+          // 传 spotId 可顺带验证「落地首页自动弹详情浮窗」，不传则落裸首页
+          page: spotLandingPage(spotId),
           miniprogram_state: miniprogramState,
           lang,
           data: data || {
@@ -604,4 +690,4 @@ exports.main = async (event) => {
   }
 };
 
-exports._internal = { collectDue, staggerDelays, beijingHm, beijingMonthDay, beijingDateTime, getAccessToken, sendSubscribeMessageHttp, httpJson, WX_APPID, WX_APPSECRET, TEMPLATE_ID };
+exports._internal = { collectDue, staggerDelays, beijingHm, beijingMonthDay, beijingDateTime, getAccessToken, sendSubscribeMessageHttp, httpJson, shouldHealQuota, healSubscribeQuota, spotLandingPage, WX_APPID, WX_APPSECRET, TEMPLATE_ID };

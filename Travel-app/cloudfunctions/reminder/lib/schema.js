@@ -141,9 +141,22 @@ const V1 = {
   BANNER_WINDOW_HOURS: 1,       // REMINDER-RULE-008
   STAGGER_WINDOW_SECONDS: 30,   // REMINDER-RULE-003
   MEMBER_LEVEL_DEFAULT: 'NORMAL',
-  RESULT_UNDO_SECONDS: 10,       // 首页行程项人工结果撤销窗口
+  RESULT_UNDO_SECONDS: 4,        // 首页行程项人工结果撤销窗口（2026-09-17 由 10 秒收紧）
   UNMARKED_AFTER_HOURS: 24,      // 放票后未标记转为中性态的时间
 };
+
+/**
+ * 暂存清单的占位 tripId（2026-09-20 清单改暂存区）
+ *
+ * 「生成预约时间线」改为纯预览后，用户加入清单时**还没有行程**——行程是在
+ * 提交清单时才创建/合并的。而 reminder_cart 的逻辑唯一键带 tripId，
+ * 所以未提交的清单行统一挂这个占位值，提交时整批改挂到真正的行程。
+ *
+ * ⚠️ 带双下划线前缀是为了不可能与云开发的真实 _id 撞车（真实 id 是十六进制串）。
+ * 行程级联清理（trip.remove / purgeIfNoItem / notifier.cleanup）一律不认这个值，
+ * 不要把它当成一个「行程」去查 trips 表。
+ */
+const PENDING_CART_TRIP_ID = '__pending__';
 
 /** 统一响应包装 */
 function ok(data = {}) {
@@ -170,6 +183,7 @@ module.exports = {
   ERRORS,
   EVENTS,
   V1,
+  PENDING_CART_TRIP_ID,
   ok,
   fail,
 };
