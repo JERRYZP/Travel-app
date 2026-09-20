@@ -24,56 +24,32 @@ const WXML = fs.readFileSync(path.join(ROOT, 'miniprogram/components/cart-popup/
 const WXSS = fs.readFileSync(path.join(ROOT, 'miniprogram/components/cart-popup/cart-popup.wxss'), 'utf8');
 const JS = fs.readFileSync(path.join(ROOT, 'miniprogram/components/cart-popup/cart-popup.js'), 'utf8');
 
-console.log('=== 1. 下拉浮层在最外层，不在 scroll-view 内 ===');
+console.log('=== 1. 提醒开关用系统 ActionSheet，不做自绘浮层 ===');
 {
-  const listStart = WXML.indexOf('<scroll-view');
-  const listEnd = WXML.indexOf('</scroll-view>');
-  const popAt = WXML.indexOf('class="cart-drop-pop"');
-  eq(popAt > listEnd, true, '浮层渲染在 </scroll-view> 之后（在最外层）');
-  eq(WXML.slice(listStart, listEnd).indexOf('cart-drop-pop'), -1, 'scroll-view 内没有浮层');
+  /* 这一条是被真机反复打回来的，改动前先读一下为什么：
 
-  /* sheet 有入场动画（transform），会让 fixed 后代以它为包含块 —— 浮层也不能放 sheet 里 */
-  const sheetStart = WXML.indexOf('class="cart-sheet"');
-  const sheetEnd = WXML.lastIndexOf('</view>\n</view>');
-  const afterSheet = WXML.slice(WXML.lastIndexOf('</scroll-view>'), popAt);
-  eq(afterSheet.indexOf('</view>') >= 0, true,
-    '浮层在 .cart-sheet 闭合之后（不受 sheet 的 transform 影响）');
-  eq(/\.cart-drop-pop\s*\{[^}]*position:\s*fixed/.test(WXSS), true, '浮层用 position: fixed');
-  eq(/\.cart-drop-pop\s*\{[^}]*position:\s*absolute/.test(WXSS), false, '浮层不再用 position: absolute');
-}
+     这个位置在 scroll-view 内。自绘浮层（position: fixed/absolute）在
+     scroll-view 里会被裁切；修好裁切又要处理层级与遮罩拦截点击；
+     遮罩调好又可能在别的机型上表现不同。每一层都要单独打补丁。
 
-console.log('=== 2. 浮层坐标由 JS 按触发按钮算 ===');
-{
-  eq(/id="drop-\{\{item\._id\}\}"/.test(WXML), true, '触发按钮带 id 供测量');
-  eq(/boundingClientRect/.test(JS), true, '按触发按钮的位置测量');
-  eq(/windowWidth/.test(JS), true, '右边界按视口宽度换算');
-  eq(/bindscroll="onListScroll"/.test(WXML), true, '列表滚动时收起浮层（固定定位不会跟着走）');
-  eq(/onListScroll\(\)\s*\{\s*this\.closeDropdown\(\)/.test(JS), true, 'onListScroll 收起浮层');
-}
+     系统 ActionSheet 是**原生层**的：不经过 WXML，天然不受
+     scroll-view / 层级 / 遮罩影响，点选项与点取消的行为由微信保证。
+     只有两项的选择，这本来就是最合适的控件。
 
-console.log('=== 2b. 浮层与遮罩的交互契约 ===');
-{
-  /* 这些是用户实测「点选项没反应、点空白也不消失」之后定的。
-     根因：遮罩是满屏 fixed，与浮层同为 fixed；真机上仅靠类里的 z-index
-     在部分基础库下会判错、遮罩抢走点击 —— 层级必须内联写死。 */
-  eq(/class="cart-drop-mask" style="z-index: 900;"/.test(WXML), true,
-    '遮罩 z-index 内联写死（不靠类选择器）');
-  eq(/class="cart-drop-pop" style="\{\{dropStyle\}\} z-index: 901;"/.test(WXML), true,
-    '浮层 z-index 内联写死且高于遮罩');
-  eq(/catchtap="closeDropdown"/.test(WXML), true, '点空白收起浮层');
+     所以这里断言的是「**没有**自绘浮层」——不是断言某段 CSS 写对了。
+     请不要再改回自绘。 */
+  eq(/<view[^>]*cart-drop-pop/.test(WXML), false, '没有自绘浮层节点');
+  eq(/cart-drop-mask/.test(WXML), false, '没有自绘遮罩');
+  eq(/showActionSheet/.test(JS), true, '用系统 ActionSheet');
+  eq(/itemList:/.test(JS), true, '候选通过 itemList 交给系统渲染');
+  eq(/tapIndex/.test(JS), true, '用 tapIndex 判定选了哪一项');
+  eq(/fail:\s*\(\)\s*=>\s*\{\}/.test(JS), true,
+    'fail 回调留空 = 用户点取消/遮罩时什么都不做');
+  eq(/cart-drop-mask|cart-drop-pop|cart-drop-opt/.test(WXSS), false, '样式里也没有浮层残留');
 
-  /* 手机端手指交互：点选项**立即生效并关闭**，不要确认步骤。
-     「点开看一眼」不误改靠的是「点空白只关闭、不改动」。 */
-  eq(/catchtap="onPickRemind"/.test(WXML), true, '两个选项可点');
-  eq(/cart-drop-confirm|onConfirmRemind/.test(WXML), false, '没有多余的确认按钮');
-  eq(/data-remind="\{\{true\}\}"/.test(WXML) && /data-remind="\{\{false\}\}"/.test(WXML), true,
-    '两个选项各自带目标值');
-
-  const js = JS;
-  eq(/onPickRemind\(e\)[\s\S]{0,400}?closeDropdown\(\)[\s\S]{0,400}?updateRemindOn/.test(js), true,
-    'onPickRemind 里「先关闭再落库」');
-  eq(/dropChoice|onConfirmRemind/.test(js), false, 'JS 里没有残留的预选/确认态');
-  eq(/noop\(\)/.test(js), true, 'noop 已定义（catchtap="noop" 不会静默落空）');
+  /* 浮层没了，这些配套机制也该一起消失，否则是死代码 */
+  eq(/openDropdown|dropStyle|dropItem/.test(JS), false, 'JS 里没有浮层状态残留');
+  eq(/onListScroll/.test(WXML + JS), false, '不再需要「滚动收起浮层」');
 }
 
 console.log('=== 3. 底部条不再重复叠加安全区 ===');

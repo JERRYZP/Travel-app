@@ -26,13 +26,6 @@ Component({
     summary: null,
     loading: true,
     showClearDialog: false,
-    /* 展开下拉的 cartId（同屏只开一个） */
-    openDropdown: '',
-    /* 下拉里那一行（用于回显当前值） */
-    dropItem: null,
-    /* 下拉浮层的内联定位（px）。在 JS 里按触发按钮的位置算——
-       见 onToggleDropdown 的注释：它必须在最外层，不能放 scroll-view 里 */
-    dropStyle: '',
     /* 由 JS 计算的内联样式（px，避免微信端 vh/calc/max-height 解析不可靠） */
     bottomOffset: '0px',
     listStyle: '',
@@ -53,7 +46,6 @@ Component({
         this.computeHeights();
         this.loadCart();
       } else {
-        this.setData({ openDropdown: '', dropItem: null, dropStyle: '' });
       }
     },
     aboveTabbar: function () { this.computeHeights(); },
@@ -115,72 +107,44 @@ Component({
       });
     },
 
-    onClose() { this.closeDropdown(); this.triggerEvent('close'); },
+    onClose() { this.triggerEvent('close'); },
     onMaskTap() { this.onClose(); },
     onSheetTap() {},
     noop() {},
 
-    /* 下拉二选一：清单是一次性任务，不做中间态管理，只有「提醒 / 不提醒」两种 */
+    /**
+     * 切换提醒：直接调**系统 ActionSheet**。
+     *
+     * 为什么不用自绘浮层（重要，别再改回去）：
+     *   这里的位置在 `scroll-view` 里。`fixed` 元素在 `scroll-view` 内会被裁切，
+     *   还会引入层级、遮罩拦截点击、滚动错位等一连串问题 —— 每一层都要单独打补丁，
+     *   而每一层在真机上都可能表现不同。实测反复失败。
+     *
+     * 系统 ActionSheet 是**原生层**的：不经过 WXML，天然不受 scroll-view / 层级
+     * 影响，点选项与点遮罩的行为由微信保证。只有两项的选择，这本来就是最合适的控件。
+     */
     onToggleDropdown(e) {
       const cartId = e.currentTarget.dataset.id;
       const item = this.findItem(cartId);
+      /* 免预约项固定不可改：不是置灰，是压根没有这个选择 */
       if (!item || !item.canToggle) return;
-      if (this.data.openDropdown === cartId) { this.closeDropdown(); return; }
-      this.openDropdownAt(cartId, item);
+
+      const ON = this.data.OPTION_ON;
+      const OFF = this.data.OPTION_OFF;
+      const other = item.remindOn ? OFF : ON;
+      wx.showActionSheet({
+        itemList: [other],
+        success: res => {
+          if (res.tapIndex !== 0) return;
+          this.applyRemind(cartId, !item.remindOn);
+        },
+        fail: () => {},   // 用户点了取消/遮罩 —— 什么都不做
+      });
     },
 
-    /**
-     * 打开下拉，并按触发按钮的位置给它定坐标。
-     *
-     * ⚠️ 浮层必须渲染在 `.cart-popup` 这一层（**最外层**），不能放在 row 里：
-     *   - row 在 `scroll-view` 内 → 溢出部分会被裁掉，用户实测「选项看不到、被遮」
-     *   - 放 `.cart-sheet` 内也不行：sheet 有入场动画（transform），
-     *     会让 `position: fixed` 的后代改以它为包含块，定位整个跑偏
-     * 所以浮层是 `.cart-popup` 的直接子元素，用 `position: fixed` + 视口坐标。
-     */
-    openDropdownAt(cartId, item) {
-      const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
-      this.createSelectorQuery().select('#drop-' + cartId).boundingClientRect(trig => {
-        if (!trig) return;
-        const H = 88;      // 两行选项 + 内边距（px）
-        const GAP = 6;
-        let top = trig.top - H - GAP;
-        if (top < 10) top = trig.bottom + GAP;
-        const right = Math.max(12, (win.windowWidth || 375) - trig.right);
-        this.setData({
-          openDropdown: cartId,
-          dropItem: item,
-          /* 只**预选**当前值，不提交 —— 必须点「确定」才生效 */
-          dropStyle: 'top:' + top + 'px; right:' + right + 'px;',
-        });
-      }).exec();
-    },
-
-    closeDropdown() {
-      if (!this.data.openDropdown) return;
-      this.setData({ openDropdown: '', dropItem: null, dropStyle: '' });
-    },
-
-    /* 列表一滚，触发按钮就移位了 —— fixed 浮层不会跟着走，直接收起来 */
-    onListScroll() {
-      this.closeDropdown();
-    },
-
-    /**
-     * 点选项 = **立即生效并关闭**。
-     *
-     * 这是手机端的手指交互：只有两项，点哪一项就是选它，不需要额外的确认步骤。
-     * 「点开看一眼」也不会误改——点空白只关闭、不改动。
-     */
-    onPickRemind(e) {
-      const cartId = this.data.openDropdown;
-      const item = this.data.dropItem;
-      if (!cartId || !item) return;
-      const remind = e.currentTarget.dataset.remind === true
-        || e.currentTarget.dataset.remind === 'true';
-      this.closeDropdown();
-      if (item.remindOn === remind) return;   // 点的就是当前值，不用白跑一趟
-      api.reminder.cart.updateRemindOn({ cartId, remindOn: remind }).then(() => {
+    /** 写入提醒开关并刷新 */
+    applyRemind(cartId, remindOn) {
+      api.reminder.cart.updateRemindOn({ cartId, remindOn }).then(() => {
         this.loadCart();
         this.triggerEvent('change');
       }).catch(err => api.toastError(err));

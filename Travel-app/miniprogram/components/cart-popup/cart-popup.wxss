@@ -124,7 +124,7 @@
 
 .cart-row-action { flex-shrink: 0; position: relative; }
 
-/* 动作下拉二选一：这是清单里唯一的提醒开关决策点 */
+/* 提醒开关：一个可点的小胶囊，点它弹系统 ActionSheet */
 .cart-drop {
   display: inline-flex;
   align-items: center;
@@ -136,39 +136,7 @@
   color: var(--color-text);
   background: var(--color-page);
 }
-.cart-drop.open { border-color: var(--color-primary); color: var(--color-primary); }
-/* 下拉浮层：渲染在 .cart-popup 这一层，position: fixed + JS 算好的视口坐标。
-   为什么不用 absolute 贴着触发按钮：它会被 scroll-view 裁掉。 */
-.cart-drop-pop {
-  position: fixed;
-  z-index: 30;
-  background: var(--color-surface);
-  border: 1rpx solid var(--color-border);
-  border-radius: 14rpx;
-  box-shadow: 0 8rpx 24rpx rgba(100,60,20,.22);
-  min-width: 300rpx;
-  padding: 8rpx 0;
-  animation: drop-in .16s cubic-bezier(.22,1,.36,1);
-}
-@keyframes drop-in {
-  from { opacity: 0; transform: translateY(6rpx); }
-  to   { opacity: 1; transform: none; }
-}
-
-/* 挡在下面的透明遮罩：点任意处收起。
-   z-index 显式写在 wxml 内联样式里（真机上类选择器与内联混用时层级判定不稳）。 */
-.cart-drop-mask {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-}
-.cart-drop-opt {
-  padding: 18rpx 24rpx;
-  font-size: 24rpx;
-  color: var(--color-text);
-  white-space: nowrap;
-}
-.cart-drop-opt.active { color: var(--color-primary); font-weight: 600; background: rgba(192,71,42,.06); }
-
+.cart-drop:active { opacity: .6; }
 
 /* 免预约项：说明必须与按钮同屏可见，不能只靠弹窗解释 */
 .cart-no-remind {

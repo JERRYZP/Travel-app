@@ -11,7 +11,7 @@
       </view>
     </view>
 
-    <scroll-view scroll-y class="cart-list" style="{{listStyle}}" bindscroll="onListScroll">
+    <scroll-view scroll-y class="cart-list" style="{{listStyle}}">
       <view class="cart-list-inner">
         <block wx:if="{{loading}}">
           <view class="cart-loading"><van-loading size="40rpx" color="#B8904A" /></view>
@@ -32,18 +32,19 @@
                 <text class="cart-row-sub">{{item.subline}}</text>
               </view>
 
-              <!-- 动作下拉二选一（浮层本身渲染在最外层，见文件末尾）。
-                   免预约项固定不可改：不是置灰，是压根没有这个选择 -->
+              <!-- 提醒开关：点一下弹系统 ActionSheet 二选一。
+                   刻意**不做自绘浮层** —— 这里在 scroll-view 内，自绘浮层会被裁切，
+                   还要自己处理层级与遮罩拦截点击，实测反复失败。系统控件不经过 WXML，
+                   天然没这些问题。免预约项固定不可改：不是置灰，是压根没有这个选择 -->
               <view class="cart-row-action">
                 <view
                   wx:if="{{item.canToggle}}"
-                  id="drop-{{item._id}}"
-                  class="cart-drop {{openDropdown === item._id ? 'open' : ''}}"
+                  class="cart-drop"
                   catchtap="onToggleDropdown"
                   data-id="{{item._id}}"
                 >
                   <text>{{item.remindText}}</text>
-                  <svg-icon name="{{openDropdown === item._id ? 'chevron-up' : 'chevron-down'}}" size="11px" />
+                  <svg-icon name="chevron-down" size="11px" />
                 </view>
                 <!-- 免预约：说明必须与按钮同屏可见，不能只靠弹窗解释 -->
                 <text wx:else class="cart-no-remind">无需预约，随到随玩，不设提醒</text>
@@ -69,23 +70,6 @@
     </view>
   </view>
 
-  <!-- 动作下拉浮层：**必须在最外层**。
-       放进 row 会被 scroll-view 裁掉；放进 .cart-sheet 也不行 ——
-       sheet 有入场动画（transform），会让 position: fixed 的后代改以它为包含块。
-       坐标由 JS 按触发按钮的位置算好，见 onToggleDropdown。 -->
-  <block wx:if="{{openDropdown && dropItem}}">
-    <!-- ⚠️ 内联 z-index + catchtap：遮罩是满屏的，而它与浮层同为 fixed。
-         真机上仅靠类里的 z-index 在部分基础库下会判错，遮罩抢走点击 →
-         「点选项没反应、点空白也不消失」。内联写死并拉开层级最稳。 -->
-    <view class="cart-drop-mask" style="z-index: 900;" catchtap="closeDropdown" catchtouchmove="noop"></view>
-    <view class="cart-drop-pop" style="{{dropStyle}} z-index: 901;" catchtap="noop">
-      <!-- 手指点一下即生效并关闭；点空白只关闭、不改动 -->
-      <view class="cart-drop-opt {{dropItem.remindOn ? 'active' : ''}}"
-            catchtap="onPickRemind" data-remind="{{true}}">{{OPTION_ON}}</view>
-      <view class="cart-drop-opt {{!dropItem.remindOn ? 'active' : ''}}"
-            catchtap="onPickRemind" data-remind="{{false}}">{{OPTION_OFF}}</view>
-    </view>
-  </block>
 </view>
 
 <van-dialog
