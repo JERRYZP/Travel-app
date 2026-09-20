@@ -76,6 +76,15 @@ const db = {
   feedbacks: {},
   searchHistory: [],
 };
+/* 暂存清单的占位 tripId（镜像 schema.PENDING_CART_TRIP_ID，2026-09-20 清单改暂存区）：
+   「生成时间线」改为纯预览后，用户加入清单时还没有行程，未提交的行统一挂这个值，
+   提交时才建/合并行程并整批改挂。⚠️ 不是真实行程，不要拿去 db.trips 里查。 */
+const PENDING_CART_TRIP_ID = '__pending__';
+/* 人工结果撤销窗口（镜像 schema.V1.RESULT_UNDO_SECONDS，2026-09-17 由 10 秒收紧为 4 秒） */
+const RESULT_UNDO_SECONDS = 4;
+/* 放票后未标记转为中性态的时间（镜像 schema.V1.UNMARKED_AFTER_HOURS） */
+const UNMARKED_AFTER_HOURS = 24;
+
 let tripSeq = 0;
 let cartSeq = 0;
 let taskSeq = 0;
@@ -371,6 +380,98 @@ function pruneStaleCart(tripId) {
  * 用户主动删除任务后，行程若已无任何任务 → 行程连同其提醒清单一并删除。
  * 与 trip.list 读取时兜底（清单非空即保留，保护草稿行程）不同，这里不看清单。
  */
+/**
+ * 行程判空只看行程项（镜像 lib/trip.js 的 dropTripIfEmpty / purgeIfNoItem）：
+ * 只有免预约景点、没设提醒的行程**不能**被当成空壳删掉。
+ */
+function dropTripIfNoItem(tripId) {
+  if (!tripId || tripId === PENDING_CART_TRIP_ID) return false;
+  if (Object.values(db.tasks).some(t => t.tripId === tripId)) return false;
+  if (Object.values(db.items).some(i => i.tripId === tripId)) return false;
+  Object.keys(db.carts).forEach(id => { if (db.carts[id].tripId === tripId) delete db.carts[id]; });
+  delete db.trips[tripId];
+  return true;
+}
+
+/** 清单归属的 tripId：不传 = 暂存区（镜像 cart.cartTripIdOf） */
+function cartTripIdOf(tripId) { return tripId || PENDING_CART_TRIP_ID; }
+
+/**
+ * 挽回建议（镜像 lib/recovery.js 的三层）：
+ *   ① 已设备选且备选未开票 → 静默（备选本身就是挽回方案）
+ *   ② 没设备选、行程内还有可行动日期 → 给候选
+ *   ③ 都没有 → 静默。**什么都不建议是合法的。**
+ * 候选池 = 行程本身的日期范围（不含刚失败的那一天）。
+ * 数据红线：不做同日回流票，不出现任何余票字段。
+ */
+function mockRecoveryCandidates(failed) {
+  const nowTs = new Date();
+  const trip = db.trips[failed.tripId] || null;
+  const siblings = Object.values(db.items).filter(i => i.tripId === failed.tripId);
+
+  /* 第 ① 层：同景点还有没到放票时间的备选 → 不打扰 */
+  const sameSpot = siblings.filter(i => i.spotId === failed.spotId && i._id !== failed._id);
+  const pendingBackup = sameSpot.some(i => {
+    const d = decorateItem(i, nowTs);
+    return !d.ended && !d.canMark && d.ticketState === 'PENDING';
+  });
+  if (pendingBackup) return [];
+
+  const startDate = trip ? trip.startDate : failed.visitDate;
+  const endDate = trip ? trip.endDate : failed.visitDate;
+  /* ⚠️ 必须排除「刚失败的那一天」：把 10月2日 原样建议回去，
+     等于对用户刚说没成的事再说一次「再约这天吧」 */
+  const taken = new Set([failed.visitDate].concat(sameSpot.map(i => i.visitDate)));
+  const today = fmt(new Date());
+
+  const out = [];
+  const seen = {};
+  const collect = (spotId) => {
+    const spot = SPOTS.find(s => s.spotId === spotId);
+    const rule = RULES.find(r => r.spotId === spotId);
+    if (!spot || !rule) return;
+    const mine = [];
+    dateRange(startDate, endDate).forEach(visitDate => {
+      if (spotId === failed.spotId && taken.has(visitDate)) return;
+      const key = spotId + '|' + visitDate;
+      if (seen[key]) return;
+      if (visitDate <= today) return;                          // 已过
+      if (!isOpenOn(rule, dayNameOf(visitDate))) return;        // 闭馆 / 白名单不可约
+      if (spot.reservationRequired === false) return;           // 免预约不构成挽回
+      const releaseAt = deriveReleaseAt(spot, rule, visitDate);
+      if (!releaseAt) return;                                   // 无固定放票规则
+      seen[key] = true;
+      const alreadyOnSale = releaseAt.getTime() <= nowTs.getTime();
+      mine.push({
+        spotId, spotName: spot.name, visitDate, releaseAt,
+        action: alreadyOnSale ? 'BOOK_NOW' : 'SET_REMINDER',
+        label: alreadyOnSale
+          ? formatMonthDayWeekCn(visitDate) + ' 已开票，去官方渠道预约'
+          : formatMonthDayWeekCn(visitDate) + ' ' + formatHourMinute(releaseAt) + ' 放票',
+      });
+    });
+    /* 名额按行动类型各取一半：简单取前 N 条会被日期早的 BOOK_NOW 占满，
+       用户就看不到「等下一场放票」这条路 */
+    const bookNow = mine.filter(c => c.action === 'BOOK_NOW');
+    const setReminder = mine.filter(c => c.action === 'SET_REMINDER');
+    out.push(...bookNow.slice(0, 1), ...setReminder.slice(0, 1));
+    if (out.length === 0) {
+      const rest = mine.filter(c => out.indexOf(c) === -1);
+      out.push(...rest.slice(0, 2));
+    }
+  };
+
+  collect(failed.spotId);
+  siblings.forEach(i => { if (i.spotId !== failed.spotId) collect(i.spotId); });
+
+  return out.sort((a, b) => {
+    const pa = a.action === 'BOOK_NOW' ? 0 : 1;
+    const pb = b.action === 'BOOK_NOW' ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    return a.visitDate.localeCompare(b.visitDate);
+  }).slice(0, 6);
+}
+
 function purgeTripIfNoTask(tripId) {
   if (!tripId) return false;
   if (Object.values(db.tasks).some(t => t.tripId === tripId)) return false;
@@ -485,6 +586,177 @@ function groupBySpot(events, nowTs) {
     return { key: spotId, label: sorted[0].spotName, events: sorted, count: sorted.length, scrollIndex: defaultScrollIndex(sorted, nowTs) };
   }).sort((a, b) => (a.events[0].releaseAt ? a.events[0].releaseAt.getTime() : Number.MAX_SAFE_INTEGER) - (b.events[0].releaseAt ? b.events[0].releaseAt.getTime() : Number.MAX_SAFE_INTEGER));
 }
+/* ===== 行程项展示态推导（镜像 cloudfunctions/reminder/lib/item.js）=====
+   六个展示态的唯一真身在前端这一侧的副本。⚠️ 云端改动必须同步这里，
+   test/mock-mirror.test.js 会交叉断言两边对同一组输入给出同一结果。 */
+
+/** 放票时刻由规则推算（镜像 item.deriveReleaseAt / timeline.buildEvents 的口径） */
+function deriveReleaseAt(spot, rule, visitDate) {
+  if (!spot || spot.reservationRequired === false) return null;
+  if (!rule || !rule.advanceDays) return null;
+  const releaseTime = rule.releaseTime || (rule.releaseTimes || [])[0];
+  if (!releaseTime) return null;
+  return parseBeijing(addDays(visitDate, -rule.advanceDays), releaseTime);
+}
+
+const TICKET_LABEL = {
+  PENDING: '待抢', BOOKABLE: '可抢', SUCCESS: '已成',
+  FAILED: '未成',
+  /* UNMARKED 是中性态，不是「未成」——放票过了 24 小时没标记不代表没抢到 */
+  UNMARKED: '开过票了',
+  NO_RESERVATION: '免预约',
+};
+const REMINDER_LABEL = { NOT_SET: '未设提醒', WAITING: '待提醒', TRIGGERED: '已提醒', MISSED: '未送达' };
+
+/**
+ * ENUM-007 票务展示状态。计算顺序固定：
+ * 免预约 → 人工结果 → 放票前 → 放票后 24h 内 → 未标记
+ */
+function ticketStateLabelOf(state) { return TICKET_LABEL[state] || '待抢'; }
+
+function ticketStateOf(item, reservationRequired, releaseAt, nowTs) {
+  if (reservationRequired === false) return 'NO_RESERVATION';
+  if (item && item.result === 'SUCCESS') return 'SUCCESS';
+  if (item && item.result === 'FAILED') return 'FAILED';
+  if (!releaseAt) return 'PENDING';
+  const passed = nowTs.getTime() - new Date(releaseAt).getTime();
+  if (passed < 0) return 'PENDING';
+  return passed <= UNMARKED_AFTER_HOURS * 3600000 ? 'BOOKABLE' : 'UNMARKED';
+}
+
+/** 提醒送达态，与票务状态分离（ENUM-009） */
+function reminderStateOf(task, remindOn, nowTs) {
+  if (!remindOn || !task) return { state: 'NOT_SET', stateLabel: REMINDER_LABEL.NOT_SET, reason: null };
+  let status = task.backendStatus;
+  if (status === 'WAITING' && task.releaseAt && new Date(task.releaseAt).getTime() <= nowTs.getTime()) {
+    status = 'MISSED';
+  }
+  let state = 'WAITING';
+  if (status === 'TRIGGERED') state = 'TRIGGERED';
+  else if (status === 'MISSED') state = 'MISSED';
+  const reason = state === 'MISSED' ? (task.missedReason || task.lastSendError || '超过放票时间点未触发成功') : null;
+  return { state, stateLabel: REMINDER_LABEL[state], reason, channels: task.channels || [], offsets: task.offsets || [] };
+}
+
+/** 组装对外行程项（镜像 item.decorateItem，字段名/语义必须逐一对齐） */
+function decorateItem(item, nowTs) {
+  const spot = SPOTS.find(s => s.spotId === item.spotId);
+  const rule = RULES.find(r => r.spotId === item.spotId) || null;
+  const reservationRequired = !spot || spot.reservationRequired !== false;
+  const releaseAt = deriveReleaseAt(spot, rule, item.visitDate);
+  const ticketState = ticketStateOf(item, reservationRequired, releaseAt, nowTs);
+  const task = Object.values(db.tasks).find(t => t.itemId === item._id) || null;
+  const marked = item.result === 'SUCCESS' || item.result === 'FAILED';
+  return {
+    itemId: item._id,
+    tripId: item.tripId,
+    spotId: item.spotId,
+    spotName: spot ? spot.name : '未知景点',
+    visitDate: item.visitDate,
+    backupGroupId: item.backupGroupId || (item.tripId + ':' + item.spotId),
+    reservationRequired,
+    remindOn: reservationRequired && item.remindOn === true,
+    releaseAt,
+    difficulty: spot ? difficultyOf(spot.difficultyScore) : null,
+    ticketState,
+    ticketStateLabel: TICKET_LABEL[ticketState],
+    /* 预约入口不因进入「开过票了」或标记失败而消失，保留到出行日 23:59 */
+    bookingEntryEnabled: reservationRequired && Boolean(item.visitDate) && fmt(new Date()) <= item.visitDate,
+    canMark: reservationRequired && Boolean(releaseAt)
+      && nowTs.getTime() >= new Date(releaseAt).getTime()
+      && !marked && fmt(new Date()) <= item.visitDate,
+    result: item.result || null,
+    resultAt: item.resultAt || null,
+    undoUntil: item.resultAt
+      ? new Date(new Date(item.resultAt).getTime() + RESULT_UNDO_SECONDS * 1000) : null,
+    ended: fmt(new Date()) > item.visitDate,
+    reminder: reminderStateOf(task, reservationRequired && item.remindOn === true, nowTs),
+  };
+}
+
+/** 门票进度：分母按 backupGroupId 去重，免预约不进分母（镜像 item.backupGroupProgress） */
+function backupGroupProgress(items) {
+  const groups = {};
+  let noReservationCount = 0;
+  (items || []).forEach(it => {
+    if (it.reservationRequired === false) { noReservationCount += 1; return; }
+    const key = it.backupGroupId || (it.tripId + ':' + it.spotId);
+    (groups[key] = groups[key] || []).push(it);
+  });
+  let done = 0;
+  Object.keys(groups).forEach(k => {
+    if (groups[k].some(i => i.result === 'SUCCESS')) done += 1;
+  });
+  return { done, total: Object.keys(groups).length, noReservationCount };
+}
+
+/**
+ * 纯预览（镜像 cloudfunctions/reminder/lib/timeline.preview，2026-09-20）
+ *
+ * 按当前所选日期段与景点独立计算，**不创建/改写任何行程，也不读任何已落库状态**。
+ * 所以这里刻意不查 db.carts / db.items / db.tasks —— 查了就会把历史状态带进预览，
+ * 用户换一批日期重新生成时会看到属于上一趟行程的「已在行程」。
+ */
+function previewTimeline(input) {
+  const segs = (Array.isArray(input.segments) && input.segments.length > 0)
+    ? input.segments.filter(sg => sg && sg.spotId && sg.startDate && sg.endDate)
+    : (input.spotIds || []).map(spotId => ({ spotId, startDate: input.startDate, endDate: input.endDate }));
+  const startDate = input.startDate;
+  const endDate = input.endDate;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate || '') || !/^\d{4}-\d{2}-\d{2}$/.test(endDate || '') || startDate > endDate) {
+    return { success: false, error: '行程日期不合法', errorCode: 1006 };
+  }
+  if (segs.length === 0) {
+    return { success: true, events: [], byDeparture: [], bySpot: [], closedSpots: [], closedDaySkips: [], empty: true, emptyReason: '先选择想去的景点' };
+  }
+
+  const nowTs = new Date();
+  const events = [];
+  const closedSpots = [];
+  const closedDaySkips = [];
+
+  segs.forEach(seg => {
+    const spot = SPOTS.find(s => s.spotId === seg.spotId);
+    if (!spot) return;
+    const rule = RULES.find(r => r.spotId === seg.spotId) || null;
+    const built = buildEvents(spot, rule, seg);
+    if (built.length === 0) {
+      if (!rule || !rule.advanceDays || !rule.releaseTime) {
+        closedSpots.push({ spotId: seg.spotId, spotName: spot.name, note: '无固定放票时刻，暂不生成提醒' });
+      } else {
+        closedSpots.push({ spotId: seg.spotId, spotName: spot.name, note: (rule.openDays || []).length > 0 ? '行程期间不可约' : '行程期间闭馆' });
+      }
+      return;
+    }
+    const skipped = rule ? dateRange(seg.startDate, seg.endDate).filter(d => !isOpenOn(rule, dayNameOf(d))) : [];
+    if (skipped.length > 0) {
+      const isWhitelist = (rule.openDays || []).length > 0;
+      closedDaySkips.push({
+        spotId: seg.spotId,
+        spotName: spot.name,
+        note: skipped.map(d => formatMonthDayWeek(d)).join('、') + (isWhitelist ? ' 不可约，已为你跳过' : ' 闭馆，已为你跳过'),
+      });
+    }
+    built.forEach(event => {
+      /* ⚠️ 上下文一律为空：预览不知道也不关心任何已落库状态 */
+      const status = resolveStatus(event, { inCart: false, task: null, committed: false }, nowTs);
+      events.push({ ...event, status, button: buttonOf(status, event), stale: false });
+    });
+  });
+
+  return {
+    success: true,
+    events,
+    byDeparture: groupByDeparture(events, nowTs),
+    bySpot: groupBySpot ? groupBySpot(events) : [],
+    closedSpots,
+    closedDaySkips,
+    empty: events.length === 0,
+    emptyReason: events.length === 0
+      ? (closedSpots.length > 0 ? '该日期段暂无可提醒的放票时间' : '先选择想去的景点') : null,
+  };
+}
+
 function generateTimeline(tripId) {
   const trip = db.trips[tripId];
   if (!trip) return { success: false, error: '行程不存在', errorCode: 1001 };
@@ -623,7 +895,10 @@ const handlers = {
     const startDate = data.startDate;
     const endDate = data.endDate;
     const incomingRange = { city, startDate, endDate };
-    const incomingSpots = makeSpotSegments(data.spotIds || [], startDate, endDate);
+    const incomingSpots = (Array.isArray(data.spotSegments) && data.spotSegments.length > 0)
+      ? data.spotSegments.filter(sg => sg && sg.spotId && sg.startDate && sg.endDate)
+        .map(sg => ({ spotId: sg.spotId, startDate: sg.startDate, endDate: sg.endDate }))
+      : makeSpotSegments(data.spotIds || [], startDate, endDate);
 
     const existing = Object.values(db.trips).filter(t => t.city === city && t.status === 'ACTIVE');
 
@@ -672,6 +947,16 @@ const handlers = {
         if (db.items[k].tripId !== id) return;
         db.items[k].tripId = keepId;
         db.items[k].backupGroupId = keepId + ':' + db.items[k].spotId;
+        /* 行程段变了 → 放票时刻要重算（它由 visitDate 推导）。
+           itemId 保持不动：它是 tasks join items 的键。 */
+        const spot = SPOTS.find(sp => sp.spotId === db.items[k].spotId);
+        const rule = RULES.find(r => r.spotId === db.items[k].spotId) || null;
+        const releaseAt = deriveReleaseAt(spot, rule, db.items[k].visitDate);
+        Object.keys(db.tasks).forEach(tk => {
+          if (db.tasks[tk].itemId !== db.items[k]._id) return;
+          db.tasks[tk].tripId = keepId;
+          if (releaseAt) db.tasks[tk].releaseAt = releaseAt;
+        });
       });
       delete db.trips[id];
     });
@@ -679,7 +964,8 @@ const handlers = {
     return { success: true, tripId: keepId, merged: mergedIds.length > 0, mergedFrom: mergedIds, trip };
   },
   'trip.list': () => {
-    /* TRIP-RULE-004 读取时兜底：任务与清单皆空的孤儿行程自动删除（同步云函数） */
+    /* TRIP-RULE-004 读取时兜底：任务 / 行程项 / 清单全空的孤儿行程自动删除（同步云函数）。
+       行程项是 V2 判断「行程是否为空」的事实来源，三样都空才算孤儿。 */
     const kept = Object.values(db.trips).filter(t => {
       const hasTask = Object.values(db.tasks).some(x => x.tripId === t._id);
       const hasCart = Object.values(db.carts).some(c => c.tripId === t._id);
@@ -744,6 +1030,7 @@ const handlers = {
 
   /* ----- timeline ----- */
   'timeline.generate': (data) => generateTimeline(data.tripId),
+  'timeline.preview': (data) => previewTimeline(data),
 
   /* ----- cart ----- */
   'cart.add': (data) => {
@@ -753,8 +1040,12 @@ const handlers = {
     const reservationRequired = spot.reservationRequired !== false;
     const remindable = reservationRequired && !!(rule && rule.advanceDays && rule.releaseTime);
     if (reservationRequired && (!remindable || !data.releaseAt)) return { success: false, error: '参数不合法', errorCode: 1010 };
-    const exists = Object.values(db.carts).some(c => c.tripId === data.tripId && c.spotId === data.spotId && c.visitDate === data.visitDate);
-    const itemExists = Object.values(db.items).some(i => i.tripId === data.tripId && i.spotId === data.spotId && i.visitDate === data.visitDate);
+    /* 不传 tripId = 操作「当前暂存清单」（纯预览化后的常规路径） */
+    const targetTripId = cartTripIdOf(data.tripId);
+    const exists = Object.values(db.carts).some(c => c.tripId === targetTripId && c.spotId === data.spotId && c.visitDate === data.visitDate);
+    /* 已落为行程项的不再进清单：按 (spotId, visitDate) 跨行程查。
+       纯预览态下预览本身看不到「已在行程」，这道去重必须在这里拦住。 */
+    const itemExists = Object.values(db.items).some(i => i.spotId === data.spotId && i.visitDate === data.visitDate);
     if (exists || itemExists) return { success: false, error: '这条已经在清单里啦', errorCode: 1002 };
     const weak = reservationRequired && (spot.difficultyScore || 0) <= 2;
     const remindOn = reservationRequired
@@ -763,7 +1054,7 @@ const handlers = {
     const cartId = 'mock-cart-' + (++cartSeq);
     db.carts[cartId] = {
       _id: cartId,
-      tripId: data.tripId,
+      tripId: targetTripId,
       spotId: data.spotId,
       visitDate: data.visitDate,
       releaseAt: reservationRequired ? data.releaseAt : null,
@@ -773,7 +1064,8 @@ const handlers = {
     return { success: true, cartId, remindOn };
   },
   'cart.addAll': (data) => {
-    const tl = generateTimeline(data.tripId);
+    /* 服务端按同一份输入重算预览，不信任前端传来的事件与状态 */
+    const tl = previewTimeline(data);
     const inScope = data.scope === 'departure' ? (e => e.visitDate === data.scopeKey) : (e => e.spotId === data.scopeKey);
     let added = 0;
     const skipped = [];
@@ -799,9 +1091,16 @@ const handlers = {
     return { success: true, cartId: data.cartId, remindOn: item.remindOn };
   },
   'cart.remove': (data) => { delete db.carts[data.cartId]; return { success: true, cartId: data.cartId }; },
-  'cart.clear': (data) => { Object.keys(db.carts).forEach(id => { if (!data.tripId || db.carts[id].tripId === data.tripId) delete db.carts[id]; }); return { success: true, removed: 0 }; },
+  /* 默认只清暂存区；传真实 tripId 才清那个行程的清单（镜像 cart.clear） */
+  'cart.clear': (data) => {
+    const want = cartTripIdOf(data && data.tripId);
+    Object.keys(db.carts).forEach(id => { if (db.carts[id].tripId === want) delete db.carts[id]; });
+    return { success: true, removed: 0 };
+  },
   'cart.list': (data) => {
-    const items = Object.values(db.carts).filter(c => !data.tripId || c.tripId === data.tripId);
+    /* 不传 tripId = 读暂存区（「添加提醒」页要的就是这个） */
+    const want = cartTripIdOf(data && data.tripId);
+    const items = Object.values(db.carts).filter(c => c.tripId === want);
     const now = new Date();
     const enriched = items.map(c => {
       const spot = SPOTS.find(s => s.spotId === c.spotId);
@@ -857,7 +1156,10 @@ const handlers = {
   /* ----- task ----- */
   'cart.commit': (data) => handlers['task.submit'](data),
   'task.submit': (data) => {
-    const cartItems = Object.values(db.carts).filter(c => !data.tripId || c.tripId === data.tripId);
+    /* 2026-09-20 起这是**唯一**创建行程的地方（「生成时间线」已改为纯预览）：
+       读暂存清单 → 建/合并行程 → 落行程项 → 为勾了提醒的项建任务 → 清空清单 */
+    const want = cartTripIdOf(data.tripId);
+    const cartItems = Object.values(db.carts).filter(c => c.tripId === want);
     if (cartItems.length === 0) return { success: false, error: '先添加至少一条提醒', errorCode: 1009 };
     const reminderItems = cartItems.filter(c => c.reservationRequired !== false && c.remindOn === true);
     const channels = data.channels || [];
@@ -865,20 +1167,45 @@ const handlers = {
     if (reminderItems.length > 0 && (channels.length === 0 || offsets.length === 0 || reminderItems.some(c => !c.releaseAt))) {
       return { success: false, error: '参数不合法', errorCode: 1010 };
     }
+
+    /* 各景点保留自己的日期段（提交时由 visitDate 集合推导），
+       这样合并后「故宫 10.2-10.3 + 国博 10.4」不会互相膨胀成 10.2-10.4 */
+    const segMap = {};
+    cartItems.forEach(c => {
+      const cur = segMap[c.spotId];
+      if (!cur) segMap[c.spotId] = { spotId: c.spotId, startDate: c.visitDate, endDate: c.visitDate };
+      else {
+        if (c.visitDate < cur.startDate) cur.startDate = c.visitDate;
+        if (c.visitDate > cur.endDate) cur.endDate = c.visitDate;
+      }
+    });
+    const segs = Object.values(segMap);
+    const startDate = segs.reduce((m, x) => (x.startDate < m ? x.startDate : m), segs[0].startDate);
+    const endDate = segs.reduce((m, x) => (x.endDate > m ? x.endDate : m), segs[0].endDate);
+
+    /* 清单已挂真实行程（老链路）→ 直接用；暂存区 → 建/合并行程 */
+    let targetTripId = data.tripId && data.tripId !== PENDING_CART_TRIP_ID ? data.tripId : '';
+    if (!targetTripId) {
+      const created = handlers['trip.create']({
+        startDate, endDate, spotIds: segs.map(x => x.spotId), spotSegments: segs,
+      });
+      targetTripId = created.tripId;
+    }
+
     let created = 0;
     let createdItems = 0;
     cartItems.forEach(c => {
       const remindOn = c.reservationRequired !== false && c.remindOn === true;
-      let item = Object.values(db.items).find(i => i.tripId === c.tripId && i.spotId === c.spotId && i.visitDate === c.visitDate);
+      let item = Object.values(db.items).find(i => i.tripId === targetTripId && i.spotId === c.spotId && i.visitDate === c.visitDate);
       if (!item) {
         const itemId = 'mock-item-' + (++itemSeq);
         item = {
           _id: itemId,
           userId: 'mock-user',
-          tripId: c.tripId,
+          tripId: targetTripId,
           spotId: c.spotId,
           visitDate: c.visitDate,
-          backupGroupId: c.tripId + ':' + c.spotId,
+          backupGroupId: targetTripId + ':' + c.spotId,
           remindOn,
           result: null,
           resultAt: null,
@@ -895,13 +1222,14 @@ const handlers = {
         db.tasks[taskId] = {
           _id: taskId,
           itemId: item._id,
-          tripId: c.tripId,
+          tripId: targetTripId,
           spotId: c.spotId,
           visitDate: c.visitDate,
           releaseAt: c.releaseAt,
           offsets,
           channels,
           backendStatus: 'WAITING',
+          sentOffsets: [],
         };
         created += 1;
       }
@@ -913,6 +1241,8 @@ const handlers = {
       createdItems,
       createdTasks: created,
       noReminder: cartItems.length - reminderItems.length,
+      /* 契约 8.5 要求回传 tripId：前端据此写 globalData.currentTripId */
+      tripId: targetTripId,
       toast: created > 0 ? `已加入行程 · 其中 ${created} 个已设提醒` : `已加入行程 · ${createdItems} 项`,
       needsOaAuth: channels.includes('OFFICIAL_ACCOUNT'),
     };
@@ -985,6 +1315,128 @@ const handlers = {
     return { success: true, cleared: targets.length, affectedTripIds, removedTripIds };
   },
 
+  /* ----- 行程项（镜像 cloudfunctions/reminder/lib/trip-item-actions.js，API-契约 8.4）----- */
+  'tripItem.markResult': (data) => {
+    const item = db.items[data.itemId];
+    if (!item) return { success: false, error: '行程项不存在', errorCode: 1013 };
+    if (data.result !== 'SUCCESS' && data.result !== 'FAILED') {
+      return { success: false, error: '当前行程项不可标记结果', errorCode: 1014 };
+    }
+    const nowTs = new Date();
+    const decorated = decorateItem(item, nowTs);
+    if (!decorated.canMark) {
+      /* 已标记过 → 用「不可标记」而不是「撤销窗口」的语义；
+         日期已结束用 1016，其余（还没开票 / 免预约）用 1014 */
+      if (decorated.ended) return { success: false, error: '行程项所在日期已结束', errorCode: 1016 };
+      return { success: false, error: '当前行程项不可标记结果', errorCode: 1014 };
+    }
+    item.result = data.result;
+    item.resultAt = nowTs;
+    item.updatedAt = nowTs;
+
+    /* 备选收束提示（只在「抢到了」时给）：同一备选组里还没处理的日期 */
+    let backupPrompt = null;
+    if (data.result === 'SUCCESS') {
+      const groupId = item.backupGroupId || (item.tripId + ':' + item.spotId);
+      const pending = Object.values(db.items)
+        .filter(i => i.backupGroupId === groupId && i._id !== item._id && !i.result && fmt(new Date()) <= i.visitDate)
+        .map(i => decorateItem(i, nowTs));
+      if (pending.length > 0) {
+        const spot = SPOTS.find(sp => sp.spotId === item.spotId);
+        const spotName = spot ? spot.name : '该景点';
+        backupPrompt = {
+          groupId,
+          spotName,
+          confirmedLabel: formatMonthDayWeekCn(item.visitDate),
+          text: '已确认' + formatMonthDayWeekCn(item.visitDate) + '去' + spotName,
+          pending: pending.map(p => ({
+            itemId: p.itemId, visitDate: p.visitDate,
+            visitDateLabel: formatMonthDayWeekCn(p.visitDate), ticketState: p.ticketState,
+          })),
+        };
+      }
+    }
+    return { success: true, item: decorateItem(item, nowTs), backupPrompt };
+  },
+  'tripItem.undoResult': (data) => {
+    const item = db.items[data.itemId];
+    if (!item) return { success: false, error: '行程项不存在', errorCode: 1013 };
+    if (!item.result || !item.resultAt) return { success: false, error: '当前行程项不可标记结果', errorCode: 1014 };
+    if (data.expectedResultAt
+      && new Date(data.expectedResultAt).getTime() !== new Date(item.resultAt).getTime()) {
+      return { success: false, error: '当前行程项不可标记结果', errorCode: 1014 };
+    }
+    const deadline = new Date(item.resultAt).getTime() + RESULT_UNDO_SECONDS * 1000;
+    if (Date.now() > deadline) return { success: false, error: '撤销时间已过', errorCode: 1015 };
+    item.result = null;
+    item.resultAt = null;
+    return { success: true, item: decorateItem(item, new Date()) };
+  },
+  'tripItem.updateReminder': (data) => {
+    const item = db.items[data.itemId];
+    if (!item) return { success: false, error: '行程项不存在', errorCode: 1013 };
+    const spot = SPOTS.find(s => s.spotId === item.spotId);
+    const rule = RULES.find(r => r.spotId === item.spotId) || null;
+    const reservationRequired = !spot || spot.reservationRequired !== false;
+    const releaseAt = deriveReleaseAt(spot, rule, item.visitDate);
+    /* 免预约项没有提醒可言：明确拒绝，不静默忽略——否则前端会以为设上了 */
+    if (data.remindOn === true && !reservationRequired) return { success: false, error: '参数不合法', errorCode: 1010 };
+    if (data.remindOn === true && !releaseAt) return { success: false, error: '参数不合法', errorCode: 1010 };
+
+    item.remindOn = data.remindOn === true;
+    item.updatedAt = new Date();
+    const mine = Object.keys(db.tasks).filter(k => db.tasks[k].itemId === item._id);
+    if (!item.remindOn) {
+      /* ⚠️ 只删未触发的。已触发的是历史记录，且微信额度不退。 */
+      mine.forEach(k => { if (db.tasks[k].backendStatus === 'WAITING') delete db.tasks[k]; });
+    } else {
+      const channels = (data.channels || []).length ? data.channels : ((db.tasks[mine[0]] || {}).channels || []);
+      const offsets = (data.offsets || []).length ? data.offsets : ((db.tasks[mine[0]] || {}).offsets || []);
+      if (!channels.length || !offsets.length) return { success: false, error: '参数不合法', errorCode: 1010 };
+      const cur = db.tasks[mine[0]];
+      const changed = cur && (String(cur.offsets || []) !== String(offsets) || String(cur.channels || []) !== String(channels));
+      if (!cur || changed) {
+        mine.forEach(k => { delete db.tasks[k]; });
+        const taskId = 'mock-task-' + (++taskSeq);
+        db.tasks[taskId] = {
+          _id: taskId, itemId: item._id, tripId: item.tripId, spotId: item.spotId,
+          visitDate: item.visitDate, releaseAt, offsets, channels,
+          backendStatus: 'WAITING', sentOffsets: [],
+        };
+      }
+    }
+    return { success: true, item: decorateItem(item, new Date()), quotaRefunded: false };
+  },
+  'tripItem.remove': (data) => {
+    const item = db.items[data.itemId];
+    if (!item) return { success: false, error: '行程项不存在', errorCode: 1013 };
+    let removedTasks = 0;
+    Object.keys(db.tasks).forEach(k => {
+      if (db.tasks[k].itemId === item._id) { delete db.tasks[k]; removedTasks += 1; }
+    });
+    delete db.items[item._id];
+    const tripRemoved = dropTripIfNoItem(item.tripId);
+    return { success: true, itemId: data.itemId, tripId: item.tripId, removedTasks, tripRemoved };
+  },
+  'tripItem.removeVisitDate': (data) => {
+    const targets = Object.values(db.items).filter(i => i.tripId === data.tripId && i.visitDate === data.visitDate);
+    if (targets.length === 0) return { success: false, error: '行程项不存在', errorCode: 1013 };
+    let removedTasks = 0;
+    targets.forEach(i => {
+      Object.keys(db.tasks).forEach(k => {
+        if (db.tasks[k].itemId === i._id) { delete db.tasks[k]; removedTasks += 1; }
+      });
+      delete db.items[i._id];
+    });
+    const tripRemoved = dropTripIfNoItem(data.tripId);
+    return { success: true, tripId: data.tripId, visitDate: data.visitDate, removedItems: targets.length, removedTasks, tripRemoved };
+  },
+  'tripItem.recoveryCandidates': (data) => {
+    const target = db.items[data.itemId];
+    if (!target) return { success: false, error: '行程项不存在', errorCode: 1013 };
+    return { success: true, candidates: mockRecoveryCandidates(target) };
+  },
+
   /* ----- user ----- */
   'user.profile': () => ({ success: true, user: { ...mockUser, subscribeQuota: subscribeSeq } }),
   'user.updateProfile': (data) => {
@@ -1050,27 +1502,94 @@ const handlers = {
   }),
 
   /* 首页聚合（镜像云端 reminder homeBootstrap）：复用各域 handler 组合返回，供 USE_MOCK=true 时首页使用 */
+  /* 首页行程状态墙 V2（镜像 reminder/index.js 的 homeBootstrap，API-契约 8.2）*/
   'home.bootstrap': (data) => {
-    const filter = data.filter || 'active';
-    const activeTripTab = data.activeTripTab || '';
-    const tripId = data.tripId || '';
-    const includeSpots = data.includeSpots !== false;
-    const tasksAll = handlers['task.list']({ tripId: null, filter });
-    const trips = handlers['trip.list']();
-    const tripTasks = activeTripTab ? handlers['task.list']({ tripId: activeTripTab, filter }) : null;
-    const cart = tripId ? handlers['cart.list']({ tripId }) : null;
-    const hotSpots = includeSpots ? handlers['list']().data : [];
+    const includeSpots = !data || data.includeSpots !== false;
+    const nowTs = new Date();
+    const today = fmt(new Date());
+
+    /* 读取时兜底收敛（REMINDER-RULE-004）：首页不再调 task.list，
+       少了这一步，过期任务会静默显示成「待提醒」且毫无提示 */
+    const allTasks = Object.values(db.tasks);
+    let healed = false;
+    allTasks.forEach(t => {
+      const spot = SPOTS.find(s => s.spotId === t.spotId);
+      const rule = RULES.find(r => r.spotId === t.spotId) || null;
+      const releaseAt = t.releaseAt || deriveReleaseAt(spot, rule, t.visitDate);
+      if (t.backendStatus === 'WAITING' && releaseAt && new Date(releaseAt).getTime() <= nowTs.getTime()) {
+        t.backendStatus = 'MISSED';
+        t.missedReason = t.missedReason || t.lastSendError || '超过放票时间点未触发成功';
+        if (shouldHealQuota(t.lastSendError)) healed = true;
+      }
+    });
+    if (healed) healSubscribeQuotas();
+
+    const decorated = Object.values(db.items).map(i => decorateItem(i, nowTs));
+
+    const activeTrips = [];
+    const historyTrips = [];
+    Object.values(db.trips).forEach(t => {
+      const mine = decorated.filter(d => d.tripId === t._id);
+      const entry = {
+        _id: t._id, city: t.city, startDate: t.startDate, endDate: t.endDate, name: t.name,
+        progress: backupGroupProgress(mine), itemCount: mine.length,
+      };
+      /* 结束日当天仍属进行中（还能回看和补标），次日才归入历史 */
+      if (t.endDate >= today) {
+        entry.items = mine.slice().sort((a, b) => {
+          const d = String(a.visitDate).localeCompare(String(b.visitDate));
+          if (d !== 0) return d;
+          return (a.releaseAt ? a.releaseAt.getTime() : Number.MAX_SAFE_INTEGER)
+            - (b.releaseAt ? b.releaseAt.getTime() : Number.MAX_SAFE_INTEGER);
+        });
+        activeTrips.push(entry);
+      } else {
+        historyTrips.push(entry);
+      }
+    });
+    activeTrips.sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
+    historyTrips.sort((a, b) => String(b.startDate).localeCompare(String(a.startDate)));
+
+    /* 吸顶横幅：跨全部当前/未来行程取全局最近的一条 */
+    const soon = decorated
+      .filter(d => d.releaseAt && new Date(d.releaseAt).getTime() > nowTs.getTime()
+        && new Date(d.releaseAt).getTime() - nowTs.getTime() <= 3600000)
+      .sort((a, b) => new Date(a.releaseAt) - new Date(b.releaseAt))[0] || null;
+    let stickyBanner = null;
+    if (soon) {
+      const rel = new Date(soon.releaseAt);
+      const minutesLeft = Math.max(1, Math.round((rel.getTime() - nowTs.getTime()) / 60000));
+      const dayWord = fmt(rel) === today ? '今天' : (fmt(rel) === addDays(today, 1) ? '明天' : formatMonthDay(fmt(rel)));
+      stickyBanner = {
+        type: 'UPCOMING',
+        text: `${dayWord}${formatHourMinute(rel)}开抢${soon.spotName}${formatMonthDay(soon.visitDate)}的门票，还有${minutesLeft}分钟`,
+        itemId: soon.itemId, spotId: soon.spotId, visitDate: soon.visitDate,
+        releaseAt: soon.releaseAt, minutesLeft,
+      };
+    }
+
+    /* 自动定位：24 小时内刚开抢、还没标记的一条（优先可抢 —— 还来得及救） */
+    const markable = decorated.filter(d => d.canMark)
+      .sort((a, b) => {
+        const pa = a.ticketState === 'BOOKABLE' ? 0 : 1;
+        const pb = b.ticketState === 'BOOKABLE' ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        return new Date(b.releaseAt) - new Date(a.releaseAt);
+      });
+
     return {
       success: true,
-      homeMode: tasksAll.homeMode || 1,
-      groups: tasksAll.groups || [],
-      counts: tasksAll.counts || { active: 0, expired: 0 },
-      banner: tasksAll.banner || null,
-      tripTasks: tripTasks && tripTasks.success ? tripTasks : null,
-      trips: (trips && trips.trips) || [],
-      showGroupTabs: (trips && trips.showGroupTabs) || false,
-      cart,
-      hotSpots,
+      serverNow: nowTs,
+      primaryTripId: activeTrips.length ? activeTrips[0]._id : '',
+      scrollTargetId: markable.length ? markable[0].itemId : null,
+      trips: activeTrips,
+      history: historyTrips,
+      stickyBanner,
+      homeMode: decorated.length === 0 ? 1 : 2,
+      hotSpots: includeSpots ? handlers['list']().data : [],
+      /* 旧字段保留一个版本，避免未升级的调用方读不到东西；新首页不消费 */
+      groups: [], counts: { active: 0, expired: 0 }, banner: null,
+      cart: null, tripTasks: null, showGroupTabs: false,
     };
   },
 
@@ -1094,4 +1613,15 @@ function mockCall(name, data) {
 /* 供页面 fallback 使用：单一数据源，避免各页本地 MOCK 漂移 */
 function spotsListCards() { return SPOTS.map(buildCard); }
 
-module.exports = { mockCall, USE_MOCK, SPOTS, spotsListCards };
+module.exports = {
+  mockCall, USE_MOCK, SPOTS, spotsListCards,
+  /* 仅供 test/mock-mirror.test.js 做「云端 vs mock 同一组输入同一结果」的交叉断言。
+     页面不要直接用这些内部函数——状态推导请走 home.bootstrap 返回的 ticketState。 */
+  __internals: {
+    ticketStateOf, ticketStateLabelOf, reminderStateOf, backupGroupProgress,
+    deriveReleaseAt, previewTimeline, mockRecoveryCandidates,
+    mockRules: () => RULES,
+    TICKET_LABEL, REMINDER_LABEL,
+    RESULT_UNDO_SECONDS, UNMARKED_AFTER_HOURS, PENDING_CART_TRIP_ID,
+  },
+};

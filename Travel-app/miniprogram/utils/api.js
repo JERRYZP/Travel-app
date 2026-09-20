@@ -34,7 +34,8 @@ const spots = {
 
 /* ===== reminder ===== */
 const reminder = {
-  /* 首页聚合：一次调用返回 tasks/trips/hotSpots/cart，减少冷启动与串行等待 */
+  /* 首页聚合（V2）：一次返回行程状态墙的全部数据 ——
+     serverNow / primaryTripId / trips[progress,items] / history / stickyBanner / hotSpots */
   home: {
     bootstrap: (p) => call('reminder', { action: 'home.bootstrap', ...(p || {}) }),
   },
@@ -46,7 +47,22 @@ const reminder = {
     remove: (p) => call('reminder', { action: 'trip.remove', ...p }),
   },
   timeline: {
+    /* 旧口径：按已落库的行程算。首页改纯预览后已无调用方，保留兼容 */
     generate: (p) => call('reminder', { action: 'timeline.generate', ...p }),
+    /* 2026-09-20：按当前所选日期段与景点独立计算，不创建/改写行程，
+       也不带入任何已落库状态（所以预览里不会出现「已在行程」） */
+    preview: (p) => call('reminder', { action: 'timeline.preview', ...p }),
+  },
+  /* 行程项（API-契约 8.4）。itemId 是对外主键：
+     任务、删除、提醒状态和推送落地全部按它关联 */
+  tripItem: {
+    markResult: (p) => call('reminder', { action: 'tripItem.markResult', ...p }),
+    undoResult: (p) => call('reminder', { action: 'tripItem.undoResult', ...p }),
+    updateReminder: (p) => call('reminder', { action: 'tripItem.updateReminder', ...p }),
+    remove: (p) => call('reminder', { action: 'tripItem.remove', ...p }),
+    removeVisitDate: (p) => call('reminder', { action: 'tripItem.removeVisitDate', ...p }),
+    /* 「建议」入口是固定的：误关浮层后随时能重新打开，不做「只能调一次」的限制 */
+    recoveryCandidates: (p) => call('reminder', { action: 'tripItem.recoveryCandidates', ...p }),
   },
   cart: {
     add: (p) => call('reminder', { action: 'cart.add', ...p }),
@@ -55,6 +71,7 @@ const reminder = {
     commit: (p) => call('reminder', { action: 'cart.commit', ...p }),
     remove: (cartId) => call('reminder', { action: 'cart.remove', cartId }),
     clear: (tripId) => call('reminder', { action: 'cart.clear', tripId }),
+    /* 不传 tripId = 读「当前暂存清单」（纯预览化后清单不再挂在行程上） */
     list: (tripId) => call('reminder', { action: 'cart.list', tripId }),
   },
   task: {
