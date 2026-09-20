@@ -9,6 +9,7 @@
  * 运行：node test/add-trip-flow.test.js
  */
 const path = require('path');
+const Module = require('module');
 const ROOT = path.join(__dirname, '..');
 
 let fail = 0;
@@ -35,8 +36,41 @@ global.wx = {
 global.getApp = () => ({ globalData: { statusBarHeight: 47, navBarHeight: 44 } });
 global.getCurrentPages = () => [{}];
 
+/**
+ * ⚠️ 这套测的是**页面方法**，必须走 mock 后端。
+ *
+ * 它原先直接用 `require('mock.js')`，于是**受仓库里 `USE_MOCK` 这个开关影响**：
+ * 那是「联调真机 / 回退 mock」的环境开关（当前 false = 走真实云函数），
+ * 云函数在单测里根本不存在 —— 把开关改回 false 这套就挂了。
+ * **测试不该依赖一个与它无关的全局配置。**
+ *
+ * 做法沿用本项目既有的 `Module._load` 打桩（见 home-bootstrap.test.js）：
+ * 把 utils/api.js 的 require 指向一份源码里 USE_MOCK 已被打开的 mock，
+ * 这样直接覆盖仓库里的开关，且测的仍是那一份真实实现。
+ */
+const MOCK_PATH = path.join(ROOT, 'miniprogram/utils/mock.js');
+const origLoad = Module._load;
+Module._load = function (request, parent, isMain) {
+  const fromDir = parent && parent.filename ? path.dirname(parent.filename) : ROOT;
+  if (path.resolve(fromDir, request) === MOCK_PATH) {
+    if (!Module._forcedMock) {
+      const src = require('fs').readFileSync(MOCK_PATH, 'utf8')
+        .replace(/^const USE_MOCK = (?:true|false);/m, 'const USE_MOCK = true;');
+      const m = new Module(MOCK_PATH, parent);
+      m.filename = MOCK_PATH;
+      m.paths = Module._nodeModulePaths(path.dirname(MOCK_PATH));
+      m._compile(src, MOCK_PATH);
+      Module._forcedMock = m.exports;
+    }
+    return Module._forcedMock;
+  }
+  return origLoad.apply(this, arguments);
+};
+
 require(path.join(ROOT, 'miniprogram/pages/add-trip/add-trip.js'));
-const mock = require(path.join(ROOT, 'miniprogram/utils/mock.js'));
+const mock = Module._forcedMock;
+Module._load = origLoad;
+if (!mock || !mock.USE_MOCK) throw new Error('测试前置失败：mock 没有被强制打开');
 
 function instantiate(def) {
   const p = Object.assign({}, def);

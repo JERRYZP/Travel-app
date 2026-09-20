@@ -5,7 +5,7 @@
  * 内存数据在小程序一次运行内连贯，重新编译会重置。
  */
 
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 /* ===== 景点数据（spotId 与 images/spots/*.jpg 对齐） ===== */
 const SPOTS = [
