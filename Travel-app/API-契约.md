@@ -223,7 +223,9 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 ---
 
-### 2.0 首页聚合（home.*，V2 目标见第 8 节）
+### 2.0 首页聚合（home.*）
+
+> ⚠️ **2026-09-20：本节的 `home.bootstrap` 返回体已被第 8.2 节的 V2 取代**，下面是旧结构，仅作对照。
 
 > 以下旧返回结构只描述当前未迁移代码；首页改版实现后由第 8.2 节取代。
 
@@ -242,7 +244,9 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 返回（success=true，字段均为扁平顶层）：
 {
-  homeMode: 1 | 2,               // 首页形态：无任务=1，有任务=2
+  // ⚠️ 以下为**旧结构（V1）**，2026-09-20 起已被第 8.2 节的 V2 返回体取代。
+  // 保留仅为对照；新首页不消费 groups / counts / banner / tripTasks。
+  homeMode: 1 | 2,               // 旧首页形态判定，已废止（语义降级为 0 项=1 / 否则=2）
   groups: [...],                 // 全量任务分组（未按行程筛选）
   counts: { active, expired },
   banner: {...} | null,
@@ -692,9 +696,12 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     taskId: "...",
     minutesLeft: 20
   },
-  homeMode: 2                         // HOME-RULE-001：1=形态1，2=形态2
+  homeMode: 2                         // 旧首页形态判定，已废止（见第 6 节）
 }
 ```
+> ⚠️ 整个 `task.*` 域自 2026-09-20 起为**兼容代码**：首页与新流程均不再调用，
+> 行程项管理改用 `tripItem.*`（第 8.4 节）。保留是因为云函数删除有部署次序风险，
+> 不代表它还在业务路径上。
 
 #### `task.remove` — 删除任务
 
@@ -986,15 +993,15 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 | 页面 | 需要调用的 API |
 |------|---------------|
-| **PAGE-001** 首页·状态墙 / 创建态 | `home.bootstrap` V2；创建流程调 `spots.list`、`trip.create`、`timeline.generate`、`cart.*` |
-| **PAGE-009** 旧任务列表 | V2 已废弃；行程项管理改用 `tripItem.*` |
+| **PAGE-001** 首页·行程状态墙 | `home.bootstrap` V2；`tripItem.markResult` / `undoResult` / `updateReminder` / `remove` / `removeVisitDate` / `recoveryCandidates` |
+| **PAGE-009** 旧任务列表 | V2 已废弃。`task.*` 云函数保留为兼容代码，**首页与新流程均不再调用** |
 | **PAGE-002** 景点弹窗 | `spots.detail` |
 | **PAGE-003** 想去景点 | `spots.list`、`spots.batch`（已选行）、`spots.searchHistory`、`spots.clearSearchHistory`、`trip.updateSpots` |
 | **PAGE-004** 搜索态 | `spots.search` |
-| **PAGE-005** 出发日视图（首页内联） | `timeline.generate`、`cart.add`、`cart.addAll`、`cart.list`（底部条） |
-| **PAGE-006** 景点视图（首页内联） | 同 PAGE-005 |
-| **PAGE-007** 清单弹窗 | `cart.list`、`cart.remove`、`cart.clear` |
-| **PAGE-008** 设置提醒 | `cart.commit`（提交前检测通知授权，未开启就地引导，不跳个人中心） |
+| **PAGE-005** 新增提醒（独立页） | `timeline.preview`（纯预览，不建行程）、`cart.add`、`cart.addAll`、`cart.list`（暂存清单） |
+| **PAGE-006** 景点视图 | 搁置中，不实现 |
+| **PAGE-007** 行程清单弹窗 | `cart.list`、`cart.remove`、`cart.clear`、`cart.updateRemindOn`、`cart.commit` |
+| **PAGE-008** 设置提醒 | `cart.list`（按缺口补授权）、`cart.commit`（**唯一创建行程的时机**；提交前检测通知授权，未开启就地引导，不跳个人中心） |
 | **PAGE-010** 我的 | `user.profile`、通知设置三态（`wx.getAppAuthorizeSetting` / `wx.getSetting`，非云函数） |
 | **PAGE-012** 编辑资料 | `user.profile`、`user.updateProfile`（头像走 `open-type="chooseAvatar"` + `wx.cloud.uploadFile` 上传） |
 | **PAGE-010-1** 通知设置 | 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`（模板未配置时「去授权」置灰） |
@@ -1004,32 +1011,38 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 ---
 
-## 5. 页面间数据传递约定
+## 5. 页面间数据传递约定（2026-09-20 重写）
 
 ```
-PAGE-001 → 内联时间线:  trip.create 返回 tripId，当前页直接 timeline.generate（不跳转）
-PAGE-001 → PAGE-003:  带已有 spotIds；返回后带新 spotIds（调 trip.updateSpots），重新 timeline.generate
-PAGE-003 → 首页:       带回新 spotIds（调 trip.updateSpots），重新 timeline.generate
-内联时间线 → PAGE-007: 不需要传参，PAGE-007 自己调 cart.list
-内联时间线 → PAGE-008: 不需要传参，PAGE-008 自己调 task.submit（读 cart）
-PAGE-008 → PAGE-009:  提交成功后 wx.navigateBack 回到首页，首页 onShow 调 task.list 并切回「提醒任务」Tab
-PAGE-009 → 添加提醒 Tab: 不跳页，切到首页「添加提醒」视图（保留 timelineTripId / 内联时间线）
+PAGE-001 → PAGE-005:  不传参。PAGE-005 自己从零开始填表单
+PAGE-001 → PAGE-002:  景点名点击弹浮窗（spotId），show-actions=false（首页即提醒动线起点）
+PAGE-001 → PAGE-003:  不经过；想去景点只在 PAGE-005 内可达（带当前 spotIds）
+PAGE-003 → PAGE-005:  返回时直接 setData 回 prev 页（spots.js onBack），点「生成」重新 preview
+PAGE-005 → PAGE-007:  不传参。清单是「提交前的暂存区」，PAGE-007 自己调 cart.list（不传 tripId）
+PAGE-007 → PAGE-008:  不传参。PAGE-007 提交时判断：全不提醒 → 直接 cart.commit；有提醒项 → 跳 PAGE-008
+PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这一刻才产生，写入
+                      app.globalData.currentTripId 供首页定位新行程
 ```
+
+⚠️ **不再传 tripId**：纯预览化后「生成时间线」不建行程，清单也不挂在行程上。
+任何页面都不应缓存或透传 tripId —— 提交返回的那个才是唯一可信的。
 
 ---
 
-## 6. 首页形态判定流程（形态1 ↔ 形态2）
+## 6. 首页形态判定（2026-09-20 重写：单形态）
 
 ```
-App.onLaunch / 首页.onShow：
-  1. 调 task.list（不传 tripId、filter='active'）
-  2. 读 homeMode 字段：
-     - homeMode === 1 → 渲染 PAGE-001（创建态）
-     - homeMode === 2 → 导航栏双 Tab「提醒任务 / 添加提醒」，默认落「提醒任务」（PAGE-009）
-  3. 「添加提醒」Tab = 首页内联创建表单 + 时间线（PAGE-001/005/006 内容，不跳页）
-  4. 提交提醒成功后首页 onShow 自动切回「提醒任务」Tab
-  5. 同时可能还需要调 trip.list 获取分组信息
+首页 onShow：
+  1. 调 home.bootstrap（无参数）
+  2. 读返回体：
+     - trips.length === 0 且 history.length === 0 → 渲染创建引导空态
+     - 否则渲染行程状态墙（摘要卡 + 纵向分段墙 + 历史折叠）
+  3. 若返回 scrollTargetId → 滚到该行程项所在分段（24h 内刚开抢且未标记的项）
 ```
+
+旧「形态1 / 形态2 双 Tab」判定（`homeMode` 读 `task.list`）**已废止**。
+`home.bootstrap` 仍返回一个 `homeMode` 字段供旧调用方兜底读，语义已降级为
+「0 个行程项 = 1（创建引导）/ 否则 = 2」，**新首页不消费它**。
 
 ---
 
@@ -1046,9 +1059,10 @@ App.onLaunch / 首页.onShow：
 
 ---
 
-## 8. 首页行程化 V2 冻结契约（2026-09-16 P0）
+## 8. 首页行程化 V2 契约（2026-09-16 冻结 · **2026-09-20 全部实现**）
 
-> 本节是本次开发的唯一目标契约。P1（2026-09-16）已实现 `trip_items`、免预约加入、`remindOn` 分流、`cart.commit` 和任务挂 `itemId`；结果回填、迁移与新首页仍待 P2/P3。
+> 本节是本次开发的唯一契约，现已全部落地：P1（2026-09-16）`trip_items`、免预约加入、`remindOn` 分流、`cart.commit`、任务挂 `itemId`；P2/P3（2026-09-20）状态推导、六个 `tripItem.*` 接口、`home.bootstrap` V2 与首页行程状态墙。
+> 2026-09-20 的两处口径变更见 8.7；实现真身：状态推导 `cloudfunctions/reminder/lib/item.js`、用户操作 `lib/trip-item-actions.js`、挽回 `lib/recovery.js`。
 
 ### 8.1 数据模型
 
@@ -1074,7 +1088,7 @@ App.onLaunch / 首页.onShow：
 
 - 逻辑唯一键：`(userId, tripId, spotId, visitDate)`，云函数查重，不做老数据合成迁移。
 - `releaseAt / reservationRequired / ticketState / reminderState` 均为读取时派生，不持久化到行程项。
-- `result` 只能从 `null` 写成 `SUCCESS/FAILED`；写入后仅允许 `resultAt + 10s` 内调用 `tripItem.undoResult`。
+- `result` 只能从 `null` 写成 `SUCCESS/FAILED`；写入后仅允许 `resultAt + 4s` 内调用 `tripItem.undoResult`。（变更：2026-09-17 由 10 秒收紧为 4 秒，常量 `V1.RESULT_UNDO_SECONDS`）
 - `backupGroupId` 由服务端按“同一行程 + 同一景点”生成，用于备选收束、进度分组和挽回建议。
 - 六个展示态的计算顺序：免预约 → 人工结果 → 放票时间前 → 放票后 24 小时内 → 未标记。
 - 放票后官方预约入口持续可点，直到 `visitDate` 北京时间 23:59；不因进入 `UNMARKED` 或写成 `FAILED` 而消失。
@@ -1182,7 +1196,7 @@ App.onLaunch / 首页.onShow：
 返回：{ success: true, item }
 ```
 
-- 仅 `resultAt + 10s` 内允许，且 `expectedResultAt` 必须匹配，防止覆盖后续操作。
+- 仅 `resultAt + 4s` 内允许，且 `expectedResultAt` 必须匹配，防止覆盖后续操作。
 - 前端用页面底部 Snackbar `已标记为抢到了 [撤销]`，不使用系统 Toast。
 
 #### `tripItem.updateReminder`
@@ -1293,3 +1307,30 @@ App.onLaunch / 首页.onShow：
 3. 进度分母按 `backupGroupId` 去重，免预约项不计入分母。
 4. 一行程项一个 `itemId`；任务、删除、提醒状态和推送落地全部按 `itemId` 关联。
 5. 首页不出现提醒任务一级 Tab；旧任务列表仅保留代码兼容期，不进入新 UI。
+
+### 8.7 2026-09-20 口径变更
+
+1. **`timeline.generate` → `timeline.preview`**（8.5 之外的新接口）
+```
+调用：{ action: 'timeline.preview', startDate, endDate, spotIds, city, segments? }
+返回：{ success: true, events, byDeparture, bySpot, closedSpots, closedDaySkips, empty, emptyReason }
+```
+   - 按当前所选日期段与景点**独立计算**，不创建/改写任何行程，**不读任何已落库状态**
+     （所以预览里不会出现 `COMMITTED`「已在行程」）。
+   - `segments` 可选：`[{spotId, startDate, endDate}]`，不传则按 `spotIds × [startDate,endDate]`。
+   - 旧 `timeline.generate({tripId})` 保留为兼容代码，新流程不再调用。
+
+2. **清单改「提交前的暂存区」**：`cart.add` / `cart.list` / `cart.clear` 的 `tripId` **可省**，
+   不传 = 操作「当前暂存清单」（服务端用占位 `PENDING_CART_TRIP_ID = '__pending__'` 存行）。
+   提交前没有行程，行程在 `cart.commit` 时才创建/合并，清单行整批改挂过去。
+
+3. **`cart.commit` 回传 `tripId`**（8.5 已列，此前实现漏了）；同时补通道合法性校验。
+
+4. **行程是否为空改看 `trip_items`**：`trip.removeIfEmpty` / `purgeIfNoItem` /
+   `notifier.cleanup` 三处均以「还有没有行程项」为准，不再看提醒任务——
+   否则只有免预约景点、没设提醒的行程会被误判成空壳删掉。
+
+5. **撤销窗口 10 秒 → 4 秒**（见 8.1）。
+
+6. **行程合并时同步任务的 `releaseAt` 与 `tripId`**：放票时刻由 `visitDate` 推导，
+   合并后行程段变了就会过期；`itemId` 保持不动，它是 tasks join items 的键。
