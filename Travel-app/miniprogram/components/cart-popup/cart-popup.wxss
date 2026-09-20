@@ -137,17 +137,29 @@
   background: var(--color-page);
 }
 .cart-drop.open { border-color: var(--color-primary); color: var(--color-primary); }
+/* 下拉浮层：渲染在 .cart-popup 这一层，position: fixed + JS 算好的视口坐标。
+   为什么不用 absolute 贴着触发按钮：它会被 scroll-view 裁掉。 */
 .cart-drop-pop {
-  position: absolute;
-  bottom: 110%;
-  right: 0;
-  z-index: 20;
+  position: fixed;
+  z-index: 30;
   background: var(--color-surface);
   border: 1rpx solid var(--color-border);
   border-radius: 14rpx;
-  box-shadow: 0 8rpx 24rpx rgba(100,60,20,.18);
+  box-shadow: 0 8rpx 24rpx rgba(100,60,20,.22);
   min-width: 300rpx;
   padding: 8rpx 0;
+  animation: drop-in .16s cubic-bezier(.22,1,.36,1);
+}
+@keyframes drop-in {
+  from { opacity: 0; transform: translateY(6rpx); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* 挡在下面的透明遮罩：点任意处收起，避免浮层留在屏幕上无处可去 */
+.cart-drop-mask {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 29;
 }
 .cart-drop-opt {
   padding: 18rpx 24rpx;
@@ -179,7 +191,10 @@
   display: flex;
   align-items: center;
   gap: 16rpx;
-  padding: 20rpx 24rpx calc(20rpx + env(safe-area-inset-bottom));
+  /* ⚠️ 不要再加 env(safe-area-inset-bottom)：本 sheet 通过 bottomOffset 整体坐在
+     TabBar **之上**，而 TabBar 自己已经吃掉了安全区（padding-bottom: env(...)）。
+     这里再加一次就会多出一整条安全区高度——用户实测「底部离 TabBar 太远」。 */
+  padding: 20rpx 24rpx;
   border-top: 1rpx solid var(--color-border);
   background: var(--color-surface);
 }

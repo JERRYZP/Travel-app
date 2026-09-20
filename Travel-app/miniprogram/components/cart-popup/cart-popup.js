@@ -28,6 +28,11 @@ Component({
     showClearDialog: false,
     /* 展开下拉的 cartId（同屏只开一个） */
     openDropdown: '',
+    /* 下拉里那一行（用于回显选中态） */
+    dropItem: null,
+    /* 下拉浮层的内联定位（px）。在 JS 里按触发按钮的位置算——
+       见 onToggleDropdown 的注释：它必须在最外层，不能放 scroll-view 里 */
+    dropStyle: '',
     /* 由 JS 计算的内联样式（px，避免微信端 vh/calc/max-height 解析不可靠） */
     bottomOffset: '0px',
     listStyle: '',
@@ -48,7 +53,7 @@ Component({
         this.computeHeights();
         this.loadCart();
       } else {
-        this.setData({ openDropdown: '' });
+        this.setData({ openDropdown: '', dropItem: null, dropStyle: '' });
       }
     },
     aboveTabbar: function () { this.computeHeights(); },
@@ -110,7 +115,7 @@ Component({
       });
     },
 
-    onClose() { this.triggerEvent('close'); },
+    onClose() { this.closeDropdown(); this.triggerEvent('close'); },
     onMaskTap() { this.onClose(); },
     onSheetTap() {},
     noop() {},
@@ -120,13 +125,57 @@ Component({
       const cartId = e.currentTarget.dataset.id;
       const item = this.findItem(cartId);
       if (!item || !item.canToggle) return;
-      this.setData({ openDropdown: this.data.openDropdown === cartId ? '' : cartId });
+      if (this.data.openDropdown === cartId) { this.closeDropdown(); return; }
+      this.openDropdownAt(cartId, item);
+    },
+
+    /**
+     * 打开下拉，并按触发按钮的位置给它定坐标。
+     *
+     * ⚠️ 浮层必须渲染在 `.cart-popup` 这一层（**最外层**），不能放在 row 里：
+     *   - row 在 `scroll-view` 内 → 溢出部分会被裁掉，用户实测「选项看不到、被遮」
+     *   - 放 `.cart-sheet` 内也不行：sheet 有入场动画（transform），
+     *     会让 `position: fixed` 的后代改以它为包含块，定位整个跑偏
+     * 所以浮层是 `.cart-popup` 的直接子元素，用 `position: fixed` + 视口坐标。
+     */
+    openDropdownAt(cartId, item) {
+      const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+      this.createSelectorQuery().select('#drop-' + cartId).boundingClientRect(trig => {
+        if (!trig) return;
+        const H = 84;      // 两行选项 + 内边距的估算高度（px）
+        const GAP = 6;
+        /* 优先在触发按钮**上方**弹出（不挡住正在看的那一行）；
+           上方空间不够就翻到下方 */
+        let top = trig.top - H - GAP;
+        if (top < 10) top = trig.bottom + GAP;
+        const right = Math.max(12, (win.windowWidth || 375) - trig.right);
+        this.setData({
+          openDropdown: cartId,
+          dropItem: item,
+          dropStyle: 'top:' + top + 'px; right:' + right + 'px;',
+        });
+      }).exec();
+    },
+
+    closeDropdown() {
+      if (!this.data.openDropdown) return;
+      this.setData({ openDropdown: '', dropItem: null, dropStyle: '' });
+    },
+
+    /* 列表一滚，触发按钮就移位了 —— fixed 浮层不会跟着走，直接收起来 */
+    onListScroll() {
+      this.closeDropdown();
     },
 
     onPickRemind(e) {
-      const { id, remind } = e.currentTarget.dataset;
-      this.setData({ openDropdown: '' });
-      api.reminder.cart.updateRemindOn({ cartId: id, remindOn: remind }).then(() => {
+      const cartId = this.data.openDropdown;
+      const item = this.data.dropItem;
+      if (!cartId || !item) return;
+      const remind = e.currentTarget.dataset.remind === true
+        || e.currentTarget.dataset.remind === 'true';
+      if (item.remindOn === remind) { this.closeDropdown(); return; }
+      this.closeDropdown();
+      api.reminder.cart.updateRemindOn({ cartId, remindOn: remind }).then(() => {
         this.loadCart();
         this.triggerEvent('change');
       }).catch(err => api.toastError(err));

@@ -11,7 +11,7 @@
       </view>
     </view>
 
-    <scroll-view scroll-y class="cart-list" style="{{listStyle}}">
+    <scroll-view scroll-y class="cart-list" style="{{listStyle}}" bindscroll="onListScroll">
       <view class="cart-list-inner">
         <block wx:if="{{loading}}">
           <view class="cart-loading"><van-loading size="40rpx" color="#B8904A" /></view>
@@ -32,28 +32,20 @@
                 <text class="cart-row-sub">{{item.subline}}</text>
               </view>
 
-              <!-- 动作下拉二选一。免预约项固定不可改（不是置灰，是压根没有这个选择） -->
+              <!-- 动作下拉二选一（浮层本身渲染在最外层，见文件末尾）。
+                   免预约项固定不可改：不是置灰，是压根没有这个选择 -->
               <view class="cart-row-action">
                 <view
                   wx:if="{{item.canToggle}}"
+                  id="drop-{{item._id}}"
                   class="cart-drop {{openDropdown === item._id ? 'open' : ''}}"
                   catchtap="onToggleDropdown"
                   data-id="{{item._id}}"
                 >
                   <text>{{item.remindText}}</text>
                   <svg-icon name="{{openDropdown === item._id ? 'chevron-up' : 'chevron-down'}}" size="11px" />
-                  <view wx:if="{{openDropdown === item._id}}" class="cart-drop-pop" catchtap="noop">
-                    <view class="cart-drop-opt {{item.remindOn ? 'active' : ''}}"
-                          catchtap="onPickRemind" data-id="{{item._id}}" data-remind="{{true}}">
-                      {{OPTION_ON}}
-                    </view>
-                    <view class="cart-drop-opt {{!item.remindOn ? 'active' : ''}}"
-                          catchtap="onPickRemind" data-id="{{item._id}}" data-remind="{{false}}">
-                      {{OPTION_OFF}}
-                    </view>
-                  </view>
                 </view>
-                <!-- 免预约：同屏说明，不能只靠弹窗解释 -->
+                <!-- 免预约：说明必须与按钮同屏可见，不能只靠弹窗解释 -->
                 <text wx:else class="cart-no-remind">无需预约，随到随玩，不设提醒</text>
               </view>
 
@@ -76,6 +68,21 @@
       </view>
     </view>
   </view>
+
+  <!-- 动作下拉浮层：**必须在最外层**。
+       放进 row 会被 scroll-view 裁掉（用户实测「选项看不到、被遮」）；
+       放进 .cart-sheet 也不行 —— sheet 有入场动画（transform），
+       会让 position: fixed 的后代改以它为包含块，定位跑偏。
+       坐标由 JS 按触发按钮的位置算好，见 onToggleDropdown。 -->
+  <block wx:if="{{openDropdown && dropItem}}">
+    <view class="cart-drop-mask" catchtap="closeDropdown" catchtouchmove="noop"></view>
+    <view class="cart-drop-pop" style="{{dropStyle}}" catchtap="noop">
+      <view class="cart-drop-opt {{dropItem.remindOn ? 'active' : ''}}"
+            catchtap="onPickRemind" data-remind="{{true}}">{{OPTION_ON}}</view>
+      <view class="cart-drop-opt {{!dropItem.remindOn ? 'active' : ''}}"
+            catchtap="onPickRemind" data-remind="{{false}}">{{OPTION_OFF}}</view>
+    </view>
+  </block>
 </view>
 
 <van-dialog
