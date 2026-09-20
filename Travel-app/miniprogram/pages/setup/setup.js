@@ -6,7 +6,6 @@ Page({
   data: {
     statusBarHeight: 20,
     navBarHeight: 44,
-    tripId: '',
     channels: {
       officialAccount: true,
       sms: false,
@@ -17,12 +16,13 @@ Page({
     submitting: false,
   },
 
-  onLoad(options) {
+  onLoad() {
     const g = app.globalData;
+    /* 2026-09-20 纯预览化后不再有 tripId 可传：清单是「提交前的暂存区」，
+       行程要到 cart.commit 那一刻才创建/合并。这里只管提前量与通道。 */
     this.setData({
       statusBarHeight: g.statusBarHeight,
       navBarHeight: g.navBarHeight,
-      tripId: options.tripId || g.currentTripId || '',
     });
   },
 
@@ -45,7 +45,7 @@ Page({
   },
 
   onSubmit() {
-    const { channels, offsets, tripId } = this.data;
+    const { channels, offsets } = this.data;
     const channelList = [];
     if (channels.officialAccount) channelList.push('OFFICIAL_ACCOUNT');
     if (channelList.length === 0) {
@@ -59,7 +59,7 @@ Page({
     this.setData({ submitting: true });
     wx.showLoading({ title: '正在提交...' });
 
-    const doSubmit = () => this.submitTask({ tripId, channelList, offsets });
+    const doSubmit = () => this.submitTask({ channelList, offsets });
 
     /* ① 系统通知权限（推送能否送达的前提）未开 → 引导去系统设置 */
     if (!notify.getSystemNotifyOk()) {
@@ -130,9 +130,9 @@ Page({
    * 清单查询失败时降级为只算提前量（额度不足由 43101 自愈与提交流程兜底，不阻断提交）。
    */
   loadNeededQuota() {
-    const { tripId, offsets } = this.data;
+    const { offsets } = this.data;
     const perTask = Math.max(1, offsets.length);
-    return api.reminder.cart.list(tripId)
+    return api.reminder.cart.list()
       .then(res => {
         const count = (res && res.summary && res.summary.reminderCount) || 0;
         return count * perTask;
@@ -140,9 +140,10 @@ Page({
       .catch(() => perTask);
   },
 
-  submitTask({ tripId, channelList, offsets }) {
+  submitTask({ channelList, offsets }) {
     wx.showLoading({ title: '正在提交...' });
-    api.reminder.cart.commit({ tripId, channels: channelList, offsets }).then(res => {
+    /* 提交 = 唯一创建行程的时机；返回的 tripId 供首页定位新行程 */
+    api.reminder.cart.commit({ channels: channelList, offsets }).then(res => {
       wx.hideLoading();
       this.setData({ submitting: false });
       if (res.needsOaAuth) {
@@ -162,7 +163,9 @@ Page({
         ? (res.noReminder > 0 ? '已加入行程，提醒也设置好了' : '提醒已设置，放票前见')
         : '已加入行程';
       wx.showToast({ title: toast, icon: 'none' });
-      /* 标记提交成功，首页 onShow 据此切回「提醒任务」Tab */
+      /* 提交是唯一创建行程的时机，tripId 这一刻才有 —— 写给首页定位用。
+         纯预览化后「生成时间线」不再建行程，所以不能更早写。 */
+      if (res.tripId) app.globalData.currentTripId = res.tripId;
       app.globalData.reminderSubmitted = true;
       setTimeout(() => {
         /* 回到首页：兼容 首页→设置（内联生成）与 首页→添加提醒→设置 两种栈深 */
