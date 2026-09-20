@@ -30,6 +30,12 @@ const RecoveryAction = {
   SET_REMINDER: 'SET_REMINDER',   // 未开票：设提醒
 };
 
+/* 每个景点最多给几条候选。不设这个上限时，同景点会把名额占满
+   （行程一长，故宫一个人就能凑出十几条），用户看不到「换个景点」这类选项，
+   而浮层里超过 6 条也就不叫「建议」了。 */
+const MAX_PER_SPOT = 2;
+const MAX_TOTAL = 6;
+
 /**
  * 判断某个日期对某景点是否「可行动」。
  *
@@ -37,7 +43,9 @@ const RecoveryAction = {
  * @returns {{ok:boolean, releaseAt:Date|null, action:string|null, label:string}}
  */
 function candidateOf(spot, rule, visitDate, nowTs) {
-  const today = time.todayStr();
+  // ⚠️ 必须传 nowTs：不传就会读真实时钟，导致「已过」判定既不可测
+  // 又和同一个 nowTs 下的放票时刻比较口径不一致
+  const today = time.todayStr(nowTs);
 
   // 已过 —— 含当天也不行：当天已经没时间再去抢了
   if (visitDate <= today) return { ok: false };
@@ -81,13 +89,14 @@ function candidateOf(spot, rule, visitDate, nowTs) {
  *
  * @param {object} p
  * @param {object} p.failed      被标记 FAILED 的那条（decorateItem 结果）
- * @param {Array}  p.siblings    同一行程内的其他行程项（decorateItem 结果）
+ * @param {Array}  p.siblings    同一行程内的全部行程项（decorateItem 结果）
+ * @param {object} p.trip        行程 {startDate, endDate}，决定候选日期池
  * @param {object} p.spotMap     spotId → spot
  * @param {object} p.ruleMap     spotId → rule
  * @param {Date}   [p.nowTs]
  * @returns {Array} 候选数组，可能为空
  */
-function buildCandidates({ failed, siblings, spotMap = {}, ruleMap = {}, nowTs = time.now() }) {
+function buildCandidates({ failed, siblings, trip, spotMap = {}, ruleMap = {}, nowTs = time.now() }) {
   const sameSpot = (siblings || []).filter(s =>
     s.spotId === failed.spotId && s.itemId !== failed.itemId);
 
@@ -96,17 +105,19 @@ function buildCandidates({ failed, siblings, spotMap = {}, ruleMap = {}, nowTs =
   const pendingBackup = sameSpot.some(s => !s.ended && !s.canMark && s.ticketState === 'PENDING');
   if (pendingBackup) return [];
 
-  /* 第 ② 层：没设备选 → 在行程范围内找可行动的其他日期。
-     同景点的其他日期优先（用户本来就想约这个景点），其后是行程内其他景点。 */
-  const tripId = failed.tripId;
-  const inTrip = (siblings || []).filter(s => s.tripId === tripId);
+  /* 候选日期池 = **行程本身的日期范围**，不是「已经加过的日子」。
+     差别的关键：行程开头的那些天，放票时间往往早就过了——它们正是
+     「已开票、现在就能去官方渠道约」的候选。只看已加过的日子就永远看不到这类建议。 */
+  const startDate = trip && trip.startDate ? trip.startDate : failed.visitDate;
+  const endDate = trip && trip.endDate ? trip.endDate : failed.visitDate;
+  const visitDatePool = time.dateRange(startDate, endDate);
 
-  // 已占用的日期不再作为候选（同景点已有行程项的日期）
-  const takenDates = new Set(sameSpot.map(s => s.visitDate));
-
-  /* 候选日期池：同行程其他行程项的出行日 + 失败那条自己的出行日。
-     纯预览化之后行程项就是「用户表达过兴趣的日期」，用它当池子最贴切。 */
-  const visitDatePool = [...new Set(inTrip.map(s => s.visitDate).concat(failed.visitDate))].sort();
+  /* ⚠️ 必须排除掉「用户刚刚失败的那一天」。
+     把 10月2日 原样建议回去，等于对用户说「再约一次 10月2日吧」——
+     他刚告诉你那天没成。这是最容易写错、也最伤信任的一条。 */
+  const takenDates = new Set(
+    [failed.visitDate].concat(sameSpot.map(s => s.visitDate))
+  );
 
   const candidates = [];
   const seen = new Set();
@@ -114,7 +125,9 @@ function buildCandidates({ failed, siblings, spotMap = {}, ruleMap = {}, nowTs =
   const pushFor = (spotId) => {
     const spot = spotMap[spotId];
     const rule = ruleMap[spotId];
+    // 无 spot / 无 rule 的景点一律跳过：没有规则就推不出放票时刻，也就无从判断可行动性
     if (!spot || !rule) return;
+    const mine = [];
     for (const visitDate of visitDatePool) {
       if (spotId === failed.spotId && takenDates.has(visitDate)) continue;
       const key = `${spotId}|${visitDate}`;
@@ -122,7 +135,7 @@ function buildCandidates({ failed, siblings, spotMap = {}, ruleMap = {}, nowTs =
       const c = candidateOf(spot, rule, visitDate, nowTs);
       if (!c.ok) continue;
       seen.add(key);
-      candidates.push({
+      mine.push({
         spotId,
         spotName: spot.name,
         visitDate,
@@ -131,25 +144,45 @@ function buildCandidates({ failed, siblings, spotMap = {}, ruleMap = {}, nowTs =
         label: c.label,
       });
     }
+    /* 名额在两个行动类型之间**各取一半**，而不是简单地取前 N 条。
+       前 N 条会被日期早的 BOOK_NOW 全占掉，用户就看不到「等下一场放票」这条路，
+       而它往往才是真的能约上的那条。 */
+    const bookNow = mine.filter(c => c.action === RecoveryAction.BOOK_NOW);
+    const setReminder = mine.filter(c => c.action === RecoveryAction.SET_REMINDER);
+    const quota = Math.max(1, Math.floor(MAX_PER_SPOT / 2));
+    const picked = [
+      ...bookNow.slice(0, quota),
+      ...setReminder.slice(0, quota),
+    ];
+    // 某一类为空时补足另一类，保证「有可用日期」的景点至少给出 2 条
+    if (picked.length < MAX_PER_SPOT) {
+      const rest = mine.filter(c => picked.indexOf(c) === -1);
+      picked.push(...rest.slice(0, MAX_PER_SPOT - picked.length));
+    }
+    candidates.push(...picked);
   };
 
   // 同景点优先（用户本来就想约这个），行程内其他景点次之
   pushFor(failed.spotId);
-  for (const s of inTrip) {
-    if (s.spotId !== failed.spotId) pushFor(s.spotId);
+  for (const s of (siblings || [])) {
+    if (s.tripId === failed.tripId && s.spotId !== failed.spotId) pushFor(s.spotId);
   }
 
   /* 第 ③ 层：什么都没有 → 返回空。
      调用方据此保持静默，不弹浮层、不给「延长行程」这类空转建议。 */
   if (candidates.length === 0) return [];
 
-  // 已开票的排前面（现在就能去约），同类型按日期升序
-  return candidates.sort((a, b) => {
+  // 同景点内先按「已开票优先、日期升序」排，再整体按同样规则排，最后截断总数
+  const rank = (a, b) => {
     const pa = a.action === RecoveryAction.BOOK_NOW ? 0 : 1;
     const pb = b.action === RecoveryAction.BOOK_NOW ? 0 : 1;
     if (pa !== pb) return pa - pb;
     return a.visitDate.localeCompare(b.visitDate);
-  }).slice(0, 6); // 浮层里最多列 6 条，再多就不叫「建议」了
+  };
+  return candidates.sort((a, b) => {
+    const d = rank(a, b);
+    return d !== 0 ? d : String(a.spotId).localeCompare(String(b.spotId));
+  }).slice(0, MAX_TOTAL);
 }
 
 /**
@@ -168,7 +201,11 @@ async function candidates(db, userId, itemId) {
   if (!target) return fail(ERRORS.ITEM_NOT_FOUND);
 
   const nowTs = time.now();
-  const tripItems = await item.listItemsByTrip(db, userId, target.tripId);
+  const [tripItems, tripRes] = await Promise.all([
+    item.listItemsByTrip(db, userId, target.tripId),
+    db.collection(COLLECTIONS.TRIPS).where({ _id: target.tripId, userId }).get(),
+  ]);
+  const trip = (tripRes.data || [])[0] || null;
   const { spotMap, ruleMap } = await item.loadSpotContext(db, tripItems.map(i => i.spotId));
 
   const decorated = tripItems.map(it => item.decorateItem({
@@ -183,6 +220,7 @@ async function candidates(db, userId, itemId) {
   const list = buildCandidates({
     failed: failed || { spotId: target.spotId, tripId: target.tripId, visitDate: target.visitDate, itemId },
     siblings: decorated,
+    trip,
     spotMap,
     ruleMap,
     nowTs,

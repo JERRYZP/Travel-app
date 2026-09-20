@@ -87,12 +87,12 @@ function bookingEntryEnabledOf({ ticketState, reservationRequired, visitDate, no
   if (reservationRequired === false) return false;
   if (!visitDate) return false;
   // 出行日本身结束后才关；当天 23:59 之前都还能点
-  return time.todayStr() <= visitDate;
+  return time.todayStr(nowTs) <= visitDate;
 }
 
 /** 该行程项是否已过（visitDate 的次日 0 点起算，北京时间） */
 function isItemEnded(visitDate, nowTs = time.now()) {
-  return time.todayStr() > visitDate;
+  return time.todayStr(nowTs) > visitDate;
 }
 
 /**

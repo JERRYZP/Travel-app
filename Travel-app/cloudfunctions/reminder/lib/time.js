@@ -44,9 +44,16 @@ function toDateStr(date = now()) {
   return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
 }
 
-/** 今天（北京时间）的日期字符串 */
-function todayStr() {
-  return toDateStr(now());
+/**
+ * 今天（北京时间）的日期字符串。
+ *
+ * @param {Date} [at] 指定「以哪一刻为今天」；缺省取真实时钟。
+ *   推导类代码（lib/item.js）必须把同一个 nowTs 传进来，否则
+ *   「以某个时刻判断行程项是否结束」会偷偷读真实时钟，既不可测也会与
+ *   同一个 nowTs 下的其他推导不一致。
+ */
+function todayStr(at = now()) {
+  return toDateStr(at);
 }
 
 /**
