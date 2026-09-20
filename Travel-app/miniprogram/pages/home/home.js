@@ -24,6 +24,9 @@ Page({
     trips: [],
     history: [],
     primaryTrip: null,
+    /* 完全没有行程项 = 空态。空态自带一个居中的「+ 新增提醒」，
+       所以要把悬浮按钮藏掉，避免同屏两个一模一样的入口。 */
+    isBlank: false,
     historyOpen: false,
     banner: null,
     hideBanner: false,
@@ -96,6 +99,8 @@ Page({
         loading: false,
         trips,
         history: res.history || [],
+        /* 空态判定：没有任何进行中行程、也没有历史行程 */
+        isBlank: trips.length === 0 && (res.history || []).length === 0,
         primaryTrip: primary,
         banner: res.stickyBanner || null,
         hideBanner: false,

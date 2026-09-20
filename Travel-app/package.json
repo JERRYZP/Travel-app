@@ -5,7 +5,7 @@
   "main": "app.js",
   "scripts": {
     "check": "python3 scripts/check-miniprogram.py",
-    "test": "node test/flow.test.js && node test/timeline.test.js && node test/opendays.test.js && node test/feedback.test.js && node test/notifier.test.js && node test/home-bootstrap.test.js && node test/task-status.test.js && node test/mock-mirror.test.js && node test/subscribe-quota.test.js && node test/quota-heal.test.js && node test/trip-items.test.js && node test/trip-item-state.test.js && node test/trip-item-actions.test.js && node test/trip-progress.test.js && node test/recovery.test.js && node test/timeline-preview.test.js && node test/trip-wall-contract.test.js && node test/add-trip-flow.test.js && node test/cart-popup.test.js"
+    "test": "node test/flow.test.js && node test/timeline.test.js && node test/opendays.test.js && node test/feedback.test.js && node test/notifier.test.js && node test/home-bootstrap.test.js && node test/task-status.test.js && node test/mock-mirror.test.js && node test/subscribe-quota.test.js && node test/quota-heal.test.js && node test/trip-items.test.js && node test/trip-item-state.test.js && node test/trip-item-actions.test.js && node test/trip-progress.test.js && node test/recovery.test.js && node test/timeline-preview.test.js && node test/trip-wall-contract.test.js && node test/add-trip-flow.test.js && node test/cart-popup.test.js && node test/home-emptystate.test.js"
   },
   "dependencies": {
     "@vant/weapp": "^1.11.4"

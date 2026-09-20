@@ -76,8 +76,12 @@
   </block>
 </view>
 
-<!-- 悬浮新增提醒 -->
-<view class="fab-btn" bindtap="onAddTrip">
+<!-- 悬浮新增提醒。
+     ⚠️ 只在**已有行程**时出现：空态本身已经有一个居中的「+ 新增提醒」，
+     再叠一个就是同屏两个一模一样的入口。
+     也带上 !loading —— 加载期间 isBlank 还没算出来（仍是初值 false），
+     不加的话新用户一进页面会先看到悬浮按钮闪一下再消失。 -->
+<view wx:if="{{!loading && !isBlank}}" class="fab-btn" bindtap="onAddTrip">
   <svg-icon name="plus-white" size="18px" />
   <text>新增提醒</text>
 </view>
