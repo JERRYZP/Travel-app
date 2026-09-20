@@ -11,6 +11,7 @@ const {
 const time = require('./time');
 const tripItem = require('./trip-item');
 const cart = require('./cart');
+const trip = require('./trip');
 const {
   shouldHealQuota, healSubscribeQuota, DEFAULT_SUBSCRIBE_TEMPLATE_ID,
 } = require('./quota');

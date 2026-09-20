@@ -232,6 +232,26 @@ function digest(res) {
       true, '各景点只在自己的段内生成事件（不膨胀成整段 × 全部景点）');
   }
 
+
+  console.log('=== 14. 提交清单时才建行程（纯预览化的完整闭环）===');
+  {
+    // 这条走的是 task.submit 内部对 trip.create 的调用。少一个 import 就会在这里炸，
+    // 而纯函数测试发现不了（curriculum: 端到端走查抓到的 trip is not defined）。
+    const db = freshDb();
+    const pv = await timeline.preview(db, USER, { startDate: START, endDate: END, spotIds: ['gugong'] });
+    const ev = pv.events[0];
+    eq((await cart.add(db, USER, { spotId: ev.spotId, visitDate: ev.visitDate, releaseAt: ev.releaseAt, remindOn: true })).success,
+      true, '加入暂存清单（不传 tripId）');
+    eq(db._dump(COLLECTIONS.TRIPS).length, 0, '此时仍没有行程');
+
+    const cm = await task.submit(db, USER, { channels: ['OFFICIAL_ACCOUNT'], offsets: [5] });
+    eq(cm.success, true, '提交成功');
+    eq(Boolean(cm.tripId), true, '回传 tripId');
+    eq(db._dump(COLLECTIONS.TRIPS).length, 1, '提交时才创建行程');
+    eq(db._dump(COLLECTIONS.TRIP_ITEMS).length, 1, '行程项落在新行程上');
+    eq(cm.toast.indexOf('已设提醒') > 0, true, 'toast 说明其中几个已设提醒');
+  }
+
   console.log('\n' + (fail === 0 ? 'ALL PASS' : ('FAIL ' + fail)));
   process.exit(fail === 0 ? 0 : 1);
 })();
