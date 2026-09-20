@@ -122,8 +122,30 @@ function toastError(result) {
     1016: '行程项所在日期已结束',
     1500: '服务异常，请稍后重试',
   };
-  const msg = (result && map[result.errorCode]) || (result && result.error) || '操作失败';
-  wx.showToast({ title: msg, icon: 'none' });
+  if (result && map[result.errorCode]) {
+    wx.showToast({ title: map[result.errorCode], icon: 'none' });
+    return;
+  }
+  if (result && result.error) {
+    wx.showToast({ title: result.error, icon: 'none' });
+    return;
+  }
+  /* 走到这里说明**不是业务错误，而是调用本身失败了**——最常见的是云函数还没部署，
+     或 appid / cloudEnv 不配对。原来一律显示「操作失败」，等于把真正的原因
+     （`errMsg` 里写得很清楚）丢掉了，排查时只能靠猜。
+     ⚠️ 别再退回成一句笼统文案：静默失败正是这个项目反复踩过的坑。 */
+  const raw = (result && (result.errMsg || result.errmsg)) || '';
+  if (raw) {
+    /* 剥掉「cloud.callFunction:fail 」「Error: 」这类前缀噪音，优先取 errMsg 后面的正文 */
+    const text = String(raw).replace(/^cloud\.callFunction:fail\s*/i, '').replace(/^Error:\s*/i, '');
+    const hit = /errMsg:\s*(.+)$/.exec(text);
+    /* 微信的错误正文本身很长，取前 40 字保住 Toast 可见性 */
+    const brief = (hit ? hit[1] : text).trim().slice(0, 40);
+    console.error('[api] 云函数调用失败：', raw);
+    wx.showToast({ title: brief || '云函数调用失败', icon: 'none' });
+    return;
+  }
+  wx.showToast({ title: '操作失败', icon: 'none' });
 }
 
 module.exports = { spots, reminder, feedback, ics, toastError };
