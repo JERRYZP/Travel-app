@@ -70,17 +70,21 @@
   </view>
 
   <!-- 动作下拉浮层：**必须在最外层**。
-       放进 row 会被 scroll-view 裁掉（用户实测「选项看不到、被遮」）；
-       放进 .cart-sheet 也不行 —— sheet 有入场动画（transform），
-       会让 position: fixed 的后代改以它为包含块，定位跑偏。
+       放进 row 会被 scroll-view 裁掉；放进 .cart-sheet 也不行 ——
+       sheet 有入场动画（transform），会让 position: fixed 的后代改以它为包含块。
        坐标由 JS 按触发按钮的位置算好，见 onToggleDropdown。 -->
   <block wx:if="{{openDropdown && dropItem}}">
-    <view class="cart-drop-mask" catchtap="closeDropdown" catchtouchmove="noop"></view>
-    <view class="cart-drop-pop" style="{{dropStyle}}" catchtap="noop">
-      <view class="cart-drop-opt {{dropItem.remindOn ? 'active' : ''}}"
+    <!-- ⚠️ 内联 z-index + catchtap：遮罩是满屏的，而它与浮层同为 fixed。
+         真机上仅靠类里的 z-index 在部分基础库下会判错，遮罩抢走点击 →
+         「点选项没反应、点空白也不消失」。内联写死并拉开层级最稳。 -->
+    <view class="cart-drop-mask" style="z-index: 900;" catchtap="closeDropdown" catchtouchmove="noop"></view>
+    <view class="cart-drop-pop" style="{{dropStyle}} z-index: 901;" catchtap="noop">
+      <view class="cart-drop-opt {{dropChoice ? 'active' : ''}}"
             catchtap="onPickRemind" data-remind="{{true}}">{{OPTION_ON}}</view>
-      <view class="cart-drop-opt {{!dropItem.remindOn ? 'active' : ''}}"
+      <view class="cart-drop-opt {{!dropChoice ? 'active' : ''}}"
             catchtap="onPickRemind" data-remind="{{false}}">{{OPTION_OFF}}</view>
+      <!-- 点确定才落库；点空白/点 X = 什么都不发生 -->
+      <view class="cart-drop-confirm" catchtap="onConfirmRemind">确定</view>
     </view>
   </block>
 </view>

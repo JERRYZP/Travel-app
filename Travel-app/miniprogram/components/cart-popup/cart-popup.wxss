@@ -147,7 +147,7 @@
   border-radius: 14rpx;
   box-shadow: 0 8rpx 24rpx rgba(100,60,20,.22);
   min-width: 300rpx;
-  padding: 8rpx 0;
+  padding: 8rpx 0 0;
   animation: drop-in .16s cubic-bezier(.22,1,.36,1);
 }
 @keyframes drop-in {
@@ -155,11 +155,11 @@
   to   { opacity: 1; transform: none; }
 }
 
-/* 挡在下面的透明遮罩：点任意处收起，避免浮层留在屏幕上无处可去 */
+/* 挡在下面的透明遮罩：点任意处收起。
+   z-index 显式写在 wxml 内联样式里（真机上类选择器与内联混用时层级判定不稳）。 */
 .cart-drop-mask {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  z-index: 29;
 }
 .cart-drop-opt {
   padding: 18rpx 24rpx;
@@ -168,6 +168,17 @@
   white-space: nowrap;
 }
 .cart-drop-opt.active { color: var(--color-primary); font-weight: 600; background: rgba(192,71,42,.06); }
+
+/* 确定条：给这个控件一个明确的提交点，避免「点哪都是改」 */
+.cart-drop-confirm {
+  margin-top: 8rpx;
+  border-top: 1rpx solid var(--color-border);
+  padding: 18rpx 24rpx;
+  text-align: center;
+  font-size: 25rpx;
+  font-weight: 600;
+  color: var(--color-primary);
+}
 
 /* 免预约项：说明必须与按钮同屏可见，不能只靠弹窗解释 */
 .cart-no-remind {

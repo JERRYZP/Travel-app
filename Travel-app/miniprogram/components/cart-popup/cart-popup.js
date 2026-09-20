@@ -28,8 +28,10 @@ Component({
     showClearDialog: false,
     /* 展开下拉的 cartId（同屏只开一个） */
     openDropdown: '',
-    /* 下拉里那一行（用于回显选中态） */
+    /* 下拉里那一行（用于回显当前值） */
     dropItem: null,
+    /* 下拉里的**预选**值：点选项改它，点「确定」才落库 */
+    dropChoice: false,
     /* 下拉浮层的内联定位（px）。在 JS 里按触发按钮的位置算——
        见 onToggleDropdown 的注释：它必须在最外层，不能放 scroll-view 里 */
     dropStyle: '',
@@ -53,7 +55,7 @@ Component({
         this.computeHeights();
         this.loadCart();
       } else {
-        this.setData({ openDropdown: '', dropItem: null, dropStyle: '' });
+        this.setData({ openDropdown: '', dropItem: null, dropChoice: false, dropStyle: '' });
       }
     },
     aboveTabbar: function () { this.computeHeights(); },
@@ -142,16 +144,16 @@ Component({
       const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
       this.createSelectorQuery().select('#drop-' + cartId).boundingClientRect(trig => {
         if (!trig) return;
-        const H = 84;      // 两行选项 + 内边距的估算高度（px）
+        const H = 88;      // 两行选项 + 内边距（px）
         const GAP = 6;
-        /* 优先在触发按钮**上方**弹出（不挡住正在看的那一行）；
-           上方空间不够就翻到下方 */
         let top = trig.top - H - GAP;
         if (top < 10) top = trig.bottom + GAP;
         const right = Math.max(12, (win.windowWidth || 375) - trig.right);
         this.setData({
           openDropdown: cartId,
           dropItem: item,
+          /* 只**预选**当前值，不提交 —— 必须点「确定」才生效 */
+          dropChoice: item.remindOn === true,
           dropStyle: 'top:' + top + 'px; right:' + right + 'px;',
         });
       }).exec();
@@ -159,7 +161,7 @@ Component({
 
     closeDropdown() {
       if (!this.data.openDropdown) return;
-      this.setData({ openDropdown: '', dropItem: null, dropStyle: '' });
+      this.setData({ openDropdown: '', dropItem: null, dropChoice: false, dropStyle: '' });
     },
 
     /* 列表一滚，触发按钮就移位了 —— fixed 浮层不会跟着走，直接收起来 */
@@ -167,14 +169,28 @@ Component({
       this.closeDropdown();
     },
 
+    /** 点选项：只改**预选**，不提交 */
     onPickRemind(e) {
+      const remind = e.currentTarget.dataset.remind === true
+        || e.currentTarget.dataset.remind === 'true';
+      this.setData({ dropChoice: remind });
+    },
+
+    /**
+     * 「确定」才真正写库。
+     *
+     * 为什么不点选项直接生效：下拉只有两项，点哪一项都立刻落库的话，
+     * 用户点开只是想看一眼当前设置、随手点一下别处（或误触）就已经改掉了，
+     * 而且没有任何确认步骤。改成「预选 → 确定」后，这个控件是可预测的：
+     * 点 X 或者点空白 = 什么都没发生。
+     */
+    onConfirmRemind() {
       const cartId = this.data.openDropdown;
       const item = this.data.dropItem;
       if (!cartId || !item) return;
-      const remind = e.currentTarget.dataset.remind === true
-        || e.currentTarget.dataset.remind === 'true';
-      if (item.remindOn === remind) { this.closeDropdown(); return; }
+      const remind = this.data.dropChoice === true;
       this.closeDropdown();
+      if (item.remindOn === remind) return;   // 没改就什么都不做
       api.reminder.cart.updateRemindOn({ cartId, remindOn: remind }).then(() => {
         this.loadCart();
         this.triggerEvent('change');
