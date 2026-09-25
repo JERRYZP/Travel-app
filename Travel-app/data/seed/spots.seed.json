@@ -2,6 +2,7 @@
   {
     "spotId": "gugong",
     "name": "故宫博物院",
+    "shortName": "故宫",
     "category": "博物馆",
     "district": "东城区",
     "address": "景山前街4号",
@@ -26,6 +27,7 @@
   {
     "spotId": "tiananmen-chenglou",
     "name": "天安门城楼",
+    "shortName": "天安门城楼",
     "category": "古迹",
     "district": "东城区",
     "address": "天安门广场北侧",
@@ -50,6 +52,7 @@
   {
     "spotId": "guobo",
     "name": "中国国家博物馆",
+    "shortName": "国博",
     "category": "博物馆",
     "district": "东城区",
     "address": "东长安街16号",
@@ -74,6 +77,7 @@
   {
     "spotId": "yiheyuan",
     "name": "颐和园",
+    "shortName": "颐和园",
     "category": "公园",
     "district": "海淀区",
     "address": "新建宫门路19号",
@@ -99,6 +103,7 @@
   {
     "spotId": "tiantan",
     "name": "天坛公园",
+    "shortName": "天坛",
     "category": "公园",
     "district": "东城区",
     "address": "天坛东里甲1号",
@@ -124,6 +129,7 @@
   {
     "spotId": "badaling",
     "name": "八达岭长城",
+    "shortName": "八达岭",
     "category": "古迹",
     "district": "延庆区",
     "address": "G6京藏高速58号出口",
@@ -148,6 +154,7 @@
   {
     "spotId": "yuanmingyuan",
     "name": "圆明园遗址公园",
+    "shortName": "圆明园",
     "category": "公园",
     "district": "海淀区",
     "address": "清华西路28号",
@@ -172,6 +179,7 @@
   {
     "spotId": "beijing-zoo",
     "name": "北京动物园",
+    "shortName": "动物园",
     "category": "公园",
     "district": "西城区",
     "address": "西直门外大街137号",
@@ -196,6 +204,7 @@
   {
     "spotId": "gongwangfu",
     "name": "恭王府",
+    "shortName": "恭王府",
     "category": "古迹",
     "district": "西城区",
     "address": "前海西街17号",
@@ -220,6 +229,7 @@
   {
     "spotId": "beihai",
     "name": "北海公园",
+    "shortName": "北海",
     "category": "公园",
     "district": "西城区",
     "address": "文津街1号",
@@ -245,6 +255,7 @@
   {
     "spotId": "tiananmen-square",
     "name": "天安门广场",
+    "shortName": "天安门广场",
     "category": "广场",
     "district": "东城区",
     "address": "东长安街天安门广场",
@@ -274,6 +285,7 @@
   {
     "spotId": "maozhuxi-jiniantang",
     "name": "毛主席纪念堂",
+    "shortName": "纪念堂",
     "category": "纪念场馆",
     "district": "东城区",
     "address": "天安门广场人民英雄纪念碑南侧",
@@ -301,6 +313,7 @@
   {
     "spotId": "renmin-dahuitang",
     "name": "人民大会堂",
+    "shortName": "人民大会堂",
     "category": "场馆",
     "district": "西城区",
     "address": "西长安街天安门广场西侧",
@@ -328,6 +341,7 @@
   {
     "spotId": "junbo",
     "name": "中国人民革命军事博物馆",
+    "shortName": "军事博物馆",
     "category": "博物馆",
     "district": "海淀区",
     "address": "复兴路9号",
@@ -357,6 +371,7 @@
   {
     "spotId": "ziran-bowuguan",
     "name": "国家自然博物馆",
+    "shortName": "自然博物馆",
     "category": "博物馆",
     "district": "东城区",
     "address": "天桥南大街126号",
@@ -385,6 +400,7 @@
   {
     "spotId": "kaogu-bowuguan",
     "name": "中国考古博物馆",
+    "shortName": "考古博物馆",
     "category": "博物馆",
     "district": "朝阳区",
     "address": "国家体育场北路1号院1号楼",
@@ -413,6 +429,7 @@
   {
     "spotId": "tsinghua",
     "name": "清华大学",
+    "shortName": "清华",
     "category": "高校",
     "district": "海淀区",
     "address": "清华园1号",
@@ -441,6 +458,7 @@
   {
     "spotId": "peking-university",
     "name": "北京大学",
+    "shortName": "北大",
     "category": "高校",
     "district": "海淀区",
     "address": "颐和园路5号",
@@ -469,6 +487,7 @@
   {
     "spotId": "kejiguan",
     "name": "中国科技馆",
+    "shortName": "中国科技馆",
     "category": "博物馆",
     "district": "朝阳区",
     "address": "北辰东路5号",
@@ -497,6 +516,7 @@
   {
     "spotId": "meishuguan",
     "name": "中国美术馆",
+    "shortName": "中国美术馆",
     "category": "博物馆",
     "district": "东城区",
     "address": "五四大街1号",
@@ -524,6 +544,7 @@
   {
     "spotId": "gongyi-meishuguan",
     "name": "中国工艺美术馆·非遗馆",
+    "shortName": "工艺美术馆",
     "category": "博物馆",
     "district": "朝阳区",
     "address": "湖景东路16号",
@@ -554,6 +575,7 @@
   {
     "spotId": "shoubo",
     "name": "首都博物馆",
+    "shortName": "首博",
     "category": "博物馆",
     "district": "西城区",
     "address": "复兴门外大街16号",
@@ -582,6 +604,7 @@
   {
     "spotId": "mutianyu",
     "name": "慕田峪长城",
+    "shortName": "慕田峪",
     "category": "古迹",
     "district": "怀柔区",
     "address": "渤海镇慕田峪村",
@@ -609,6 +632,7 @@
   {
     "spotId": "kongmiao-guozijian",
     "name": "孔庙和国子监博物馆",
+    "shortName": "孔庙国子监",
     "category": "博物馆",
     "district": "东城区",
     "address": "国子监街15号",
@@ -638,6 +662,7 @@
   {
     "spotId": "tianwenguan",
     "name": "北京天文馆",
+    "shortName": "天文馆",
     "category": "博物馆",
     "district": "西城区",
     "address": "西直门外大街138号",
@@ -665,6 +690,7 @@
   {
     "spotId": "huanqiu-yingcheng",
     "name": "北京环球影城",
+    "shortName": "环球影城",
     "category": "主题乐园",
     "district": "通州区",
     "address": "京哈高速与东六环交汇处西北角",

@@ -5,11 +5,15 @@
 字段全部由脚本从数据推导，不手写，避免表和代码漂移。
 可约日与 App 的 time.isOpenOn 同语义：openDays 非空 → 白名单，否则 closedDays 黑名单。
 """
+import datetime
 import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent          # Travel-app/
-OUT_PATH = ROOT / "产品运营" / "0911全量景点信息表.md"
+TOKYO = datetime.timezone(datetime.timedelta(hours=8))  # 全系统按北京时间 GMT+8
+TODAY = datetime.datetime.now(TOKYO).date()
+EXPORT_DATE = TODAY.isoformat()
+OUT_PATH = ROOT / "产品运营" / f"{TODAY.strftime('%m%d')}全量景点信息表.md"
 spots = json.loads((ROOT / "data/spots.json").read_text(encoding="utf-8"))["spots"]
 rules = {r["spotId"]: r for r in json.loads((ROOT / "data/rules.json").read_text(encoding="utf-8"))["rules"]}
 
@@ -102,7 +106,7 @@ head = [
     "# 全量景点信息表（北京 · 预约规则）",
     "",
     f"> 数据来源：`Travel-app/data/spots.json`（难度 / 是否预约）+ `data/rules.json`（放票规则 / 可约日 / 核验日期）",
-    f"> 导出日期：2026-09-11 ｜ 共 {len(rows)} 个景点"
+    f"> 导出日期：{EXPORT_DATE} ｜ 共 {len(rows)} 个景点"
     f"（S {sum(1 for x in rows if x['tier']=='S')} ｜ A {sum(1 for x in rows if x['tier']=='A')} ｜ B {sum(1 for x in rows if x['tier']=='B')}）",
     "> **本表由数据文件直接导出，改数据后重跑生成即可，勿手工编辑数值。**",
     "",
@@ -149,5 +153,6 @@ head += [
 ]
 
 out = "\n".join(head) + "\n"
-(ROOT / "产品运营" / "0911全量景点信息表.md").write_text(out, encoding="utf-8")
-print(out)
+OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+OUT_PATH.write_text(out, encoding="utf-8")
+print(f"wrote: {OUT_PATH}")

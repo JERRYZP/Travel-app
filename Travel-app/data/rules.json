@@ -223,19 +223,19 @@
       "spotId": "renmin-dahuitang"
     },
     {
-      "advanceDays": 8,
+      "advanceDays": 7,
       "releaseTime": "08:00",
       "releaseFrequency": "daily",
       "closedDays": [
         "monday"
       ],
       "isRolling": false,
-      "bookingTips": "提前8天可约；常规每日8:00、17:00、20:00三个放票时段；2026暑期（7月27日至8月31日）每日9:00、17:00释放次日回流票，9月起以官网/公众号为准；卡点进入，约不上别退出持续刷新",
+      "bookingTips": "提前7天可约（官网写「提前8天」，实测按提前7天放票，2026-09-22 用户核实）；常规每日8:00、17:00、20:00三个放票时段；2026暑期（7月27日至8月31日）每日9:00、17:00释放次日回流票，9月起以官网/公众号为准；卡点进入，约不上别退出持续刷新",
       "openTime": "09:00-17:00（16:00停止入馆），周一闭馆",
       "ticketPrice": "免费",
       "idRequirement": "须持预约时使用的有效身份证件原件",
       "ageLimit": "未满14周岁未成年人须由成年人陪同（以官方为准）",
-      "lastCheckedDate": "2026-08-24",
+      "lastCheckedDate": "2026-09-22",
       "specialNotice": "",
       "spotId": "junbo",
       "releaseTimes": [
