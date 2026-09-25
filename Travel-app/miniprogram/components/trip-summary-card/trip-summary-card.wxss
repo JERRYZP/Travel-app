@@ -1,26 +1,141 @@
-/* 朱砂渐变摘要卡：首页唯一的「完整」摘要，视觉上必须压得住下方的白卡墙 */
+/* 朱砂渐变摘要卡（设计稿 UI/V.0.2-0919 一比一还原）
+ *
+ * 量取自 804px 设计稿（设备 402pt，2x，30.png）：
+ *   卡片左右边缘与下方「10月2日 · 周五」分段标题**左对齐** → 卡片 = 内容区满宽，
+ *   外边距就是页面的 30rpx，**不要**给负外边距去外扩。内边距约 28rpx。
+ *
+ * ⚠️ 卡内**纵向节奏 = 8rpx**（设计 4px），2026-09-21 按用户口径统一收紧：
+ *   「门票搞定」及其以下各块之间都要紧凑，卡片整体别被撑高。
+ *   下面几处 margin-top 都是 8rpx，改动前先对稿——它们是同一套节奏，别单独调一个。
+ * ⚠️ 高度靠内容自然撑出，**不写死 min-height**——写死之后多一行免预约、
+ *   胶囊换行都会溢出。
+ *
+ * ⚠️ 卡上文字的深浅**一律用设计稿给定的实色**，不要用 opacity 叠在渐变上：
+ *   渐变两端色不同，同一 opacity 在卡顶和卡底会渲染出两种颜色，对稿时上下对不上。
+ */
 .summary {
-  background: linear-gradient(135deg, var(--color-primary) 0%, #96331F 100%);
+  position: relative;
+  margin: 0 0 24rpx;               /* 满宽：与下方分段标题同一左边缘 */
+  padding: 32rpx 30rpx 30rpx;
+  /* ⚠️ 渐变与圆角是**设计给死的精确值，不要"顺手调得更顺眼"**：
+     160deg 比 180deg 略斜，12.9% / 87.46% 的断点让顶部色域更宽。
+     自造一组"看起来差不多"的值，对稿时一定看得出差别。 */
+  border-radius: 24rpx;                              /* 设计值 12px */
+  background: linear-gradient(160deg, #C65941 12.9%, #B8432A 87.46%);
+  box-shadow: 0 10rpx 28rpx rgba(150, 51, 31, .26);
   color: #FDF6EE;
-  border-radius: 28rpx;
-  padding: 32rpx;
-  box-shadow: 0 10rpx 28rpx rgba(150,51,31,.26);
-  margin-bottom: 24rpx;
+  overflow: hidden;                /* 让水印不越出圆角 */
 }
-.sm-top { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; }
-.sm-name { font-size: 38rpx; font-weight: 700; letter-spacing: 1rpx; }
-.sm-countdown { font-size: 24rpx; opacity: .92; flex-shrink: 0; }
-.sm-dates { display: block; font-size: 25rpx; opacity: .88; margin-top: 8rpx; }
 
-.sm-progress { margin-top: 26rpx; }
+/* 装饰英文水印：衬线体、细、大、极淡，与左侧「北京之行」**上下居中**。
+ *
+ * 字体走衬线族（Times / Georgia / Songti / Didot 皆为系统自带），
+ * 这笔英文要的是"印在卡片上的暗纹"，无衬线体太现代、太抢。
+ * ⚠️ 小程序**不能内嵌自定义英文字体**（主包体积 + `wx.loadFontFace` 需网络且首帧会闪），
+ * 所以用系统衬线族做梯队，不追求与设计稿字体逐字形一致。 */
+.sm-mark {
+  position: absolute; right: 30rpx;
+  /* 水印同属「北京之行以下」的正文层，取 #EAD9A8；它比正文更淡，
+     因为它是装饰纹理，不该跟真文字一个存在感。 */
+  /* 与「北京之行」那一行上下居中：标题行高 54rpx + 卡片上内边距 32rpx
+     → 中线在 32 + 27 = 59rpx。用 translateY(-50%) 而不是把字号算进 top，
+     换字号时不用重算。 */
+  top: 59rpx; transform: translateY(-50%);
+  display: flex;
+  font-family: 'Times New Roman', Georgia, 'Songti SC', Didot, serif;
+  /* 不透明度在 2026-09-21 由 .55 再降一半 → .28。
+     它是背景纹理，存在感要低于任何真文字。 */
+  color: #EAD9A8; opacity: .28;
+  font-size: 30rpx; font-weight: 400;
+  letter-spacing: 0;
+  pointer-events: none;
+}
+/* ⚠️ 字距靠**逐字符元素之间的 margin** 撑开，不用 letter-spacing：
+   部分机型对 letter-spacing 有上限，达不到设计稿那种散开的效果。
+   空格字符已经由 tripWatermark 塞进数组里（「BEIJING␣␣TRIP」）。
+   ⚠️ 单位用 **em（= 字号百分比）而不是 rpx**：这里要的就是「字距 = 字号 × 70%」，
+   em 自带这个语义，改字号时字距自动跟着走；写成 21rpx 这种绝对值，
+   以后一调字号就会脱钩，得记得回来重算。 */
+.sm-mark-ch { margin-left: .7em; }
+.sm-mark-ch:first-child { margin-left: 0; }
+
+/* ① 标题行（水印绝对定位，不参与这里的排布） */
+.sm-head { display: flex; align-items: center; min-height: 54rpx; }
+.sm-name { font-size: 38rpx; font-weight: 700; letter-spacing: 2rpx; color: #FFFFFF; }
+
+/* ② 日期段 + 倒计时同一行 */
+.sm-meta { display: block; font-size: 26rpx; color: #EAD9A8; margin-top: 4rpx; }
+
+/* ③ 门票搞定 —— ⚠️ 这几行是「北京之行」以下的正文，统一 #EAD9A8。
+   标题 .sm-name 保持白色（标题级信息）。
+   ⚠️ 右侧比例 N/M **整体同一字号、同一颜色、都不加粗**（2026-09-21 用户口径）：
+   之前把分子做成 36rpx/700/白色、分母 26rpx/浅色，是想拉层次；
+   但那让一个"读数"看起来像两个东西，反而更难扫。现在整行只靠字号分主次，
+   分子分母一视同仁。 */
+/* ⚠️ 这一处的 8rpx **不是**普通节奏值，是**高度补偿**：
+   ① 标题→日期段 由 8rpx 收到 4rpx（−4rpx）
+   ② 进度条与「门票搞定」之间 由 14rpx 收到 4rpx（−10rpx）
+   两处共让出 14rpx，这里由 8rpx 加到 22rpx 补回来。
+   目的是：**「门票搞定」及以上更紧凑，而它以下（进度条之后的胶囊）相对位置完全不变，
+   卡片总高也不变。** 改上面那两处必须同步改这里的补偿量，否则卡片会矮一截。 */
+.sm-progress { margin-top: 22rpx; }
 .sm-progress-row {
   display: flex; align-items: baseline; justify-content: space-between;
-  font-size: 24rpx; opacity: .95; margin-bottom: 12rpx;
+  font-size: 24rpx; color: #EAD9A8;
+  /* 进度条紧贴「门票搞定」：4rpx（设计 2px）。
+     ⚠️ 分子由 26rpx 调到 28rpx 会把本行行盒撑高 2rpx，这里由 6→4 扣回，
+     保证**模块净高不变、胶囊相对位置不动**。改分子/分母字号必须重算这一项。 */
+  margin-bottom: 4rpx;
 }
-.sm-progress-num { font-size: 30rpx; font-weight: 700; }
-.sm-bar { height: 12rpx; border-radius: 6rpx; background: rgba(255,255,255,.22); overflow: hidden; }
+/* 比例读数：分子 15px（402→750 换算 = 28rpx，整除），
+   分母与斜杠 11px（理论 20.5rpx，非整数）。
+   ⚠️ 这里取 **21rpx = 11.3px**：往上凑整而不是往下（20rpx = 10.7px），
+   因为渲染出来略显偏小时比略显偏大更显眼；真要严格 11px 就写 20.5rpx，
+   但半 rpx 在部分 DPR 下会被吃掉，得不偿失。
+   三者**都不加粗、同色**，只靠字号分主次。
+   `align-items: baseline` 让大字小字咬在同一条基线上（否则分子会往下坠）。 */
+.sm-progress-num { display: flex; align-items: baseline; color: #EAD9A8; }
+.sm-num-done { font-size: 28rpx; font-weight: 400; color: #EAD9A8; }
+.sm-num-sep { font-size: 21rpx; font-weight: 400; color: #EAD9A8; margin: 0 2rpx; }
+.sm-num-total { font-size: 21rpx; font-weight: 400; color: #EAD9A8; }
+.sm-bar { height: 12rpx; border-radius: 6rpx; background: rgba(255, 255, 255, .28); overflow: hidden; }
 .sm-bar-fill {
   height: 100%; border-radius: 6rpx; background: #F5D9A8;
   transition: width .5s cubic-bezier(.22,1,.36,1);
 }
-.sm-free { display: block; font-size: 22rpx; opacity: .8; margin-top: 12rpx; }
+/* 免预约行：margin-top 里含「进度模块→胶囊」的补偿量，见 .sm-pills 的注释 */
+.sm-free { display: block; font-size: 22rpx; color: #EAD9A8; margin-top: 16rpx; }
+
+/* ④ 即将提醒胶囊（设计稿：浅底药丸，浮在卡面上，**上方没有分隔线**） */
+.sm-pills {
+  display: flex; flex-wrap: wrap; gap: 14rpx;
+  /* 进度模块 → 胶囊 = 10px（20rpx）。
+     ⚠️ 这是**吸收式补偿**：差出的量加到 .sm-free 上，让**免预约行与胶囊原位置不动**——
+     没有免预约行的卡片（大多数）则整块下移到 20rpx 处。
+     改这里必须同步改 .sm-free 的 margin-top（当前 16rpx = 12 + 4），
+     否则有免预约行的卡片胶囊会跟着上移。 */
+  margin-top: 20rpx;
+}
+/* 有免预约文案时，文案与胶囊之间再收紧 4rpx（约 2px）。 */
+.sm-pills--after-free { margin-top: 16rpx; }
+/* 胶囊：底色 #EAD9A8 25% 不透明度，描边与文字同色系。
+   ⚠️ 最近的一颗（nearest）更实、其余更淡——设计稿两颗粒深浅不同，
+   全部一样会让用户看不出"下一场是哪个"。 */
+.sm-pill {
+  padding: 10rpx 22rpx;
+  border-radius: 24rpx;
+  background: rgba(234, 217, 168, .25);
+  border: 1rpx solid rgba(234, 217, 168, .45);
+  font-size: 22rpx; font-weight: 400;
+  color: #EAD9A8;
+  line-height: 1.35;
+}
+/* 最近的一颗：**实底 #EAD9A8 + 朱砂字 #C0472A**——它是"下一场"，要一眼先看到。
+   第二颗保持半透明浅底 + 浅字，退到背景里。
+   ⚠️ 这颗上的字**不适用**「北京之行以下统一 #EAD9A8」那条：底色已经是 #EAD9A8，
+   再用同色字就直接看不见了。 */
+.sm-pill.is-nearest {
+  background: #EAD9A8;
+  border-color: #EAD9A8;
+  color: #C0472A;
+}

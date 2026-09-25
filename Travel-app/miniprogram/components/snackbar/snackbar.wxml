@@ -1,5 +1,6 @@
 <view wx:if="{{show}}" class="snackbar">
-  <text class="sb-text">{{text}}</text>
+  <!-- 分段渲染：只有结果词着色，其余保持正文色 -->
+  <text class="sb-text">{{lead}}<text class="sb-hl sb-hl-{{tone}}">{{highlight}}</text>{{tail}}</text>
   <view class="sb-undo" catchtap="onUndo">撤销</view>
   <view class="sb-bar"><view class="sb-bar-fill" style="width: {{progress}}%;"></view></view>
 </view>

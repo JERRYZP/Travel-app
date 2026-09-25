@@ -5,6 +5,18 @@ const util = require('../../utils/util.js');
 const { spotsListCards } = require('../../utils/mock.js');
 
 /**
+ * 热门网格里**除 S 级外额外保留**的景点（2026-09-24 用户口径）。
+ *
+ * 只影响这个网格的选卡范围，**不动任何难度数据**：纪念堂照实显示「较难约」，
+ * 景点 Tab / spots 列表 / spot-popup / 运营 skill 的口径一律不变。
+ * 详细因由见 `buildHotSpots` 的注释。
+ */
+const EXTRA_HOT_IDS = ['maozhuxi-jiniantang'];
+
+/* 滚多少像素把导航栏底色从全透明推到不透明（与首页一致）。 */
+const NAV_FADE_PX = 50;
+
+/**
  * 添加提醒 · 表单 + 专属放票时间线（PAGE-005，2026-09-20 拆为独立页）
  *
  * 从首页剥离出来的原因：新首页只剩行程状态墙，表单不该再混在里面；
@@ -19,6 +31,8 @@ Page({
   data: {
     statusBarHeight: 20,
     navBarHeight: 44,
+    /* 导航栏底色不透明度：0 = 全透明，1 = 填满页面底色。滚 NAV_FADE_PX 推满。 */
+    navOpacity: 0,
     minDate: '',
     maxDate: '',
 
@@ -35,7 +49,10 @@ Page({
     timelineTabs: [],
     timelineActiveTab: '',
     timelineEvents: [],
-    timelineClosedSpots: [],
+    /* ⚠️ 这里原有 `timelineClosedSpots`（闭馆/无放票时刻提示列表），2026-09-24 随
+       底部提示块一并删除——行程一跨周一就是每个景点一行的恒定噪音，见 wxml 里的注释。
+       服务端返回的 `closedSpots` / `closedDaySkips` **保留不动**（数据契约不缩水），
+       只是页面不再消费。 */
     timelineEmpty: false,
     timelineEmptyReason: '',
     timelineLoading: false,
@@ -47,23 +64,85 @@ Page({
 
     showSpotPopup: false,
     popupSpotId: '',
+
+    /* 从某趟进行中行程进来时的 tripId（首页预填）。只用于两件事：
+       ① 生成预览时把**这一趟**已有的项标成「已加入行程」禁选；
+       ② 让用户看得见自己在往哪趟行程里补。
+       它不是「要写入的行程」——行程的创建与合并仍由提交时的 TRIP-RULE-002 决定。 */
+    entryTripId: '',
   },
 
   onLoad(options) {
     const g = app.globalData;
     const now = new Date();
+    const opts = options || {};
     this.setData({
       statusBarHeight: g.statusBarHeight,
       navBarHeight: g.navBarHeight,
       minDate: this.fmtDate(now),
       maxDate: this.fmtDate(new Date(now.getTime() + 90 * 86400000)),
+      entryTripId: opts.tripId || '',
     });
+    /* 从首页某趟进行中的行程进来 → 预填它的日期段与景点。
+       ⚠️ 预填的只有**表单**（顶部日期 + 景点），生成的预览仍按这次的输入即时算，
+       与那趟行程的既成状态无关（见 onGenerateTimeline 的注释）。 */
+    this.prefillFromTrip(opts);
     this.loadHotSpots();
     this.loadCart();
   },
 
+  /**
+   * 预填表单：日期段 + 景点。
+   * 景点名要显示成标签，而 URL 里只有 id，故走 spots.batch 取名字；
+   * 取不到（网络失败 / USE_MOCK 切换期）就只预填日期，不阻断用户操作。
+   */
+  prefillFromTrip(opts) {
+    const startDate = opts.startDate || '';
+    const endDate = opts.endDate || startDate;
+    const ids = (opts.spotIds || '').split(',').filter(Boolean);
+    const patch = {};
+    if (startDate && endDate) {
+      patch.startDate = startDate;
+      patch.endDate = endDate;
+      patch.dateRangeText = util.formatDateRange(startDate, endDate);
+      patch.dayCount = util.dayDiff(startDate, endDate);
+    }
+    if (ids.length > 0) patch.selectedSpotIds = ids;
+    if (Object.keys(patch).length > 0) this.setData(patch);
+    if (ids.length === 0) return;
+    api.spots.batch(ids).then(res => {
+      const list = util.markSpotsSelected(res.data || [], ids);
+      /* 只在用户还没动过景点时回填，避免覆盖他预填后立刻手点掉的选择 */
+      if (this.data.selectedSpotIds.join(',') === ids.join(',')) {
+        this.setData({ selectedSpots: list });
+      }
+    }).catch(() => {});
+  },
+
   onShow() {
     this.loadCart();
+  },
+
+  /**
+   * 导航栏底色：滚 NAV_FADE_PX 的过程中不透明度 0 → 100%。
+   *
+   * ⚠️ 与首页 `home.js` 同一口径（含下面那段「两种事件形态都要认」的坑，
+   *    首页那里踩过一次：只认 `e.detail.scrollTop` 时滚动值恒为 0）。
+   *    本页是 `bindscroll`（scroll-view 事件），微信给的**就是 `e.detail.scrollTop`**，
+   *    仍照抄双形态是因为 `page-scroll` 一旦换回页面级 `onPageScroll` 就会静默失效。
+   *
+   * ⚠️ 逐帧给值而不是「到阈值切一个类」——后者是硬切，中间那一帧看起来像闪一下。
+   * ⚠️ 只在值真的变了才 setData：每帧带上一个没变的浮点也会触发一次 diff。
+   *
+   * 时间线头部的吸顶**不在这里**：那是 wxss 的 `position: sticky`，渲染层自己算。
+   */
+  onScroll(e) {
+    const d = e && e.detail;
+    const scrollTop = (d && typeof d.scrollTop === 'number')
+      ? d.scrollTop
+      : ((e && e.scrollTop) || 0);
+    const navOpacity = Math.min(1, Math.max(0, scrollTop / NAV_FADE_PX));
+    if (navOpacity !== this.data.navOpacity) this.setData({ navOpacity });
   },
 
   onBack() {
@@ -114,9 +193,23 @@ Page({
     });
   },
 
-  /* 热门网格只放 S 级（需预约 + 难度≥4），最多 10 个 */
+  /**
+   * 热门网格 = S 级（需预约 + 难度≥4）**加几个点名保留的景点**，最多 10 个。
+   *
+   * ⚠️ **`EXTRA_HOT_IDS` 是加了锁定卡片、不是改了难度分**（2026-09-24 用户口径）：
+   * 纪念堂在 2026-09-15 的 V3 重评里由 4 分降到 3 分（原分值依据「固定补放」已证伪，
+   * 用户当日确认），所以它被 `>= 4` 筛出了这个网格。
+   * 用户要它回到「北京热门景点预约状态」里，但**难度分不动**——
+   * 卡片照实显示「较难约」，全站（景点 Tab / spots 列表 / spot-popup / 运营 skill）
+   * 的数据口径一律不变。别图省事去改 `difficultyScore`：那会连带改掉四处。
+   *
+   * ⚠️ 这里返回的是服务端排好序的切片（`spots.list` 已按 popularityScore 降序，SORT-RULE-001），
+   * 所以 `push` 进来的补充景点会排在末尾 —— 网格顺序稳定，不会因为补一个就重排。
+   */
   buildHotSpots(rawSpots, selectedIds) {
-    const sTier = (rawSpots || []).filter(s => s.reservationRequired !== false && (s.difficultyScore || 0) >= 4);
+    const sTier = (rawSpots || []).filter(s =>
+      s.reservationRequired !== false
+      && ((s.difficultyScore || 0) >= 4 || EXTRA_HOT_IDS.indexOf(s.spotId) >= 0));
     return util.markSpotsSelected(sTier, selectedIds).slice(0, 10);
   },
 
@@ -155,21 +248,30 @@ Page({
 
   /* ===== 生成时间线（纯预览） ===== */
 
+  /** 预览入参。两个调用点（首次生成 / 加完清单重算）必须完全一致，
+      否则重算时会悄悄丢掉 committedTripId，已加入行程的项又变回可点。 */
+  previewInput() {
+    return {
+      startDate: this.data.startDate,
+      endDate: this.data.endDate,
+      spotIds: this.data.selectedSpotIds,
+      city: '北京',
+      committedTripId: this.data.entryTripId,
+    };
+  },
+
   onGenerateTimeline() {
     if (!this.data.startDate || this.data.selectedSpotIds.length === 0) {
       wx.showToast({ title: '先选择行程日期和想去景点吧', icon: 'none' });
       return;
     }
     wx.showLoading({ title: '正在生成...' });
-    /* ⚠️ 纯预览：不传 tripId，也**不创建任何行程**。
-       每一次生成都只按当前所选日期段与景点独立计算 —— 换一批日期重新生成时，
-       上一条时间线的「已在行程」不会被带进来（那正是旧实现的问题）。 */
-    api.reminder.timeline.preview({
-      startDate: this.data.startDate,
-      endDate: this.data.endDate,
-      spotIds: this.data.selectedSpotIds,
-      city: '北京',
-    }).then(res => {
+    /* ⚠️ 仍然**不创建任何行程**：每一次生成都只按「当前所选日期段 × 景点」独立计算，
+       换一批日期重新生成时不会把上一次的结果带进来（那正是旧实现的问题）。
+       committedTripId 只多回答一件事——这批项里哪些**已经躺在用户此刻正在编辑的那趟
+       行程里**，好把它们标成「已加入行程」禁选。它是唯一读得到的既成状态，且限定这一趟；
+       不是从行程进来的（新建）就为空，与旧口径完全一致。 */
+    api.reminder.timeline.preview(this.previewInput()).then(res => {
       wx.hideLoading();
       const tabs = res.byDeparture || [];
       const activeTab = tabs.length ? tabs[0].key : '';
@@ -178,7 +280,6 @@ Page({
         timelineTabs: tabs,
         timelineActiveTab: activeTab,
         timelineEvents: this.decorateEvents(activeTab ? (tabs.find(t => t.key === activeTab) || {}).events || [] : []),
-        timelineClosedSpots: (res.closedSpots || []).concat(res.closedDaySkips || []),
         timelineEmpty: res.empty,
         timelineEmptyReason: res.emptyReason,
       });
@@ -214,10 +315,15 @@ Page({
           const h = Math.floor(ms / 3600000);
           const m = Math.floor((ms % 3600000) / 60000);
           btnSub = pad(h) + 'h ' + pad(m) + 'm 后开票';
+        } else if (ms <= 0) {
+          btnSub = '加入后去行程页预约';
         }
       }
+      const freeRailDateLabel = String(ev.visitDateLabel || '')
+        .replace(/\s*[（(]周[一二三四五六日][）)]\s*$/, '');
       return Object.assign({}, ev, {
         releaseDateLabel,
+        railDateLabel: ev.reservationRequired === false ? freeRailDateLabel : releaseDateLabel,
         btnSub,
         /* wx:key 用复合键：同一景点可以有多个备选日期 */
         eventKey: ev.spotId + '|' + ev.visitDate,
@@ -241,7 +347,17 @@ Page({
       scope: 'departure',
       scopeKey: this.data.timelineActiveTab,
     }).then(res => {
-      wx.showToast({ title: '已加入 ' + res.added + ' 项', icon: 'none' });
+      /* 「已加入 0 项」是个信息量为零的 toast：既没说为什么，也不告诉用户
+         本来想加的项去哪了。两种必要解释——① 这些项已经在清单或行程里了
+         （配合首页预填，这是常见路径，且 addBatch 是按 SELECTABLE 过滤的，
+         已在行程/已在清单的项根本进不了 selectable）；② 当前出游日确实没得加。 */
+      if (res.added > 0) {
+        wx.showToast({ title: '已加入 ' + res.added + ' 项', icon: 'none' });
+      } else if (res.skipped.length > 0) {
+        wx.showToast({ title: '这 ' + res.skipped.length + ' 项已在清单或行程里', icon: 'none' });
+      } else {
+        wx.showToast({ title: '这一天没有可加入的项', icon: 'none' });
+      }
       this.setData({ submitting: false });
       /* ⚠️ reloadPreview 里只更新事件；清单条计数要单独刷，否则批量加完
          底部还显示「0 项」，看起来也是没生效 */
@@ -257,8 +373,8 @@ Page({
     const event = e.currentTarget.dataset.event;
     if (event.status === 'SELECTABLE') this.onInlineAddReminder(e);
     else if (event.status === 'IN_CART') this.onInlineOpenCart();
-    /* BOOKABLE（已开票）在时间线上**不给预约入口**（2026-09-20 废止第四态）：
-       临期建行程时用户先提交清单，再从首页墙进官方渠道，多一步但流程干净 */
+    /* 已开票只改变顶部状态，不会把 status 变成 BOOKABLE。
+       用户仍然先加入清单，提交后从首页行程项进入官方预约入口。 */
   },
 
   onInlineAddReminder(e) {
@@ -270,9 +386,16 @@ Page({
       visitDate: event.visitDate,
       releaseAt: event.releaseAt,
       remindOn: event.remindOnDefault,
-    }).then(() => {
+    }).then(res => {
+      /* ⚠️ 必须等**确认加成功**再弹成功 toast。原来不看返回值一律弹「已加入」，
+         于是当这项已在行程里（配合首页预填，这是常见路径）时，用户看到「已加入」
+         却发现清单和预览都没变——正是「按钮像坏的」那类投诉的来源。
+         文案跟着按钮走：按钮已统一成「加入清单 / 加入行程」（32.png），
+         toast 再写「提醒清单」会和用户刚点的那个按钮对不上。 */
       wx.showToast({
-        title: event.reservationRequired === false ? '已加入行程清单' : '已加入提醒清单',
+        title: (res && res.success === false)
+          ? '这一项已经在行程里了'
+          : (event.reservationRequired === false ? '已加入行程' : '已加清单'),
         icon: 'none',
       });
       this.setData({ submitting: false });
@@ -286,12 +409,7 @@ Page({
   /** 加完清单后刷新预览与清单条。
       预览是纯函数，重算一次就能反映「已加清单」；清单条读暂存区。 */
   reloadPreview() {
-    api.reminder.timeline.preview({
-      startDate: this.data.startDate,
-      endDate: this.data.endDate,
-      spotIds: this.data.selectedSpotIds,
-      city: '北京',
-    }).then(res => {
+    api.reminder.timeline.preview(this.previewInput()).then(res => {
       const tabs = res.byDeparture || [];
       const keep = this.data.timelineActiveTab;
       const activeTab = tabs.some(t => t.key === keep) ? keep : (tabs.length ? tabs[0].key : '');
@@ -299,7 +417,6 @@ Page({
         timelineTabs: tabs,
         timelineActiveTab: activeTab,
         timelineEvents: this.decorateEvents(activeTab ? (tabs.find(t => t.key === activeTab) || {}).events || [] : []),
-        timelineClosedSpots: (res.closedSpots || []).concat(res.closedDaySkips || []),
         timelineEmpty: res.empty,
         timelineEmptyReason: res.emptyReason,
       });
@@ -343,6 +460,8 @@ Page({
     this.setData({ showCartPopup: false });
 
     if (needSetup) {
+      /* 有提醒项 → 去设置页配提前量与通道，由它调 cart.commit。
+         提交后的收尾（写 currentTripId / 回首页）走它自己的 submitTask。 */
       wx.navigateTo({ url: '/pages/setup/setup' });
       return;
     }
@@ -358,11 +477,23 @@ Page({
   },
 
   afterCommit(res) {
-    wx.showToast({ title: res.toast || '已加入行程', icon: 'none' });
+    const firstTip = res.createdTasks > 0 && notify.consumeFirstReminderSuccessTip();
+    wx.showToast({
+      title: firstTip ? '提醒已设置，先备好游客信息' : res.toast,
+      icon: 'none',
+    });
     /* 提交后回首页看新的状态墙。currentTripId 在这一刻才写 ——
        纯预览化后生成时间线不再建行程，写早了会挂到过期/错误的行程上。 */
     if (res.tripId) app.globalData.currentTripId = res.tripId;
     app.globalData.reminderSubmitted = true;
-    setTimeout(() => wx.navigateBack(), 900);
+    setTimeout(() => {
+      /* ⚠️ 用 `navigateBack({delta})` 而不是裸 `navigateBack()`：用户可能中途去过
+         景点页（`onMoreSpots`），栈就变成 首页 → 添加提醒 → 景点页。裸退一层会把他
+         丢回景点页，看起来像「提交完什么也没发生」。直接退回首页；万一栈里没有首页
+         （理论上不会）就退一层，别把用户卡住。 */
+      const pages = getCurrentPages();
+      const homeIdx = pages.findIndex(p => p.route === 'pages/home/home');
+      wx.navigateBack({ delta: homeIdx >= 0 ? pages.length - 1 - homeIdx : 1 });
+    }, 900);
   },
 });

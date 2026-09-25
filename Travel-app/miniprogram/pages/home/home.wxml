@@ -1,58 +1,103 @@
 <wxs module="u" src="../../utils/format.wxs"></wxs>
-<!-- 自定义导航栏：单形态，不再有双 Tab -->
-<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px; background-color: rgba(248, 243, 234, {{navOpacity}});">
-  <view style="height: {{statusBarHeight}}px;"></view>
-  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+<!-- 自定义导航栏：单形态，不再有双 Tab。
+     ⚠️ 导航栏高度不读 app.js 的 navBarHeight（那是用胶囊按钮位置反推的，
+     基础库把胶囊顶对齐之后会算出偏大的值）；导航块固定 88rpx，
+     只有状态栏那一段跟着机型走 —— 它没有设计值，就是设备状态栏高度。
+     ⚠️ 底色由 `navOpacity` 逐帧给出（滚 50px、透明度 0→1）。
+        这里**不能**写死 `background: var(--color-page)`：写死就没有淡入，
+        只能靠加 `.navbar-solid` 类在某一帧硬切，那会「啪」地闪一下。
+        背景只此一处，写在 wxss 里两条都会打架。 -->
+<view class="navbar" style="background-color: rgba(248, 243, 234, {{navOpacity}});">
+  <view class="navbar-status" style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content">
     <text class="navbar-title">行程·提醒</text>
   </view>
 </view>
 
-<!-- 吸顶横幅：跨全部当前/未来行程取全局最近的一条放票 -->
-<view wx:if="{{banner && !hideBanner}}" class="sticky-banner" style="top: {{statusBarHeight + navBarHeight}}px;">
-  <release-banner banner="{{banner}}" bind:open="onBannerOpen" />
-</view>
+<!-- ⚠️ `pageTop` = 标题下沿 + 8px（**不是**导航栏底边 + 8px）。
+     导航块 88rpx 是给胶囊按钮留的常规高度，标题在其中垂直居中，
+     所以底边到标题下沿还空着 17rpx —— 加在这里就是 8 + 8.5 = 16.5px，
+     用户一眼就能看出「间隔太大」（2026-09-23 报的）。
+     现在只让出「(88 − 标题行高) / 2」那一截，剩下的才是那 8px。
+     导航栏是 fixed、正文必须让出它的高度，否则第一块内容会钻到标题底下；
+     这里只让导航块的内缩，**不让横幅的高度**——横幅就在正文里，占位归它自己。 -->
+<view class="page-body" style="padding-top: {{pageTop}}rpx;">
 
-<view class="page-body" style="padding-top: {{statusBarHeight + navBarHeight + 12}}px;">
+  <!-- 授权额度预警：只承载 48 小时内真正会影响送达的问题；可当天关闭。 -->
+  <view wx:if="{{showReminderQuotaWarning}}" class="quota-warning-banner">
+    <text class="qw-text">{{reminderQuotaWarning.text}}</text>
+    <text class="qw-go" catchtap="onQuotaWarningOpen">去补齐</text>
+    <view class="qw-close" catchtap="onQuotaWarningDismiss">
+      <svg-icon name="close" size="12px" />
+    </view>
+  </view>
+
+  <!-- 放票横幅：**在文档流里**（不是吸顶），跟着内容一起往上滑。
+       ⚠️ 不要改回 `position: fixed`：那是「挡住行程卡」和「间距永远凑不准」
+          两个问题的共同根源，原因写在 wxss 的 `.sticky-banner` 上。
+       ⚠️ 与摘要卡之间**没有间距**（2026-09-23 用户要求去掉，原先的 16rpx
+          margin-bottom 已删）；横幅当前只带 -4rpx 上移，抵掉 `.page-body`
+          padding-top 里的部分留白。2026-09-25 上移补偿从 -16rpx 收窄到 -4rpx，
+          让横幅与标题区比原版多出约 6px 间距。别再按「上下各 8px」的口径加 margin。 -->
+  <!-- ⚠️ 没有 `&& !hideBanner` 这类收起条件：它跟着内容滚，滑下去自然被导航栏盖住。
+       按滚动阈值把它摘出文档流会让下面的内容跳一个横幅高，别再加回来。 -->
+  <view wx:if="{{banner}}" class="sticky-banner {{showReminderQuotaWarning ? 'sticky-banner--after-warning' : ''}}">
+    <release-banner banner="{{banner}}" bind:open="onBannerOpen" />
+  </view>
+
+  <view wx:if="{{previewNewUser}}" class="dev-preview-notice">
+    <text>开发预览：当前只是新用户空态，云端数据没有删除</text>
+    <text class="dev-preview-exit" bindtap="onExitNewUserPreview">退出预览</text>
+  </view>
 
   <!-- ===== 空态：一个行程项都没有 → 创建引导（沿用 UI-009） ===== -->
   <block wx:if="{{!loading && trips.length === 0 && history.length === 0}}">
     <view class="empty-hero">
-      <text class="eh-title">还没有行程</text>
-      <text class="eh-sub">选好日期和想去的地方，我帮你把每张票的放票时间盯住</text>
+      <text class="eh-title">把每张票的放票时间盯住</text>
+      <text class="eh-sub">选日期和景点 → 加入清单并提交 → 放票前微信提醒</text>
+      <view class="empty-steps">
+        <view class="empty-step"><text class="es-no">1</text><text>选择出行日期和想去的景点</text></view>
+        <view class="empty-step"><text class="es-no">2</text><text>加入清单，提交后创建行程</text></view>
+        <view class="empty-step"><text class="es-no">3</text><text>放票前收到微信提醒，去官方渠道抢票</text></view>
+      </view>
+      <text class="eh-example">例：想去故宫，选好出行日，放票前 5 分钟提醒你。</text>
     </view>
     <view class="empty-cta" bindtap="onAddTrip">+ 新增提醒</view>
   </block>
 
   <block wx:else>
-    <!-- 全局摘要卡：只给最近的一趟，其他行程只在各自分段标题上显示紧凑进度 -->
-    <trip-summary-card trip="{{primaryTrip}}" />
+    <!-- 全局摘要卡：只给最近的一趟，其他行程在各自的分段标题上显示紧凑进度。
+         卡底部的「即将提醒」胶囊来自 stickyBanner.pills（服务端拼文案）。 -->
+    <trip-summary-card trip="{{primaryTrip}}" pills="{{bannerPills}}" bind:pill="onBannerPillTap" />
 
     <!-- 分段墙：未结束行程按开始日期升序纵向排列，不做横向 Tab -->
     <view wx:for="{{trips}}" wx:key="_id" wx:for-item="trip">
+      <!-- ⚠️ 下面这些 bind: 少一条，对应功能就是**彻底静默失效**（不报错、不提示）：
+           - bind:menutoggle 漏了 → 点卡片三点菜单没反应（2026-09-21 用户报的就是这个）
+           - bind:recoveritems 漏了 → 「约其他日」点不开
+           - bind:missedreason 漏了 → 点「查看原因」没反应
+           组件那边 triggerEvent 了不代表页面收得到，加事件时必须回这里补绑定。 -->
       <trip-section
         trip="{{trip}}"
         menu-id="{{menuId}}"
         menu-date="{{menuDate}}"
         dismissed="{{dismissed}}"
         recoverable-ids="{{recoverableIds}}"
-        sticky="{{trip._sticky}}"
-        sticky-top="{{trip._stickyTop}}"
-        head-height="{{trip._height}}"
-        weak="{{trips.length === 1}}"
-        bind:manage="onManage"
+        weak="{{trip._weak}}"
+        bind:menutoggle="onCardMenuToggle"
+        bind:missedreason="onMissedReason"
         bind:datemenu="onDateMenu"
         bind:datemenuclose="onMenuClose"
         bind:removedate="onRemoveDate"
         bind:menuclose="onMenuClose"
         bind:spot="onSpot"
-        bind:menu="onMenu"
         bind:mark="onMark"
         bind:editreminder="onEditReminder"
         bind:remove="onRemoveItem"
         bind:result="onResult"
         bind:dismiss="onDismissBubble"
+        bind:dismissrecover="onDismissRecover"
         bind:recover="onRecover"
-        bind:missedreason="onMissedReason"
       />
     </view>
 
@@ -98,20 +143,25 @@
   bind:close="onResultClose"
 />
 
-<!-- 约其他日（候选由服务端 recoveryCandidates 判定；无候选则保持静默） -->
+<!-- 约其他日（日历选择器：已有行程日期浅色背景，该景点已有日期禁用） -->
 <date-picker-sheet
   show="{{showDateSheet}}"
   spot-name="{{sheetSpotName}}"
-  candidates="{{recoveryCandidates}}"
-  loading="{{recoveryLoading}}"
+  title="约其他日"
+  trip-dates="{{dateTripDates}}"
+  booked-dates="{{dateBookedDates}}"
+  min-date="{{dateMinDate}}"
   bind:confirm="onRecoverConfirm"
   bind:close="onDateSheetClose"
 />
 
-<!-- 撤销条（4 秒，非系统 Toast） -->
+<!-- 撤销条（4 秒，非系统 Toast）。文案是**分段**的：只有结果词按 tone 着色 -->
 <snackbar
   show="{{snackbar.show}}"
-  text="{{snackbar.text}}"
+  lead="{{snackbar.lead}}"
+  highlight="{{snackbar.highlight}}"
+  tail="{{snackbar.tail}}"
+  tone="{{snackbar.tone}}"
   duration="{{undoSeconds}}"
   bind:undo="onUndo"
   bind:expire="onUndoExpire"

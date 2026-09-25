@@ -171,5 +171,50 @@ console.log('=== 9. candidateOf 的开放性判定 ===');
   eq(recovery.candidateOf(SPOTS.gugong, RULES.gugong, '2027-01-20', NOW).action, 'SET_REMINDER', '未开票（releaseAt 01-13 未到）→ SET_REMINDER');
 }
 
+console.log('=== 10. recoverableMapOf —— 首页一次性算清（2026-09-24）===');
+{
+  /* ⚠️ 这一节锁的是**时序**，不是算法：首页原先在 bootstrap 之后另开一次请求
+     逐条算候选，两次响应谁先落地没有保证，卡片就先按「FAILED 但不可挽回」渲染，
+     挽回线永远不出现。算进 bootstrap 后，候选与它要解释的行程项同一次响应到达。
+     这里只测聚合层：哪些 itemId 有候选、且与逐条调 buildCandidates 的结果一致。 */
+
+  const failed = mkItem('gugong', '2027-01-10');
+  const other = mkItem('guobo', '2027-01-06', { ticketState: 'PENDING', result: null });
+  const trip = { _id: 'T1', startDate: '2027-01-05', endDate: '2027-01-12' };
+  const decorated = [failed, other].map(d => Object.assign({}, d, { tripId: 'T1' }));
+  const map = recovery.recoverableMapOf({
+    decorated, trips: [trip], spotMap: SPOTS, ruleMap: RULES, nowTs: NOW,
+  });
+
+  eq(map[failed.itemId] && map[failed.itemId].length > 0, true, 'map 里带的是完整候选（不是布尔）');
+  eq(JSON.stringify(map[failed.itemId]),
+    JSON.stringify(run(failed, decorated, trip)),
+    '与逐条 buildCandidates 逐字一致（内联不给第二套口径）');
+  eq(Object.keys(map).join(','), failed.itemId,
+    '只含**有候选**的 itemId（空候选不写进 map，前端不必再筛长度）');
+
+  /* 第①层要能看见「同行程的备选」——聚合时 siblings 必须是整个行程，不只是失败的那几条 */
+  const withBackup = mkItem('gugong', '2027-01-20', { ticketState: 'PENDING', result: null });
+  const map2 = recovery.recoverableMapOf({
+    decorated: [failed, withBackup].map(d => Object.assign({}, d, { tripId: 'T1' })),
+    trips: [trip], spotMap: SPOTS, ruleMap: RULES, nowTs: NOW,
+  });
+  eq(Object.keys(map2).length, 0,
+    '已设备选且备选未开票 → 第①层静默（siblings 必须含非 FAILED 的项）');
+
+  /* 没有失败项时不返回任何键；前端据此把「约其他日」整块保持静默 */
+  const empty = recovery.recoverableMapOf({
+    decorated: [other], trips: [trip], spotMap: SPOTS, ruleMap: RULES, nowTs: NOW,
+  });
+  eq(Object.keys(empty).length, 0, '没有 FAILED 项 → 空 map（什么都不建议是合法的）');
+
+  /* 已结束的项不再挽回：挽回 == 还能做点什么，过期的日期做不了 */
+  const ended = mkItem('gugong', '2027-01-10', { ended: true });
+  const map3 = recovery.recoverableMapOf({
+    decorated: [ended], trips: [trip], spotMap: SPOTS, ruleMap: RULES, nowTs: NOW,
+  });
+  eq(Object.keys(map3).length, 0, '已结束的行程项不进 map');
+}
+
 console.log('\n' + (fail === 0 ? 'ALL PASS' : ('FAIL ' + fail)));
 process.exit(fail === 0 ? 0 : 1);

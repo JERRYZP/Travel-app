@@ -1,11 +1,5 @@
 /**
- * 行程清单 BottomSheet 的两处布局约定
- *
- * 这两条都是**用户实测报上来的**，单看代码看不出来：
- *  ① 动作下拉的浮层必须渲染在最外层。它曾经 `position:absolute` 挂在行内，
- *     而行在 scroll-view 里 → 溢出部分被裁掉，用户看到的是「选项被遮住了」。
- *  ② 底部条不能再加 env(safe-area-inset-bottom)。本 sheet 通过 bottomOffset
- *     整体坐在 TabBar 之上，TabBar 自己已经吃掉了安全区，再加一次就多出一整条。
+ * 行程清单 BottomSheet 的结构与交互约定。
  *
  * 运行：node test/cart-popup.test.js
  */
@@ -23,46 +17,113 @@ const eq = (a, b, m) => {
 const WXML = fs.readFileSync(path.join(ROOT, 'miniprogram/components/cart-popup/cart-popup.wxml'), 'utf8');
 const WXSS = fs.readFileSync(path.join(ROOT, 'miniprogram/components/cart-popup/cart-popup.wxss'), 'utf8');
 const JS = fs.readFileSync(path.join(ROOT, 'miniprogram/components/cart-popup/cart-popup.js'), 'utf8');
+const SPOT_WXML = fs.readFileSync(path.join(ROOT, 'miniprogram/components/spot-popup/spot-popup.wxml'), 'utf8');
+const SPOT_WXSS = fs.readFileSync(path.join(ROOT, 'miniprogram/components/spot-popup/spot-popup.wxss'), 'utf8');
+const SPOT_JS = fs.readFileSync(path.join(ROOT, 'miniprogram/components/spot-popup/spot-popup.js'), 'utf8');
+const cartView = require('../miniprogram/utils/cart-view.js');
 
-console.log('=== 1. 提醒开关用系统 ActionSheet，不做自绘浮层 ===');
+console.log('=== 1. 下拉菜单渲染在 scroll-view 外，避免被裁切 ===');
 {
-  /* 这一条是被真机反复打回来的，改动前先读一下为什么：
-
-     这个位置在 scroll-view 内。自绘浮层（position: fixed/absolute）在
-     scroll-view 里会被裁切；修好裁切又要处理层级与遮罩拦截点击；
-     遮罩调好又可能在别的机型上表现不同。每一层都要单独打补丁。
-
-     系统 ActionSheet 是**原生层**的：不经过 WXML，天然不受
-     scroll-view / 层级 / 遮罩影响，点选项与点取消的行为由微信保证。
-     只有两项的选择，这本来就是最合适的控件。
-
-     所以这里断言的是「**没有**自绘浮层」——不是断言某段 CSS 写对了。
-     请不要再改回自绘。 */
-  eq(/<view[^>]*cart-drop-pop/.test(WXML), false, '没有自绘浮层节点');
-  eq(/cart-drop-mask/.test(WXML), false, '没有自绘遮罩');
-  eq(/showActionSheet/.test(JS), true, '用系统 ActionSheet');
-  eq(/itemList:/.test(JS), true, '候选通过 itemList 交给系统渲染');
-  eq(/tapIndex/.test(JS), true, '用 tapIndex 判定选了哪一项');
-  eq(/fail:\s*\(\)\s*=>\s*\{\}/.test(JS), true,
-    'fail 回调留空 = 用户点取消/遮罩时什么都不做');
-  eq(/cart-drop-mask|cart-drop-pop|cart-drop-opt/.test(WXSS), false, '样式里也没有浮层残留');
-
-  /* 浮层没了，这些配套机制也该一起消失，否则是死代码 */
-  eq(/openDropdown|dropStyle|dropItem/.test(JS), false, 'JS 里没有浮层状态残留');
-  eq(/onListScroll/.test(WXML + JS), false, '不再需要「滚动收起浮层」');
+  eq(/showActionSheet/.test(JS), false, '不再使用系统 ActionSheet');
+  eq(/cart-drop-menu/.test(WXML), true, '存在自定义下拉面板');
+  eq(/cart-drop-catch/.test(WXML), true, '存在关闭捕获层');
+  eq(WXML.indexOf('</scroll-view>') < WXML.indexOf('cart-drop-menu'), true,
+    '下拉面板排在 scroll-view 之后（兄弟层，不被裁切）');
+  eq(/\.cart-drop-menu\s*\{[^}]*position:\s*fixed/.test(WXSS), true,
+    '下拉面板 fixed 定位');
+  eq(/onListScroll/.test(WXML + JS), true, '滚动清单时关闭下拉');
 }
 
-console.log('=== 3. 底部条不再重复叠加安全区 ===');
+console.log('=== 2. 可选与不可选提醒共用同一控件形态 ===');
+{
+  eq(/class="cart-drop \{\{item\.canToggle \? '' : 'disabled'\}\}"/.test(WXML), true,
+    '同一节点按 canToggle 切换 Default / disabled');
+  eq(/OPTION_OFF: '仅加行程·不提醒'/.test(JS), true,
+    '不可选项文案为「仅加行程·不提醒」');
+  eq(/\.cart-drop\.disabled\s*\{[^}]*background:\s*#F8F0E8/.test(WXSS), true,
+    'disabled 使用灰底');
+  eq(/chevron-down-muted/.test(WXML), true,
+    'disabled 使用灰色箭头');
+  eq(/\.cart-drop\s*\{[^}]*width:\s*252rpx/.test(WXSS), true,
+    '单选下拉宽度容纳完整文案和箭头');
+  eq(/\.cart-drop-option\s*\{[^}]*font-size:\s*24rpx/.test(WXSS), true,
+    '菜单文字与选中后文字字号一致');
+}
+
+console.log('=== 3. 清单视觉基线 ===');
+{
+  eq(/\.cart-list\s*\{\s*background:\s*#F8F3EA/.test(WXSS), true,
+    '清单背景为 #F8F3EA');
+  eq(/\.cart-group-date\s*\{[^}]*font-size:\s*26rpx[^}]*font-weight:\s*500/.test(WXSS), true,
+    '日期标题沿用首页日期标题字号与字重');
+  eq(/\.cart-day-chip\s*\{[^}]*background:\s*#F2E4C0[^}]*color:\s*#C26B0C[^}]*font-size:\s*22rpx/.test(WXSS), true,
+    '第几天徽标沿用首页金底样式');
+  eq(/\.cart-row-name\s*\{[^}]*font-size:\s*28rpx/.test(WXSS), true,
+    '景点名称字号下调一号');
+  eq(/chevron-right-ink/.test(WXML), false, '景点名称右侧不再渲染箭头');
+  eq(/\.cart-row-name\s*\{[^}]*text-decoration:\s*underline/.test(WXSS), true,
+    '景点名称按链接样式加下划线');
+  eq(/\.cart-header\s*\{[^}]*background:\s*#FFFEFB/.test(WXSS), true,
+    '清单标题背景为 #FFFEFB');
+  eq(/\.cart-row-action\s*\{[^}]*margin-right:\s*8rpx/.test(WXSS), true,
+    '下拉框相对垃圾桶左移 4px');
+  eq(/cartView\.normalizeCartGroups/.test(JS), true,
+    '页面通过兼容层归一化服务端完整放票文案');
+}
+
+console.log('=== 4. 底部条图标、角标与安全区 ===');
 {
   const foot = /\.cart-foot\s*\{[^}]*\}/.exec(WXSS);
   eq(Boolean(foot), true, '找到 .cart-foot 样式');
-  /* 先剥掉注释再断言：注释里为说明原因也提到了 env(...)，不剥会误报 */
   const decl = foot[0].replace(/\/\*[\s\S]*?\*\//g, '');
   eq(/env\(safe-area-inset-bottom\)/.test(decl), false,
     '底部条不含 env(safe-area-inset-bottom)（TabBar 已经吃掉了）');
-  eq(/\.tabbar\s*\{[^}]*padding-bottom:\s*env\(safe-area-inset-bottom\)/.test(
-    fs.readFileSync(path.join(ROOT, 'miniprogram/components/tabbar/tabbar.wxss'), 'utf8')), true,
-    'TabBar 自己确实含安全区（所以这里不能再加）');
+  eq(/cart-foot-icon/.test(WXML), true, '底部条有清单圆形图标');
+  eq(/cart-foot-badge/.test(WXML), true, '底部条有数量角标');
+  eq(/heart-add-white/.test(WXML), true, '提交按钮带爱心加号图标');
+}
+
+console.log('=== 5. 旧云端响应兼容 ===');
+{
+  const legacy = cartView.normalizeCartGroups({
+    groups: [
+      { key: '2026-09-26', label: '9月26日 (周六)', items: [] },
+      { key: '__no_reservation__', label: '无需预约', items: [] },
+    ],
+    items: [
+      {
+        _id: 'a', spotId: 'gugong', spotName: '故宫博物院', visitDate: '2026-10-02',
+        releaseAt: '2026-09-26T02:00:00.000Z', reservationRequired: true,
+      },
+      {
+        _id: 'b', spotId: 'tiantan', spotName: '天坛公园', visitDate: '2026-10-03',
+        releaseAt: null, reservationRequired: false,
+      },
+    ],
+  });
+  eq(legacy.length, 2, '旧响应被重新按出行日分组');
+  eq(legacy[0].key, '2026-10-02', '第一组 key 是 visitDate');
+  eq(legacy[0].dayLabel, '【第1天】', '补出第几天徽标');
+  eq(legacy[0].items[0].subline, '09月26日 10:00 放票', '补出完整放票时间');
+  eq(legacy[1].dayLabel, '【第2天】', '第二天序号正确');
+  eq(legacy[1].items[0].subline, '无需预约，随到随玩', '免预约副行保留说明');
+}
+
+console.log('=== 6. 景点详情长内容在真机可滚动到底 ===');
+{
+  eq(/<scroll-view[\s\S]*scroll-y[\s\S]*class="popup-scroll"[\s\S]*style="\{\{scrollStyle\}\}"/.test(SPOT_WXML), true,
+    '景点详情使用 scroll-view，并绑定 JS 下发高度');
+  eq(/<view class="popup-scroll"/.test(SPOT_WXML), false,
+    '不再使用普通 view + overflow-y 承载详情滚动');
+  eq(/\.popup-scroll\s*\{[\s\S]*?flex:\s*1 1 auto;[\s\S]*?min-height:\s*0;/.test(SPOT_WXSS), true,
+    '滚动区在操作栏上方参与 flex 布局');
+  eq(/fitSheet\(\)/.test(SPOT_JS) && /\.popup-scroll-content/.test(SPOT_JS), true,
+    '展开游玩信息后按真实内容高度重新适配');
+  eq(/query\.select\('\.popup-tips'\)\.boundingClientRect\(\)/.test(SPOT_JS)
+    && /query\.select\('\.popup-tips-body'\)\.boundingClientRect\(\)/.test(SPOT_JS), true,
+    '以最后一块真实内容测量，避免 scroll-view 把容器拉满后留下大空白');
+  eq(/\.popup-actions-bar/.test(SPOT_JS), true,
+    '适配时扣除底部操作栏高度');
 }
 
 console.log('\n' + (fail === 0 ? 'ALL PASS' : ('FAIL ' + fail)));

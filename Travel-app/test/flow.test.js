@@ -86,14 +86,14 @@ function freshDb() {
   eq(t2b.trip.spots.find(s => s.spotId === 'guobo').endDate, '2026-06-10', 'guobo 段接到 6.10');
   eq(db._size(COLLECTIONS.TRIPS), 1, '仍是 1 个行程');
 
-  // 不相接（6.10 + 1 天 ≠ 7.1，隔了 6.11~6.30）→ 新建独立行程
+  // 同城即合并（2026-09-23 收敛）：7.1-7.3 虽与 6.10 不相邻，但同城市 → 并入已有行程
   const t3 = await trip.create(db, USER, {
     startDate: '2026-07-01', endDate: '2026-07-03', spotIds: ['tiantan'],
   });
-  eq(t3.merged, false, '不相接行程新建');
-  eq(t3.tripId !== t2b.tripId, true, '新建独立行程（新任务分组 Tab）');
-  eq(db._size(COLLECTIONS.TRIPS), 2, '现在有 2 个行程');
-  eq(`${t3.trip.spots[0].startDate}~${t3.trip.spots[0].endDate}`, '2026-07-01~2026-07-03', '新行程景点段 = 本次输入范围');
+  eq(t3.merged, true, '同城行程自动合并（不再按间隔拆分）');
+  eq(t3.tripId, t2b.tripId, '合并到既有行程，不新建');
+  eq(db._size(COLLECTIONS.TRIPS), 1, '仍然只有 1 个行程');
+  eq(`${t3.trip.spots.find(x => x.spotId === 'tiantan').startDate}~${t3.trip.spots.find(x => x.spotId === 'tiantan').endDate}`, '2026-07-01~2026-07-03', 'tiantan 景点段 = 本次输入范围');
 
   // adjustTripId：在该行程上重新生成 → 景点段按本次输入**替换**（不做并集）
   const t4 = await trip.create(db, USER, {
@@ -102,9 +102,9 @@ function freshDb() {
   });
   eq(t4.tripId, t2b.tripId, 'adjustTripId 命中 → 复用该行程（不新建）');
   eq(t4.trip.spotIds.join(','), 'tiantan', '调整行程时景点段被替换（严格按本次输入）');
-  eq(db._size(COLLECTIONS.TRIPS), 2, '调整不新增行程');
+  eq(db._size(COLLECTIONS.TRIPS), 1, '调整不新增行程（同城合并后仅 1 个）');
 
-  // 给两个行程各加一条清单，避免被 trip.list 的空行程清理（TRIP-RULE-004）误删
+  // 给行程加两条清单，避免被 trip.list 的空行程清理（TRIP-RULE-004）误删
   for (const tid of [t4.tripId, t3.tripId]) {
     await db.collection(COLLECTIONS.REMINDER_CART).add({
       data: { userId: USER, tripId: tid, spotId: 'gugong', visitDate: '2026-06-01', releaseAt: new Date('2026-06-01T10:00:00+08:00') },
@@ -113,7 +113,7 @@ function freshDb() {
   eq(db._size(COLLECTIONS.REMINDER_CART), 2, '两个行程各 1 条清单');
 
   const listed = await trip.list(db, USER);
-  eq(listed.showGroupTabs, true, '≥2 行程显示分组 Tab（TRIP-RULE-006）');
+  eq(listed.showGroupTabs, false, '单行程不显示分组 Tab（同城合并后仅 1 个）');
   eq(listed.trips.every(t => Array.isArray(t.spots) && t.spots.length > 0), true, 'trip.list 兜底补出 spots 段');
 
   /* ============ 2. 时间线生成 ============ */
@@ -136,11 +136,18 @@ function freshDb() {
   eq(tl.closedDaySkips.every(s => s.note.includes('闭馆')), true, '均用「闭馆」措辞（无白名单景点）');
   eq(tl.events.every(e => e.status === EventSelectStatus.SELECTABLE), true, '未来行程初始态全部可选');
 
-  // B 层免预约景点进入时间线，但没有 releaseAt，也不进提醒任务；
+  /* B 层免预约景点进入时间线，但没有 releaseAt，也不进提醒任务。
+     ⚠️ **必须换一个城市**（2026-09-24）：TRIP-RULE-002 已收敛为「同城即合并」，
+     原先把第二个行程放在「RANGE + 14 天」想把它隔开——那个位置在旧的
+     「相接才合并」下不合并，现在却会并进第一个行程，于是时间线变成
+     「整段 × 全部景点」的交叉积（tlB 会算出 25 条），本节的隔离前提直接失效。
+     换城市是唯一能真正把两趟行程分开的方式。 */
   const trB = await trip.create(db, USER, {
+    city: '上海',
     startDate: time.addDays(RANGE.startDate, 14), endDate: time.addDays(RANGE.endDate, 14),
     spotIds: ['gugong', 'shoubo'],
   });
+  eq(trB.tripId !== tr.tripId, true, '异城不合并（同城即合并的另一面）');
   const tlB = await timeline.generate(db, USER, trB.tripId);
   eq(tlB.success, true, '含 B 层景点的行程生成成功');
   eq(tlB.events.length, 9, '故宫 4 条 + 首博免预约 5 条');
@@ -220,9 +227,9 @@ function freshDb() {
   /* ============ 5. 提交后时间线状态回填 ============ */
   console.log('\n=== 5. 提交后状态回填（TIMELINE-RULE-002）===');
   const tl3 = await timeline.generate(db, USER, tr.tripId);
-  const waitingCount = tl3.events.filter(e => e.status === EventSelectStatus.WAITING).length;
-  eq(waitingCount, sub.created, '已提交事件显示「待提醒」');
-  eq(tl3.events.filter(e => e.status === EventSelectStatus.WAITING).every(e => !e.button.enabled), true, '待提醒不可再选');
+  const committedCount = tl3.events.filter(e => e.status === EventSelectStatus.COMMITTED).length;
+  eq(committedCount, sub.created, '已提交事件显示「已加行程」');
+  eq(tl3.events.filter(e => e.status === EventSelectStatus.COMMITTED).every(e => !e.button.enabled), true, '已加行程不可再选');
 
   /* ============ 6. 任务列表与角标 ============ */
   console.log('\n=== 6. 任务列表（PAGE-009）===');
@@ -280,8 +287,12 @@ function freshDb() {
   /* ============ 8. 清空任务（task.clear 按 tab 清空 + TRIP-RULE-004 级联）============ */
   console.log('\n=== 8. 清空任务（按 tab 清空 + 级联删行程）===');
   db = freshDb();
+  /* ⚠️ 两趟行程**必须异城**（2026-09-24）：TRIP-RULE-002 收敛为「同城即合并」后，
+     两个北京行程无论隔多少天都会并成一个，「按行程清空 / 按行程级联」就再也测不出
+     各自独立的语义（第 8、9 两节原先都用「+20 天」来制造第二趟行程，现已失效）。 */
   const cTripA = await trip.create(db, USER, { startDate: RANGE.startDate, endDate: RANGE.endDate, spotIds: ['gugong'] });
-  const cTripB = await trip.create(db, USER, { startDate: time.addDays(RANGE.startDate, 20), endDate: time.addDays(RANGE.endDate, 20), spotIds: ['tiantan'] });
+  const cTripB = await trip.create(db, USER, { city: '上海', startDate: time.addDays(RANGE.startDate, 20), endDate: time.addDays(RANGE.endDate, 20), spotIds: ['tiantan'] });
+  eq(cTripB.tripId !== cTripA.tripId, true, '异城行程不合并（本节要有两趟独立行程）');
   const nowTs = new Date();
   const pastDay = new Date(nowTs.getTime() - 2 * 86400000);
   const futureDay = new Date(nowTs.getTime() + 2 * 86400000);
@@ -323,8 +334,8 @@ function freshDb() {
   db = freshDb();
   // 生成了时间线但从未提交 → 0 任务 0 清单的孤儿行程
   const orphan = await trip.create(db, USER, { startDate: RANGE.startDate, endDate: RANGE.endDate, spotIds: ['gugong'] });
-  // 有清单的行程（构建中）应保留
-  const withCart = await trip.create(db, USER, { startDate: time.addDays(RANGE.startDate, 20), endDate: time.addDays(RANGE.endDate, 20), spotIds: ['tiantan'] });
+  // 有清单的行程（构建中）应保留。⚠️ 同样必须异城，否则会并进上面那个孤儿行程
+  const withCart = await trip.create(db, USER, { city: '上海', startDate: time.addDays(RANGE.startDate, 20), endDate: time.addDays(RANGE.endDate, 20), spotIds: ['tiantan'] });
   await db.collection(COLLECTIONS.REMINDER_CART).add({
     data: { userId: USER, tripId: withCart.tripId, spotId: 'tiantan', visitDate: time.addDays(RANGE.startDate, 20), releaseAt: new Date('2026-08-01T10:00:00+08:00') },
   });

@@ -3,21 +3,26 @@
   position: fixed;
   top: 0; left: 0; right: 0;
   z-index: 90;
-  background: transparent;
   overflow: hidden;
+  /* ⚠️ 底色**由模板内联给出**（`rgba(248,243,234, navOpacity)`），这里不写 background：
+     写一条静态值就会盖掉内联，导航栏就永远是同一个颜色、没有淡入。
+     页面主题色 #F8F3EA 的三个通道值在模板里是写死的常量，
+     改主题色要连同那里一起改（wxss 变量在内联 style 里用不了）。 */
 }
-.navbar::after {
-  content: '';
-  position: absolute;
-  top: 0; right: -40rpx;
-  width: 360rpx; height: 100%;
-  background: radial-gradient(ellipse at 70% 30%, rgba(234,160,145,0.12), transparent 70%);
-  pointer-events: none;
-}
+/* 状态栏那一段没有设计值 —— 它就是设备状态栏高度，由模板内联给出
+   （截图实测 iPhone 15 约 48.5px，比常见状态栏高，导航栏整块被它往下推）。 */
+.navbar-status { flex-shrink: 0; }
+/* ⚠️ 这里原有一条 `.navbar::after` 的暖色光晕（radial-gradient），2026-09-23 删除：
+   导航栏现在是不透明的页面底色，光晕铺在它上面只会比页面底色更亮一点点，
+   等于又画出一条肉眼可见的色带——而「填底」的全部意义就是让顶部别有色带。 */
+/* 导航块高度 = 常规导航栏的 44px（给胶囊按钮留的高度，比标题高得多）。
+   ⚠️ 它**不是间距的基准**：正文从「标题下沿 + 8px」开始，所以
+   home.js 的 `pageTopOf()` 要把上面那 17rpx 的内缩减掉。
+   改这个高度 = 改标题位置 = 必须回去复核那一条。 */
 .navbar-content {
+  height: 88rpx;
   display: flex;
   align-items: center;
-  padding-left: 30rpx;
   position: relative;
 }
 .navbar-title {
@@ -36,22 +41,74 @@
 /* ===== 页面主体 =====
    视觉基准 402px：左右内边距 16px = 30rpx，底部为悬浮按钮与导航条留出空间。 */
 .page-body {
-  padding: 24rpx 30rpx calc(240rpx + env(safe-area-inset-bottom));
+  /* ⚠️ padding-top 由模板内联给出（= 标题下沿 + 8px）：导航栏是 fixed 的、
+     不占文档流，正文不让位就会钻到标题底下。它**只让导航块的内缩，不让横幅的高度**——
+     横幅就在这个容器里，高度它自己占。
+     左右 30rpx 在这里定；横幅因为已经在这个容器内，不再自己留左右白。 */
+  padding: 16rpx 30rpx calc(240rpx + env(safe-area-inset-bottom));
   position: relative;
   background: var(--color-page);
   min-height: 100vh;
   box-sizing: border-box;
 }
 
-/* 吸顶横幅：跨全部当前/未来行程取全局最近的一条放票。
-   固定在导航栏之下；滚动超过一屏后收起，避免长期占位。 */
-.sticky-banner {
-  position: fixed;
-  left: 30rpx;
-  right: 30rpx;
-  z-index: 88;
+/* 授权额度预警：在原放票横幅之前，优先提醒“提醒可能收不到”。 */
+.quota-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: -4rpx;
+  margin-bottom: 16rpx;
+  padding: 16rpx 16rpx 16rpx 20rpx;
+  background: #FFF3D8;
+  border: 1rpx solid #E8C77C;
+  border-radius: 14rpx;
 }
+.qw-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 23rpx;
+  line-height: 1.45;
+  color: #8A5A12;
+}
+.qw-go {
+  flex-shrink: 0;
+  font-size: 23rpx;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+.qw-close {
+  width: 40rpx;
+  height: 40rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: .55;
+}
+
+/* 放票横幅：**在文档流里**，跟着内容一起滚，不吸顶。
+   ⚠️ 曾经是 `position: fixed`（「吸顶横幅」），三个坑一起犯：
+     ① 它钉在导航栏下面，用户往下滑时它挡住的是行程卡（2026-09-22 报的）；
+     ② 它和页面正文**从一开始就不在同一个坐标系**里，间距得靠
+        「挪内容」或「挪自己」去凑 —— 无论怎么凑，只要导航栏高度一变就全错位；
+     ③ 页面在顶部不能滚动（见 `.navbar`），于是它永远钉在那儿挡着。
+   现在它就是正文的第一块，夹在两个 8px 之间：
+     上面 8px ← `.page-body` 的 padding-top 里「导航栏高度」之后那一截
+     下面原本有 16rpx margin-bottom（2026-09-23 用户要求去掉，横幅与下方内容不再留间隔）
+   左右不再自己留白：它已经在 `.page-body` 的水平内边距里了，
+   再加 margin 会变成左右各 30px。 */
+.sticky-banner { margin-top: -4rpx; } /* 2026-09-25 用户要求增大 6px：上移补偿从 -16rpx 收到 -4rpx */
+.sticky-banner--after-warning { margin-top: 0; }
 .sticky-banner .rb { margin-bottom: 0; }
+
+.dev-preview-notice {
+  display: flex; align-items: center; justify-content: space-between; gap: 16rpx;
+  margin-bottom: 20rpx; padding: 18rpx 22rpx;
+  background: #FFF3D8; border: 1rpx dashed #D7A84F; border-radius: 16rpx;
+  color: #8A5A12; font-size: 22rpx; line-height: 1.5;
+}
+.dev-preview-exit { flex: none; color: #C0472A; font-weight: 600; }
 
 /* 分段吸顶时撑高的占位，防止内容跳动 */
 .section-spacer { width: 100%; }
@@ -60,7 +117,7 @@
    没有任何行程项时给一个能直接动手的入口，
    而不是一张写着「暂无数据」的空卡片。 */
 .empty-hero {
-  padding: 140rpx 40rpx 48rpx;
+  padding: 92rpx 40rpx 48rpx;
   text-align: center;
 }
 .eh-title {
@@ -75,6 +132,46 @@
   font-size: 26rpx;
   color: var(--color-muted);
   line-height: 1.7;
+}
+.empty-steps {
+  margin: 34rpx auto 0;
+  width: 500rpx;
+  padding: 12rpx 24rpx;
+  box-sizing: border-box;
+  background: var(--color-surface);
+  border-radius: 22rpx;
+  box-shadow: var(--shadow-card);
+  text-align: left;
+}
+.empty-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 14rpx;
+  padding: 15rpx 0;
+  color: #6B4C3A;
+  font-size: 24rpx;
+  line-height: 1.55;
+}
+.empty-step + .empty-step { border-top: 1rpx dashed var(--color-border); }
+.es-no {
+  flex: none;
+  width: 34rpx;
+  height: 34rpx;
+  border-radius: 50%;
+  background: #F5DDD5;
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20rpx;
+  font-weight: 700;
+}
+.eh-example {
+  display: block;
+  margin-top: 20rpx;
+  color: #AA927C;
+  font-size: 22rpx;
+  line-height: 1.6;
 }
 .empty-cta {
   margin: 32rpx auto 0;
@@ -108,10 +205,13 @@
   color: var(--color-muted);
 }
 
-/* ===== 悬浮新增入口 ===== */
+/* ===== 悬浮新增入口 =====
+   ⚠️ 2026-09-23 改为**水平居中**（原先 right:30rpx 贴右下）：
+   left:50% + translateX(-50%) 让按钮左右居中，bottom 不变。 */
 .fab-btn {
   position: fixed;
-  right: 30rpx;
+  left: 50%;
+  transform: translateX(-50%);
   bottom: calc(150rpx + env(safe-area-inset-bottom));
   z-index: 110;
   display: flex;

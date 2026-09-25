@@ -4,15 +4,17 @@
   right: 32rpx;
   /* 抬到底部导航之上，避免被 tabbar 压住 */
   bottom: calc(140rpx + env(safe-area-inset-bottom));
-  background: var(--snackbar-bg);
-  color: #FBF7EF;
-  border-radius: 18rpx;
-  padding: 22rpx 24rpx 24rpx;
+  /* ⚠️ 2026-09-22 按设计稿由**深色底改成纸感金底**。整条反过来后，
+     文字色 / 撤销色 / 进度条色三个都要跟着重配——只换底色会让白字直接看不见。 */
+  background: var(--snackbar-paper);
+  color: var(--color-text);
+  border-radius: 24rpx;
+  padding: 24rpx 32rpx 30rpx;
   display: flex;
   align-items: center;
   gap: 16rpx;
   z-index: 300;
-  box-shadow: 0 8rpx 24rpx rgba(40,30,18,.28);
+  box-shadow: 0 6rpx 20rpx rgba(100,60,20,.16);
   overflow: hidden;
   animation: sb-in .22s cubic-bezier(.22,1,.36,1);
 }
@@ -21,11 +23,16 @@
   to   { opacity: 1; transform: none; }
 }
 .sb-text { flex: 1; min-width: 0; font-size: 25rpx; }
+/* 结果高亮：抢到了 → 绿、没抢到 → 朱砂。与卡片上的票务 chip 同色，
+   让「刚标记的结果」和「卡上现在的状态」看起来是同一件事。 */
+.sb-hl { font-weight: 600; }
+.sb-hl-success { color: var(--chip-green-text); }
+.sb-hl-failed { color: var(--chip-red-text); }
 .sb-undo {
   flex-shrink: 0;
   font-size: 26rpx;
   font-weight: 700;
-  color: #F5D9A8;
+  color: var(--color-primary);
   padding: 4rpx 8rpx;
 }
 .sb-undo:active { opacity: .7; }
@@ -34,6 +41,6 @@
   position: absolute;
   left: 0; right: 0; bottom: 0;
   height: 4rpx;
-  background: rgba(255,255,255,.18);
+  background: rgba(100,60,20,.10);
 }
-.sb-bar-fill { height: 100%; background: #F5D9A8; transition: width .05s linear; }
+.sb-bar-fill { height: 100%; background: var(--color-primary); opacity: .55; transition: width .05s linear; }

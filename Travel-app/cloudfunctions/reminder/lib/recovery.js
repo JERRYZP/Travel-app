@@ -20,7 +20,7 @@
  * - 候选日的开放性判定统一走 time.isOpenOn，禁止在业务代码里自行 includes。
  */
 
-const { COLLECTIONS, ok, fail, ERRORS } = require('./schema');
+const { COLLECTIONS, TicketResult, ok, fail, ERRORS } = require('./schema');
 const time = require('./time');
 const item = require('./item');
 
@@ -186,11 +186,63 @@ function buildCandidates({ failed, siblings, trip, spotMap = {}, ruleMap = {}, n
 }
 
 /**
+ * 把「哪些行程项还能挽回」一次算清，供 `home.bootstrap` 内联回填。
+ *
+ * ⚠️ **2026-09-24 从页面侧搬到这里，是一次真 bug 的修复**，别改回逐条调 action：
+ *   首页原先在 `loadHome` 之后由**页面**对每条 FAILED 项并发调一次
+ *   `tripItem.recoveryCandidates`，把结果塞进组件的 `recoverable`。
+ *   那条链路有两个各自独立的断点，症状却是同一个「约其他日永远不出现」：
+ *     ① `didMark` 触发的那次重载是 silent 的，早期版本压根没在这一支里重算候选；
+ *     ② 更隐蔽的是，重算走的是**另一次云端往返**，它与 bootstrap 的返回体之间
+ *        没有任何顺序保证。标记后立即落地的响应体已经带着 `result = FAILED`，
+ *        而候选还在路上——卡片此时按「FAILED 但不可挽回」渲染（菜单里那一项
+ *        要的是 `recoverable`，气泡也压着不显示），用户看到的就是「没有挽回线」。
+ *   算在 bootstrap 里，候选与它要解释的那条行程项**同一次响应**到达，
+ *   不存在「谁先到」这个问题，也顺手把 N 条行程项的 N 次并发往返收敛掉。
+ *
+ * 行程项按 `tripId` 分组调用 `buildCandidates`：同一批 `siblings` 只算一次，
+ * 而 `buildCandidates` 本来就要看同行程的兄弟项（第①层的「已设备选」判据）。
+ *
+ * @returns {Object} itemId → 候选数组。**只含非空**，所以 `Object.keys` 就是
+ *                   「哪些行程项可以挽回」，调用方直接拿去回填 `recoverable`。
+ */
+function recoverableMapOf({ decorated, trips, spotMap, ruleMap, nowTs }) {
+  const byItemId = {};
+  const tripById = {};
+  for (const t of (trips || [])) tripById[t._id] = t;
+
+  const byTrip = {};
+  for (const d of (decorated || [])) {
+    if (d.result !== TicketResult.FAILED || d.ended) continue;
+    if (!byTrip[d.tripId]) byTrip[d.tripId] = [];
+    byTrip[d.tripId].push(d);
+  }
+
+  for (const tripId of Object.keys(byTrip)) {
+    const list = byTrip[tripId];
+    /* 同行程的全部行程项（不只 FAILED 的那几条）：
+       「已设备选且备选未到放票时间 → 静默」这一层要看得到那些备选。 */
+    const siblings = (decorated || []).filter(d => d.tripId === tripId);
+    const trip = tripById[tripId] || null;
+    for (const failed of list) {
+      const found = buildCandidates({ failed, siblings, trip, spotMap, ruleMap, nowTs });
+      /* 空候选 = 不打扰，**不写进 map**：调用方据此只发有挽回空间的 itemId，
+         而不是让前端再筛一遍「长度 > 0」。 */
+      if (found.length) byItemId[failed.itemId] = found;
+    }
+  }
+  return byItemId;
+}
+
+/**
  * 数据库入口：tripItem.recoveryCandidates
  *
  * 「建议」入口是**固定**的（决策文档 4.3）：卡片右侧菜单里随时能重新打开，
  * 不因为用户一次划掉就找不回来。因此这个 action 允许对任意已标记 FAILED
  * 的行程项重复调用，不做「只能调一次」的限制。
+ *
+ * ⚠️ 首页已改为在 `home.bootstrap` 里内联回填（见上方 `recoverableMapOf`），
+ * 不再调这个 action；它留着给「重新打开挽回浮层」这类按需入口用，不要删。
  */
 async function candidates(db, userId, itemId) {
   if (!itemId) return fail(ERRORS.BAD_PARAM);
@@ -233,5 +285,6 @@ module.exports = {
   RecoveryAction,
   candidateOf,
   buildCandidates,
+  recoverableMapOf,
   candidates,
 };

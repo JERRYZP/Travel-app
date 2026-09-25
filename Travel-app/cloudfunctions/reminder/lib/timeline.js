@@ -2,12 +2,11 @@
  * 时间线生成规则 TIMELINE-RULE-001 ~ 005（产品文档 3.3）
  *
  * 关键：releaseAt 完全由静态规则推算（advanceDays / releaseTime / closedDays），
- * 不依赖抓取。抓取只影响「已放票之后是否约满」这一个分支（ENUM-005）。
+ * 不依赖抓取。时间线只展示「待开票 / 已开票」这个时间事实，不提供实时放票/预约动作。
  */
 
 const {
-  COLLECTIONS, EventSelectStatus, ReleaseStatus, ReminderBackendStatus,
-  ERRORS, difficultyOf, ok, fail,
+  COLLECTIONS, EventSelectStatus, ERRORS, difficultyOf, ok, fail,
 } = require('./schema');
 const time = require('./time');
 const trip = require('./trip');
@@ -20,12 +19,16 @@ const tripItem = require('./trip-item');
 /**
  * 被跳过的日期，用哪个词收尾。
  * 白名单景点（北大/清华「仅周末可约」）不是闭馆，说「不可约」才不误导用户。
+ *
+ * ⚠️ 2026-09-24 起这个 note **页面不再渲染**（底部提示块已按用户口径整块删除，
+ *    见 `产品文档.md` 的 `PAGE-005-RULE-002`）。返回值照留：数据契约不缩水、
+ *    测试继续钉住措辞，要恢复提示时不必回头改云函数。别顺手把它删了。
  */
 function skipReasonOf(rule) {
   return (rule && rule.openDays && rule.openDays.length > 0) ? ' 不可约，已为你跳过' : ' 闭馆，已为你跳过';
 }
 
-/** 同理，「行程期间」那行标注也不能一律说闭馆 */
+/** 同理，「行程期间」那行标注也不能一律说闭馆（同样已不再渲染，见上） */
 function closedSpotNoteOf(rule) {
   return (rule && rule.openDays && rule.openDays.length > 0) ? '行程期间不可约' : '行程期间闭馆';
 }
@@ -98,58 +101,64 @@ function buildEvents(spot, rule, seg) {
 }
 
 /**
- * TIMELINE-RULE-004 事件按钮态判定（STATE-003）
- *
- * releaseAt > now：不在清单且未提交 → SELECTABLE；在清单 → IN_CART；已提交 → WAITING
- * releaseAt ≤ now：查实时放票状态 → BOOKABLE（立即预约）/ FULL（置灰已约满）
- *
- * @param {object} ctx { inCart:boolean, task:object|null, releaseStatus:string|null }
+ * 时间线顶部的时间状态。它回答的是“票有没有到开售时刻”，不是首页的票务结果状态。
+ * 因此已开票项仍然可以加入清单，后续在首页行程项里预约和标记结果。
  */
-function resolveStatus(event, ctx, nowTs = time.now()) {
-  const { inCart = false, task = null, releaseStatus = null, committed = false } = ctx || {};
-
-  // 免预约项没有放票时刻，只区分未加入、清单中、已加入行程。
-  if (event.reservationRequired === false) {
-    if (committed) return EventSelectStatus.COMMITTED;
-    if (inCart) return EventSelectStatus.IN_CART;
-    return EventSelectStatus.SELECTABLE;
+function releaseStateOf(event, nowTs = time.now()) {
+  if (!event || event.reservationRequired === false) {
+    return { key: 'NO_RESERVATION', label: '无需预约' };
   }
-
-  if (event.releaseAt.getTime() > nowTs.getTime()) {
-    if (task) {
-      return task.backendStatus === ReminderBackendStatus.WAITING
-        ? EventSelectStatus.WAITING
-        : EventSelectStatus.REMINDERED;
-    }
-    if (committed) return EventSelectStatus.COMMITTED;
-    if (inCart) return EventSelectStatus.IN_CART;
-    return EventSelectStatus.SELECTABLE;
+  const releaseAt = event.releaseAt instanceof Date ? event.releaseAt : new Date(event.releaseAt);
+  if (!event.releaseAt || Number.isNaN(releaseAt.getTime()) || releaseAt.getTime() > nowTs.getTime()) {
+    return { key: 'NOT_RELEASED', label: '待开票' };
   }
-
-  // 已过放票时刻：脱离清单体系，看实时可约状态
-  if (releaseStatus === ReleaseStatus.FULL) return EventSelectStatus.FULL;
-  return EventSelectStatus.BOOKABLE;
+  return { key: 'RELEASED', label: '已开票' };
 }
 
-/** 按钮态 → 前端按钮文案与可点性 */
+/**
+ * TIMELINE-RULE-004 事件按钮态判定（STATE-003）
+ *
+ * 时间线只维护选择状态：未加入 → SELECTABLE，已暂存 → IN_CART，已提交 → COMMITTED。
+ * 放票时刻是否已到只影响顶部展示，不影响按钮能力；预约入口不在这里出现。
+ *
+ * @param {object} ctx { inCart:boolean, committed:boolean }
+ */
+function resolveStatus(event, ctx = {}) {
+  const { inCart = false, committed = false } = ctx || {};
+  if (committed) return EventSelectStatus.COMMITTED;
+  if (inCart) return EventSelectStatus.IN_CART;
+  return EventSelectStatus.SELECTABLE;
+}
+
+/**
+ * 按钮态 → 前端文案与可点性（TIMELINE-RULE-004 / STATE-003）
+ *
+ * ⚠️ **文案口径 2026-09-24 起统一为「清单」**（对齐 UI/V.0.2-0919 的 32.png）：
+ *   SELECTABLE → 「加入清单」（免预约项仍为「加入行程」）
+ *   IN_CART    → 「已加清单」（免预约项「已加入清单」）
+ *   COMMITTED  → 「已加行程」
+ *   旧值「+ 添加提醒」「已加入行程」作废。改这里必须同步 `miniprogram/utils/mock.js`
+ *   的同名函数——两处漂移过好几次。
+ *
+ * ⚠️ `enabled` 只表达「点了会怎样」，**不表达「看起来像不像按钮」**：
+ *   IN_CART 仍是 true（点它打开清单弹层，是条真动线），但它在 UI 上是**状态胶囊**——
+ *   画成按钮还是状态由 `add-trip.wxml` 的 class 决定。别为「看着像状态」把 enabled
+ *   改成 false，那会把「点开看清单」这条路一起堵死。
+ */
 function buttonOf(status, event = {}) {
   const noReservation = event.reservationRequired === false;
   switch (status) {
     case EventSelectStatus.SELECTABLE:
       return noReservation
         ? { text: '加入行程', enabled: true }
-        : { text: '+ 添加提醒', enabled: true };
+        : { text: '加入清单', enabled: true };
     case EventSelectStatus.IN_CART:
       return {
         text: noReservation ? '已加入清单' : '已加清单',
         enabled: true,
         openCart: true,
       };
-    case EventSelectStatus.WAITING: return { text: '待提醒', enabled: false };
-    case EventSelectStatus.REMINDERED: return { text: '已提醒', enabled: false };
-    case EventSelectStatus.BOOKABLE: return { text: '立即预约', enabled: true, booking: true };
-    case EventSelectStatus.FULL: return { text: '已约满', enabled: false };
-    case EventSelectStatus.COMMITTED: return { text: '已加入行程', enabled: false };
+    case EventSelectStatus.COMMITTED: return { text: '已加行程', enabled: false };
     default: return { text: '', enabled: false };
   }
 }
@@ -157,22 +166,32 @@ function buttonOf(status, event = {}) {
 /**
  * TIMELINE-RULE-002 纯预览（2026-09-20）
  *
- * 「生成专属放票时间线」按**当前所选日期段与景点**独立计算，**不创建、不改写任何行程**，
- * 也**不读任何已落库的状态**（trip_items / reminder_cart / reminder_tasks）。
+ * 输入是**一个日期段 + 一批景点**，但它并不总是「新建行程」：
+ * 用户从首页某趟进行中的行程带日期与景点进来接着补充时（页面顶部预填的就是那趟行程），
+ * 本次的日期段往往与那趟行程重合，提交时按 TRIP-RULE-002 会合并回去而不是新建。
+ * 所以这里的计算必须是「输入 = 日期段 × 景点」，**不依赖任何既成行程**——
+ * 它既服务于「新建」，也服务于「往已有行程里补」。
  *
- * 为什么必须不读状态：旧实现拿 tripId 去查「已在行程 / 已加清单」，于是换一批日期或景点
- * 重新生成时，上一条时间线的状态会被带进来——用户看到「已在行程」的日期其实属于另一趟行程，
- * 或者刚清空的清单仍然显示已加。纯预览的语义是「这只是个预览」，历史状态一律不带入。
+ * ⚠️ 仍然**不创建、不改写任何行程**，也**不读 reminder_cart / reminder_tasks**。
  *
- * 代价（已确认接受）：预览里看不到「已在行程」。同一 (spotId, visitDate) 重复加入由
- * cart.add 的去重拦截（它按 (userId, spotId, visitDate) 跨行程查）。
+ * 为什么除 `committedTripId` 外一律不读状态：旧实现拿 tripId 去查「已在行程 / 已加清单」，
+ * 于是换一批日期或景点重新生成时，上一条时间线的状态会被带进来——用户看到「已在行程」的日期
+ * 其实属于另一趟行程，或者刚清空的清单仍然显示已加。
+ *
+ * `committedTripId` 是**唯一**的状态输入，且语义被刻意收窄：它只回答「这条 (景点, 出行日)
+ * 是不是已经躺在用户此刻正在编辑的那趟行程里」。用户要往这趟行程补景点，就必须看得见
+ * 已经有的项（否则他无法判断该补哪个），故标成 COMMITTED「已加入行程」禁用，避免重复加。
+ * 但**身份限定在这一趟**——属于别趟行程的同 (spotId, visitDate) 不标，仍显示为可选；
+ * 真要重复加，由 cart.add 按 (userId, spotId, visitDate) 跨行程查重兜底。
+ * 未传（新建行程、或不是从行程进来的）→ 与旧口径完全一致：committed 恒 false。
  *
  * 行程的创建与合并判定挪到 cart.commit（TRIP-RULE-002 合并规则本身不变）。
  * 老口径 adjustTripId（在当前行程上重新生成＝替换景点段）**废止**。
  *
  * @param {Array<{spotId,startDate,endDate}>} segments 每个景点自己的日期段
+ * @param {string} committedTripId 仅当「从某趟行程进来接着补」时传，用于标出已在行程的项
  */
-async function preview(db, userId, { startDate, endDate, spotIds = [], segments = null }) {
+async function preview(db, userId, { startDate, endDate, spotIds = [], segments = null, committedTripId = '' }) {
   if (!trip.validateRange(startDate, endDate)) return fail(ERRORS.TRIP_DATE_INVALID);
 
   const segs = (Array.isArray(segments) && segments.length > 0)
@@ -198,22 +217,30 @@ async function preview(db, userId, { startDate, endDate, spotIds = [], segments 
   (rulesRes.data || []).forEach(r => { ruleMap[r.spotId] = r; });
 
   /**
-   * ⚠️ 预览**只读当前暂存清单**，不读 trip_items / reminder_tasks。
+   * ⚠️ 预览只读两样东西，各有各的界线，不能混为一谈：
    *
-   * 这条界线是这次改版的关键，两者不能混为一谈：
-   *   - **暂存清单** = 用户正在这一页做的、还没提交的工作。不反映它，用户点了
-   *     「加入清单」按钮却看不到任何变化（按钮仍写「添加提醒」，再点一次提示
-   *     「已经在清单里啦」），页面看起来就是坏的。
-   *   - **trip_items / reminder_tasks** = 别的行程的既成事实。读它就会把历史状态
-   *     带进预览：换一批日期重新生成时，用户看到一条标着「已在行程」的日期，
-   *     其实属于另一趟行程。这正是本次要修的问题。
+   * ① **当前暂存清单**（总是读）= 用户正在这一页做的、还没提交的工作。不反映它，
+   *    用户点了「加入清单」按钮却看不到任何变化（按钮仍写「添加提醒」，再点一次提示
+   *    「已经在清单里啦」），页面看起来就是坏的。
    *
-   * 所以去重兜底仍在 cart.add（跨行程按 (spotId, visitDate) 查 trip_items）——
-   * 预览里看不到「已在行程」，但真的重复加也加不进去。
+   * ② **`committedTripId` 那一趟行程的 trip_items**（仅从行程进来时读）= 用户此刻
+   *    正在编辑的那趟行程里已经有的项。只读这一趟，绝不读别趟：读别趟就会把历史状态
+   *    带进预览——用户看到一条标着「已在行程」的日期，其实属于另一趟行程，这正是本次
+   *    要修的问题。所以**没有**回退到「扫全部行程」的写法，传空就是恒 false。
+   *
+   * 去重兜底仍在 cart.add（跨行程按 (spotId, visitDate) 查 trip_items）——进了本趟的
+   * 项在预览里禁选，属于别趟的则在预览里可选，真重复加时被它拦下。
    */
   const cartRes = await db.collection(COLLECTIONS.REMINDER_CART)
     .where({ userId, tripId: cart.cartTripIdOf(null) }).get();
   const cartKeys = new Set((cartRes.data || []).map(c => `${c.spotId}|${c.visitDate}`));
+
+  const committedKeys = new Set();
+  if (committedTripId) {
+    const itemRes = await db.collection(COLLECTIONS.TRIP_ITEMS)
+      .where({ userId, tripId: committedTripId }).get();
+    (itemRes.data || []).forEach(it => committedKeys.add(`${it.spotId}|${it.visitDate}`));
+  }
 
   const nowTs = time.now();
   const events = [];
@@ -244,15 +271,17 @@ async function preview(db, userId, { startDate, endDate, spotIds = [], segments 
       });
     }
     for (const event of built) {
-      /* inCart 反映**当前暂存清单**；committed 恒为 false（不读 trip_items） */
+      /* inCart = 当前暂存清单；committed = 仅限 committedTripId 那一趟行程 */
+      const key = `${event.spotId}|${event.visitDate}`;
       const status = resolveStatus(event, {
-        inCart: cartKeys.has(`${event.spotId}|${event.visitDate}`),
-        task: null,
-        committed: false,
-        releaseStatus: null,
-      }, nowTs);
+        inCart: cartKeys.has(key),
+        committed: committedKeys.has(key),
+      });
+      const releaseState = releaseStateOf(event, nowTs);
       events.push({
         ...event,
+        releaseState: releaseState.key,
+        releaseStateLabel: releaseState.label,
         status,
         button: buttonOf(status, event),
         stale: false,
@@ -333,10 +362,10 @@ function defaultScrollIndex(events, nowTs = time.now()) {
  * 生成整条时间线（PAGE-005/006 主数据）
  *
  * TIMELINE-RULE-002 的「保留已有状态」通过按 (spotId+visitDate) 关联
- * 现有清单项与任务实现——事件本身不落库，每次实时重算，
+ * 现有清单项与行程项实现——事件本身不落库，每次实时重算，
  * 因此不存在陈旧事件残留问题；被移除景点的清单项在此顺带清理。
  */
-async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
+async function generate(db, userId, tripId) {
   const tripRes = await db.collection(COLLECTIONS.TRIPS)
     .where({ _id: tripId, userId }).get();
   const trip = (tripRes.data || [])[0];
@@ -355,19 +384,16 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
   const segMap = {};
   segs.forEach(s => { segMap[s.spotId] = s; });
 
-  const [spotsRes, rulesRes, cartRes, tasksRes, itemsRes] = await Promise.all([
+  const [spotsRes, rulesRes, cartRes, itemsRes] = await Promise.all([
     db.collection(COLLECTIONS.SPOTS).where({ spotId: db.command.in(spotIds) }).get(),
     db.collection(COLLECTIONS.RELEASE_RULES).where({ spotId: db.command.in(spotIds) }).get(),
     db.collection(COLLECTIONS.REMINDER_CART).where({ userId, tripId }).get(),
-    db.collection(COLLECTIONS.REMINDER_TASKS).where({ userId, tripId }).get(),
     db.collection(COLLECTIONS.TRIP_ITEMS).where({ userId, tripId }).get(),
   ]);
 
   const ruleMap = {};
   (rulesRes.data || []).forEach(r => { ruleMap[r.spotId] = r; });
   const cartKeys = new Set((cartRes.data || []).map(c => `${c.spotId}|${c.visitDate}`));
-  const taskMap = {};
-  (tasksRes.data || []).forEach(t => { taskMap[`${t.spotId}|${t.visitDate}`] = t; });
   const itemKeys = new Set((itemsRes.data || []).map(i => `${i.spotId}|${i.visitDate}`));
 
   const nowTs = time.now();
@@ -407,17 +433,17 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
       const key = `${event.spotId}|${event.visitDate}`;
       const status = resolveStatus(event, {
         inCart: cartKeys.has(key),
-        task: taskMap[key] || null,
         committed: itemKeys.has(key),
-        releaseStatus: spotStatusMap[event.spotId] || null,
-      }, nowTs);
+      });
+      const releaseState = releaseStateOf(event, nowTs);
 
       events.push({
         ...event,
+        releaseState: releaseState.key,
+        releaseStateLabel: releaseState.label,
         status,
         button: buttonOf(status, event),
-        // scraper 未上线：已放票事件的「已约满」判定缺失，标记 stale 供前端提示
-        stale: !!event.releaseAt && event.releaseAt.getTime() <= nowTs.getTime() && !spotStatusMap[event.spotId],
+        stale: false,
       });
     }
   }
@@ -449,6 +475,7 @@ async function generate(db, userId, tripId, { spotStatusMap = {} } = {}) {
 
 module.exports = {
   buildEvents,
+  releaseStateOf,
   resolveStatus,
   buttonOf,
   groupByDeparture,

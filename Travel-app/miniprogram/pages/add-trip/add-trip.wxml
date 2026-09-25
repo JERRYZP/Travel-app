@@ -1,6 +1,11 @@
 <wxs module="fmt" src="../../utils/format.wxs"></wxs>
-<!-- 自绘导航栏：带返回箭头（32.png） -->
-<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+<!-- 自绘导航栏：带返回箭头（32.png）
+     ⚠️ 底色由 `navOpacity` 逐帧给出（滚 50px、透明度 0→1），口径与首页一致。
+        这里**不能**写死 `background: var(--color-page)`：写死就没有淡入，
+        只能靠加 `.navbar-solid` 类在某一帧硬切，那会「啪」地闪一下。
+        背景只此一处，写在 wxss 里两条会打架；主题色改了三通道常量也要跟着改
+        （wxss 变量在内联 style 里用不了）。 -->
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px; background-color: rgba(248, 243, 234, {{navOpacity}});">
   <view style="height: {{statusBarHeight}}px;"></view>
   <view class="navbar-content" style="height: {{navBarHeight}}px;">
     <view class="navbar-back" bindtap="onBack">
@@ -10,7 +15,13 @@
   </view>
 </view>
 
-<scroll-view scroll-y class="page-scroll" style="height: 100vh;">
+<!-- ⚠️ 导航栏是 fixed、**不占文档流**，正文不让位就会被它盖住。
+     时间线头部的吸顶走 `.timeline-panel` 的 `position: sticky`，偏移量直接在
+     模板里给（`top: {{statusBarHeight + navBarHeight}}px`）—— 导航栏有多高就钉在
+     离顶多高处，所以既不能写死 0（会被导航栏盖住），也不该在 wxss 里写常量。
+     ⚠️ `bindscroll` 是导航栏淡入的**唯一入口**，别在改这块时顺手删掉：
+        删了不报错、不警告，页面一切正常，只是 `navOpacity` 永远是 0。 -->
+<scroll-view scroll-y class="page-scroll" style="height: 100vh;" bindscroll="onScroll">
   <view class="page-body" style="padding-top: {{statusBarHeight + navBarHeight + 8}}px;">
     <image class="city-bg" src="/images/cities/beijing.png" mode="aspectFit" />
 
@@ -56,17 +67,19 @@
 
     <!-- ===== 时间线（纯预览：不创建、不改写任何行程） ===== -->
     <view wx:if="{{showTimeline}}" class="timeline-section">
-      <view id="timeline-header" class="timeline-panel">
+      <view id="timeline-header" class="timeline-panel" style="top: {{statusBarHeight + navBarHeight}}px;">
         <view class="timeline-title-row">
           <view class="timeline-title-wrap">
             <svg-icon name="calendar-active" size="16px" />
             <text class="timeline-title">专属放票时间线</text>
           </view>
-          <view class="view-switcher">
+          <!-- 视图切换（按出游日 / 按景点）本期不做，整体隐藏（2026-09-24）。
+               V1 只有「按出游日」一种视图，摆一个恒亮的单选项只会让人以为能切。
+               要恢复时连 .view-switcher 那组样式一起拿回来（wxss 里还留着）。 -->
+          <!-- <view class="view-switcher">
             <view class="view-switcher-item active">按出游日</view>
-            <!-- 「按景点」V1 维持现状：控件展示但不可点，是否启用后续单独决策 -->
             <view class="view-switcher-item">按景点</view>
-          </view>
+          </view> -->
         </view>
 
         <!-- 出游日 Tab（单选筛选）；选中态加重，免预约项也归属当前选中日 -->
@@ -80,10 +93,9 @@
         </scroll-view>
 
         <view class="timeline-meta">
-          <text class="timeline-caption">为需预约景点标出放票时间，免预约景点直接选日期加入行程</text>
+          <text class="timeline-caption">为出游日当天的景点生成最早放票时间</text>
           <view class="timeline-batch-btn" bindtap="onInlineAddAll">
-            <svg-icon name="bell-plus" size="12px" />
-            <text>一键加入待选清单</text>
+            <text>一键加入清单</text>
           </view>
         </view>
       </view>
@@ -103,14 +115,14 @@
           <view class="timeline-event">
             <view class="event-rail">
               <!-- 免预约项进同一时间轴：左列显示「随时可约」，排在当天有放票时刻的项之后 -->
-              <text class="event-rail-date">{{event.reservationRequired === false ? event.visitDateLabel : event.releaseDateLabel}}</text>
+              <text class="event-rail-date">{{event.railDateLabel}}</text>
               <text class="event-rail-time">{{event.reservationRequired === false ? '随时可约' : event.releaseTimeStr}}</text>
               <view wx:if="{{idx < timelineEvents.length - 1}}" class="event-rail-line"></view>
             </view>
 
             <view class="event-card">
               <view class="event-info">
-                <text class="event-status">{{event.reservationRequired === false ? '无需预约' : '可约'}}</text>
+                <text class="event-status event-status-{{event.releaseState}}">{{event.releaseStateLabel}}</text>
                 <view class="event-name-row">
                   <text class="event-name" bindtap="onSpotNameTap" data-id="{{event.spotId}}">{{event.spotName}}</text>
                   <view wx:if="{{event.difficulty}}" class="event-diff diff-{{event.difficulty.key}}">{{event.difficulty.text}}</view>
@@ -123,11 +135,14 @@
               <view class="event-divider"></view>
               <view class="event-action">
                 <!-- 2026-09-20：废止第四态「立即预约」。时间线回归纯挑选职责，
-                     预约入口只保留在首页行程卡片与推送落地的详情浮窗。 -->
+                     预约入口只保留在首页行程卡片与推送落地的详情浮窗。
+                     ⚠️ 2026-09-24：按钮**一律不带图标**（对齐 32.png），
+                        长相由 `event-btn-*` 决定——
+                          SELECTABLE → 粉底可点按钮
+                          IN_CART    → 灰底状态胶囊（**仍可点**，点开清单弹层）
+                          COMMITTED  → 中性灰纯状态标签（无描边、不可点）
+                        别再按 status 在这里加回图标或改文案，真身在 timeline.js 的 buttonOf。 -->
                 <view class="event-btn event-btn-{{event.status}}" bindtap="onInlineEventAction" data-event="{{event}}">
-                  <svg-icon wx:if="{{event.status === 'IN_CART' || event.status === 'COMMITTED'}}" name="check-gold" size="12px" />
-                  <svg-icon wx:elif="{{event.reservationRequired === false}}" name="plus" size="12px" />
-                  <svg-icon wx:else name="bell-plus" size="12px" />
                   <text>{{event.button.text}}</text>
                 </view>
                 <text wx:if="{{event.btnSub}}" class="event-btn-sub">{{event.btnSub}}</text>
@@ -137,12 +152,15 @@
         </block>
       </view>
 
-      <view wx:if="{{timelineClosedSpots.length > 0}}" class="closed-spots">
-        <view wx:for="{{timelineClosedSpots}}" wx:key="spotId" class="closed-spot">
-          <van-icon name="warning-o" size="14px" color="#B8904A" />
-          <text>{{item.spotName}}：{{item.note || '行程期间闭馆'}}</text>
-        </view>
-      </view>
+      <!-- ⚠️ 这里原有一块「闭馆提示」列表（每个景点一行「X月X日 闭馆，已为你跳过」），
+           2026-09-24 按用户口径**整块删除**，别再加回来：
+            ① 行程一跨周一（3 个周一很常见），每个景点都必然有一行 → 恒定噪音块；
+            ② 与 2026-09-20 决策「同类信息不再在时间线下方单独堆叠成区」冲突
+               （那次删的是免预约区块，理由相同）；
+            ③ 「跳过了哪天」确实没别处能读到，但用户不会拿它做决策：
+               行程定死、景点定死，跳过哪几天是客观事实，行程级信息不上这个页面。
+           行程内**每一天都闭馆**的景点同样不在这里提示（决策文档 4.3 第 4 条：
+           「静默，不予任何提示」）。事件的生成/跳过逻辑本身没变，只删了展示。 -->
     </view>
 
     <!-- 热门景点（生成前展示，选完即收起） -->
@@ -185,8 +203,15 @@
   </view>
 </scroll-view>
 
-<!-- 清单条：只是打开 BottomSheet 的入口。31.png 里真正的提交按钮在 sheet 内，
-     所以这里不再重复一个「提交行程清单」按钮——两个提交入口会让用户猜哪个算数。 -->
+<!-- 清单条：打开 BottomSheet 的入口。31.png 里真正的提交按钮在 sheet 内，
+     所以这里不再重复一个「提交行程清单」按钮——两个提交入口会让用户猜哪个算数。
+     ⚠️ 右侧按钮文案是「下一步」不是「查看清单」（2026-09-24 用户口径）：
+        这个按钮**在两种情况下结果不一样**——清单里没有提醒项时它直达提交，
+        有提醒项时它去「设置提醒」页配提前量与通道（`cart-popup.js` 的 `onSubmit`
+        按 `summary.reminderCount` 分支）。写「提交」在第二种情况是撒谎（用户点完
+        看到的是一张设置页），写「查看」两种情况都不准。只有「下一步」在两条分支上
+        都是真话，且与浮层里的「提交行程清单」接得上。
+        左侧图标仍是「看一眼清单」，图标=看、按钮=走，两个入口分工不同。 -->
 <view wx:if="{{showTimeline}}" class="cart-bar">
   <view class="cart-bar-icon" bindtap="onInlineOpenCart">
     <svg-icon name="list-white" size="20px" />
@@ -194,7 +219,7 @@
   </view>
   <text class="cart-bar-text">{{cartText}}</text>
   <view class="cart-bar-btn" bindtap="onInlineOpenCart">
-    <text>查看清单</text>
+    <text>下一步</text>
   </view>
 </view>
 

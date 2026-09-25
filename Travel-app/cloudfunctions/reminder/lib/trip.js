@@ -14,18 +14,29 @@ const item = require('./item');
 /* ---------- 合并判定与景点段（TRIP-RULE-002） ---------- */
 
 /**
- * TRIP-RULE-002 合并判定：同城市，且（日期有交集 或 首尾相接）
- * 首尾相接 = 一方 endDate + 1 天 === 另一方 startDate
+ * TRIP-RULE-002 合并判定（2026-09-23 收敛：同城即合并，不再按日期间隔拆分）
  *
- * 文档正例：
- *   北京 5.31-6.4 + 6.5-6.8 → 可合并（相接）
- *   北京 5.31-6.4 + 6.6-6.8 → 不可合并（隔了 6.5）
+ * 背景：主客群是外地游客，单次出行基本连续。日期间隔自动拆分导致：
+ *   - 首页出现多个"北京 X.X-X.X" Section，用户困惑为什么分开
+ *   - 合并逻辑复杂（canMerge + collapse + gap），bug 率高
+ *   - 北京本地用户/多次访客场景频率极低，不值得为它维护这套逻辑
+ *
+ * 当前规则：同城市即合并，日期段取并集。
+ * 进行中/历史的划分由 endDate >= today 在读取时计算，与本规则独立。
+ *
+ * --- 旧逻辑（如需恢复间隔拆分，取消下面注释并删去 return true）---
+ * function canMerge(a, b) {
+ *   if ((a.city || '') !== (b.city || '')) return false;
+ *   if (a.startDate <= b.endDate && b.startDate <= a.endDate) return true;
+ *   return time.addDays(a.endDate, 1) === b.startDate
+ *     || time.addDays(b.endDate, 1) === a.startDate;
+ * }
+ * 正例：北京 5.31-6.4 + 6.5-6.8 → 可合并（相接）
+ * 反例：北京 5.31-6.4 + 6.6-6.8 → 不可合并（隔了 6.5）
+ * --------------------------------------------------------------------
  */
 function canMerge(a, b) {
-  if ((a.city || '') !== (b.city || '')) return false;
-  if (a.startDate <= b.endDate && b.startDate <= a.endDate) return true;
-  return time.addDays(a.endDate, 1) === b.startDate
-    || time.addDays(b.endDate, 1) === a.startDate;
+  return (a.city || '') === (b.city || '');
 }
 
 /** 日期段取并集 */

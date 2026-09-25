@@ -1,5 +1,7 @@
 <view class="trip-card {{history ? 'is-history' : ''}}">
-  <!-- 主行：缩略图 + 景点名 + 放票行 + 状态标签 + 三点菜单 -->
+  <!-- 主行：缩略图 + 左列（名字行（含提醒 chip）+ 放票行） + 右列（票务状态 · 三点菜单）
+       ⚠️ 2026-09-22 按设计稿改为**左右两列**（原来票务标签和菜单与信息同排），
+       右列内部再横排「票务 chip | 菜单」。 -->
   <view class="tc-main">
     <image class="tc-thumb" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" bindtap="onTapSpot" />
 
@@ -7,52 +9,121 @@
       <view class="tc-name-row">
         <text class="tc-name" bindtap="onTapSpot">{{item.spotName}}</text>
         <svg-icon name="chevron-right-ink" size="11px" />
-        <view wx:if="{{item.difficulty}}" class="tc-diff diff-{{item.difficulty.key}}">{{item.difficulty.text}}</view>
+
+        <!-- 提醒状态 chip —— **紧跟景点名右侧、与名字同一行**（决策文档 3.4 的明文位置：
+             「提醒状态 | 紧跟景点名右侧（中性 chip）」）。
+             2026-09-22 首次落地时它被写在名字行**下方**（`.tc-title` 是 column，chip 是
+             名字行的兄弟节点），读起来像第二行副标题，与「右侧」不符，本轮移到行内。
+             四态 `未设提醒 / 待提醒 / 已提醒 / 未送达`，中性灰系，与右侧彩底的票务 chip 分开。
+             ⚠️ **免预约项不显示**（它恒为 NOT_SET 且没有提醒可言，同一张卡上不该出现
+                「免预约」+「未设提醒」两个标签）。历史区也不显示——没有可做的动作了。
+             ⚠️ 「未送达」**整块可点**（图标与文字同热区），点开看原因。
+                这是全卡唯一能触达 `onMissedReason` 的入口，别把它改成纯展示。
+             ⚠️ 放在 chevron **之后**：chevron 是景点名的「进详情」指示，与名字是一体的，
+                插在名字和 chevron 中间会把它们拆开。 -->
+        <view
+          wx:if="{{!history && item.reservationRequired !== false && reminderChip}}"
+          class="tc-remind tc-remind-{{reminderClass}}"
+          bindtap="onMissedTap"
+        >
+          <svg-icon wx:if="{{reminderClass === 'miss'}}" name="alert-circle-muted" size="12px" />
+          <text>{{reminderChip}}</text>
+        </view>
       </view>
 
+      <!-- ⚠️ 难约程度标签（极难约/较难约/容易约）已从行程项卡移除（2026-09-21）：
+           行程项是**一次具体出行**，「故宫 较难约」这类信息不会因为这趟行程而变，
+           卡上重复出现只是噪音。它在选景点的地方仍有价值——`spots` 列表、
+           景点详情浮窗、`add-trip` 的时间线事件都保留，那里正是要按难易挑景点的时候。
+           `item.difficulty` 字段仍然下发（服务端 `decorateItem` 照常算），只是这里不再渲染。 -->
+
+      <!-- 副行：放票时刻 + 状态尾巴（「还有N天」/「立即抢票」/「已约」…）
+           所有分支在 util.releaseRemainderOf 里定死，这里只拼色类（WXML 不能调方法）。 -->
       <view class="tc-sub">
-        <text class="tc-release">{{releaseLine}}</text>
-        <text wx:if="{{!history && !item.ended}}" class="tc-countdown">{{countdown}}</text>
-      </view>
-
-      <!-- 提醒送达态：独立于票务态。未送达是**状态**，必须直接可见，
-           不能只藏进菜单——否则又回到「静默失败」 -->
-      <view
-        wx:if="{{!history && item.remindOn && item.reminder.state !== 'NOT_SET'}}"
-        class="tc-reminder tc-reminder-{{reminderClass}}"
-        catchtap="onReminderTap"
-      >
-        <svg-icon wx:if="{{item.reminder.state === 'MISSED'}}" name="alert-circle" size="11px" />
-        <text>{{item.reminder.stateLabel || item.reminder.state}}</text>
-        <text wx:if="{{item.reminder.state === 'MISSED'}}" class="tc-reminder-more">查看原因</text>
+        <text class="tc-sub-main">{{releaseLine}}</text>
+        <text wx:if="{{remainLine}}" class="tc-sub-tail tc-sub-tail-{{remainTone}}">{{remainLine}}</text>
       </view>
     </view>
 
-    <!-- 票务状态标签：卡上直显，点不进菜单 -->
-    <view class="tc-state tc-state-{{stateClass}}">{{stateChip}}</view>
+    <!-- 右列：**票务 chip 在左、三点菜单在右**，同一行。
+         ⚠️ 2026-09-22 从「票务在上、菜单在下、中间 24rpx」改成同一行：
+            竖排时菜单被顶到卡片下半部，与票务之间隔着一整个 chip 的高度，
+            两个都是「对这张卡的操作」，分开读起来像分属两块。
+            现在是一行两件：先看票务态，右边就是动作，间距 16px。
+         ⚠️ 容器与子项都写 `flex-shrink: 0`：右列不吃压缩，
+            否则长景点名会把票务 chip 压变形。 -->
+    <view class="tc-right">
+      <!-- 票务状态标签：卡上直显，点不进菜单 -->
+      <view class="tc-state tc-state-{{stateClass}}">{{stateChip}}</view>
 
-    <view wx:if="{{!history}}" class="tc-menu" catchtap="onMenuToggle">
-      <svg-icon name="menu-muted" size="14px" />
-      <!-- 三点菜单：**只放操作项**。状态类信息一律在卡片上直接展示，不进菜单 -->
-      <view wx:if="{{menuOpen}}" class="tc-menu-pop" catchtap="onMenuClose">
-        <view wx:if="{{item.canMark}}" class="tc-menu-item" catchtap="onMark">
-          <svg-icon name="check-muted" size="14px" /><text>标记结果</text>
+      <!-- ⚠️ **捕获层必须与 `.tc-menu` 平级、且在它之前**（2026-09-23 定稿）。
+           它是「点卡片其它地方 = 关闭」的承载体，铺满整张卡。
+           放它在 `.tc-menu` 里面是**上一轮的错**：那样捕获层会成为 `.tc-menu` 的子树，
+           永远浮不到自己父节点之上（z-index 只兄弟间比较，压不过父节点整棵子树），
+           于是图标照样被埋、菜单点开后就关不掉。
+           平级放、排在前面，两者同为 z-index 31 → **文档序决胜，图标在后胜出**。 -->
+      <view wx:if="{{menuOpen && !history}}" class="tc-menu-catch" catchtap="onMenuClose" catchtouchmove="noop"></view>
+      <!-- 三点菜单。
+           它是**唯一**的开合入口，靠 `bindtap` 开合（没有子节点需要阻止冒泡，
+           所以这里不用 catchtap）；真正的风险全在子节点上，见各自注释。 -->
+      <!-- ⚠️ 展开时加 `.is-open` 把整条菜单的层叠上下文从 z-index 31 抬到 40：
+           `.tc-menu-pop` 的 z-index 32 只在 `.tc-menu` 自己的层叠上下文内生效，
+           对外（页面根上下文）整张菜单的层级就是 31。同屏其他卡片的 `.tc-menu` 也是
+           31 且文档序在后 → 下面卡片的三点 icon 会浮在本卡弹出层之上（2026-09-23 修）。
+           抬到 40 后整条菜单（含弹出层）浮在所有其他卡片菜单之上。 -->
+      <view wx:if="{{!history}}" class="tc-menu {{menuOpen ? 'is-open' : ''}}" bindtap="onMenuToggle">
+        <view class="tc-menu-btn">
+          <svg-icon name="menu-muted" size="14px" />
         </view>
-        <!-- 仅「已设提醒且尚未开票」显示：开票后提醒已发完，改了也没用 -->
-        <view wx:if="{{item.remindOn && item.ticketState === 'PENDING'}}" class="tc-menu-item" catchtap="onEditReminder">
-          <svg-icon name="bell-plus" size="14px" /><text>修改提醒设置</text>
-        </view>
-        <view class="tc-menu-item tc-menu-danger" catchtap="onRemove">
-          <svg-icon name="trash" size="14px" /><text>删除行程</text>
+        <!-- 三点菜单：**只放操作项**。状态类信息一律在卡片上直接展示，不进菜单。
+             ⚠️ **每项都有显示条件，不是固定五项**（决策文档 3.5）。平铺成固定五项会让
+                开票前出现点不动的「标记结果」（服务端 canMark=false 直接拒绝）。
+             ⚠️ 面板自己**不带任何关闭手势**：条目各管各的动作，条目之间的留白
+                （`padding: 8rpx 0`）什么也不做。点空白处关闭由上面的捕获层负责。 -->
+        <view wx:if="{{menuOpen}}" class="tc-menu-pop">
+          <view wx:if="{{item.canMark}}" class="tc-menu-item" catchtap="onMark" data-item-id="{{item.itemId}}">
+            <svg-icon name="check-muted" size="14px" /><text>标记结果</text>
+          </view>
+          <!-- 提醒开关：**一项，按当前态直出文案**（2026-09-23 定稿）。
+               `reminderClass === 'none'`（未设提醒）→「开启提醒」，其余三态 →「取消提醒」。
+               ⚠️ 原先是两项互斥的「设置提醒 / 修改提醒」：名字里的「修改」没有兑现——
+                  点开只有一个开/关的 ActionSheet，改不了提前量、更改不了出行日期
+                  （改日期走的是「未抢到」态的「约其他日」，那条会生成并列的新行程项）。
+                  名实不符的代价是用户点开才发现没得改；现在文案即动作。
+               ⚠️ 条件是 `canSetReminder`（服务端下发 = 放票时刻尚未到），**不是** ticketState。
+                  放票一过这两个动作都没有意义：开启会即刻被判 MISSED（用户刚点完就
+                  看到「未送达」），取消则是空转。⚠️ 别写成 `ticketState === 'PENDING'`：
+                  清单先加、放票后才提交的项仍是可抢票态却没有提醒入口，用户连刚生成的
+                  失败提醒都取消不掉。判据真身在 `lib/item.js` 的 `canSetReminder`。 -->
+          <view wx:if="{{item.canSetReminder}}" class="tc-menu-item" catchtap="onEditReminder" data-item-id="{{item.itemId}}">
+            <svg-icon name="bell-plus" size="14px" />
+            <text>{{reminderClass === 'none' ? '开启提醒' : '取消提醒'}}</text>
+          </view>
+          <!-- 约其他日：「没抢到」就出现在菜单里，点击后由页面/服务端校验是否有候选日期 -->
+          <view wx:if="{{item.result === 'FAILED'}}" class="tc-menu-item" catchtap="onRecover" data-item-id="{{item.itemId}}">
+            <svg-icon name="refresh" size="14px" /><text>约其他日</text>
+          </view>
+          <!-- ⚠️ 文案必须是「删除这天」而不是「删除行程」：它删的是**这一个行程项**
+               （`tripItem.remove`），看着就是一条记录。首页已废止整趟行程的删除，
+               这里再写「行程」会让用户以为整个行程要没了。 -->
+          <view class="tc-menu-item" catchtap="onRemove" data-item-id="{{item.itemId}}">
+            <svg-icon name="trash" size="14px" /><text>删除这天</text>
+          </view>
         </view>
       </view>
     </view>
   </view>
 
-  <!-- 回填气泡：**开票后才出现**（开票前不问结果），可抢态的主入口 -->
+  <!-- ===== 回填气泡（两态共用一套版式）=====
+       开票后才出现。开票前不问结果——用户还没抢，问他也答不上来。
+       ⚠️ **它不是一块彩色面板**（2026-09-23 按 UI/28.png 重做）：设计稿里它是卡片内部
+          的一行，没有底色、没有圆角、没有指向缩略图的尖角，只有**上方一条极淡的分隔线**，
+          并且与上方的副行共用同一条分隔线（所以线只画在气泡上，卡片不再单独画）。
+          原来那块 `--bubble-bg` 的粉色浮岛是自造的，比设计稿重得多。
+       ⚠️ 卡片上**只有这一处**画分隔线。若将来在副行下面再加一块（比如未送达原因），
+          两块都要线的话得由那块自己带 `border-top`，别改成「卡片统一给每条线」。 -->
   <view wx:if="{{!history && item.canMark && !bubbleDismissed}}" class="tc-bubble">
-    <text class="tc-bubble-q">票抢到了吗？</text>
-    <text class="tc-bubble-hint">标记一下，陪你把这趟的票盯完</text>
+    <text class="tc-bubble-q">票抢到了吗?</text>
     <view class="tc-bubble-acts">
       <view class="tc-bubble-btn tc-bubble-yes" catchtap="onResult" data-result="SUCCESS">抢到了</view>
       <view class="tc-bubble-btn tc-bubble-no" catchtap="onResult" data-result="FAILED">没抢到</view>
@@ -60,15 +131,13 @@
     </view>
   </view>
 
-  <!-- 「没抢到且还有别的日期可约」时，卡片下方的固定挽回入口。
-       有没有候选由页面调 recoveryCandidates 判定（三层规则在服务端）；
-       什么都不建议是合法的——没有候选时这块整个不出现。 -->
-  <view
-    wx:if="{{!history && item.result === 'FAILED' && recoverable}}"
-    class="tc-recover"
-    catchtap="onRecover"
-  >
-    <text class="tc-recover-text">{{recoverHint}}</text>
-    <view class="tc-recover-btn">约其他日</view>
+  <!-- ⚠️ 下面两块必须**紧挨着**，中间不能插注释：`wx:elif` 只认它前面紧邻的那个节点，
+       中间隔一个注释节点就会静默失配（不报错，但挽回块永远不显示）。 -->
+  <view wx:elif="{{!history && item.result === 'FAILED' && recoverable && !recoverDismissed}}" class="tc-bubble">
+    <text class="tc-bubble-q">还有其他日期可约</text>
+    <view class="tc-bubble-acts">
+      <view class="tc-bubble-btn tc-bubble-go" catchtap="onRecover" data-item-id="{{item.itemId}}">约其他日</view>
+      <view class="tc-bubble-skip" catchtap="onDismissRecover">忽略</view>
+    </view>
   </view>
 </view>

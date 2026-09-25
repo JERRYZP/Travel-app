@@ -6,7 +6,7 @@
   pointer-events: none;
 }
 
-/* 遮罩：点击关闭 + 拦截背景滚动；bottom 由 JS 内联 px 控制（让出底部清单栏） */
+/* 遮罩：点击关闭 + 拦截背景滚动；bottom 由 JS 内联 px 控制 */
 .cart-mask {
   position: absolute;
   top: 0; left: 0; right: 0;
@@ -15,13 +15,12 @@
   animation: cart-mask-in 0.2s ease;
 }
 
-/* 底部弹层：从底部升起；bottom 由 JS 内联 px 控制。
-   高度 = 头部 + 列表，列表高度由 JS 限制为 ≤80% 屏高 - 头部（确定性 px，非 max-height） */
+/* 底部弹层：视觉基准 402px；rpx = 设计px × 750 / 402。 */
 .cart-sheet {
   position: absolute;
   left: 0; right: 0;
-  background: var(--color-surface);
-  border-radius: 32rpx 32rpx 0 0;
+  background: #F8F8F8;
+  border-radius: 30rpx 30rpx 0 0;
   pointer-events: auto;
   animation: cart-sheet-up 0.25s ease;
 }
@@ -37,12 +36,14 @@
 
 /* 头部 */
 .cart-header {
+  height: 90rpx;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 32rpx 32rpx 20rpx;
-  background: var(--color-surface);
-  box-shadow: 0 2rpx 8rpx rgba(100, 60, 20, 0.08);
+  padding: 0 32rpx;
+  box-sizing: border-box;
+  background: #FFFEFB;
+  border-bottom: 1rpx solid #F0F0E8;
 }
 .cart-title {
   font-size: 28rpx;
@@ -52,15 +53,15 @@
 .cart-clear-btn {
   display: flex;
   align-items: center;
-  gap: 6rpx;
+  gap: 8rpx;
   font-size: 24rpx;
-  color: #B09878;
+  color: #B89048;
 }
+.cart-clear-btn:active { opacity: .65; }
 
-/* 列表：米色底 + 日期分组白卡；高度由 JS 内联 px 控制 */
-.cart-list {
-  background: var(--color-page);
-}
+/* 列表：米色底；高度由 JS 内联 px 控制 */
+.cart-list { background: #F8F3EA; }
+.cart-list-inner { padding-bottom: 18rpx; }
 
 .cart-loading {
   display: flex;
@@ -72,122 +73,239 @@
   justify-content: center;
   padding: 80rpx 0;
   font-size: 26rpx;
-  color: var(--color-placeholder);
+  color: #B09878;
 }
 
-/* ===== 清单分组 ===== */
-.cart-group { margin-bottom: 20rpx; }
+/* ===== 出行日分组 ===== */
+.cart-group { padding: 34rpx 30rpx 0; }
+.cart-group + .cart-group { margin-top: 16rpx; }
 .cart-group-header {
-  font-size: 24rpx;
-  font-weight: 600;
-  color: var(--color-muted);
-  padding: 6rpx 4rpx 12rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  min-height: 38rpx;
+  margin-bottom: 28rpx;
+}
+.cart-group-date {
+  font-size: 26rpx;
+  font-weight: 500;
+  color: #5E3D32;
+  white-space: nowrap;
+}
+.cart-day-chip {
+  flex-shrink: 0;
+  padding: 4rpx 8rpx;
+  border-radius: 8rpx;
+  background: #F2E4C0;
+  color: #C26B0C;
+  font-size: 22rpx;
+}
+.cart-group-line {
+  flex: 1;
+  height: 1rpx;
+  margin-left: 4rpx;
+  background: #E7DED2;
+  transform: translateY(1rpx);
 }
 
-/* 分组卡片：白底圆角，行之间用细线分隔 */
-.cart-group-card {
-  background: var(--color-surface);
-  border-radius: 20rpx;
-  overflow: hidden;
-}
-
-/* 行：缩略图 + 景点名/副行 + 动作下拉 + 垃圾桶 */
+/* ===== 行程项卡片 ===== */
+.cart-group-list { display: block; }
 .cart-row {
   display: flex;
   align-items: center;
   gap: 16rpx;
-  padding: 20rpx 20rpx;
-  border-bottom: 1rpx solid var(--color-border);
+  min-height: 108rpx;
+  margin-bottom: 12rpx;
+  padding: 13rpx 20rpx;
+  box-sizing: border-box;
+  background: #FFFEFB;
+  border: 1rpx solid #F0F0E8;
+  border-radius: 20rpx;
 }
-.cart-row:last-child { border-bottom: none; }
+.cart-row:last-child { margin-bottom: 0; }
 
 .cart-row-thumb {
-  width: 84rpx; height: 84rpx;
-  border-radius: 14rpx;
+  width: 82rpx;
+  height: 82rpx;
+  border-radius: 12rpx;
   flex-shrink: 0;
-  background: var(--color-cream);
+  background: #EDE5D2;
 }
-.cart-row-body { flex: 1; min-width: 0; }
+.cart-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.cart-row-name-line {
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+  min-width: 0;
+}
 .cart-row-name {
-  display: block;
+  max-width: 188rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 28rpx;
-  font-weight: 600;
-  color: var(--color-ink);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 500;
+  color: #4A2D23;
+  text-decoration: underline;
+  text-underline-offset: 4rpx;
 }
 .cart-row-sub {
   display: block;
-  font-size: 22rpx;
-  color: var(--color-text);
-  margin-top: 6rpx;
+  margin-top: 8rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 23rpx;
+  color: #C04028;
 }
 
-.cart-row-action { flex-shrink: 0; position: relative; }
+.cart-row-action {
+  flex-shrink: 0;
+  position: relative;
+  /* 与右侧垃圾桶再留出 4px，避免点击下拉时误触删除。 */
+  margin-right: 8rpx;
+}
 
-/* 提醒开关：一个可点的小胶囊，点它弹系统 ActionSheet */
+/* 可选提醒：金边下拉 Default。 */
 .cart-drop {
-  display: inline-flex;
+  width: 252rpx;
+  height: 60rpx;
+  box-sizing: border-box;
+  display: flex;
   align-items: center;
-  gap: 6rpx;
-  border: 1rpx solid var(--color-border);
-  border-radius: 10rpx;
-  padding: 10rpx 14rpx;
-  font-size: 22rpx;
-  color: var(--color-text);
-  background: var(--color-page);
+  justify-content: space-between;
+  gap: 8rpx;
+  padding: 0 16rpx;
+  border: 1rpx solid #DFCFB4;
+  border-radius: 16rpx;
+  background: #FFFEFB;
+  color: #5E3D32;
+  font-size: 24rpx;
+  white-space: nowrap;
 }
-.cart-drop:active { opacity: .6; }
+.cart-drop:active { opacity: .72; }
 
-/* 免预约项：说明必须与按钮同屏可见，不能只靠弹窗解释 */
-.cart-no-remind {
-  display: block;
-  max-width: 260rpx;
-  font-size: 20rpx;
-  line-height: 1.4;
-  color: var(--color-muted);
-  text-align: right;
+/* 不可选提醒：与 Default 同尺寸体系，灰底灰字灰箭头。 */
+.cart-drop.disabled {
+  width: 252rpx;
+  background: #F8F0E8;
+  border-color: #F8F0E8;
+  color: #B09878;
 }
 
 .cart-row-delete {
   flex-shrink: 0;
-  padding: 10rpx 4rpx 10rpx 6rpx;
-  opacity: .55;
+  padding: 12rpx 0 12rpx 2rpx;
+  opacity: .72;
 }
 .cart-row-delete:active { opacity: 1; }
 
-/* ===== 底部提交条（31.png：sheet 自带，不再依赖页面那条） ===== */
-.cart-foot {
+/* 下拉菜单：放在 scroll-view 外，用 fixed 定位避免裁切。 */
+.cart-drop-catch {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 240;
+}
+.cart-drop-menu {
+  position: fixed;
+  z-index: 250;
+  overflow: hidden;
+  padding: 8rpx 0;
+  border: 1rpx solid #F0E8E0;
+  border-radius: 20rpx;
+  background: #FFFEFB;
+  box-shadow: 0 12rpx 28rpx rgba(74, 45, 35, 0.12);
+}
+.cart-drop-option {
+  height: 78rpx;
   display: flex;
   align-items: center;
-  gap: 16rpx;
-  /* ⚠️ 不要再加 env(safe-area-inset-bottom)：本 sheet 通过 bottomOffset 整体坐在
-     TabBar **之上**，而 TabBar 自己已经吃掉了安全区（padding-bottom: env(...)）。
-     这里再加一次就会多出一整条安全区高度——用户实测「底部离 TabBar 太远」。 */
-  padding: 20rpx 24rpx;
-  border-top: 1rpx solid var(--color-border);
-  background: var(--color-surface);
+  padding: 0 20rpx;
+  box-sizing: border-box;
+  color: #5E3D32;
+  font-size: 24rpx;
 }
-.cart-foot-text {
+.cart-drop-option:active { background: #F8F0E8; }
+
+/* ===== 底部提交条 ===== */
+.cart-foot {
+  min-height: 126rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 14rpx 30rpx;
+  box-sizing: border-box;
+  border-top: 1rpx solid #F0F0E8;
+  background: #F8F8F8;
+}
+.cart-foot-main {
   flex: 1;
   min-width: 0;
-  font-size: 23rpx;
-  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 22rpx;
+}
+.cart-foot-icon {
+  position: relative;
+  width: 98rpx;
+  height: 98rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #B89048;
+}
+.cart-foot-badge {
+  position: absolute;
+  top: -4rpx;
+  right: -2rpx;
+  min-width: 36rpx;
+  height: 36rpx;
+  padding: 0 8rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: #C04028;
+  color: #FFFEFB;
+  font-size: 20rpx;
+  line-height: 1;
+}
+.cart-foot-text {
+  min-width: 0;
+  font-size: 25rpx;
+  color: #5E3D32;
 }
 .cart-foot-btn {
   flex-shrink: 0;
-  background: var(--color-primary);
-  color: #FDF6EE;
-  font-size: 27rpx;
-  font-weight: 600;
-  padding: 18rpx 32rpx;
+  min-height: 82rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 0 28rpx;
+  box-sizing: border-box;
   border-radius: 999rpx;
+  background: #C04028;
+  color: #FFFEFB;
+  font-size: 25rpx;
+  font-weight: 600;
 }
-.cart-foot-btn.disabled { background: var(--color-placeholder); }
+.cart-foot-btn.disabled { background: #DBCDBB; }
 .cart-foot-btn:active { opacity: .88; }
 
 .dialog-body {
   padding: 40rpx;
   text-align: center;
   font-size: 28rpx;
-  color: var(--color-ink);
+  color: #4A2D23;
 }

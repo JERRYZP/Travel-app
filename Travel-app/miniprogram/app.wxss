@@ -39,9 +39,28 @@ page {
   --state-history-bg: #EFE8DA;      /* 历史区灰化 */
   --state-history-text: #A89882;
 
-  --bubble-bg: #F6E3DC;             /* 回填气泡：品牌浅底 */
-  --bubble-text: #96331F;
+  /* ⚠️ `--bubble-bg` / `--bubble-text` 已于 2026-09-23 删除：
+     回填气泡按 UI/28.png 重做成卡片内的**一行**（无底色），这两个 token 再无使用方。 */
+  --text-faint: #B09878;            /* 气泡提示语 / 「忽略」：浅一档的正文色 */
   --snackbar-bg: rgba(51,41,31,.92);
+
+  /* ===== 行程项卡（2026-09-22 按 Figma UI/V.0.2 重取）=====
+     ⚠️ 这几个是设计稿里的**新色**，与上面那批不是同一套取值，别为了「复用」硬套：
+        `--color-text`/`--color-ink` 偏深，chip 文字和景点名要用更浅的一档；
+        `--color-page` 虽然数值等于 chip 底色，但语义是「页面底色」，
+        chip 借它用会在改页面底色时被一起改掉。 */
+  --chip-muted-bg: #F8F3EA;         /* 中性 chip 底：提醒状态 / 未标记 / 免预约 */
+  --chip-muted-text: #936F5B;       /* 中性 chip 字 */
+  --chip-gold-bg: #F2E4C0;          /* 待抢票 / 日期徽标 */
+  --chip-gold-text: #C26B0C;
+  --chip-green-bg: #D8EAD8;         /* 可抢票 / 已约到 */
+  --chip-green-text: #4A7C59;
+  --chip-red-bg: #F5DDD5;           /* 未抢到 */
+  --chip-red-text: #C0472A;
+  --text-strong: #5E3D32;           /* 景点名 / 日期分段标题（比 --color-ink 浅一档） */
+  --action-green: #4A7C59;          /* 副行「立即抢票」等行动文本 */
+  --divider-strong: #DDD0B5;        /* 日期分段标题那条横线 */
+  --snackbar-paper: #F2E4C0;        /* 撤销条：纸感金底（区别于旧的深色条） */
 
   /* shadows */
   --shadow-card: 0 2rpx 8rpx rgba(100,60,20,0.08);

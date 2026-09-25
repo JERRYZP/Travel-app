@@ -1,4 +1,5 @@
 const api = require('../../utils/api.js');
+const cartView = require('../../utils/cart-view.js');
 
 /**
  * 行程清单 BottomSheet（31.png，2026-09-20 改版）
@@ -10,9 +11,10 @@ const api = require('../../utils/api.js');
  * 所以这里**不传 tripId**，服务端按「当前暂存清单」处理。
  *
  * 每行有两条信息必须同屏可见：
- *   ① 这张票什么时候放（或「无需预约·随到随玩」）；
+ *   ① 这张票什么时候放（或「无需预约，随到随玩」）；
  *   ② 要不要提醒（下拉二选一）。
- * 弱提醒景点默认「仅加入行程，不提醒」，可手动改；免预约项固定不可改。
+ * 弱提醒景点默认「仅加行程·不提醒」，可手动改；免预约项固定不可改。
+ * 已开票项同样固定不可改：服务端下发 remindLocked，页面只渲染「仅加行程·不提醒」。
  */
 Component({
   properties: {
@@ -33,7 +35,9 @@ Component({
     /* 「开票前提醒我」——不写「放票了提醒我」：
        提醒实际于开票**前 N 分钟**发送，后者会让用户误以为是开票那一刻推送 */
     OPTION_ON: '开票前提醒我',
-    OPTION_OFF: '仅加入行程·不提醒',
+    OPTION_OFF: '仅加行程·不提醒',
+    /* 自定义下拉层的位置与选项。面板渲染在 scroll-view 外，避免旧实现被裁切。 */
+    dropdown: { show: false, cartId: '', top: 0, left: 0, width: 0 },
   },
 
   lifetimes: {
@@ -86,18 +90,16 @@ Component({
     },
 
     loadCart() {
+      this.closeDropdown();
       this.setData({ loading: true });
       /* 不传 tripId = 读「当前暂存清单」 */
       api.reminder.cart.list().then(res => {
-        const groups = (res.groups || []).map(g => Object.assign({}, g, {
+        const groups = cartView.normalizeCartGroups(res).map(g => Object.assign({}, g, {
           items: (g.items || []).map(it => Object.assign({}, it, {
-            /* 副行：需预约说放票时刻，免预约说随到随玩。
-               stateTag 只做展示，真正决定提醒开不开的是 remindOn */
-            subline: it.reservationRequired === false
-              ? '无需预约·随到随玩'
-              : ((it.releaseTimeLabel || '') + ' 放票'),
-            /* 免预约项固定不可改，不是置灰——是压根没有这个选择 */
-            canToggle: it.reservationRequired !== false,
+            /* 免预约项和已开票项都固定不可改，不是置灰——是压根没有这个选择。
+               已开票项由服务端下发 remindLocked，避免页面按当前时间再算一遍。 */
+            canToggle: it.reservationRequired !== false && !it.remindLocked,
+            remindLocked: it.remindLocked === true,
             remindText: it.remindOn ? this.data.OPTION_ON : this.data.OPTION_OFF,
           })),
         }));
@@ -107,43 +109,53 @@ Component({
       });
     },
 
-    onClose() { this.triggerEvent('close'); },
+    onClose() { this.closeDropdown(); this.triggerEvent('close'); },
     onMaskTap() { this.onClose(); },
-    onSheetTap() {},
+    onSheetTap() { this.closeDropdown(); },
     noop() {},
 
-    /**
-     * 切换提醒：直接调**系统 ActionSheet**。
-     *
-     * 为什么不用自绘浮层（重要，别再改回去）：
-     *   这里的位置在 `scroll-view` 里。`fixed` 元素在 `scroll-view` 内会被裁切，
-     *   还会引入层级、遮罩拦截点击、滚动错位等一连串问题 —— 每一层都要单独打补丁，
-     *   而每一层在真机上都可能表现不同。实测反复失败。
-     *
-     * 系统 ActionSheet 是**原生层**的：不经过 WXML，天然不受 scroll-view / 层级
-     * 影响，点选项与点遮罩的行为由微信保证。只有两项的选择，这本来就是最合适的控件。
-     */
+    closeDropdown() {
+      if (this.data.dropdown && this.data.dropdown.show) {
+        this.setData({ dropdown: { show: false, cartId: '', top: 0, left: 0, width: 0 } });
+      }
+    },
+
+    onDropdownClose() { this.closeDropdown(); },
+
+    onListScroll() { this.closeDropdown(); },
+
+    /** 打开提醒下拉。面板在 scroll-view 外 fixed 渲染，位置按触发框计算。 */
     onToggleDropdown(e) {
       const cartId = e.currentTarget.dataset.id;
       const item = this.findItem(cartId);
-      /* 免预约项固定不可改：不是置灰，是压根没有这个选择 */
+      /* 免预约/已开票项固定不可改：保留同款灰态，但不打开菜单。 */
       if (!item || !item.canToggle) return;
+      this.createSelectorQuery().select('#cart-drop-' + cartId).boundingClientRect(rect => {
+        if (!rect) return;
+        const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+        const menuHeight = 100;
+        const top = rect.bottom + menuHeight + 8 < (win.windowHeight || 800)
+          ? rect.bottom + 4
+          : Math.max(8, rect.top - menuHeight - 4);
+        this.setData({
+          dropdown: { show: true, cartId, top, left: rect.left, width: rect.width },
+        });
+      }).exec();
+    },
 
-      const ON = this.data.OPTION_ON;
-      const OFF = this.data.OPTION_OFF;
-      const other = item.remindOn ? OFF : ON;
-      wx.showActionSheet({
-        itemList: [other],
-        success: res => {
-          if (res.tapIndex !== 0) return;
-          this.applyRemind(cartId, !item.remindOn);
-        },
-        fail: () => {},   // 用户点了取消/遮罩 —— 什么都不做
-      });
+    onDropdownPick(e) {
+      const dropdown = this.data.dropdown;
+      const item = dropdown && this.findItem(dropdown.cartId);
+      const next = e.currentTarget.dataset.remind === true
+        || e.currentTarget.dataset.remind === 'true';
+      if (!item) return this.closeDropdown();
+      if (item.remindOn === next) return this.closeDropdown();
+      this.applyRemind(dropdown.cartId, next);
     },
 
     /** 写入提醒开关并刷新 */
     applyRemind(cartId, remindOn) {
+      this.closeDropdown();
       api.reminder.cart.updateRemindOn({ cartId, remindOn }).then(() => {
         this.loadCart();
         this.triggerEvent('change');
@@ -152,13 +164,14 @@ Component({
 
     onRemove(e) {
       const cartId = e.currentTarget.dataset.id;
+      this.closeDropdown();
       api.reminder.cart.remove(cartId).then(() => {
         this.loadCart();
         this.triggerEvent('change');
       }).catch(err => api.toastError(err));
     },
 
-    onClearTap() { this.setData({ showClearDialog: true }); },
+    onClearTap() { this.closeDropdown(); this.setData({ showClearDialog: true }); },
 
     onClearConfirm() {
       api.reminder.cart.clear().then(() => {

@@ -1,17 +1,48 @@
 <view wx:if="{{trip}}" class="summary">
-  <view class="sm-top">
-    <text class="sm-name">{{trip.name}}</text>
-    <text class="sm-countdown">{{countdown}}</text>
+  <!-- 右上角装饰英文水印。放在标题行里用绝对定位，不参与 flex 排布——
+       它是**背景纹理**，不该跟「北京之行」抢任何宽度。 -->
+  <view wx:if="{{watermark.length > 0}}" class="sm-mark">
+    <text wx:for="{{watermark}}" wx:key="index" class="sm-mark-ch">{{item}}</text>
   </view>
-  <text class="sm-dates">{{dateRange}}</text>
 
+  <!-- ① 行程名（左）+ 装饰英文（右，绝对定位，不参与排布） -->
+  <view class="sm-head">
+    <text class="sm-name">{{displayName}}</text>
+  </view>
+
+  <!-- ② 日期段 + 倒计时**同一行**（设计稿 UI/V.0.2-0919）：
+       「10月2日~10月4日 · 还有27天」。此前倒计时被排在标题行右侧，
+       与设计稿不符。 -->
+  <text class="sm-meta">{{metaLine}}</text>
+
+  <!-- ③ 门票搞定：左标签 + 右分数（N/M 用不同字号拉开层次），下方进度条 -->
   <view class="sm-progress">
     <view class="sm-progress-row">
       <text class="sm-progress-label">门票搞定</text>
-      <text class="sm-progress-num">{{trip.progress.done}}/{{trip.progress.total}}</text>
+      <view class="sm-progress-num"><text class="sm-num-done">{{trip.progress.done}}</text><text class="sm-num-sep">/</text><text class="sm-num-total">{{trip.progress.total}}</text></view>
     </view>
     <view class="sm-bar"><view class="sm-bar-fill" style="width: {{percent}}%;"></view></view>
     <!-- 免预约项另起一行，不冒充完成度，也不能直接消失 -->
-    <text wx:if="{{noReservation > 0}}" class="sm-free">另有 {{noReservation}} 处随到随玩</text>
+    <text wx:if="{{noReservation > 0}}" class="sm-free">另有{{noReservation}}处景点无需预约，随到随玩。</text>
+  </view>
+
+  <!-- ④ 即将提醒：下一场（最多两场）放票的胶囊（设计稿 UI/V.0.2-0919）。
+       ⚠️ 上面**没有分隔线**——设计稿里胶囊直接浮在卡面上（2026-09-21 去掉）。
+       文案由服务端拼（task.buildReleasePills，用简称），页面不自己 format 时间。 -->
+  <view wx:if="{{pills.length > 0}}" class="sm-pills {{noReservation > 0 ? 'sm-pills--after-free' : ''}}">
+    <!-- 最近的一颗高亮（nearest），其余压暗——设计稿两颗粒胶囊深浅不同。
+         ⚠️ 判断在服务端算好（`nearest`），页面不按时间自己排一遍。 -->
+    <!-- ⚠️ 用 `bindtap` 不用 `catchtap`：这里没有需要阻止冒泡的父级热区，
+         而 catch 会让**整行**（含药丸之间的空白与换行后的整片区域）都变成热区，
+         用户点在两颗胶囊中间也会触发。视觉上只有药丸是可点的，热区就该只有药丸。 -->
+    <view
+      wx:for="{{pills}}"
+      wx:key="itemId"
+      wx:for-item="p"
+      class="sm-pill {{p.nearest ? 'is-nearest' : ''}}"
+      bindtap="onPillTap"
+      data-id="{{p.itemId}}"
+      data-spot="{{p.spotId}}"
+    >{{p.text}}</view>
   </view>
 </view>

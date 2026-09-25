@@ -19,14 +19,18 @@ const {
 const time = require('./time');
 const tripItem = require('./trip-item');
 
-/** 六个展示态 → 用户可见文案（8.3 固定口径） */
+/** 六个展示态 → 用户可见文案（8.3 固定口径）
+ *  ⚠️ 2026-09-22 按设计稿整体换词（旧值：待抢/可抢/已成/未成/开过票了）。
+ *     改的是**文案不是语义**——`UNMARKED` 仍然是中性态，别因为字面像「未成」就改判。
+ *     这六个值是**唯一真身**，`miniprogram/utils/mock.js` 有一份镜像，
+ *     `test/mock-mirror.test.js` 会交叉比对，改一处必须改两处。 */
 const TICKET_STATE_LABEL = {
-  [TicketState.PENDING]: '待抢',
-  [TicketState.BOOKABLE]: '可抢',
-  [TicketState.SUCCESS]: '已成',
-  [TicketState.FAILED]: '未成',
-  // UNMARKED 是中性态，不是「未成」。放票过了 24 小时没标记不代表没抢到。
-  [TicketState.UNMARKED]: '开过票了',
+  [TicketState.PENDING]: '待抢票',
+  [TicketState.BOOKABLE]: '可抢票',
+  [TicketState.SUCCESS]: '已约到',
+  [TicketState.FAILED]: '未抢到',
+  // UNMARKED 是中性态，不是「未抢到」。放票过了 24 小时没标记不代表没抢到。
+  [TicketState.UNMARKED]: '未标记',
   [TicketState.NO_RESERVATION]: '免预约',
 };
 
@@ -73,7 +77,7 @@ function ticketStateOf({ item, reservationRequired, releaseAt, nowTs = time.now(
 
 /** 展示态 → 文案；未知态兜底成中性文案，绝不返回 undefined 给前端渲染 */
 function ticketStateLabelOf(state) {
-  return TICKET_STATE_LABEL[state] || '待抢';
+  return TICKET_STATE_LABEL[state] || '待抢票';
 }
 
 /**
@@ -109,6 +113,31 @@ function canMarkResult({ item, reservationRequired, releaseAt, visitDate, nowTs 
   if (nowTs.getTime() < new Date(releaseAt).getTime()) return false;
   if (item && (item.result === TicketResult.SUCCESS || item.result === TicketResult.FAILED)) return false;
   return !isItemEnded(visitDate, nowTs);
+}
+
+/**
+ * 现在还能不能开启/取消提醒。
+ *
+ * ⚠️ **放票时刻一过，这条项上就没有任何有意义的提醒操作了**（2026-09-23 定规）：
+ *   - 开启：`notifier` 按 `releaseAt` 触发，releaseAt 已过 → 任务一生出来就是
+ *     `MISSED`「未送达」。用户刚亲手点完「开启提醒」，界面立刻回一个失败态，
+ *     因果正好反了（2026-09-23 实测：对「已约到」的八达岭设提醒 → 立刻未送达）。
+ *   - 取消：放票后本来就没有待发任务可取消，入口是空转。
+ * 两个入口因此由**同一个判据**同生共死——别只挡其中一个，那会留下另一个空转入口。
+ *
+ * ⚠️ 与「待抢票」**不等价**，不能拿 `ticketState === PENDING` 代替：
+ *   清单先加、提交发生在放票之后时（11:50 加进清单、12:05 才提交），
+ *   那条项的 releaseAt 已经过去，却仍是可抢票态。按「只在待抢票显示」它会没有任何
+ *   提醒入口，用户连刚生成的那条失败提醒都取消不了，只能删掉整条项。
+ *   本判据覆盖那个窗口（它此时为 false，是因为还没建出任务）。
+ *
+ * 服务端与前端**共用同一条判据**：`decorateItem` 下发它供菜单渲染，
+ * `tripItem.updateReminder` 用它做闸门——前端条件挡不住旧版本小程序。
+ */
+function canSetReminder({ reservationRequired, releaseAt, nowTs = time.now() }) {
+  if (reservationRequired === false) return false;
+  if (!releaseAt) return false;
+  return new Date(releaseAt).getTime() > nowTs.getTime();
 }
 
 /** 撤销截止时刻；未标记过则 null */
@@ -203,6 +232,11 @@ function decorateItem({ item, spot, rule, task, nowTs = time.now() }) {
     tripId: item.tripId,
     spotId: item.spotId,
     spotName: spot ? spot.name : '未知景点',
+    /* 民间通俗简称（「中国国家博物馆」→「国博」）。给**窄容器**用：
+       摘要卡底部的放票胶囊、以及以后的运营文案——全名会把胶囊撑成两行、把卡拉高。
+       行宽够的地方（行程项卡、清单、详情浮窗）继续用全名，那是用户要认的门牌。
+       取不到就回退全名，不影响可用性。 */
+    spotShort: spot ? (spot.shortName || spot.name) : '未知景点',
     visitDate: item.visitDate,
     backupGroupId: item.backupGroupId || tripItem.backupGroupIdOf(item.tripId, item.spotId),
     reservationRequired,
@@ -213,6 +247,9 @@ function decorateItem({ item, spot, rule, task, nowTs = time.now() }) {
     ticketStateLabel: ticketStateLabelOf(ticketState),
     bookingEntryEnabled: bookingEntryEnabledOf({ ticketState, reservationRequired, visitDate: item.visitDate, nowTs }),
     canMark: canMarkResult({ item, reservationRequired, releaseAt, visitDate: item.visitDate, nowTs }),
+    /* 前端菜单据此渲染「开启提醒 / 取消提醒」，与 updateReminder 的闸门同源。
+       ⚠️ 页面**不得**自己按 ticketState 推一遍——那是第二套口径，必然漂。 */
+    canSetReminder: canSetReminder({ reservationRequired, releaseAt, nowTs }),
     result: item.result || null,
     resultAt: item.resultAt || null,
     undoUntil: undoUntilOf(item),
@@ -357,6 +394,7 @@ module.exports = {
   bookingEntryEnabledOf,
   isItemEnded,
   canMarkResult,
+  canSetReminder,
   undoUntilOf,
   reminderStateOf,
   backupGroupProgress,

@@ -13,6 +13,7 @@ const cart = require('../cloudfunctions/reminder/lib/cart');
 const task = require('../cloudfunctions/reminder/lib/task');
 const actions = require('../cloudfunctions/reminder/lib/trip-item-actions');
 const tripItem = require('../cloudfunctions/reminder/lib/trip-item');
+const item = require('../cloudfunctions/reminder/lib/item');
 const time = require('../cloudfunctions/reminder/lib/time');
 
 const spotsSeed = require('../data/spots.json').spots;
@@ -220,21 +221,106 @@ const FUTURE_VISIT = time.addDays(TODAY, 30); // releaseAt = TODAY + 23 → 还�
     eq(res.quotaRefunded, false, '微信侧额度已消耗，不退还');
   }
 
-  console.log('=== 14. updateReminder：已触发的任务保留为历史 ===');
+  console.log('=== 14. updateReminder：已触发的任务保留为历史，且不抹掉「未送达」信号 ===');
   {
     const db = freshDb();
     await seedTrip(db, 'T1', ['gugong'], time.addDays(TODAY, -1), time.addDays(TODAY, 40));
-    const id = await seedItem(db, { tripId: 'T1', spotId: 'gugong', visitDate: PAST_VISIT, remindOn: true });
+    /* ⚠️ 2026-09-23 起「放票已过」的项整体不再受理提醒开关（用例 14.1），
+       所以这里必须造一条真实终态：visitDate 还没到（开关仍有效），
+       但任务被 notifier 判成了 MISSED —— 这正是「提醒没送到、票还没过期」那一档。 */
+    const id = await seedItem(db, { tripId: 'T1', spotId: 'gugong', visitDate: FUTURE_VISIT, remindOn: true });
     await db.collection(COLLECTIONS.REMINDER_TASKS).add({
       data: {
-        userId: USER, itemId: id, tripId: 'T1', spotId: 'gugong', visitDate: PAST_VISIT,
-        releaseAt: time.parseBeijing(time.addDays(PAST_VISIT, -7), '20:00'),
-        offsets: [5], channels: ['OFFICIAL_ACCOUNT'], backendStatus: 'TRIGGERED',
-        sentOffsets: [5], createdAt: time.now(),
+        userId: USER, itemId: id, tripId: 'T1', spotId: 'gugong', visitDate: FUTURE_VISIT,
+        releaseAt: time.parseBeijing(time.addDays(FUTURE_VISIT, -7), '20:00'),
+        offsets: [5], channels: ['OFFICIAL_ACCOUNT'], backendStatus: 'MISSED',
+        missedReason: 'errCode=43101 配额不足', sentOffsets: [], createdAt: time.now(),
       },
     });
-    await actions.updateReminder(db, USER, { itemId: id, remindOn: false });
+    const res = await actions.updateReminder(db, USER, { itemId: id, remindOn: false });
     eq(db._dump(COLLECTIONS.REMINDER_TASKS).length, 1, '已触发的任务保留为历史记录');
+    /* ⚠️ 反向锁：取消提醒**不得**把这条还没送达的项洗成「未设提醒」。
+       原实现无条件落 remindOn=false，chip 从「未送达」变成「未设提醒」，
+       失败信号当场消失、任务却还在库里（决策文档 §五 禁止的静默失败）。 */
+    eq(res.item.remindOn, true, '留有终态任务时不落 remindOn=false（保住未送达信号）');
+    eq(res.item.reminder.state, 'MISSED', 'chip 仍是「未送达」，不被开关覆盖');
+    eq(res.missedKept, true, '回传 missedKept，前端据此说明「记录保留」');
+
+    const db2 = freshDb();
+    await seedTrip(db2, 'T2', ['gugong'], time.addDays(TODAY, -1), time.addDays(TODAY, 40));
+    const id2 = await seedItem(db2, { tripId: 'T2', spotId: 'gugong', visitDate: FUTURE_VISIT, remindOn: true });
+    await db2.collection(COLLECTIONS.REMINDER_TASKS).add({
+      data: {
+        userId: USER, itemId: id2, tripId: 'T2', spotId: 'gugong', visitDate: FUTURE_VISIT,
+        releaseAt: time.parseBeijing(time.addDays(FUTURE_VISIT, -7), '20:00'),
+        offsets: [5], channels: ['OFFICIAL_ACCOUNT'], backendStatus: 'WAITING',
+        sentOffsets: [], createdAt: time.now(),
+      },
+    });
+    const res2 = await actions.updateReminder(db2, USER, { itemId: id2, remindOn: false });
+    eq(db2._dump(COLLECTIONS.REMINDER_TASKS).length, 0, '仅 WAITING 时照常删除');
+    eq(res2.item.remindOn, false, '没有终态记录 → 正常退化为「未设提醒」');
+    eq(res2.missedKept, false, '没有未送达记录 → 不给「记录保留」提示');
+  }
+
+  console.log('=== 14.1 updateReminder：放票时刻已过 → 开启与取消都拒绝 ===');
+  {
+    const db = freshDb();
+    await seedTrip(db, 'T1', ['gugong'], time.addDays(TODAY, -1), time.addDays(TODAY, 40));
+    /* PAST_VISIT 的 releaseAt 早已过去 —— 用户此刻点「开启提醒」只会得到一条
+       一生出来就是 MISSED 的任务：刚点完就看到「未送达」，因果正好反了
+       （2026-09-23 实测：对「已约到」的八达岭设提醒 → 立刻未送达）。 */
+    const id = await seedItem(db, { tripId: 'T1', spotId: 'gugong', visitDate: PAST_VISIT });
+    const on = await actions.updateReminder(db, USER, {
+      itemId: id, remindOn: true, channels: ['OFFICIAL_ACCOUNT'], offsets: [5],
+    });
+    eq(on.success, false, '放票已过 → 拒绝开启提醒');
+    eq(on.errorCode, 1017, '错误码 1017（提醒窗口已关闭）');
+    eq(db._dump(COLLECTIONS.REMINDER_TASKS).length, 0, '拒绝时不留下任何任务');
+
+    const off = await actions.updateReminder(db, USER, { itemId: id, remindOn: false });
+    eq(off.success, false, '放票已过 → 取消提醒同样无意义，一并拒绝');
+    eq(off.errorCode, 1017, '取消走同一个闸门');
+  }
+
+  console.log('=== 14.2 canSetReminder：与 ticketState 不等价的那个窗口 ===');
+  {
+    const db = freshDb();
+    await seedTrip(db, 'T1', ['gugong'], time.addDays(TODAY, -1), time.addDays(TODAY, 40));
+    /* 造一条「放票刚过去、仍在 24h 窗口内」的项 —— 故宫 advanceDays=7、放票 20:00，
+       所以取**最近一次已经过去的 20:00**（距现在必然 < 24h），其 +7 天就是出行日。
+       ⚠️ 不能用 PAST_VISIT：那条的 releaseAt 早了 6 天，票务态是「未标记」不是「可抢票」——
+       本用例要的正是「可抢票且提醒窗口已关」这一档。 */
+    const pad2 = n => String(n).padStart(2, '0');
+    const iso2 = x => x.getFullYear() + '-' + pad2(x.getMonth() + 1) + '-' + pad2(x.getDate());
+    const bjNow = new Date(Date.now() + 8 * 3600000);
+    let last2000 = Date.UTC(bjNow.getUTCFullYear(), bjNow.getUTCMonth(), bjNow.getUTCDate(), 20, 0) - 8 * 3600000;
+    if (last2000 > Date.now()) last2000 -= 86400000;      // 今天 20:00 还没到 → 取昨天
+    const visitBookable = iso2(new Date(last2000 + 7 * 86400000));
+
+    /* 清单先加、放票后才提交：releaseAt 已过，但票务态是「可抢票」而非「待抢票」。
+       按 `ticketState === 'PENDING'` 写条件会漏掉这一档 —— 存量里真有这种项
+       （submit 曾照建任务，模板现在就踩在这一档上）。 */
+    const id = await seedItem(db, { tripId: 'T1', spotId: 'gugong', visitDate: visitBookable });
+    const spot = spotsSeed.find(s => s.spotId === 'gugong');
+    const rule = rulesSeed.find(r => r.spotId === 'gugong');
+    const fetchItem = async (iid) => (await db.collection(COLLECTIONS.TRIP_ITEMS).doc(iid).get()).data[0];
+    const decorated = item.decorateItem({
+      item: await fetchItem(id), spot, rule, task: null, nowTs: time.now(),
+    });
+    eq(decorated.ticketState, 'BOOKABLE', '放票已过 → 票务态是可抢票');
+    eq(decorated.canSetReminder, false, '可抢票态也没有提醒入口（与 PENDING 不等价）');
+
+    const id2 = await seedItem(db, { tripId: 'T1', spotId: 'gugong', visitDate: FUTURE_VISIT });
+    const d2 = item.decorateItem({ item: await fetchItem(id2), spot, rule, task: null, nowTs: time.now() });
+    eq(d2.ticketState, 'PENDING', '未到放票 → 待抢票');
+    eq(d2.canSetReminder, true, '待抢票态有提醒入口');
+
+    const free = await seedItem(db, { tripId: 'T1', spotId: 'tiantan', visitDate: FUTURE_VISIT });
+    const dF = item.decorateItem({
+      item: await fetchItem(free), spot: spotsSeed.find(s => s.spotId === 'tiantan'), rule: null, task: null, nowTs: time.now(),
+    });
+    eq(dF.canSetReminder, false, '免预约项没有提醒可言');
   }
 
   console.log('=== 15. remove：删单条连带任务；行程清空则行程消失 ===');

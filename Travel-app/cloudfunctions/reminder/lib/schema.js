@@ -33,12 +33,8 @@ const ReminderBackendStatus = {
 
 /** ENUM-003 时间线事件按钮态（STATE-003 选择状态机） */
 const EventSelectStatus = {
-  SELECTABLE: 'SELECTABLE',   // 「+ 添加提醒」
+  SELECTABLE: 'SELECTABLE',   // 「加入清单」（免预约项「加入行程」）
   IN_CART: 'IN_CART',         // 「已加清单」
-  WAITING: 'WAITING',         // 「待提醒」
-  REMINDERED: 'REMINDERED',   // 已提醒
-  BOOKABLE: 'BOOKABLE',       // 「立即预约」
-  FULL: 'FULL',               // 置灰「已约满」
   COMMITTED: 'COMMITTED',     // 已加入行程（行程项已落库）
 };
 
@@ -111,6 +107,9 @@ const ERRORS = {
   ITEM_RESULT_INVALID: { code: 1014, message: '当前行程项不可标记结果' },
   ITEM_UNDO_EXPIRED: { code: 1015, message: '撤销时间已过' },
   ITEM_ENDED: { code: 1016, message: '行程项已结束' },
+  /* 放票时刻已过 → 提醒开关对这条项不再有任何意义（2026-09-23 定规）。
+     菜单此时也不渲染这两个入口，本错误码只可能来自旧版本小程序或直接调接口。 */
+  REMINDER_WINDOW_CLOSED: { code: 1017, message: '已过放票时间，提醒无法开启或取消' },
   BAD_PARAM: { code: 1010, message: '参数不合法' },
   UNKNOWN_ACTION: { code: 1099, message: 'unknown action' },
 };

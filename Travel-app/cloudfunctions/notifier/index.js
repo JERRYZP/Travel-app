@@ -274,7 +274,7 @@ async function sendOne(task, spot, offset) {
       // 模板「活动开始通知」字段：thing4=活动名称 / date5=活动时间 / thing7=温馨提示（2026-08-21 对照公众平台修正）
       thing4: { value: spotName },
       date5: { value: beijingDateTime(task.releaseAt) },
-      thing7: { value: `${offset} 分钟后放票，记得去抢票` },
+      thing7: { value: `${offset}分钟后放票，记得备好游客信息` },
     },
   };
 

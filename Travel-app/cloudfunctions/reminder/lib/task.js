@@ -2,11 +2,11 @@
  * 提醒任务规则 REMINDER-RULE-001 ~ 008 + STATE-001/002（产品文档 3.5）
  *
  * 行程项是最小业务单元；提醒任务是行程项下的一条后台执行记录。
- * 一个清单项按用户勾选的提前量集合展开为多条任务（每个 offset 各一条）。
+ * 一个清单项生成 1 条任务，任务内保存 offsets；notifier 会按 offset 各发送 1 条消息。
  */
 
 const {
-  COLLECTIONS, ReminderBackendStatus, ChannelType, V1, ERRORS, ok, fail,
+  COLLECTIONS, ReminderBackendStatus, ChannelType, V1, ERRORS, PENDING_CART_TRIP_ID, ok, fail,
 } = require('./schema');
 const time = require('./time');
 const tripItem = require('./trip-item');
@@ -23,6 +23,74 @@ const {
  */
 function remindAtOf(releaseAt, offsetMinutes) {
   return time.addMinutes(new Date(releaseAt), -offsetMinutes);
+}
+
+/* 授权额度预留 1 次安全缓冲：待发送数正好等于剩余额度时即进入“即将用完”。 */
+const QUOTA_SAFE_BUFFER = 1;
+/* 首页只承载 48 小时内真正需要补授权的提醒，避免远期行程过早制造焦虑。 */
+const QUOTA_WARNING_WINDOW_HOURS = 48;
+
+/**
+ * 提醒授权健康度（纯函数）。
+ *
+ * 微信一次性订阅按“发送一次消息”消耗 1 次授权；一条任务配置多个 offset 时，
+ * 每个尚未发送的 offset 都占 1 次需求。因此这里统计的是 offset，不是任务数。
+ */
+function reminderHealthOf(tasks, remainingQuota, nowTs = time.now()) {
+  const nowMs = new Date(nowTs).getTime();
+  const quota = Math.max(0, Number(remainingQuota) || 0);
+  let pendingMessageCount = 0;
+  let nearestRemindAt = null;
+
+  (tasks || []).forEach(t => {
+    if (!t || t.backendStatus !== ReminderBackendStatus.WAITING) return;
+    const releaseMs = new Date(t.releaseAt).getTime();
+    if (!Number.isFinite(releaseMs) || releaseMs <= nowMs) return;
+    const sent = new Set(t.sentOffsets || []);
+    (t.offsets || []).forEach(offset => {
+      if (sent.has(offset)) return;
+      pendingMessageCount += 1;
+      const remindAt = remindAtOf(t.releaseAt, offset);
+      const remindMs = remindAt.getTime();
+      if (!nearestRemindAt || remindMs < nearestRemindAt.getTime()) nearestRemindAt = remindAt;
+    });
+  });
+
+  let level = 'idle';
+  if (pendingMessageCount > 0) {
+    if (quota >= pendingMessageCount + QUOTA_SAFE_BUFFER) level = 'ready';
+    else if (quota === pendingMessageCount) level = 'low';
+    else if (quota > 0) level = 'short';
+    else level = 'exhausted';
+  }
+
+  return {
+    level,
+    remainingQuota: quota,
+    pendingMessageCount,
+    nearestRemindAt,
+    shortfall: Math.max(0, pendingMessageCount - quota),
+    replenishNeeded: Math.max(0, pendingMessageCount + QUOTA_SAFE_BUFFER - quota),
+  };
+}
+
+/** 首页额度预警：低额度状态 + 最近提醒进入 48 小时窗口。 */
+function buildReminderQuotaWarning(health, nowTs = time.now()) {
+  if (!health || !['low', 'short', 'exhausted'].includes(health.level)) return null;
+  if (!health.nearestRemindAt) return null;
+  const diff = health.nearestRemindAt.getTime() - new Date(nowTs).getTime();
+  if (diff > QUOTA_WARNING_WINDOW_HOURS * 3600 * 1000) return null;
+
+  let text = '';
+  if (health.level === 'low') {
+    text = '提醒授权即将用完，建议续收 1 次。';
+  } else if (health.level === 'exhausted') {
+    text = '提醒授权已用完，未来提醒可能收不到。';
+  } else {
+    text = `未来还有${health.pendingMessageCount}条提醒待发送，还差${health.shortfall}次授权，可能收不到。`;
+  }
+
+  return Object.assign({}, health, { type: 'QUOTA', text });
 }
 
 /**
@@ -150,13 +218,78 @@ function buildReleaseBanner(decorated, nowTs = time.now()) {
 
   return {
     type: 'UPCOMING',
-    text: `${dayWord}${time.formatHourMinute(releaseAt)}开抢${soon.spotName || ''}${visitLabel}的门票，还有${minutesLeft}分钟`,
+    /* ⚠️ **不含「还有N分钟」**（2026-09-21 修正——本函数上方的注释一开始就规定过，代码却带上了）：
+       提醒是在开票**前 N 分钟**发的，而横幅讲的是**开票时刻本身**。写「还有30分钟」
+       会和推送文案混为一谈，用户会以为「是不是已经提醒过我了」。
+       设计稿 UI/V.0.2-0919 的文案也确认是「今天20:00开抢天安门城楼5月31日的门票」，
+       没有尾缀。`minutesLeft` 仍保留在返回值里，但**不要在文案里用它**。 */
+    text: `${dayWord}${time.formatHourMinute(releaseAt)}开抢${soon.spotName || ''}${visitLabel}的门票`,
     itemId: soon.itemId,
     spotId: soon.spotId,
     visitDate: soon.visitDate,
     releaseAt: soon.releaseAt,
     minutesLeft,
   };
+}
+
+/**
+ * 摘要卡底部的小胶囊：**即将放票的 N 个事件**（设计稿 UI/V.0.2-0919）。
+ *
+ * 与吸顶横幅的分工：横幅只讲**最近一条**（眼下要发生的事），
+ * 胶囊把「接下来还有哪几场」摊开给用户一眼扫完——横幅受 BANNER_WINDOW_HOURS(1h)
+ * 限制只覆盖眼下一小时，胶囊不限窗口，所以两处同时有内容是正常且互补的。
+ *
+ * 与横幅同一条文案纪律：按**开票时刻**，不带「还有 N 分钟」。
+ *
+ * ⚠️ **由 index.js 直接挂成 home.bootstrap 的顶层字段 `releasePills`，不要塞进 stickyBanner**：
+ * 后者受 BANNER_WINDOW_HOURS(1h) 限制，塞进去就等于「一小时内有票要放才显示这几颗胶囊」，
+ * 而设计稿里胶囊讲的是「后面还有哪几场」，与眼下一小时无关。
+ *
+ * @param {number} limit 最多几个（设计稿为 2）
+ */
+function buildReleasePills(decorated, nowTs = time.now(), limit = 2) {
+  /* 先按**放票时刻**分组，再取前 limit 组——同一时刻的多条提醒合成一颗胶囊。
+     为什么按时刻而不是按项：用户盯着的是「几点该动手」，不是「有几个景点」。
+     17:00 城楼和国博同时放票，就是一次行动、不是两次，
+     拆成两颗胶囊既占宽度又让人以为要分头去抢。
+     ⚠️ limit 数的是**时间点**，不是项数：同一时刻 3 个景点仍然只占 1 颗。 */
+  const groups = new Map();
+  (decorated || [])
+    .filter(d => d.releaseAt && new Date(d.releaseAt).getTime() > nowTs.getTime())
+    .forEach(d => {
+      const ts = new Date(d.releaseAt).getTime();
+      if (!groups.has(ts)) groups.set(ts, []);
+      groups.get(ts).push(d);
+    });
+
+  return [...groups.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .slice(0, limit)
+    .map(([ts, items], i) => {
+      /* 同一时刻内按景点名排序：顺序稳定，用户每次进来看到的拼接顺序一致 */
+      const sorted = items.slice().sort((a, b) => String(a.spotName || '').localeCompare(String(b.spotName || '')));
+      const rel = new Date(ts);
+      const isToday = time.toDateStr(rel) === time.toDateStr(nowTs);
+      const isTomorrow = time.toDateStr(rel) === time.addDays(time.toDateStr(nowTs), 1);
+      const dayWord = isToday ? '今天' : (isTomorrow ? '明天' : `${time.beijingParts(rel).month}月${time.beijingParts(rel).day}日`);
+      /* 「今天20:00 天安门城楼/国博」——日期时间 + 空格 + 景点名。
+         ⚠️ **末尾不带「放票」二字**（2026-09-21 用户口径）：胶囊本身就挂在「即将提醒」
+         语义下，再写一遍是把已经说清的事重复，还白占两个字宽度。
+         ⚠️ 景点名用**简称**（`spotShort`，无则回退全名）：胶囊是窄容器，
+         全名会把两颗胶囊挤到换行、把摘要卡拉高。多个用 `/` 连接。
+         `nearest` 交给前端：最近这一颗要高亮，其余压暗（设计稿两颗粒胶囊深浅不同）。 */
+      return {
+        itemId: sorted[0].itemId,
+        spotId: sorted[0].spotId,
+        itemIds: sorted.map(x => x.itemId),
+        spotIds: sorted.map(x => x.spotId),
+        text: `${dayWord}${time.formatHourMinute(rel)} ${sorted.map(x => x.spotShort || x.spotName || '').join('/')}`,
+        releaseAt: sorted[0].releaseAt,
+        visitDate: sorted[0].visitDate,
+        count: sorted.length,
+        nearest: i === 0,
+      };
+    });
 }
 
 /**
@@ -239,7 +372,7 @@ async function sweepOverdue(db, tasks, nowTs = time.now(), userId, resolveReleas
  *   ② 调 trip.create 建/合并行程（TRIP-RULE-002 的合并判定挪到这里）；
  *   ③ 把清单行挂到真实行程上、写行程项、为勾了提醒的项建任务、清空清单。
  *
- * 一个清单项 × N 个 offset = N 条任务（REMINDER-RULE-001）
+ * 一个清单项 = 1 条任务；N 个 offset = N 次订阅消息发送需求（REMINDER-RULE-001）
  * **清单为一次性缓冲区：提交即消费**（CART-RULE-003）。
  *
  * 云开发事务要求所有读写都在事务内，且不支持 where 批量删除，
@@ -247,22 +380,42 @@ async function sweepOverdue(db, tasks, nowTs = time.now(), userId, resolveReleas
  */
 async function submit(db, userId, event) {
   const tripId = event.tripId || '';
+  const cartId = event.cartId || '';
   const channels = event.channels || [];
   const offsets = event.offsets || [];
+  const disableReminders = event.disableReminders === true;
+
+  /* 「仅加行程」是一次性的降级提交，只服务于尚未落库的暂存清单。
+     老链路的真实 tripId 已可能有待发任务，不能用一个批量参数把它们的提醒一起关掉。 */
+  if (disableReminders && tripId && tripId !== PENDING_CART_TRIP_ID) {
+    return fail(ERRORS.BAD_PARAM);
+  }
 
   /* 读清单：不传 tripId = 读暂存区（纯预览化后的常规路径）；
      传了真实 tripId = 读那一个行程的清单（老链路兼容）。 */
   const cartWhere = { userId, tripId: cart.cartTripIdOf(tripId) };
+  if (cartId) cartWhere._id = cartId;
   const cartRes = await db.collection(COLLECTIONS.REMINDER_CART).where(cartWhere).get();
   const cartItems = cartRes.data || [];
   if (cartItems.length === 0) return fail(ERRORS.CART_EMPTY);
 
-  const reminderItems = cartItems.filter(i =>
-    i.reservationRequired !== false && i.remindOn === true);
-  if (reminderItems.length > 0 && !validateSubmit(channels, offsets)) return fail(ERRORS.BAD_PARAM);
-  if (reminderItems.some(i => !i.releaseAt)) return fail(ERRORS.BAD_PARAM);
-
   const nowTs = time.now();
+  const pastRelease = i => !!i.releaseAt && new Date(i.releaseAt).getTime() <= nowTs.getTime();
+  const wantedReminderItems = cartItems.filter(i =>
+    i.reservationRequired !== false && i.remindOn === true);
+  /* 放票已过的项不参与提醒配置校验：用户可能在开票前加了清单、开票后才提交。
+     这一步必须与 cart.list 的 remindLocked 同源，否则界面说“无需提醒”，提交却要通道。 */
+  const remindable = wantedReminderItems.filter(i => !pastRelease(i));
+  if (!disableReminders && remindable.length > 0 && !validateSubmit(channels, offsets)) return fail(ERRORS.BAD_PARAM);
+  if (!disableReminders && remindable.some(i => !i.releaseAt)) return fail(ERRORS.BAD_PARAM);
+
+  /* ⚠️ **放票时刻已过的清单项不建任务**（2026-09-23 定规）。
+     任务一生出来就会被 notifier/读取时兜底收敛成 MISSED「未送达」，
+     用户提交一次就凭空收获一条失败提醒。真实路径：11:50 把某项加进清单、
+     12:05 才提交 —— 那一刻 releaseAt 已经过去。
+     这类项**照常落行程项**（票照样要抢，只是提醒已无意义），提醒开关落 false，
+     卡片此后也不再提供提醒入口 —— `canSetReminder` 用的正是同一条判据。 */
+  const reminderItems = disableReminders ? [] : remindable;
 
   /* ① + ② 建/合并行程。日期段 = 清单里各项 visitDate 的并集，
      各景点保留自己的段（故宫 10.2-10.3 / 国博 10.4，合并成一个行程但不互相膨胀）。 */
@@ -275,7 +428,13 @@ async function submit(db, userId, event) {
 
   try {
     for (const cartItem of cartItems) {
-      const remindOn = cartItem.reservationRequired !== false && cartItem.remindOn === true;
+      const wantedRemindOn = !disableReminders
+        && cartItem.reservationRequired !== false
+        && cartItem.remindOn === true;
+      /* ⚠️ 放票已过的项**落 false**：它不是「用户没勾提醒」，而是「此刻提醒已无意义」。
+         两者在卡片上都显示「未设提醒」，但前者可再开启，后者不可（canSetReminder 为 false）——
+         不需要额外的字段区分，时间自己会说话。 */
+      const remindOn = wantedRemindOn && !pastRelease(cartItem);
       const key = `${targetTripId}|${cartItem.spotId}|${cartItem.visitDate}`;
       const existing = itemMap[key];
       let itemId = existing && existing._id;
@@ -330,20 +489,27 @@ async function submit(db, userId, event) {
     return fail({ code: 1011, message: `提交失败：${err.message}` });
   }
 
-  const noReminder = cartItems.length - reminderItems.length;
+  const noReminder = disableReminders ? cartItems.length : cartItems.length - reminderItems.length;
+  /* 勾了提醒、但因为放票时刻已过而没建任务的那些（见上）。前端据此换一句文案——
+     否则用户勾着提醒提交，回来看见「已加入行程 · N 项」却读不出提醒为什么没设上。 */
+  const expiredReminder = disableReminders ? 0 : wantedReminderItems.length - reminderItems.length;
   return ok({
     created: createdTasks.length,
     createdItems: createdItems.length,
     createdTasks: createdTasks.length,
     noReminder,
+    expiredReminder,
+    disableReminders,
     // 契约 8.5 要求回传 tripId：前端据此把首页切到这个行程、并写 globalData.currentTripId
     tripId: targetTripId,
     items: createdItems,
     tasks: createdTasks,
     toast: createdTasks.length > 0
-      ? `已加入行程 · 其中 ${createdTasks.length} 个已设提醒`
-      : `已加入行程 · ${createdItems.length} 项`,
-    needsOaAuth: channels.includes(ChannelType.OFFICIAL_ACCOUNT),
+      ? `已加入行程 · 已设置 ${createdTasks.length} 个提醒`
+      : (expiredReminder > 0
+        ? `已加入行程 · ${expiredReminder} 项已过放票时间，提醒无法设置`
+        : `已加入行程 · ${createdItems.length} 项`),
+    needsOaAuth: !disableReminders && channels.includes(ChannelType.OFFICIAL_ACCOUNT),
   });
 }
 
@@ -534,12 +700,17 @@ async function cleanup(db) {
 
 module.exports = {
   remindAtOf,
+  reminderHealthOf,
+  buildReminderQuotaWarning,
+  QUOTA_SAFE_BUFFER,
+  QUOTA_WARNING_WINDOW_HOURS,
   uiLabelOf,
   effectiveStatusOf,
   validateSubmit,
   staggerDelays,
   buildBanner,
   buildReleaseBanner,
+  buildReleasePills,
   buildStandbyText,
   sweepOverdue,
   submit,

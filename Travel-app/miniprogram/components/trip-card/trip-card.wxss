@@ -1,5 +1,6 @@
 /* ===== 行程项卡片 =====
-   视觉基准 402px（figma §4）：卡片圆角 24rpx、内边距 24rpx、模块间距 24rpx。
+   视觉基准 402px（figma §4）。2026-09-22 按 Figma `940-1551` 重取数值：
+   卡片圆角 24rpx、内边距 24rpx、缩略图 76rpx（原 112rpx）、主行左右两列。
    卡片是白的（--color-surface），页面底色是米色（--color-page），靠白卡浮起来。 */
 
 .trip-card {
@@ -7,190 +8,347 @@
   border-radius: 24rpx;
   box-shadow: var(--shadow-card);
   margin-bottom: 20rpx;
-  overflow: hidden;
 }
+/* ⚠️ 这里原本有 `overflow: hidden`（只为把子元素的直角裁进卡片圆角）。
+   2026-09-22 删除：菜单展开态 `.tc-menu-pop` 是 absolute 且向下展开，
+   卡片会**把它裁掉**——菜单从三项加到五项后溢出更多，「删除这天」在部分机型上要点两次
+   才生效（第一次点在卡片外）。卡内每个子元素本来就自带圆角（缩略图 12rpx、
+   气泡 16rpx），没有需要靠父级裁切的直角，去掉它没有副作用。 */
 
 /* 历史行程：整体灰化、无操作按钮，只能点进景点详情回看。
    ⚠️ 「没抢到」在这里也不用红色——红色是行动召唤色，
    历史里的失败已经无法挽回，用行动色只会让用户以为还能做点什么。 */
 .trip-card.is-history { opacity: .72; box-shadow: none; background: #F4EEE2; }
 
+/* 主行左右两列：左列是信息，右列是票务态 + 菜单。
+   ⚠️ align-items 是 **stretch 不是 center**（设计稿）：两列高度不齐时，
+   右列要靠自己的布局决定票务标签落在哪一行，居中会让它在长文案下漂。 */
 .tc-main {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   padding: 24rpx;
   gap: 20rpx;
 }
 
 .tc-thumb {
-  width: 112rpx;
-  height: 112rpx;
-  border-radius: 16rpx;
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 12rpx;
   flex-shrink: 0;
   background: var(--color-cream);
 }
 
 .tc-info { flex: 1; min-width: 0; }
 
+/* ⚠️ 这里原本是 `.tc-title { flex-direction: column }`，装着「名字行 / 提醒 chip」两行。
+   2026-09-22 把提醒 chip 移进名字行之后它就只剩一个子节点（`.tc-name-row`）了——
+   一个纯粹的透传容器，留着只会让人以为还有个竖排布局。已删。 */
+
+/* 名字行：景点名 + chevron + 提醒 chip，**同一行**（决策文档 3.4：提醒状态紧跟景点名右侧）。
+   gap 从 6rpx 提到 12rpx：这一行现在有三个元素，6rpx 下 chip 会贴着 chevron，
+   读起来像连在一起的半句话。 */
 .tc-name-row {
   display: flex;
   align-items: center;
-  gap: 6rpx;
+  gap: 12rpx;
+  max-width: 100%;
 }
 
+/* 名字的**下划线颜色 = 文字颜色本身**。
+   ⚠️ 原来写的是 `text-decoration-color: var(--color-primary)`（朱砂），
+   黑字配红下划线在行程墙上一屏出现七八次，密集处像一排报错；设计稿里是**同色下划线**。
+   这里不再写死颜色，`currentColor` 让它永远跟着 `color` 走——
+   换字号/换主题色时不用记着同步改一处颜色。 */
 .tc-name {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: var(--color-ink);
+  /* ⚠️ 2026-09-22 用户口径：**小一号、不加粗**（30rpx/600 → 28rpx/400）。
+     它已经用下划线把自己标成可点的景点名了，再加粗会和右侧两枚 chip 抢注意力；
+     一屏七八张卡同时上粗体，整堵墙会糊成一片。 */
+  font-size: 28rpx;
+  font-weight: 400;
+  color: var(--text-strong);
   text-decoration: underline;
-  text-decoration-color: var(--color-primary);
+  text-decoration-color: currentColor;
   text-underline-offset: 6rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* ⚠️ 名字必须能收缩：它右边还要塞提醒 chip 和箭头，而右侧票务 chip 也是 4 个字。
+     375px 屏上留给景点名的净宽大约 5 个字，`中国工艺美术馆·非遗馆` 一定截断——
+     截断是可接受的，「把 chip 挤变形」不是。 */
+  flex: 0 1 auto;
+  min-width: 0;
 }
+/* 两枚 chip 都不许被压 */
+.tc-remind, .tc-state { flex-shrink: 0; }
 
-.tc-diff {
-  font-size: 20rpx;
-  padding: 2rpx 10rpx;
-  border-radius: 6rpx;
-  flex-shrink: 0;
+/* ===== 提醒状态 chip（2026-09-22 按决策文档 3.4 恢复）=====
+   中性灰系，与右侧彩底的票务 chip 分在两个体系里——它们回答的是两个正交的问题
+   （「我有没有被叫醒」vs「票到手没有」），长得一样就会被读成同一个状态词。
+   ⚠️ 四态共用一套配色（都是中性灰），**警告语义只由「未送达」那枚图标承载**。
+      不要为了「突出未送达」把它的底色改成红色——那会把它拉回票务 chip 的体系，
+      反而消掉两个轴的分工。
+   ⚠️ 只有 `.tc-remind-miss`（未送达）是可点的，其余三态点了没反应。
+   ⚠️ 它现在和景点名**同一行**，而 `.tc-name` 只保住一半宽度，所以这里必须有
+      max-width：`flex-shrink: 0`（不许压）配上无限宽 = 长文案直接顶穿卡片。
+      四态文案最长 4 个字，正常永远够用，这条是给将来加字数兜底。 */
+.tc-remind {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 4rpx 14rpx;
+  border-radius: 12rpx;
+  font-size: 22rpx;
+  max-width: 50%;
+  background: var(--chip-muted-bg);
+  color: var(--chip-muted-text);
 }
-.diff-EXTREME { background: var(--diff-extreme-bg); color: var(--diff-extreme-text); }
-.diff-NORMAL  { background: var(--diff-normal-bg);  color: var(--diff-normal-text); }
-.diff-EASY    { background: var(--diff-easy-bg);    color: var(--diff-easy-text); }
+.tc-remind text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 可点提示：给一点按压反馈，否则用户不知道它能点 */
+.tc-remind-miss:active { background: var(--color-cream); }
 
 .tc-sub {
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  margin-top: 8rpx;
-}
-.tc-release { font-size: 24rpx; color: var(--color-text); }
-.tc-countdown { font-size: 22rpx; color: var(--color-muted); }
-
-/* 提醒送达态：独立于票务态的一行。未送达要显眼——
-   静默失败正是旧版被诟病的点 */
-.tc-reminder {
-  display: inline-flex;
-  align-items: center;
-  gap: 6rpx;
+  gap: 4rpx;
   margin-top: 10rpx;
-  font-size: 22rpx;
-  padding: 3rpx 12rpx;
-  border-radius: 8rpx;
+  flex-wrap: wrap;
 }
-.tc-reminder-waiting { background: var(--color-cream); color: var(--color-text); }
-.tc-reminder-done    { background: var(--state-success-bg); color: var(--state-success-text); }
-.tc-reminder-miss    { background: var(--state-failed-bg); color: var(--state-failed-text); font-weight: 600; }
-.tc-reminder-more    { margin-left: 4rpx; text-decoration: underline; }
+/* 放票时刻是这张卡上唯一带行动含义的时间点，用朱砂把它顶出来 */
+.tc-sub-main { font-size: 24rpx; color: var(--color-primary); }
+.tc-sub-tail { font-size: 22rpx; }
+.tc-sub-tail-muted { color: var(--color-muted); }
+.tc-sub-tail-go { color: var(--action-green); font-weight: 600; }
 
-/* 票务状态标签：卡上直显 */
+/* ===== 右列：票务状态 · 三点菜单（**同一行**）=====
+   ⚠️ 2026-09-22 由 column 改 row：竖排时菜单会掉到卡片下半部，
+   与票务 chip 隔着一整个 chip 的高度，「看状态」和「动手」被拆成两块读。
+   `align-items: center` 让两者在同一水平线上对齐（票务 chip 有内边距、
+   菜单只有 4rpx，不居中的话图标会明显偏上）。 */
+.tc-right {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  /* ⚠️ 16rpx（8px）——2026-09-22 由 32rpx 收到 16rpx，用户口径「票务标签再右移 8 像素」。
+     菜单贴死在卡片右内边距上不动，收窄间距 = 票务 chip 单向右移 8px。
+     不能再小了：chip 与菜单之间要留出「点菜单不会点到 chip」的余量。 */
+  gap: 16rpx;
+  flex-shrink: 0;
+}
+
+/* 票务状态标签：卡上直显，点不进菜单 */
 .tc-state {
   font-size: 22rpx;
-  font-weight: 600;
-  padding: 6rpx 14rpx;
-  border-radius: 10rpx;
-  flex-shrink: 0;
+  padding: 6rpx 16rpx;
+  border-radius: 14rpx;
   white-space: nowrap;
 }
-.tc-state-pending   { background: var(--state-pending-bg);   color: var(--state-pending-text); }
-.tc-state-bookable  { background: var(--state-bookable-bg);  color: var(--state-bookable-text); }
-.tc-state-success   { background: var(--state-success-bg);   color: var(--state-success-text); }
-.tc-state-failed    { background: var(--state-failed-bg);    color: var(--state-failed-text); }
-.tc-state-unmarked  { background: var(--state-unmarked-bg);  color: var(--state-unmarked-text); }
-.tc-state-free      { background: var(--state-free-bg);      color: var(--state-free-text); }
+/* ⚠️ 2026-09-22 按设计稿**去掉字重 600**：chip 是状态读数不是按钮，
+   加粗后两枚 chip 会在同一屏里抢注意力（原来卡上只有一枚，加粗还行）。 */
+.tc-state-pending   { background: var(--chip-gold-bg);   color: var(--chip-gold-text); }
+.tc-state-bookable  { background: var(--chip-green-bg);  color: var(--chip-green-text); }
+.tc-state-success   { background: var(--chip-green-bg);  color: var(--chip-green-text); }
+.tc-state-failed    { background: var(--chip-red-bg);    color: var(--chip-red-text); }
+.tc-state-unmarked  { background: var(--chip-muted-bg);  color: var(--chip-muted-text); }
+.tc-state-free      { background: var(--chip-muted-bg);  color: var(--chip-muted-text); }
 .trip-card.is-history .tc-state { background: var(--state-history-bg); color: var(--state-history-text); }
 
-/* 三点菜单 */
-.tc-menu { position: relative; padding: 8rpx 4rpx 8rpx 8rpx; flex-shrink: 0; }
+/* 三点菜单。
+   ⚠️ 靶区 **104rpx**，不是 88rpx —— rpx 随屏宽缩放（1rpx = 屏宽/750）：
+      88rpx 在 375px 屏上正好 44px，但在 **320px 窄屏上只有 37.5px**，又跌破拇指下限。
+      104rpx 在 320px 屏上 44.4px，全屏宽都 ≥44px（iOS HIG 下限）。
+      2026-09-23 之前这里是 `padding: 12rpx 8rpx`（盒 44×52rpx）：横向只有 28px、
+      纵向 28px，而图标本体仅 15px（三点图标自身还有大量留白，视觉上更小）——
+      用户的原话「点右侧菜单 icon 没反应」，指的就是落在图标旁边那几十像素上。
+   ⚠️ **负外边距 = 视觉位置不变的全部秘密**，而且**横向纵向两个值不同**：
+      方框变大会按正常流占位，把票务 chip 往左顶、把右内边距吃成负值。
+      居中意味着「图标中心 = 盒中心」，要它落在旧位置就必须
+      `m_right = (新宽 − 旧盒宽)/2 = (104 − 44)/2 = 30rpx`（横向）
+      `m_top   = (新高 − 旧盒高)/2 = (104 − 52)/2 = 26rpx`（纵向）
+      这样占位回到旧的 44×52rpx，图标位置、票务 chip 位置、卡片右内边距**一个不动**，
+      只有触摸区变大。**别把两个值写成同一个**，也别只改一个方向。
+      ⚠️ 因为横向放大了 30rpx，触摸区右缘会越过卡片右内边距 13px 贴到屏幕边——
+         这是刻意的：右侧没有别的可点元素，多出来的那点面积正是"打不中"的解药。
+   ⚠️ `position: relative; z-index: 31` 不是可选修饰，而是**这个菜单能点的前提**：
+      它要和同样 z-index 31 的捕获层按文档序比大小（规则在后 + 节点在后 → 胜出）。
+      删掉它，图标会被捕获层吃掉。 */
+.tc-menu {
+  position: relative;
+  z-index: 31;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 104rpx;
+  height: 104rpx;
+  /* 纵向 -26 / 横向 -30，两个值不同（见上面推导） */
+  margin: -26rpx -30rpx;
+  flex-shrink: 0;
+}
+/* ⚠️ 展开态抬层（2026-09-23 修层级 bug）：
+   `.tc-menu-pop` 的 z-index 32 是在 `.tc-menu` 这个层叠上下文内部的，对外整张菜单=31；
+   同屏下面那张卡的 `.tc-menu` 也是 31、文档序在后，它的三点 icon 就会浮在弹出层上。
+   展开时把整条菜单抬到 40，弹出层随之浮在所有其他卡片菜单之上。
+   40 > 捕获层 31，所以图标仍在捕获层之上、能点；捕获层仍在其余页面内容之上、能关菜单。 */
+.tc-menu.is-open { z-index: 40; }
+
+/* 捕获层：菜单展开时铺满视口，负责「点卡片其它地方 = 关闭」。
+   ⚠️ 为什么是 `fixed` + 负偏移而不是 `absolute; inset: 0`：
+      `absolute` 的包含块是最近的非 static 祖先，而它的兄弟 `.tc-menu` 是
+      `position: relative` —— 直接父级 `.tc-right` 虽然 static，但祖先链里一旦出现
+      relative/transform 就会退化。四边按视口写死最省事，也不依赖祖先链。
+   ⚠️ 别改回「盖住视口、图标压在下面」那种写法（2026-09-23 踩过两次）：
+      那样第一次点开之后，图标就被自己的捕获层埋了，再也点不回去。 */
+.tc-menu-catch {
+  position: fixed;
+  top: calc(-1 * (50vh + 2000rpx));
+  left: calc(-1 * (50vw + 2000rpx));
+  width: calc(100vw + 4000rpx);
+  height: calc(100vh + 4000rpx);
+  z-index: 31;
+}
+
+/* 图标层：与捕获层同层级，靠**文档序在后**胜出（wxml 里的顺序见那里的注释）。
+   这里不再单独给 z-index —— 给了反而容易和捕获层错位成两套规则。 */
+.tc-menu-btn { position: relative; }
+
 .tc-menu-pop {
   position: absolute;
-  top: 48rpx;
+  /* ⚠️ 102rpx = 旧值 76rpx + 纵向 margin 26rpx：改靶区把定位原点从旧盒顶挪到了
+     新盒顶（负 margin 之后盒顶在旧盒顶**上方** 26rpx），所以 top 要同步加回去，
+     面板与图标的相对位置才不变。改 `.tc-menu` 的 margin 必须同步改这里。
+     ⚠️ 靶区横向放大后，面板的 `right: 0` 对齐的是新盒右缘（越过卡片右内边距 30rpx），
+     所以面板视觉上比原先右移了约 16px。要让它贴回卡片内边距，改这里的 right 偏移。 */
+  top: 102rpx;
   right: 0;
-  z-index: 30;
+  z-index: 32;
   background: var(--color-surface);
   border: 1rpx solid var(--color-border);
-  border-radius: 16rpx;
-  box-shadow: 0 8rpx 24rpx rgba(100,60,20,.16);
+  border-radius: 24rpx;
+  box-shadow: 0 4rpx 24rpx rgba(100,60,20,.10);
   min-width: 240rpx;
   padding: 8rpx 0;
+  /* 菜单里现在是五项（标记结果 / 设置·修改提醒 / 约其他日 / 删除这天），
+     小屏上可能顶到卡外——限制高度让它自己滚，别把删除项推到屏幕外。 */
+  max-height: 560rpx;
+  overflow-y: auto;
 }
 .tc-menu-item {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  padding: 18rpx 24rpx;
-  font-size: 26rpx;
+  padding: 24rpx 32rpx;
+  font-size: 28rpx;
   color: var(--color-text);
+  white-space: nowrap;
 }
 .tc-menu-item:active { background: var(--color-page); }
-.tc-menu-danger { color: #C0392B; }
+/* ⚠️ 菜单条目**不用红色**（2026-09-23 用户口径，与 trip-section 同一套）：
+   「删除这天」和「设置提醒」一样，是中性菜单条目，图标是中性金棕 #B8904A、
+   文字统一 var(--color-text)。整片红在列表里会像整页报警；危险确认交给
+   点完「删除这天」之后的确认弹窗，那里再用行动色。原先的 `.tc-menu-danger`
+   染红规则已删，类名也从 wxml 摘掉。 */
 
-/* ===== 回填气泡 =====
-   开票后才出现。开票前不问结果——用户还没抢，问他也答不上来。 */
+/* ===== 回填气泡（按 UI/28.png 一比一）=====
+ * 量取自 804px 设计稿（设备 402pt，2x）。它**不是浮层**，是卡片内部的一行：
+ *   无底色、无圆角、无阴影、无尖角，只有上方一条 1px 的 #F7F2E6 分隔线，
+ *   而且这条线与它上面那条副行共用（设计稿里只有一条，位置在副行下方 0.5px）。
+ *   所以线画在气泡自己的 border-top 上，卡片不必再画一条。
+ * ⚠️ 曾经是 `--bubble-bg` 粉色浮岛 + 尖角 + 进入动画 —— 全是自造的。
+ *    那个 --bubble-bg token 已无人使用，别再拿它回来。
+ * ⚠️ 这一行**比卡片内容再缩进一层**（左 32px），右端则收到距卡片右边 20px 处——
+ *    两边的值都在 `.tc-bubble` 的 padding 上，见那里的注释。 */
 .tc-bubble {
-  margin: 0 24rpx 24rpx;
-  background: var(--bubble-bg);
-  border-radius: 16rpx;
-  padding: 20rpx 24rpx;
-  position: relative;
-  animation: tc-rise .3s cubic-bezier(.22,1,.36,1);
-}
-/* 小尖角指向卡片主行，让气泡「属于这张卡」的归属关系一眼可读 */
-.tc-bubble::before {
-  content: "";
-  position: absolute;
-  top: -8rpx;
-  left: 40rpx;
-  width: 16rpx;
-  height: 16rpx;
-  background: var(--bubble-bg);
-  transform: rotate(45deg);
-  border-radius: 3rpx;
-}
-@keyframes tc-rise {
-  from { opacity: 0; transform: translateY(-8rpx); }
-  to   { opacity: 1; transform: none; }
-}
-
-.tc-bubble-q { font-size: 27rpx; font-weight: 600; color: var(--bubble-text); display: block; }
-.tc-bubble-hint { font-size: 22rpx; color: var(--color-text); margin-top: 4rpx; display: block; }
-
-.tc-bubble-acts { display: flex; align-items: center; gap: 16rpx; margin-top: 16rpx; }
-.tc-bubble-btn {
-  flex: 1;
-  text-align: center;
-  border-radius: 12rpx;
-  padding: 16rpx 0;
-  font-size: 25rpx;
-  font-weight: 600;
-}
-.tc-bubble-btn:active { opacity: .85; }
-.tc-bubble-yes { background: var(--color-primary); color: #FDF6EE; }
-.tc-bubble-no  { background: rgba(255,255,255,.85); color: var(--color-primary); }
-/* 「忽略」是次级动作，不占等分宽度，避免和两键抢注意力 */
-.tc-bubble-skip { flex: 0 0 auto; padding: 16rpx 8rpx; font-size: 24rpx; color: var(--color-muted); }
-
-/* ===== 挽回快捷入口 ===== */
-.tc-recover {
+  /* ⚠️ 整行**横排**：提示文字在左、动作在右，这是设计稿的核心结构。
+     写成块级（默认）按钮会掉到下一行、提示语独占一行右边空一大片。 */
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
-  margin: 0 24rpx 24rpx;
-  padding: 16rpx 20rpx;
-  background: var(--color-page);
-  border-radius: 14rpx;
+  /* ⚠️ **右对齐**：设计稿里这一组是贴着右边排的，左边空着。
+     实测两行（「票抢到了吗?」与「还有其他日期可约」）的提示语左端分别是
+     273 / 313，右端都是 ~730 —— 宽度不同、右端对齐，只有 flex-end 能给出这个结果。
+     左对齐会把提示语顶到卡片最左边，与上面的景点名同起点，看起来是第三行正文，
+     而不是「对这张卡的一次追问」。 */
+  justify-content: flex-end;
+  /* 上下 = **12px**（Figma Layout 给的 `padding: 12px 16px`）：
+     分隔线到这一行 12px、这一行到卡片底 12px。
+     ⚠️ 上一版是 20/22px，偏大 —— 这一行是卡片内部的次级信息，不该占那么厚。
+     左 32px（设计稿里比卡片内容再缩进 16px）；
+     右 20px（用户 2026-09-23 口径：「忽略」的右边到卡片右边 20px）。
+     ⚠️ Figma 给的横向是 16px，与上一轮定的 20px 冲突，暂按 20px 保留左 32/右 20，
+        等确认后一并改（见对话）。 */
+  padding: 24rpx 38rpx 24rpx 64rpx;
+  border-top: 1rpx solid #F7F2E6;
 }
-.tc-recover-text { font-size: 23rpx; color: var(--color-text); flex: 1; min-width: 0; }
-.tc-recover-btn {
+/* ⚠️ 真机与设计稿的**字号/行高看起来对不上**，原因在这里：
+   设计稿是 Figma 画的中文，字是**足码正方**（22px 的方框占满 22px）；
+   微信渲染中文时会留字面内边距（一般上小下大），同样的 font-size
+   量出来只有 ~19px。差约 1/8，按字面值写会偏小一号。（2026-09-22 踩过。） */
+/* ⚠️ 提示语**不吃满剩余宽度**（不是 flex:1）：整行右对齐，
+   它只占自己的自然宽度，多余的空间留在左边。
+   但不能不设 min-width —— 文案变长时得能收缩，否则会把药丸挤出卡片。 */
+.tc-bubble-q {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-right: 22rpx;
+  font-size: 22rpx;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 动作组：两枚药丸 + 忽略。gap 22rpx = 12px（设计上药丸之间就是 12px）。 */
+.tc-bubble-acts {
+  display: flex;
+  align-items: center;
+  gap: 22rpx;
   flex-shrink: 0;
-  font-size: 23rpx;
-  font-weight: 600;
-  color: var(--color-primary);
-  border: 1rpx solid var(--color-primary);
-  border-radius: 999rpx;
-  padding: 8rpx 20rpx;
 }
-.tc-recover-btn:active { background: rgba(192,71,42,.08); }
+
+/* 药丸（Figma Layout 逐值采用）：
+     display:flex; padding: 6px 8px; justify-content:center; align-items:center; gap:10px;
+   换算：padding 12rpx 16rpx、gap 20rpx。
+   ⚠️ **不写死高度**：设计给的就是「上下 6px 内边距 + 文字行盒」，
+      定高会把字号和高度解耦，之后调字号就得回来重算一遍。
+      配上 line-height:1，整颗 ≈ 23.6px，与设计稿实测的 22px 同档。
+   ⚠️ 上一版这里写的 `height: 80rpx` 是**换算错的**：80rpx = 42.9px，
+      而设计稿量出来只有 22px（41rpx）—— 整颗药丸被撑成两倍高。
+   圆角 16rpx = 8.6px（设计 8px）。字号 22rpx ≈ 11.8px（同 22rpx 的徽标，
+      设计稿上两者字面一样大）。 */
+.tc-bubble-btn {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20rpx;
+  flex-shrink: 0;
+  padding: 12rpx 16rpx;
+  line-height: 1;
+  border-radius: 16rpx;
+  font-size: 22rpx;
+}
+.tc-bubble-btn:active { opacity: .85; }
+/* 设计稿里的主按钮是**哑光金 #B8904A**（与 tabbar 选中态同色），不是朱砂红：
+   这一行是「标记结果」的中性动作，朱砂是行动召唤色，用在这里会过重。 */
+.tc-bubble-yes { background: var(--color-muted); color: #FFFEFB; }
+/* 次按钮：白底 + 极淡描边（#DDD0B5，实测约 (221,208,181)） */
+.tc-bubble-no {
+  background: var(--color-surface);
+  border: 1rpx solid var(--divider-strong);
+  color: var(--color-muted);
+}
+/* 「约其他日」也是主按钮，与「抢到了」同款哑光金：两个都是「往前一步」的动作 */
+.tc-bubble-go { background: var(--color-muted); color: #FFFEFB; }
+
+/* 「忽略」是次级文字动作，不占药丸，靠近右边缘 */
+/* 左边留 14rpx：不加的话「忽略」会紧贴「没抢到」，设计稿里这一处约 20px。 */
+.tc-bubble-skip {
+  flex: 0 0 auto;
+  padding: 16rpx 0 16rpx 14rpx;
+  font-size: 22rpx;
+  color: var(--text-faint);
+}
+.tc-bubble-skip:active { opacity: .6; }
+
+/* 「约其他日」是挽回态的主按钮，用金实底与「抢到了」的朱砂实底区分：
+   两者是不同的决策，同色会让用户以为点哪个都一样 */
+.tc-bubble-go  { background: var(--color-muted); color: #FFFEFB; }
+/* 「忽略」是次级动作，不占等分宽度，避免和主键抢注意力 */
+.tc-bubble-skip { flex: 0 0 auto; padding: 16rpx 8rpx; font-size: 24rpx; color: var(--color-muted); }

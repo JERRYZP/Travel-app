@@ -4,7 +4,7 @@
  */
 const TL = require('../cloudfunctions/reminder/lib/timeline.js');
 const time = require('../cloudfunctions/reminder/lib/time.js');
-const { EventSelectStatus, ReleaseStatus } = require('../cloudfunctions/reminder/lib/schema.js');
+const { EventSelectStatus } = require('../cloudfunctions/reminder/lib/schema.js');
 
 const spots = require('../data/spots.json').spots;
 const rules = require('../data/rules.json').rules;
@@ -99,10 +99,12 @@ const future = { releaseAt: new Date(Date.now() + 86400000) };
 const past = { releaseAt: new Date(Date.now() - 86400000) };
 eq(TL.resolveStatus(future, {}), EventSelectStatus.SELECTABLE, '未放票 → SELECTABLE');
 eq(TL.resolveStatus(future, { inCart: true }), EventSelectStatus.IN_CART, '在清单 → IN_CART');
-eq(TL.resolveStatus(future, { task: { backendStatus: 'WAITING' } }), EventSelectStatus.WAITING, '已提交 → WAITING');
-eq(TL.resolveStatus(past, {}), EventSelectStatus.BOOKABLE, '已放票 → BOOKABLE');
-eq(TL.resolveStatus(past, { releaseStatus: ReleaseStatus.FULL }), EventSelectStatus.FULL, '约满 → FULL');
-eq(TL.buttonOf(EventSelectStatus.FULL).enabled, false, '已约满置灰');
+eq(TL.resolveStatus(future, { committed: true }), EventSelectStatus.COMMITTED, '已提交 → COMMITTED');
+eq(TL.resolveStatus(past, {}), EventSelectStatus.SELECTABLE, '已开票仍可加入清单，不进入预约态');
+eq(TL.buttonOf(EventSelectStatus.SELECTABLE).text, '加入清单', '时间线按钮固定为「加入清单」');
+eq(TL.releaseStateOf({ reservationRequired: true, releaseAt: future.releaseAt }).label, '待开票', '未到点 → 待开票');
+eq(TL.releaseStateOf({ reservationRequired: true, releaseAt: past.releaseAt }).label, '已开票', '已到点 → 已开票');
+eq(TL.releaseStateOf({ reservationRequired: false, releaseAt: null }).label, '无需预约', '免预约 → 无需预约');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
 process.exit(fail ? 1 : 0);

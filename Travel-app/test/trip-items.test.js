@@ -71,7 +71,11 @@ function freshDb() {
   const list = await cart.list(db, USER, t.tripId);
   eq(list.summary.count, 1, '购物车共 1 项');
   eq(list.summary.reminderCount, 0, '免预约项不产生提醒数');
-  eq(list.groups[0].label, '无需预约', '免预约项独立分组');
+  eq(list.groups.length, 1, '按出行日形成一个分组');
+  eq(list.groups[0].key, freeDate, '分组 key 是出行日');
+  eq(list.groups[0].label, time.formatMonthDayWeek(freeDate).replace(' (', ' · ').replace(')', ''),
+    '分组标题显示出行日');
+  eq(list.groups[0].dayLabel, '【第1天】', '分组带首页同款出行日序号');
 
   const committed = await task.submit(db, USER, { tripId: t.tripId });
   eq(committed.success, true, '无提醒购物车直接提交成功');
@@ -88,7 +92,7 @@ function freshDb() {
   tl = await timeline.generate(db, USER, t.tripId);
   const committedEvent = tl.events.find(e => e.visitDate === freeDate);
   eq(committedEvent.status, EventSelectStatus.COMMITTED, '提交后时间线显示已加入行程');
-  eq(committedEvent.button.text, '已加入行程', '已加入行程按钮不可再点');
+  eq(committedEvent.button.text, '已加行程', '已加行程按钮不可再点');
 
   const adjacent = await trip.create(db, USER, {
     startDate: time.addDays(end, 1),
@@ -149,6 +153,64 @@ function freshDb() {
   const taskItem = items.find(i => i._id === tasks[0].itemId);
   eq(taskItem.spotId, 'gugong', '任务关联到正确行程项');
   eq(items.find(i => i.spotId === 'badaling').remindOn, false, '弱提醒行程项未设提醒');
+
+  console.log('\n=== 3. disableReminders：仅加行程，不创建提醒 ===');
+  db = freshDb();
+  const freeVisit = time.addDays(time.todayStr(), 30);
+  const disabledAdded = await cart.add(db, USER, {
+    spotId: 'gugong',
+    visitDate: freeVisit,
+    remindOn: true,
+  });
+  eq(disabledAdded.success, true, '暂存清单加入一条提醒项');
+  const disabledCommit = await task.submit(db, USER, { disableReminders: true });
+  eq(disabledCommit.success, true, '未传 channels/offsets 也能降级提交');
+  eq(disabledCommit.disableReminders, true, '响应标记 disableReminders');
+  eq(disabledCommit.createdItems, 1, '仍创建行程项');
+  eq(disabledCommit.createdTasks, 0, '不创建提醒任务');
+  eq(disabledCommit.noReminder, 1, '全部项计为不提醒');
+  eq(db._size(COLLECTIONS.REMINDER_TASKS), 0, '任务集合为空');
+  eq(db._dump(COLLECTIONS.TRIP_ITEMS)[0].remindOn, false, '行程项提醒开关为 false');
+
+  db = freshDb();
+  const realTrip = await trip.create(db, USER, {
+    startDate: freeVisit,
+    endDate: freeVisit,
+    spotIds: ['gugong'],
+  });
+  await cart.add(db, USER, {
+    tripId: realTrip.tripId,
+    spotId: 'gugong',
+    visitDate: freeVisit,
+    remindOn: true,
+  });
+  const rejectedDisable = await task.submit(db, USER, {
+    tripId: realTrip.tripId,
+    disableReminders: true,
+  });
+  eq(rejectedDisable.success, false, '真实 tripId 不允许批量关闭提醒');
+  eq(rejectedDisable.errorCode, 1010, '返回参数错误');
+
+  console.log('\n=== 4. 指定 cartId：补录只提交一条，不消费其他草稿 ===');
+  db = freshDb();
+  const firstVisit = time.addDays(time.todayStr(), 30);
+  const secondVisit = time.addDays(time.todayStr(), 31);
+  const first = await cart.add(db, USER, {
+    spotId: 'gugong', visitDate: firstVisit, remindOn: false,
+  });
+  await cart.add(db, USER, {
+    spotId: 'guobo', visitDate: secondVisit, remindOn: false,
+  });
+  const scopedCommit = await task.submit(db, USER, {
+    cartId: first.cartId,
+    disableReminders: true,
+  });
+  eq(scopedCommit.success, true, '指定 cartId 提交成功');
+  eq(scopedCommit.createdItems, 1, '只创建一个行程项');
+  eq(db._dump(COLLECTIONS.TRIP_ITEMS)[0].spotId, 'gugong', '创建的是指定项');
+  eq(db._size(COLLECTIONS.TRIP_ITEMS), 1, '其他草稿没有落库');
+  eq(db._size(COLLECTIONS.REMINDER_CART), 1, '其他草稿仍保留在暂存清单');
+  eq(db._dump(COLLECTIONS.REMINDER_CART)[0].spotId, 'guobo', '保留的是未指定项');
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);

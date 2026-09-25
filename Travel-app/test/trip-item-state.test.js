@@ -44,7 +44,10 @@ eq(stateOf({ item: null, reservationRequired: true, releaseAt: releaseBefore(V1.
   TicketState.BOOKABLE, '恰好 24 小时 → 仍在可抢窗口（闭区间）');
 eq(stateOf({ item: null, reservationRequired: true, releaseAt: releaseBefore(V1.UNMARKED_AFTER_HOURS + 1) }),
   TicketState.UNMARKED, '超过 24 小时 → 未标记');
-eq(item.ticketStateLabelOf(TicketState.UNMARKED), '开过票了', 'UNMARKED 文案是中性态，不叫「未成」');
+/* ⚠️ 2026-09-22 六个展示态**整体换词**（按设计稿）：待抢→待抢票、可抢→可抢票、
+   已成→已约到、未成→未抢到、开过票了→未标记。换的是**文案不是语义**——
+   UNMARKED 仍然是中性态，别因为「未标记」字面像「未抢到」就把它改判成失败。 */
+eq(item.ticketStateLabelOf(TicketState.UNMARKED), '未标记', 'UNMARKED 文案是中性态，不叫「未抢到」');
 
 console.log('=== 4. 人工结果覆盖时间态（这是计算顺序的关键） ===');
 eq(stateOf({ item: { result: 'SUCCESS' }, reservationRequired: true, releaseAt: releaseAfter(10) }),
@@ -53,8 +56,10 @@ eq(stateOf({ item: { result: 'SUCCESS' }, reservationRequired: true, releaseAt: 
   TicketState.SUCCESS, '已标记「抢到了」不因超过 24 小时而变成未标记');
 eq(stateOf({ item: { result: 'FAILED' }, reservationRequired: true, releaseAt: releaseBefore(100) }),
   TicketState.FAILED, '已标记「没抢到」稳定保持');
-eq(item.ticketStateLabelOf(TicketState.SUCCESS), '已成', 'SUCCESS 文案');
-eq(item.ticketStateLabelOf(TicketState.FAILED), '未成', 'FAILED 文案');
+eq(item.ticketStateLabelOf(TicketState.SUCCESS), '已约到', 'SUCCESS 文案');
+eq(item.ticketStateLabelOf(TicketState.FAILED), '未抢到', 'FAILED 文案');
+/* 兜底值最容易漏改，而它的症状正是「文案改了一半」——补上，别只靠肉眼 */
+eq(item.ticketStateLabelOf('WHATEVER'), '待抢票', '未知态兜底也是新文案');
 
 console.log('=== 5. 无放票时刻的需预约景点 ===');
 // 环球影城这类「需预约但无固定放票规则」：不算免预约，但也没有可抢的时刻

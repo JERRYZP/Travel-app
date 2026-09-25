@@ -1,33 +1,39 @@
 <view class="trip-section {{history ? 'is-history' : ''}}">
-  <!-- 吸顶时标题脱离文档流，撑一个等高的占位防止内容跳动 -->
-  <view wx:if="{{sticky}}" class="ts-spacer" style="height: {{headHeight}}px;"></view>
-
-  <!-- 行程分段：城市 + 日期范围 + 紧凑进度 + 右侧行程管理入口 -->
-  <view
-    id="sec-{{trip._id}}"
-    class="ts-head {{sticky ? 'is-sticky' : ''}} {{weak ? 'is-weak' : ''}}"
-    style="{{sticky ? 'top: ' + stickyTop + 'px;' : ''}}"
-  >
+  <!-- ⚠️ 行程分段标题：**按 weak 取舍**，不是一刀切（2026-09-21 用户口径）。
+       顶部摘要卡只展示**最近即将发生或正在发生**的那一趟，所以：
+         - `weak === true`（就是摘要卡那趟）：标题行与摘要卡是同一批信息，同屏重复 → 不渲染；
+         - `weak === false`（后面还没发生的行程）：摘要卡没有覆盖它，没有标题行就会直接
+           塌成一堆裸日期，读不出「这是独立的一段、到哪结束」→ **必须渲染**。
+       「未来行程」那行小字只是摘要卡上的**指路**，不是这个标题的替代品：
+       小字没有进度、也不承载分段的视觉边界。
+       右侧原有的「行程管理」入口与分段吸顶已废止（与摘要卡重复 / 不再有该行需求），
+       连带删掉了页面的滚动测位逻辑与下发的吸顶属性。 -->
+  <view wx:if="{{!weak}}" class="ts-head">
     <view class="ts-head-left">
       <text class="ts-city">{{trip.city}}</text>
       <text class="ts-range">{{dateRange}}</text>
       <text class="ts-progress">{{progressText}}</text>
     </view>
-    <view wx:if="{{!history}}" class="ts-manage" catchtap="onManage">
-      <svg-icon name="list" size="14px" />
-      <text>行程管理</text>
-    </view>
   </view>
-
   <view wx:for="{{days}}" wx:key="key" wx:for-item="day" class="ts-day">
     <!-- 日期分段标题：带「删除当天行程」菜单（删除动线第二层） -->
     <view class="ts-day-head">
       <text class="ts-day-title">{{day.title}}</text>
       <view class="ts-day-badge">{{day.badge}}</view>
       <view class="ts-day-line"></view>
-      <view wx:if="{{!history}}" class="ts-day-menu" catchtap="onDateMenuToggle" data-date="{{day.key}}">
-        <svg-icon name="menu-muted" size="13px" />
-        <view wx:if="{{day.menuOpen}}" class="ts-day-pop" catchtap="onMenuClose">
+      <!-- ⚠️ 捕获层与 `.ts-day-menu` 平级、且在它之前 —— 与 `trip-card` 的三点菜单
+           同款结构（那边有完整原理注释，包括「放进容器里就永远浮不起来」这条踩坑）。
+           两者同为 z-index 31，靠文档序决胜：图标在后 → 胜出。 -->
+      <view wx:if="{{day.menuOpen && !history}}" class="ts-day-catch" catchtap="onMenuClose" catchtouchmove="noop"></view>
+      <view wx:if="{{!history}}" class="ts-day-menu" bindtap="onDateMenuToggle" data-date="{{day.key}}">
+        <view class="ts-day-btn">
+          <svg-icon name="menu-muted" size="13px" />
+        </view>
+        <!-- ⚠️ 弹出层自己**不带关闭手势**（2026-09-23 删掉 `catchtap="onMenuClose"`）：
+             它和 `.ts-day-pop-item` 各自绑 catchtap，条目会先触发关闭，
+             切掉 `menuDate` 后整块 `wx:if` 被摘掉、紧接着的 `removedate` 事件
+             就没人接了 —— 点「删除当天行程」静默失败。 -->
+        <view wx:if="{{day.menuOpen}}" class="ts-day-pop">
           <view class="ts-day-pop-item" catchtap="onRemoveDate" data-date="{{day.key}}">
             <svg-icon name="trash" size="14px" /><text>删除当天行程</text>
           </view>
@@ -44,16 +50,17 @@
       history="{{history}}"
       menu-id="{{menuId}}"
       bubble-dismissed="{{it.bubbleDismissed}}"
+      recover-dismissed="{{it.recoverDismissed}}"
       recoverable="{{it.recoverable}}"
-      recover-hint="{{it.recoverHint}}"
       bind:spot="onCardSpot"
-      bind:menu="onCardMenu"
       bind:menuclose="onMenuClose"
       bind:mark="onCardMark"
       bind:editreminder="onCardEditReminder"
       bind:remove="onCardRemove"
       bind:result="onCardResult"
       bind:dismiss="onCardDismiss"
+      bind:dismissrecover="onCardDismissRecover"
+      bind:menutoggle="onCardMenuToggle"
       bind:recover="onCardRecover"
       bind:missedreason="onCardMissedReason"
     />

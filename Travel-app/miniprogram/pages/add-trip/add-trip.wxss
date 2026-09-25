@@ -88,12 +88,18 @@
 }
 .form-city-card {
   flex-shrink: 0;
-  width: 180rpx;
+  /* ⚠️ 180 → 150rpx、左右内边距 16 → 12rpx（2026-09-24 用户口径）。
+     目的是把宽度让给右边的日期段，让「9月24日 周四 - 9月30日 周三」不换行。
+     ⚠️ **150 是下限，不要再往下压**：这一格的内容 =
+     `location 图标 16px(32rpx) + gap 8 + 北京(24rpx 字号 ×2 字 = 48) + gap 8 + chevron-down 14px(28)`
+     = 124rpx，减去左右各 12rpx 内边距后可用 126rpx —— 只剩 2rpx 余量。
+     再窄就会把「北京」挤成两行或压扁图标；真要更窄，得先动字号或图标尺寸。 */
+  width: 150rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8rpx;
-  padding: 0 16rpx;
+  padding: 0 12rpx;
   height: 88rpx;
   background: var(--color-surface);
   border: 1rpx solid var(--color-border);
@@ -157,6 +163,17 @@
   min-width: 0;
   display: flex;
   align-items: center;
+}
+.form-date-row .form-value {
+  /* ⚠️ 两个 `nowrap` 是「日期段不换行」的**硬保障**（2026-09-24）。
+     城市卡改窄后通常已经装得下，这一条是兜底：
+     `formatDateRange` 最长会给出「12月28日 周一 - 1月3日 周日」——
+     按 26rpx 字号估算约 8 个全角(26rpx) + 6 个数字/空格(13rpx) ≈ 340rpx，
+     而日期段实际可用约 360rpx，本就够；但一旦将来有人加长文案或调大字号，
+     没有这条就会静默折成两行（正是本次要修的现象）。
+     文本本身带空格，`word-break` 必须显式写：不写时小程序会在空格处断行。 */
+  white-space: nowrap;
+  word-break: keep-all;
 }
 .form-day-count {
   flex-shrink: 0;
@@ -583,23 +600,29 @@
   background: var(--color-surface);
 }
 
-/* 时间线标题区：滚动越过导航栏下方后吸顶 */
+/* 时间线头部（标题 → 一键加入清单）吸顶。
+   ⚠️ 用 `position: sticky` 而**不是** fixed + 逐帧测位置：前者由渲染层自己算，
+     后者每次滚动都发一轮 `boundingClientRect` 查询、还要手工管占位元素。
+   ⚠️ `top` **必须由模板内联给出**（= 导航栏高度）：导航栏是 fixed 的、挡住 0 高度
+     那一截，写死 `top: 0` 会让头部吸到屏幕最顶上、被导航栏压住；而导航栏高度
+     跟状态栏走、各机型不同，wxss 里没法写常量。本页根节点是 `<scroll-view>`，
+     sticky 在滚动容器内生效、以它为上界。
+   ⚠️ 吸顶块**整体不透明**：它是白底 `--color-surface`，但行程标题、日期卡没有背景，
+     直接从下面透过来会把标题糊掉。底色 + 底部阴影都落在自身。
+   z-index 85 在导航栏（90）之下：滑到底时被导航栏盖住是预期行为。 */
 .timeline-panel {
-  padding: 24rpx 0 8rpx;
-  margin-bottom: 16rpx;
-}
-.timeline-panel-fixed {
-  position: fixed;
-  left: 0;
-  right: 0;
-  padding: 24rpx 0 8rpx;
-  box-sizing: border-box;
-  background: var(--color-surface);
+  position: sticky;
   z-index: 85;
+  /* padding-bottom 8→16rpx（2026-09-24 用户口径 +4px）：拉大「一键加入清单」
+     到模块底边（那条细线）的距离。⚠️ 是**内边距**不是外边距——
+     外边距推的是模块底边往下到第一张卡的距离，改错了位置用户一眼看得出来。 */
+  padding: 24rpx 0 16rpx;
+  margin-bottom: 16rpx;
+  background: var(--color-surface);
   border-bottom: 1rpx solid var(--color-border);
   box-shadow: 0 4rpx 12rpx rgba(100,60,20,0.08);
+  box-sizing: border-box;
 }
-.timeline-header-spacer { width: 100%; }
 
 .timeline-title-row {
   display: flex;
@@ -650,7 +673,8 @@
 }
 .tab-item {
   display: inline-block;
-  padding: 8rpx 20rpx;
+  /* 纵向内边距 8→12rpx（2026-09-24 用户口径 +4px）：日期 Tab 偏矮、点击靶区不够 */
+  padding: 12rpx 20rpx;
   margin-right: 12rpx;
   border-radius: 12rpx;
   font-size: 22rpx;
@@ -745,6 +769,7 @@
   font-size: 20rpx;
   color: #8A6955;
 }
+.event-status-RELEASED { color: var(--chip-green-text); }
 .event-name-row {
   display: flex;
   align-items: center;
@@ -809,19 +834,20 @@
   box-sizing: border-box;
 }
 .event-btn-SELECTABLE { background: #F5DDD5; color: var(--color-primary); }
-.event-btn-IN_CART { background: #FAF7F2; border: 1rpx solid #D7BF96; color: #A68045; }
-.event-btn-WAITING, .event-btn-REMINDERED { background: var(--color-surface); border: 1rpx solid #E8E0D0; color: #A99180; }
-.event-btn-BOOKABLE { background: #B8904A; color: #fff; }
-.event-btn-COMMITTED { background: var(--color-surface); border: 1rpx solid #E8E0D0; color: #A99180; }
-.event-btn-FULL { background: #EDE5D2; color: #B8904A; }
+/* ⚠️ 2026-09-24 起这两个「已加」态是**状态胶囊**，不是按钮：中性底、去掉彩边
+   （旧值 `#FAF7F2` + `#D7BF96` 金边看起来就是个能按的金色按钮，而它点了没反应）。
+   判定真身仍是 `timeline.js` 的 buttonOf —— 视觉改的是「像什么」，不是「能不能点」：
+   IN_CART **仍然可点**（打开清单弹层），把 enabled 改成 false 会堵死那条动线。 */
+.event-btn-IN_CART,
+.event-btn-COMMITTED {
+  background: #F5F1E9;
+  color: #A99180;
+}
 .event-btn-sub {
   font-size: 20rpx;
   color: #B59E80;
   text-align: center;
 }
-
-.closed-spots { margin-top: 24rpx; }
-.closed-spot { display: flex; align-items: center; gap: 8rpx; padding: 12rpx 0; font-size: 24rpx; color: var(--color-muted); }
 
 .loading-wrap { display: flex; justify-content: center; padding: 80rpx 0; }
 
@@ -870,7 +896,10 @@
   gap: 8rpx;
   padding: 16rpx 36rpx;
   background: var(--color-primary);
-  border-radius: 32rpx;
+  /* 2026-09-24 用户口径「圆角改为最大」= 胶囊形。用 999rpx 而不是 50%：
+     50% 在宽大于高的按钮上会画成椭圆（左右两端被拉平），胶囊要的是
+     半径 ≥ 半高——999rpx 一定大于任何半高，渲染出来就是标准胶囊。 */
+  border-radius: 999rpx;
   color: #fff;
   font-size: 26rpx;
   font-weight: 500;

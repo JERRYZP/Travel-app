@@ -17,9 +17,9 @@
 
 const { COLLECTIONS, ERRORS, PENDING_CART_TRIP_ID, ok, fail } = require('./schema');
 const time = require('./time');
+const item = require('./item');
 const tripItem = require('./trip-item');
 
-const NO_RESERVATION_GROUP = '__no_reservation__';
 
 /**
  * 清单归属的 tripId 归一化。
@@ -52,66 +52,51 @@ function summarize(items) {
   };
 }
 
+/** 清单分组标题用「M月D日 · 周X」。 */
+function formatVisitDateLabel(visitDate) {
+  return time.formatMonthDayWeek(visitDate).replace(' (', ' · ').replace(')', '');
+}
+
+/** 放票副行用「MM月DD日 HH:mm 放票」，月/日保留前导零。 */
+function formatReleaseDateLabel(releaseAt) {
+  const p = time.beijingParts(new Date(releaseAt));
+  const mm = String(p.month).padStart(2, '0');
+  const dd = String(p.day).padStart(2, '0');
+  return `${mm}月${dd}日`;
+}
+
 /**
- * 购物车分组：
- * - 需预约项按放票日期分组；
- * - 免预约项统一放最后一个“无需预约”分组，按出行日排序。
+ * 清单按**出行日**分组，而不是按放票日。
+ *
+ * 用户在这一页管理的是“哪天去哪些地方”；放票时间只作为该行程项的属性。
+ * 免预约项与需预约项共用同一个出行日分组，不再单列“无需预约”块。
  */
-function groupByReleaseDate(items, nowTs = time.now()) {
-  const map = new Map();
-  for (const it of items) {
-    if (it.reservationRequired === false) {
-      const key = NO_RESERVATION_GROUP;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push({
-        ...it,
-        releaseTimeLabel: '无需预约',
-        visitDateLabel: `${time.formatMonthDayWeek(it.visitDate)} · 随到随玩`,
-        countdown: null,
-      });
-      continue;
-    }
-
-    const releaseAt = new Date(it.releaseAt);
-    const dateStr = time.toDateStr(releaseAt);
-    if (!map.has(dateStr)) map.set(dateStr, []);
-
-    const msLeft = releaseAt.getTime() - nowTs.getTime();
-    const totalMin = Math.max(0, Math.floor(msLeft / 60000));
-    map.get(dateStr).push({
-      ...it,
-      releaseTimeLabel: time.formatHourMinute(releaseAt),
-      visitDateLabel: `约 ${time.formatMonthDayWeek(it.visitDate)} 门票`,
-      countdown: {
-        hours: Math.floor(totalMin / 60),
-        minutes: totalMin % 60,
-        text: `还剩${Math.floor(totalMin / 60)}h ${totalMin % 60}m`,
-        urgent: msLeft > 0 && msLeft < 3600 * 1000,
-        expired: msLeft <= 0,
-      },
-    });
-  }
-
-  return [...map.entries()]
-    .sort((a, b) => {
-      if (a[0] === NO_RESERVATION_GROUP) return 1;
-      if (b[0] === NO_RESERVATION_GROUP) return -1;
-      return a[0].localeCompare(b[0]);
-    })
-    .map(([dateStr, list]) => ({
-      key: dateStr,
-      label: dateStr === NO_RESERVATION_GROUP ? '无需预约' : time.formatMonthDayWeek(dateStr),
-      items: list.sort((a, b) => {
-        if (dateStr === NO_RESERVATION_GROUP) return a.visitDate.localeCompare(b.visitDate);
-        return new Date(a.releaseAt) - new Date(b.releaseAt);
+function groupByVisitDate(items) {
+  const dates = [...new Set(items.map(i => i.visitDate).filter(Boolean))].sort();
+  const firstDate = dates[0];
+  return dates.map(visitDate => ({
+    key: visitDate,
+    label: formatVisitDateLabel(visitDate),
+    dayLabel: firstDate ? `【第${time.diffDays(firstDate, visitDate) + 1}天】` : '',
+    items: items
+      .filter(i => i.visitDate === visitDate)
+      .sort((a, b) => {
+        const af = a.reservationRequired === false ? 1 : 0;
+        const bf = b.reservationRequired === false ? 1 : 0;
+        if (af !== bf) return af - bf;
+        const at = a.releaseAt ? new Date(a.releaseAt).getTime() : Number.MAX_SAFE_INTEGER;
+        const bt = b.releaseAt ? new Date(b.releaseAt).getTime() : Number.MAX_SAFE_INTEGER;
+        if (at !== bt) return at - bt;
+        return String(a.spotName || '').localeCompare(String(b.spotName || ''), 'zh-CN');
       }),
-    }));
+  }));
 }
 
 /** CART-RULE-001 加入清单（单条） */
 async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn }) {
   if (!spotId || !visitDate) return fail(ERRORS.BAD_PARAM);
   const targetTripId = cartTripIdOf(tripId);
+  const nowTs = time.now();
 
   const [spotRes, ruleRes] = await Promise.all([
     db.collection(COLLECTIONS.SPOTS).where({ spotId }).get(),
@@ -125,10 +110,24 @@ async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn 
   let resolvedReleaseAt = null;
   let resolvedRemindOn = false;
   if (reservationRequired) {
-    const remindable = !!(rule && rule.advanceDays && (rule.releaseTimes || rule.releaseTime));
-    if (!remindable || !releaseAt) return fail(ERRORS.BAD_PARAM);
-    resolvedReleaseAt = new Date(releaseAt);
-    resolvedRemindOn = typeof remindOn === 'boolean' ? remindOn : tripItem.defaultRemindOn(spot);
+    /* ⚠️ **放票时刻服务端自己推**，不信任调用方传的那个（2026-09-24）：
+       它由 `visitDate − advanceDays` 在 `lib/item.js` 里唯一推出，调用方再传一遍
+       就是第二套口径，迟早对不上。
+
+       ⚠️ 更要紧的是：**「约其他日」这条动线根本没有 releaseAt 可传**。
+       它拿到的是用户从日历里选的一个日期（`date-picker-sheet` 只回 visitDate），
+       以前这里直接 `!releaseAt → BAD_PARAM`，用户点「确定」只会看到
+       「请检查输入」——挽回线点得开、走不通。别把这道校验改回去：
+       用户要的是「换一天再抢」，页面不该为了凑一个参数去重算放票时刻。 */
+    const derived = item.deriveReleaseAt(spot, rule, visitDate);
+    if (!derived) return fail(ERRORS.BAD_PARAM);
+    resolvedReleaseAt = derived;
+    /* 已过放票时刻的项只能“仅加行程”：此时提醒已经不可能送达，
+       不能再让用户在清单里切换成一个最终必然失败的开关。 */
+    const releasePassed = new Date(resolvedReleaseAt).getTime() <= nowTs.getTime();
+    resolvedRemindOn = releasePassed
+      ? false
+      : (typeof remindOn === 'boolean' ? remindOn : tripItem.defaultRemindOn(spot));
   }
 
   // 逻辑唯一约束 (userId, tripId, spotId, visitDate) —— 在暂存区里就是 (userId, spotId, visitDate)
@@ -152,7 +151,7 @@ async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn 
       releaseAt: resolvedReleaseAt,
       remindOn: resolvedRemindOn,
       reservationRequired,
-      createdAt: time.now(),
+      createdAt: nowTs,
     },
   });
   return ok({ cartId: res._id, remindOn: resolvedRemindOn });
@@ -190,6 +189,10 @@ async function updateRemindOn(db, userId, cartId, remindOn) {
   const item = (res.data || [])[0];
   if (!item) return fail(ERRORS.BAD_PARAM);
   if (item.reservationRequired === false && remindOn) return fail(ERRORS.BAD_PARAM);
+  const releasePassed = item.reservationRequired !== false
+    && item.releaseAt
+    && new Date(item.releaseAt).getTime() <= time.now().getTime();
+  if (releasePassed) return fail(ERRORS.REMINDER_WINDOW_CLOSED);
   await db.collection(COLLECTIONS.REMINDER_CART).doc(cartId).update({
     data: { remindOn: remindOn === true },
   });
@@ -231,6 +234,7 @@ async function list(db, userId, tripId = null) {
   const where = { userId, tripId: cartTripIdOf(tripId) };
   const res = await db.collection(COLLECTIONS.REMINDER_CART).where(where).get();
   const items = res.data || [];
+  const nowTs = time.now();
 
   const spotIds = [...new Set(items.map(i => i.spotId))];
   let spotMap = {};
@@ -243,17 +247,45 @@ async function list(db, userId, tripId = null) {
   const enriched = items.map(i => {
     const spot = spotMap[i.spotId];
     const reservationRequired = i.reservationRequired !== false && (!spot || spot.reservationRequired !== false);
+    const releasePassed = reservationRequired
+      && i.releaseAt
+      && new Date(i.releaseAt).getTime() <= nowTs.getTime();
+    const releaseAt = reservationRequired && i.releaseAt ? new Date(i.releaseAt) : null;
+    const msLeft = releaseAt ? releaseAt.getTime() - nowTs.getTime() : 0;
+    const totalMin = Math.max(0, Math.floor(msLeft / 60000));
     return {
       ...i,
       reservationRequired,
-      remindOn: reservationRequired && i.remindOn === true,
+      remindOn: reservationRequired && !releasePassed && i.remindOn === true,
+      remindLocked: !!releasePassed,
       spotName: spot ? spot.name : '未知景点',
+      releaseDateLabel: releaseAt
+        ? formatReleaseDateLabel(releaseAt)
+        : '',
+      releaseLabel: releaseAt
+        ? `${formatReleaseDateLabel(releaseAt)} ${time.formatHourMinute(releaseAt)} 放票`
+        : '',
+      releaseTimeLabel: reservationRequired
+        ? (releaseAt ? time.formatHourMinute(releaseAt) : '')
+        : '无需预约',
+      visitDateLabel: reservationRequired
+        ? `约 ${time.formatMonthDayWeek(i.visitDate)} 门票`
+        : `${time.formatMonthDayWeek(i.visitDate)} · 随到随玩`,
+      countdown: releaseAt
+        ? {
+          hours: Math.floor(totalMin / 60),
+          minutes: totalMin % 60,
+          text: `还剩${Math.floor(totalMin / 60)}h ${totalMin % 60}m`,
+          urgent: msLeft > 0 && msLeft < 3600 * 1000,
+          expired: msLeft <= 0,
+        }
+        : null,
     };
   });
 
   return ok({
     items: enriched,
-    groups: groupByReleaseDate(enriched),
+    groups: groupByVisitDate(enriched),
     summary: summarize(enriched),
   });
 }
@@ -262,7 +294,7 @@ module.exports = {
   cartTripIdOf,
   isPending,
   summarize,
-  groupByReleaseDate,
+  groupByVisitDate,
   add,
   addBatch,
   updateRemindOn,

@@ -66,8 +66,7 @@
          <svg-icon wx:if="{{item.selected}}" name="check" size="12px" />
           <svg-icon wx:else name="plus" size="12px" />
          <text wx:if="{{item.selected}}">已选</text>
-          <text wx:elif="{{item.reservationRequired}}">选择</text>
-          <text wx:else>加入行程</text>
+          <text wx:else>选择</text>
        </view>
        <view wx:else class="spot-card-nobook">随买随用</view>
      </view>
@@ -150,8 +149,7 @@
            <svg-icon wx:if="{{item.selected}}" name="check" size="12px" />
             <svg-icon wx:else name="plus" size="12px" />
            <text wx:if="{{item.selected}}">已选</text>
-          <text wx:elif="{{item.reservationRequired}}">选择</text>
-          <text wx:else>加入行程</text>
+          <text wx:else>选择</text>
          </view>
          <view wx:else class="spot-card-nobook">随买随用</view>
         </view>

@@ -6,10 +6,16 @@
  * 上一条时间线的状态会被带进来——用户看到「已在行程」的日期其实属于另一趟行程，
  * 或者刚清空的清单仍显示已加。这条断言就是钉住这个回归。
  *
+ * ⚠️ 2026-09-21 这条不变量**收窄过一次，别把它读回成「恒不读 trip_items」**：
+ * 从首页某趟进行中行程进来接着补景点时，用户必须看得见那趟已经有的项（否则不知道
+ * 该补哪个），故新增 `committedTripId` 参数，**只读那一趟**的 trip_items 并标成
+ * COMMITTED。禁止回退成「扫全部行程」——那正是要修的 bug。第 3 节两个分节分别钉住
+ * 「传了就只读那一趟」与「不传就恒 false」。
+ *
  * 运行：node test/timeline-preview.test.js
  */
 const { createDb } = require('./mock-db');
-const { COLLECTIONS } = require('../cloudfunctions/reminder/lib/schema');
+const { COLLECTIONS, PENDING_CART_TRIP_ID } = require('../cloudfunctions/reminder/lib/schema');
 const timeline = require('../cloudfunctions/reminder/lib/timeline');
 const cart = require('../cloudfunctions/reminder/lib/cart');
 const task = require('../cloudfunctions/reminder/lib/task');
@@ -52,9 +58,80 @@ function digest(res) {
     const res = await timeline.preview(db, USER, { startDate: START, endDate: END, spotIds: ['gugong'] });
     eq(res.success, true, '预览成功');
     eq(res.events.length > 0, true, '故宫在日期段内生成事件');
+    eq(res.events.every(e => e.releaseStateLabel === '待开票'), true, '未来事件顶部显示「待开票」');
     eq(db._dump(COLLECTIONS.TRIPS).length, 0, '没有创建任何行程');
     eq(db._dump(COLLECTIONS.TRIP_ITEMS).length, 0, '没有创建任何行程项');
     eq(db._dump(COLLECTIONS.REMINDER_CART).length, 0, '没有写清单');
+  }
+
+  console.log('=== 1b. 已开票：只加入清单，固定不提醒 ===');
+  {
+    const db = freshDb();
+    let visitDate = time.addDays(TODAY, 1);
+    if (time.dayNameOf(visitDate) === 'monday') visitDate = time.addDays(visitDate, 1);
+    const res = await timeline.preview(db, USER, { startDate: visitDate, endDate: visitDate, spotIds: ['gugong'] });
+    eq(res.events.length, 1, '已到放票时刻的日期仍生成事件');
+    const event = res.events[0];
+    eq(event.releaseStateLabel, '已开票', '顶部状态为「已开票」');
+    eq(event.status, 'SELECTABLE', '已开票仍是可选，不进入预约态');
+    eq(event.button.text, '加入清单', '按钮仍为「加入清单」');
+
+    const added = await cart.add(db, USER, {
+      spotId: event.spotId, visitDate: event.visitDate, remindOn: true,
+    });
+    eq(added.success, true, '已开票项可以加入清单');
+    eq(added.remindOn, false, '服务端强制不提醒');
+
+    const listed = await cart.list(db, USER);
+    eq(listed.items[0].remindOn, false, '清单项固定不提醒');
+    eq(listed.items[0].remindLocked, true, '清单项提醒开关锁定');
+    const releaseParts = time.beijingParts(new Date(event.releaseAt));
+    const releaseDateLabel = String(releaseParts.month).padStart(2, '0') + '月'
+      + String(releaseParts.day).padStart(2, '0') + '日';
+    eq(listed.items[0].releaseDateLabel, releaseDateLabel,
+      '副行用的放票日期保留前导零格式');
+    eq(listed.items[0].releaseLabel, releaseDateLabel + ' ' + time.formatHourMinute(new Date(event.releaseAt)) + ' 放票',
+      '副行下发完整放票时间，前端不再自行拼装');
+    eq(listed.groups[0].key, event.visitDate, '清单按出行日分组');
+    eq(listed.groups[0].dayLabel, '【第1天】', '出行日分组带首页同款第几天徽标');
+    const changed = await cart.updateRemindOn(db, USER, listed.items[0]._id, true);
+    eq(changed.success, false, '直接调用也不能重新开启提醒');
+    eq(changed.errorCode, 1017, '返回提醒窗口已关闭错误码');
+
+    /* 模拟“开票前入清单、开票后才提交”的旧数据：DB 里仍可能留着 remindOn=true。
+       提交不能因此要求提醒通道，而应走已过期分流、照常落行程项。 */
+    await db.collection(COLLECTIONS.REMINDER_CART).add({
+      data: {
+        userId: USER, tripId: PENDING_CART_TRIP_ID, spotId: 'guobo', visitDate,
+        releaseAt: time.parseBeijing(time.addDays(visitDate, -7), '17:00'),
+        remindOn: true, reservationRequired: true, createdAt: time.now(),
+      },
+    });
+
+    const committed = await task.submit(db, USER, {});
+    eq(committed.success, true, '已开票项可以提交进行程');
+    eq(committed.expiredReminder, 1, '开票前遗留的提醒在提交时按过期分流');
+    eq(db._dump(COLLECTIONS.TRIP_ITEMS).length, 2, '提交后生成行程项');
+    eq(db._dump(COLLECTIONS.TRIP_ITEMS).every(i => i.remindOn === false), true, '行程项全部不提醒');
+    eq(db._dump(COLLECTIONS.REMINDER_TASKS).length, 0, '不生成提醒任务');
+  }
+
+  console.log('=== 1c. 清单按出行日分组，不按放票日分组 ===');
+  {
+    const db = freshDb();
+    let visitDate = time.addDays(TODAY, 40);
+    if (time.dayNameOf(visitDate) === 'monday') visitDate = time.addDays(visitDate, 1);
+    const secondDate = time.addDays(visitDate, 1);
+    await cart.add(db, USER, { spotId: 'gugong', visitDate, remindOn: false });
+    await cart.add(db, USER, { spotId: 'badaling', visitDate, remindOn: false });
+    await cart.add(db, USER, { spotId: 'tiantan', visitDate: secondDate, remindOn: false });
+
+    const listed = await cart.list(db, USER);
+    eq(listed.groups.length, 2, '同一天的多景点合成一个出行日分组');
+    eq(listed.groups[0].key, visitDate, '第一组 key = 出行日');
+    eq(listed.groups[0].items.length, 2, '故宫与八达岭虽放票日不同，但同属一个出行日组');
+    eq(listed.groups[1].key, secondDate, '第二组按下一个出行日');
+    eq(listed.groups[1].dayLabel, '【第2天】', '连续出行日的序号递增');
   }
 
   console.log('=== 2. 纯预览只读「当前暂存清单」，不读已落库的行程项 ===');
@@ -106,7 +183,7 @@ function digest(res) {
     eq(others.every(e => e.status === 'SELECTABLE'), true, '清单外的日期不受影响');
   }
 
-  console.log('=== 3. 预览里不会出现 COMMITTED（已在行程） ===');
+  console.log('=== 3. 不传 committedTripId：恒不出现 COMMITTED（已在行程）===');
   {
     const db = freshDb();
     const first = await timeline.preview(db, USER, { startDate: START, endDate: END, spotIds: ['gugong'] });
@@ -127,6 +204,66 @@ function digest(res) {
     const res = await timeline.preview(db, USER, { startDate: START, endDate: END, spotIds: ['gugong'] });
     eq(res.events.some(e => e.status === 'COMMITTED'), false, '预览不出现「已在行程」');
     eq(res.events.every(e => e.status === 'SELECTABLE'), true, '该日的项全部可选（清单里没有它）');
+  }
+
+  console.log('=== 3b. 传 committedTripId：只标这一趟已有的项，别趟的不标 ===');
+  {
+    const db = freshDb();
+    const first = await timeline.preview(db, USER, { startDate: START, endDate: END, spotIds: ['gugong'] });
+    const visitDate = first.events[0].visitDate;
+    /* 同一用户的两趟行程：T-here 是用户此刻正在补的那趟，T-other 是另一趟。
+       两趟里各有一条 (gugong, visitDate)。 */
+    await db.collection(COLLECTIONS.TRIPS).add({
+      data: {
+        _id: 'T-here', userId: USER, city: '北京', startDate: START, endDate: END, name: '正在补的',
+        spotIds: ['gugong'], status: 'ACTIVE', createdAt: time.now(), updatedAt: time.now(),
+      },
+    });
+    await db.collection(COLLECTIONS.TRIPS).add({
+      data: {
+        _id: 'T-other', userId: USER, city: '北京', startDate: START, endDate: END, name: '另一趟',
+        spotIds: ['gugong'], status: 'ACTIVE', createdAt: time.now(), updatedAt: time.now(),
+      },
+    });
+    await db.collection(COLLECTIONS.TRIP_ITEMS).add({
+      data: {
+        _id: 'I-here', userId: USER, tripId: 'T-here', spotId: 'gugong', visitDate,
+        backupGroupId: 'T-here:gugong', remindOn: true, result: null, resultAt: null,
+        createdAt: time.now(), updatedAt: time.now(),
+      },
+    });
+
+    const res = await timeline.preview(db, USER, {
+      startDate: START, endDate: END, spotIds: ['gugong'], committedTripId: 'T-here',
+    });
+    const hit = res.events.find(e => e.visitDate === visitDate);
+    eq(hit.status, 'COMMITTED', '这一趟已有的项标成 COMMITTED');
+    eq(hit.button.text, '已加行程', '按钮文案为「已加行程」');
+    eq(hit.button.enabled, false, '不可重复加（enabled=false）');
+    const others = res.events.filter(e => e.visitDate !== visitDate);
+    eq(others.every(e => e.status === 'SELECTABLE'), true, '这一趟没有的日期仍可选');
+
+    /* ⚠️ 反例：committedTripId 指向另一趟时，T-here 的项**不该**被标 —— 证明读的是
+       参数指定的那一趟，而不是「用户名下任意一趟」。 */
+    const resOther = await timeline.preview(db, USER, {
+      startDate: START, endDate: END, spotIds: ['gugong'], committedTripId: 'T-other',
+    });
+    eq(resOther.events.every(e => e.status === 'SELECTABLE'), true,
+      '指向别趟时不标 T-here 的项（没有回退成扫全部行程）');
+
+    /* 别人的行程项一律不读 */
+    await db.collection(COLLECTIONS.TRIP_ITEMS).add({
+      data: {
+        _id: 'I-stranger', userId: 'openid_someone_else', tripId: 'T-here', spotId: 'gugong', visitDate,
+        backupGroupId: 'T-here:gugong', remindOn: true, result: null, resultAt: null,
+        createdAt: time.now(), updatedAt: time.now(),
+      },
+    });
+    const resStranger = await timeline.preview(db, USER, {
+      startDate: START, endDate: END, spotIds: ['gugong'], committedTripId: 'T-here',
+    });
+    eq(resStranger.events.find(e => e.visitDate === visitDate).status, 'COMMITTED',
+      '别人的同 tripId 行程项不影响判定（按 userId 过滤）');
   }
 
   console.log('=== 4. 重复加入由 cart.add 兜底（按 spotId+visitDate 跨行程查）===');
@@ -266,7 +403,7 @@ function digest(res) {
     eq(Boolean(cm.tripId), true, '回传 tripId');
     eq(db._dump(COLLECTIONS.TRIPS).length, 1, '提交时才创建行程');
     eq(db._dump(COLLECTIONS.TRIP_ITEMS).length, 1, '行程项落在新行程上');
-    eq(cm.toast.indexOf('已设提醒') > 0, true, 'toast 说明其中几个已设提醒');
+    eq(cm.toast.indexOf('已设置') > 0 && cm.toast.indexOf('提醒') > 0, true, 'toast 说明已设置几个提醒');
   }
 
   console.log('\n' + (fail === 0 ? 'ALL PASS' : ('FAIL ' + fail)));

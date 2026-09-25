@@ -1,37 +1,51 @@
 <view wx:if="{{show}}" class="dp-mask" bindtap="onClose" catchtouchmove="noop">
   <view class="dp-sheet" catchtap="noop">
-    <view class="dp-head">
-      <text class="dp-title">约其他日</text>
-      <text class="dp-sub">{{spotName}}</text>
+    <view class="dp-title">{{spotName}}·{{title}}</view>
+
+    <!-- 月份标题：**只做指示，不再承担翻页**（翻页改成上下滑动日历本身）。
+         它跟着滑动实时更新，所以用户滑到哪个月看一眼标题就知道。 -->
+    <view class="dp-month-bar">
+      <text class="dp-month-label">{{monthLabel}}</text>
     </view>
 
-    <view wx:if="{{loading}}" class="dp-loading"><van-loading size="36rpx" color="#B8904A" /></view>
-
-    <!-- 没有候选时给一句实话，不给空转建议 -->
-    <view wx:elif="{{options.length === 0}}" class="dp-empty">
-      <text>这个世界暂时没有别的可约日期了</text>
+    <!-- 星期头 -->
+    <view class="dp-weekdays">
+      <text wx:for="{{weekdays}}" wx:key="*this" class="dp-weekday">{{item}}</text>
     </view>
 
-    <scroll-view wx:else scroll-y class="dp-list">
-      <view
-        wx:for="{{options}}"
-        wx:key="visitDate"
-        class="dp-opt {{choice === item.visitDate ? 'active' : ''}}"
-        catchtap="onChoose"
-        data-date="{{item.visitDate}}"
-      >
-        <view class="dp-radio {{choice === item.visitDate ? 'on' : ''}}"></view>
-        <view class="dp-opt-body">
-          <text class="dp-opt-date">{{item.dateText}}</text>
-          <text class="dp-opt-label">{{item.label}}</text>
+    <!-- 日历：**纵向 swiper 切月**（2026-09-24 由左右点箭头改版而来）。
+         每个 swiper-item 是一个整月网格，上下滑动翻页。
+         ⚠️ `previous-margin`/`next-margin` 都不用：上下相邻月份露边会让人以为
+            可以横向滑。这里要的是「一屏一个月、上下拨动」的干脆手感。
+         ⚠️ 高度写死（gridHeight）：各月行数 4~6 不等，不固定的话滑过去会整体跳动。 -->
+    <swiper
+      class="dp-swiper"
+      style="height: {{gridHeight}}rpx;"
+      vertical="{{true}}"
+      circular="{{false}}"
+      current="{{monthIndex}}"
+      bindchange="onMonthSwipe"
+    >
+      <swiper-item wx:for="{{months}}" wx:key="key" wx:for-item="month">
+        <view class="dp-grid" style="min-height: {{gridHeight}}rpx;">
+          <view
+            wx:for="{{month.days}}"
+            wx:key="index"
+            class="dp-cell {{item.cellClass}} {{item.disabled ? 'is-disabled' : ''}} {{item.inTrip ? 'in-trip ' + item.tripEdge : ''}} {{item.date && item.date === choice ? 'is-selected' : ''}}"
+            bindtap="onDayTap"
+            data-date="{{item.date}}"
+            data-disabled="{{item.disabled}}"
+          >
+            <view class="dp-day-inner">{{item.day}}</view>
+          </view>
         </view>
-        <view class="dp-opt-tag tag-{{item.actionClass}}">{{item.actionText}}</view>
-      </view>
-    </scroll-view>
+      </swiper-item>
+    </swiper>
 
+    <!-- 底部按钮 -->
     <view class="dp-acts">
-      <view class="dp-confirm {{choice ? '' : 'disabled'}}" catchtap="onConfirm">确定</view>
-      <view class="dp-cancel" catchtap="onClose">取消</view>
+      <view class="dp-confirm {{choice ? '' : 'disabled'}}" bindtap="onConfirm">确定</view>
+      <view class="dp-cancel" bindtap="onClose">取消</view>
     </view>
   </view>
 </view>

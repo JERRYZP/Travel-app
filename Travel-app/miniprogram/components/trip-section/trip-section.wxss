@@ -1,28 +1,16 @@
+/* 行程分段容器。
+   行程分段标题**只为弱化之外的分段渲染**（见 wxml 的 wx:if="{{!weak}}"），
+   摘要卡那趟不渲染；吸顶样式已废止（不再需要该行吸顶）。 */
 .trip-section { margin-bottom: 40rpx; }
-.ts-spacer { width: 100%; }
 .trip-section.is-history { opacity: .78; }
 
-/* 行程分段标题：吸顶态给底色，否则会透出下面滚过去的卡片 */
 .ts-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16rpx;
-  padding: 12rpx 0 16rpx;
+  padding: 12rpx 0 0; /* 2026-09-23 行程总标题到下方内容间距减少 8px(16rpx) */
 }
-.ts-head.is-sticky {
-  position: fixed;
-  left: 0; right: 0;
-  z-index: 85;
-  background: var(--color-page);
-  padding: 12rpx 30rpx 16rpx;
-  border-bottom: 1rpx solid var(--color-border);
-}
-/* 只有一趟行程时弱化：看起来就是一堵干净的墙，而不是「有个分组要管」 */
-.ts-head.is-weak { padding-top: 0; }
-.ts-head.is-weak .ts-city { font-size: 26rpx; }
-.ts-head.is-weak .ts-progress { display: none; }
-
 .ts-head-left { display: flex; align-items: baseline; gap: 14rpx; min-width: 0; }
 .ts-city { font-size: 30rpx; font-weight: 700; color: var(--color-ink); }
 .ts-range { font-size: 23rpx; color: var(--color-text); }
@@ -33,39 +21,62 @@
   border-radius: 8rpx;
   padding: 2rpx 10rpx;
 }
-.ts-manage {
-  display: flex; align-items: center; gap: 6rpx;
-  font-size: 23rpx;
-  color: var(--color-primary);
-  flex-shrink: 0;
-}
 
 /* 日期分段标题 */
-.ts-day { margin-bottom: 8rpx; }
+.ts-day { margin-bottom: 16rpx; }
 .ts-day-head {
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  margin: 16rpx 2rpx 14rpx;
+  gap: 16rpx;
+  margin: 32rpx 2rpx 14rpx; /* 2026-09-23 日期标题上方再加 8px(16rpx) */
 }
-.ts-day-title { font-size: 27rpx; font-weight: 700; color: var(--color-ink); }
+.ts-day-title { font-size: 26rpx; font-weight: 500; color: var(--text-strong); }
+/* ⚠️ 2026-09-22 按设计稿改金底 + 去掉字重：
+   它是个**位置标记**不是可点的标签，金底已经足够把它顶出来，再粗就抢标题了。 */
 .ts-day-badge {
-  font-size: 21rpx;
-  font-weight: 600;
-  color: var(--color-muted);
-  background: var(--color-cream);
+  font-size: 22rpx;
+  color: var(--chip-gold-text);
+  background: var(--chip-gold-bg);
   border-radius: 8rpx;
-  padding: 2rpx 10rpx;
+  padding: 4rpx 8rpx;
 }
 /* 细分割线把日期标题和右侧菜单拉开 */
-.ts-day-line { flex: 1; height: 1rpx; background: var(--color-border); }
+.ts-day-line { flex: 1; height: 1rpx; background: var(--divider-strong); }
 
-.ts-day-menu { position: relative; padding: 6rpx; }
+/* ⚠️ z-index 31 与捕获层同级：同级时**规则在后 + 节点在后**者胜（见 wxml 的顺序）。
+   删掉这个 z-index，日期菜单的图标就会被自己的捕获层盖住、再也点不回去。
+   ⚠️ 靶区 104rpx（≥44px 全屏宽）见 `trip-card.wxss` 的 `.tc-menu`——日期菜单原先只有
+   26rpx 宽的图标，比那边更小。同款做法：旧盒 38×38rpx（padding 6rpx + 图标 26rpx），
+   所以负外边距 = (104 − 38) / 2 = 33rpx，**两个方向相同**（旧盒是正方形）。 */
+.ts-day-menu {
+  position: relative;
+  z-index: 31;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 104rpx;
+  height: 104rpx;
+  margin: -33rpx;
+  flex-shrink: 0;
+}
+.ts-day-btn { position: relative; }
+/* 捕获层：菜单展开时铺满**整张卡片**（`.ts-day-catch`），原理与四边写死的理由
+   见 `trip-card.wxss` 的 `.tc-menu-catch`。这里只改前缀，结构完全一致。 */
+.ts-day-catch {
+  position: fixed;
+  top: calc(-1 * (50vh + 2000rpx));
+  left: calc(-1 * (50vw + 2000rpx));
+  width: calc(100vw + 4000rpx);
+  height: calc(100vh + 4000rpx);
+  z-index: 31;
+}
 .ts-day-pop {
   position: absolute;
-  top: 44rpx;
+  /* 77rpx = 旧值 44rpx + 纵向 margin 33rpx：理由与 `.tc-menu-pop` 的 top 完全相同
+     （负 margin 把盒顶抬高了 33rpx，top 要加回去才保持相对位置）。 */
+  top: 77rpx;
   right: 0;
-  z-index: 30;
+  z-index: 32;
   background: var(--color-surface);
   border: 1rpx solid var(--color-border);
   border-radius: 16rpx;
@@ -77,6 +88,11 @@
   display: flex; align-items: center; gap: 12rpx;
   padding: 18rpx 24rpx;
   font-size: 26rpx;
-  color: #C0392B;
+  /* ⚠️ 用常规正文色，**不是红色**（2026-09-21 用户口径，对齐 UI）。
+     这个下拉里目前只有「删除当天行程」一项，但它是个**菜单条目**，
+     红色留给确认弹窗里的那个按钮就够了——列表里整片红会显得整页都在报警。 */
+  color: var(--color-text);
 }
+/* 危险项（如将来的「删除整天」）在条目上单独加类，不靠整片红 */
+.ts-day-pop-item.is-danger { color: #C0392B; }
 .ts-day-pop-item:active { background: var(--color-page); }
