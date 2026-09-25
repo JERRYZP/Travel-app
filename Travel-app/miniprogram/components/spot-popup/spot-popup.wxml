@@ -1,19 +1,46 @@
 <wxs module="fmt" src="../../utils/format.wxs"></wxs>
 <view wx:if="{{show}}" class="popup-mask" bindtap="onMaskTap" catchtouchmove="onSheetTap">
-  <view class="popup-sheet {{showActions ? 'popup-sheet--actions' : ''}}" catchtap="onSheetTap">
-    <!-- 滚动区：底部留白由 .popup-sheet--actions > .popup-scroll 给，
+  <view
+    class="popup-sheet {{showActions ? 'popup-sheet--actions' : ''}}"
+    style="{{sheetStyle}}"
+    catchtap="onSheetTap"
+  >
+    <!-- 滚动区：底部留白由 .popup-sheet--actions > .popup-scroll-content 给，
          保证正文能滚到操作栏上方 32px 处，不被按钮压住。 -->
-    <view class="popup-scroll">
+    <scroll-view
+      scroll-y
+      class="popup-scroll"
+      style="{{scrollStyle}}"
+      show-scrollbar="{{false}}"
+    >
+    <view class="popup-scroll-content {{tipsExpanded ? 'popup-scroll-content--expanded' : ''}}">
     <block wx:if="{{loading}}">
       <view class="popup-loading">
         <van-loading size="40rpx" color="#B8904A" />
       </view>
     </block>
 
+    <block wx:elif="{{loadFailed}}">
+      <view class="popup-error">
+        <text class="popup-error-title">景点详情加载失败</text>
+        <text class="popup-error-desc">景点可能已下线，或当前网络不可用。</text>
+        <view class="popup-error-btn" bindtap="onClose">关闭</view>
+      </view>
+    </block>
+
     <block wx:elif="{{spot}}">
       <!-- 头部：缩略图 + 名称/难度 + 核心标签 -->
-      <view class="popup-header {{spot.specialNotice ? 'popup-header--with-notice' : ''}}">
+      <view class="popup-header {{spot.specialNotice ? 'popup-header--with-notice' : ''}} {{showShare ? 'popup-header--share' : ''}}">
         <image class="popup-spot-img" src="/images/spots/{{spot.spotId}}.jpg" mode="aspectFill" />
+        <button
+          wx:if="{{showShare}}"
+          class="popup-share-btn"
+          open-type="share"
+          hover-class="none"
+          aria-label="分享景点"
+        >
+          <van-icon name="share-o" size="17px" color="#B8904A" />
+        </button>
         <view class="popup-header-info">
           <view class="popup-name-row">
             <text class="popup-spot-name">{{spot.name}}</text>
@@ -36,6 +63,20 @@
         </view>
       </view>
 
+      <!-- 分享落地摘要：不依赖展开或点击，首屏直接回答“放票/核验”两件事 -->
+      <view wx:if="{{landingMode}}" class="popup-landing-summary">
+        <view class="popup-landing-row">
+          <text class="popup-landing-label">规则推算</text>
+          <text class="popup-landing-value">最早可约 {{earliestDateLabel}}</text>
+        </view>
+        <view class="popup-landing-row">
+          <text class="popup-landing-label">数据</text>
+          <text class="popup-verify {{spot.verified ? 'verify-ok' : 'verify-warn'}}">{{spot.verifiedLabel}}</text>
+          <text class="popup-landing-correct" bindtap="onCorrect">我要纠错</text>
+        </view>
+        <view class="popup-landing-note">库存与预约结果以官方渠道为准，不代抢代约。</view>
+      </view>
+
       <!-- 官方临时公告（闭馆维修 / 临时停开等），specialNotice 有内容时显示 -->
       <view wx:if="{{spot.specialNotice}}" class="popup-special-notice">
         <view class="popup-notice-icon">
@@ -46,6 +87,9 @@
 
       <!-- 预约方式（B 层免预约 → 购票 / 入园方式） -->
       <view class="popup-section-title">{{spot.reservationRequired ? '预约方式' : '购票 / 入园方式'}}</view>
+      <view wx:if="{{spot.reservationRequired && spot.entries.length}}" class="popup-channel-tip">
+        <text>提前录入游客姓名和证件，抢票更快</text>
+      </view>
       <view class="popup-entries">
         <view
           wx:for="{{spot.entries}}"
@@ -133,6 +177,7 @@
       </view>
     </block>
     </view>
+    </scroll-view>
 
     <!-- 底部操作栏（V3.0 本期仅视觉占位，不接交互）：固定在弹窗底缘，不参与滚动。
          首页触发的浮窗不渲染此栏（showActions=false），其余入口保持带 btn。
@@ -145,10 +190,10 @@
       </view>
       <view class="popup-actions">
         <block wx:if="{{spot.remindable}}">
-          <view class="popup-btn popup-btn-primary">加入提醒</view>
-          <view class="popup-btn popup-btn-ghost">加入行程</view>
+          <view class="popup-btn popup-btn-primary" bindtap="onSetReminder">设置提醒</view>
+          <view class="popup-btn popup-btn-ghost" bindtap="onAddTripOnly">仅加行程不提醒</view>
         </block>
-        <view wx:else class="popup-btn popup-btn-primary">加入行程</view>
+        <view wx:else class="popup-btn popup-btn-primary" bindtap="onAddTripOnly">加入行程</view>
       </view>
     </view>
   </view>

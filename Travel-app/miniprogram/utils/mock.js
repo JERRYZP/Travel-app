@@ -9,32 +9,32 @@ const USE_MOCK = false;
 
 /* ===== 景点数据（spotId 与 images/spots/*.jpg 对齐） ===== */
 const SPOTS = [
-  {spotId:"gugong",name:"故宫博物院",category:"博物馆",district:"东城区",address:"景山前街4号",location:{latitude:39.916345,longitude:116.397155},officialAppid:"wx13169e68a3e63e55",officialPath:"pages/index/index",officialWebUrl:"https://www.dpm.org.cn",officialAccount:"故宫博物院",qrCode:"/images/qrcodes/gugong.jpg",difficultyScore:5,audienceTags:["elder"],popularityScore:5,hasWebVersion:true,scrapingUrl:"https://www.dpm.org.cn/Home.html",reservationRequired:true },
-  {spotId:"tiananmen-chenglou",name:"天安门城楼",category:"古迹",district:"东城区",address:"天安门广场北侧",location:{latitude:39.90923,longitude:116.39745},officialAppid:"",officialPath:"",officialWebUrl:"https://www.tiananmenchenglou.com",officialAccount:"天安门城楼参观预约",qrCode:"/images/qrcodes/tiananmen-chenglou.png",difficultyScore:5,audienceTags:["elder"],popularityScore:5,hasWebVersion:true,scrapingUrl:"https://www.tiananmenchenglou.com",reservationRequired:true },
-  {spotId:"guobo",name:"中国国家博物馆",category:"博物馆",district:"东城区",address:"东长安街16号",location:{latitude:39.9035,longitude:116.3976},officialAppid:"wx9e2927dd595b0473",officialPath:"pages/index/index",officialWebUrl:"https://www.chnmuseum.cn",officialAccount:"国家博物馆",qrCode:"/images/qrcodes/guobo.png",difficultyScore:5,audienceTags:["elder"],popularityScore:5,hasWebVersion:true,scrapingUrl:"https://www.chnmuseum.cn",reservationRequired:true },
-  {spotId:"yiheyuan",name:"颐和园",category:"公园",district:"海淀区",address:"新建宫门路19号",location:{latitude:39.99998,longitude:116.27546},officialAppid:"wxf0693a7822f75666",officialPath:"pages/home/home",officialWebUrl:"https://www.summerpalace-china.com",officialAccount:"畅游公园",qrCode:"/images/qrcodes/yiheyuan.png",difficultyScore:1,audienceTags:["family","elder"],popularityScore:5,hasWebVersion:true,scrapingUrl:"https://www.summerpalace-china.com",reservationRequired:false },
-  {spotId:"tiantan",name:"天坛公园",category:"公园",district:"东城区",address:"天坛东里甲1号",location:{latitude:39.8833,longitude:116.4074},officialAppid:"wxf0693a7822f75666",officialPath:"pages/home/home",officialWebUrl:"https://www.tiantanpark.com",officialAccount:"",qrCode:"",difficultyScore:1,audienceTags:["family","elder"],popularityScore:4,hasWebVersion:true,scrapingUrl:"https://www.tiantanpark.com",reservationRequired:false },
-  {spotId:"badaling",name:"八达岭长城",category:"古迹",district:"延庆区",address:"G6京藏高速58号出口",location:{latitude:40.35958,longitude:116.01998},officialAppid:"wx32de8a3dce14fe60",officialPath:"pages/index/index",officialWebUrl:"https://www.badaling.cn",officialAccount:"八达岭长城",qrCode:"/images/qrcodes/badaling.png",difficultyScore:1,audienceTags:["family"],popularityScore:5,hasWebVersion:true,scrapingUrl:"https://www.badaling.cn",reservationRequired:true },
-  {spotId:"yuanmingyuan",name:"圆明园遗址公园",category:"公园",district:"海淀区",address:"清华西路28号",location:{latitude:40.0083,longitude:116.2986},officialAppid:"wx0a67e51641dbe2c6",officialPath:"",officialWebUrl:"https://www.yuanmingyuanpark.cn",officialAccount:"圆明园遗址公园",qrCode:"/images/qrcodes/yuanmingyuan.jpg",difficultyScore:1,audienceTags:["family"],popularityScore:4,hasWebVersion:true,scrapingUrl:"https://www.yuanmingyuanpark.cn",reservationRequired:false },
-  {spotId:"beijing-zoo",name:"北京动物园",category:"公园",district:"西城区",address:"西直门外大街137号",location:{latitude:39.9378,longitude:116.3345},officialAppid:"wxf0693a7822f75666",officialPath:"pages/home/home",officialWebUrl:"https://www.bjzoo.com",officialAccount:"畅游公园",qrCode:"/images/qrcodes/beijing-zoo.png",difficultyScore:1,audienceTags:["family"],popularityScore:4,hasWebVersion:true,scrapingUrl:"https://www.bjzoo.com",reservationRequired:false },
-  {spotId:"gongwangfu",name:"恭王府",category:"古迹",district:"西城区",address:"前海西街17号",location:{latitude:39.9365,longitude:116.3852},officialAppid:"wxb222dd7f96712443",officialPath:"",officialWebUrl:"https://www.pgm.org.cn",officialAccount:"恭王府博物馆",qrCode:"/images/qrcodes/gongwangfu.jpg",difficultyScore:2,audienceTags:["elder"],popularityScore:3,hasWebVersion:true,scrapingUrl:"https://www.pgm.org.cn",reservationRequired:true },
-  {spotId:"beihai",name:"北海公园",category:"公园",district:"西城区",address:"文津街1号",location:{latitude:39.9243,longitude:116.3888},officialAppid:"wxf0693a7822f75666",officialPath:"pages/home/home",officialWebUrl:"https://www.beihaipark.com.cn",officialAccount:"畅游公园",qrCode:"/images/qrcodes/beihai.jpg",difficultyScore:1,audienceTags:["family","elder"],popularityScore:3,hasWebVersion:true,scrapingUrl:"https://www.beihaipark.com.cn",reservationRequired:false },
-  {spotId:"tiananmen-square",name:"天安门广场",category:"广场",district:"东城区",address:"东长安街天安门广场",location:{latitude:39.9087,longitude:116.3975},officialAppid:"wx784eb46174db6aed",officialPath:"",officialWebUrl:"http://yuyue.tamgw.beijing.gov.cn",officialAccount:"",qrCode:"",difficultyScore:2,audienceTags:["elder"],popularityScore:5,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["升旗","天安门升旗","看升旗"] },
-  {spotId:"maozhuxi-jiniantang",name:"毛主席纪念堂",category:"纪念场馆",district:"东城区",address:"天安门广场人民英雄纪念碑南侧",location:{latitude:39.9014,longitude:116.3956},officialAppid:"wx492b5d2f5b89c11e",officialPath:"",officialWebUrl:"https://cpc.people.com.cn/GB/143527/143528/",officialAccount:"",qrCode:"",difficultyScore:3,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["纪念堂"] },
-  {spotId:"renmin-dahuitang",name:"人民大会堂",category:"场馆",district:"西城区",address:"西长安街天安门广场西侧",location:{latitude:39.9064,longitude:116.3938},officialAppid:"wxb2809a187df8351b",officialPath:"",officialWebUrl:"",officialAccount:"",qrCode:"",difficultyScore:3,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:false,scrapingUrl:"",aliases:["大会堂"] },
-  {spotId:"junbo",name:"中国人民革命军事博物馆",category:"博物馆",district:"海淀区",address:"复兴路9号",location:{latitude:39.9078,longitude:116.3211},officialAppid:"wxe7ab4bac193578d0",officialPath:"",officialWebUrl:"http://www.jb.mil.cn",officialAccount:"中国人民革命军事博物馆",qrCode:"/images/qrcodes/junbo.jpg",difficultyScore:2,audienceTags:["family","elder"],popularityScore:5,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["军博","军事博物馆"] },
-  {spotId:"ziran-bowuguan",name:"国家自然博物馆",category:"博物馆",district:"东城区",address:"天桥南大街126号",location:{latitude:39.8796,longitude:116.3952},officialAppid:"wx3ccbf39dedcfc335",officialPath:"",officialWebUrl:"https://www.nnhm.org.cn",officialAccount:"国家自然博物馆",qrCode:"/images/qrcodes/ziran-bowuguan.jpg",difficultyScore:2,audienceTags:["family"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["自然博物馆","自然博"] },
-  {spotId:"kaogu-bowuguan",name:"中国考古博物馆",category:"博物馆",district:"朝阳区",address:"国家体育场北路1号院1号楼",location:{latitude:39.9985,longitude:116.3835},officialAppid:"wx48b5cc9990544897",officialPath:"",officialWebUrl:"https://cam.zglsyjy.cn",officialAccount:"中国考古博物馆",qrCode:"/images/qrcodes/kaogu-bowuguan.png",difficultyScore:2,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["考古博物馆","考古博"] },
-  {spotId:"tsinghua",name:"清华大学",category:"高校",district:"海淀区",address:"清华园1号",location:{latitude:40.0023,longitude:116.3262},officialAppid:"wxef227a5869ad5e4a",officialPath:"",officialWebUrl:"https://www.tsinghua.edu.cn",officialAccount:"清华大学",qrCode:"/images/qrcodes/tsinghua.png",difficultyScore:3,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["清华","清华大学参观"] },
-  {spotId:"peking-university",name:"北京大学",category:"高校",district:"海淀区",address:"颐和园路5号",location:{latitude:39.9937,longitude:116.3059},officialAppid:"wxae221464afae4826",officialPath:"",officialWebUrl:"https://www.pku.edu.cn",officialAccount:"北京大学",qrCode:"/images/qrcodes/peking-university.png",difficultyScore:3,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["北大","北京大学参观"] },
-  {spotId:"kejiguan",name:"中国科技馆",category:"博物馆",district:"朝阳区",address:"北辰东路5号",location:{latitude:40.0047,longitude:116.3898},officialAppid:"wx2c0837274f1a69e1",officialPath:"",officialWebUrl:"https://www.cstm.org.cn",officialAccount:"中国科学技术馆",qrCode:"/images/qrcodes/kejiguan.jpg",difficultyScore:2,audienceTags:["family"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["科技馆","中国科学技术馆"] },
-  {spotId:"meishuguan",name:"中国美术馆",category:"博物馆",district:"东城区",address:"五四大街1号",location:{latitude:39.9285,longitude:116.4108},officialAppid:"wx7988edf272d3bc05",officialPath:"",officialWebUrl:"https://www.namoc.cn",officialAccount:"中国美术馆",qrCode:"/images/qrcodes/meishuguan.png",difficultyScore:2,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["美术馆"] },
-  {spotId:"gongyi-meishuguan",name:"中国工艺美术馆·非遗馆",category:"博物馆",district:"朝阳区",address:"湖景东路16号",location:{latitude:40.0067,longitude:116.3878},officialAppid:"",officialPath:"",officialWebUrl:"https://www.gmfyg.org.cn",officialAccount:"中国工美馆 中国非遗馆",qrCode:"/images/qrcodes/gongyi-meishuguan.png",difficultyScore:2,audienceTags:["family","elder"],popularityScore:3,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["工艺美术馆","非遗馆","工美馆"] },
-  {spotId:"shoubo",name:"首都博物馆",category:"博物馆",district:"西城区",address:"复兴门外大街16号",location:{latitude:39.9066,longitude:116.3479},officialAppid:"wx79ef8066f8c5edcd",officialPath:"",officialWebUrl:"http://www.capitalmuseum.org.cn",officialAccount:"首都博物馆",qrCode:"/images/qrcodes/shoubo.jpg",difficultyScore:2,audienceTags:["family","elder"],popularityScore:3,reservationRequired:false,hasWebVersion:true,scrapingUrl:"",aliases:["首博"] },
-  {spotId:"mutianyu",name:"慕田峪长城",category:"古迹",district:"怀柔区",address:"渤海镇慕田峪村",location:{latitude:40.4323,longitude:116.5651},officialAppid:"wx15e60c04826479ea",officialPath:"",officialWebUrl:"https://www.mutianyugreatwall.com",officialAccount:"慕田峪长城",qrCode:"/images/qrcodes/mutianyu.png",difficultyScore:2,audienceTags:["family"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["慕田峪"] },
-  {spotId:"kongmiao-guozijian",name:"孔庙和国子监博物馆",category:"博物馆",district:"东城区",address:"国子监街15号",location:{latitude:39.9482,longitude:116.4106},officialAppid:"",officialPath:"",officialWebUrl:"http://www.kmgzj.com",officialAccount:"孔庙和国子监博物馆",qrCode:"/images/qrcodes/kongmiao-guozijian.jpg",difficultyScore:2,audienceTags:["family","elder"],popularityScore:3,reservationRequired:false,hasWebVersion:true,scrapingUrl:"",aliases:["孔庙","国子监"] },
-  {spotId:"tianwenguan",name:"北京天文馆",category:"博物馆",district:"西城区",address:"西直门外大街138号",location:{latitude:39.9411,longitude:116.3404},officialAppid:"",officialPath:"",officialWebUrl:"https://www.bjp.org.cn",officialAccount:"北京天文馆",qrCode:"/images/qrcodes/tianwenguan.png",difficultyScore:1,audienceTags:["family"],popularityScore:3,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["天文馆"] },
-  {spotId:"huanqiu-yingcheng",name:"北京环球影城",category:"主题乐园",district:"通州区",address:"京哈高速与东六环交汇处西北角",location:{latitude:39.8597,longitude:116.6777},officialAppid:"wx3ba512d53df66a75",officialPath:"",officialWebUrl:"https://www.universalbeijingresort.com",officialAccount:"北京环球度假区",qrCode:"/images/qrcodes/huanqiu-yingcheng.png",difficultyScore:2,audienceTags:["family"],popularityScore:5,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["环球影城","环球度假区"] },
+  {spotId:"gugong",name:"故宫博物院",shortName:"故宫",category:"博物馆",district:"东城区",address:"景山前街4号",location:{latitude:39.916345,longitude:116.397155},officialAppid:"wx13169e68a3e63e55",officialPath:"pages/index/index",officialWebUrl:"https://www.dpm.org.cn",officialAccount:"故宫博物院",qrCode:"/images/qrcodes/gugong.jpg",difficultyScore:5,audienceTags:["elder"],popularityScore:5,hasWebVersion:true,scrapingUrl:"https://www.dpm.org.cn/Home.html",reservationRequired:true },
+  {spotId:"tiananmen-chenglou",name:"天安门城楼",shortName:"天安门城楼",category:"古迹",district:"东城区",address:"天安门广场北侧",location:{latitude:39.90923,longitude:116.39745},officialAppid:"",officialPath:"",officialWebUrl:"https://www.tiananmenchenglou.com",officialAccount:"天安门城楼参观预约",qrCode:"/images/qrcodes/tiananmen-chenglou.png",difficultyScore:5,audienceTags:["elder"],popularityScore:5,hasWebVersion:true,scrapingUrl:"https://www.tiananmenchenglou.com",reservationRequired:true },
+  {spotId:"guobo",name:"中国国家博物馆",shortName:"国博",category:"博物馆",district:"东城区",address:"东长安街16号",location:{latitude:39.9035,longitude:116.3976},officialAppid:"wx9e2927dd595b0473",officialPath:"pages/index/index",officialWebUrl:"https://www.chnmuseum.cn",officialAccount:"国家博物馆",qrCode:"/images/qrcodes/guobo.png",difficultyScore:5,audienceTags:["elder"],popularityScore:5,hasWebVersion:true,scrapingUrl:"https://www.chnmuseum.cn",reservationRequired:true },
+  {spotId:"yiheyuan",name:"颐和园",shortName:"颐和园",category:"公园",district:"海淀区",address:"新建宫门路19号",location:{latitude:39.99998,longitude:116.27546},officialAppid:"wxf0693a7822f75666",officialPath:"pages/home/home",officialWebUrl:"https://www.summerpalace-china.com",officialAccount:"畅游公园",qrCode:"/images/qrcodes/yiheyuan.png",difficultyScore:1,audienceTags:["family","elder"],popularityScore:5,hasWebVersion:true,scrapingUrl:"https://www.summerpalace-china.com",reservationRequired:false },
+  {spotId:"tiantan",name:"天坛公园",shortName:"天坛",category:"公园",district:"东城区",address:"天坛东里甲1号",location:{latitude:39.8833,longitude:116.4074},officialAppid:"wxf0693a7822f75666",officialPath:"pages/home/home",officialWebUrl:"https://www.tiantanpark.com",officialAccount:"",qrCode:"",difficultyScore:1,audienceTags:["family","elder"],popularityScore:4,hasWebVersion:true,scrapingUrl:"https://www.tiantanpark.com",reservationRequired:false },
+  {spotId:"badaling",name:"八达岭长城",shortName:"八达岭",category:"古迹",district:"延庆区",address:"G6京藏高速58号出口",location:{latitude:40.35958,longitude:116.01998},officialAppid:"wx32de8a3dce14fe60",officialPath:"pages/index/index",officialWebUrl:"https://www.badaling.cn",officialAccount:"八达岭长城",qrCode:"/images/qrcodes/badaling.png",difficultyScore:1,audienceTags:["family"],popularityScore:5,hasWebVersion:true,scrapingUrl:"https://www.badaling.cn",reservationRequired:true },
+  {spotId:"yuanmingyuan",name:"圆明园遗址公园",shortName:"圆明园",category:"公园",district:"海淀区",address:"清华西路28号",location:{latitude:40.0083,longitude:116.2986},officialAppid:"wx0a67e51641dbe2c6",officialPath:"",officialWebUrl:"https://www.yuanmingyuanpark.cn",officialAccount:"圆明园遗址公园",qrCode:"/images/qrcodes/yuanmingyuan.jpg",difficultyScore:1,audienceTags:["family"],popularityScore:4,hasWebVersion:true,scrapingUrl:"https://www.yuanmingyuanpark.cn",reservationRequired:false },
+  {spotId:"beijing-zoo",name:"北京动物园",shortName:"动物园",category:"公园",district:"西城区",address:"西直门外大街137号",location:{latitude:39.9378,longitude:116.3345},officialAppid:"wxf0693a7822f75666",officialPath:"pages/home/home",officialWebUrl:"https://www.bjzoo.com",officialAccount:"畅游公园",qrCode:"/images/qrcodes/beijing-zoo.png",difficultyScore:1,audienceTags:["family"],popularityScore:4,hasWebVersion:true,scrapingUrl:"https://www.bjzoo.com",reservationRequired:false },
+  {spotId:"gongwangfu",name:"恭王府",shortName:"恭王府",category:"古迹",district:"西城区",address:"前海西街17号",location:{latitude:39.9365,longitude:116.3852},officialAppid:"wxb222dd7f96712443",officialPath:"",officialWebUrl:"https://www.pgm.org.cn",officialAccount:"恭王府博物馆",qrCode:"/images/qrcodes/gongwangfu.jpg",difficultyScore:2,audienceTags:["elder"],popularityScore:3,hasWebVersion:true,scrapingUrl:"https://www.pgm.org.cn",reservationRequired:true },
+  {spotId:"beihai",name:"北海公园",shortName:"北海",category:"公园",district:"西城区",address:"文津街1号",location:{latitude:39.9243,longitude:116.3888},officialAppid:"wxf0693a7822f75666",officialPath:"pages/home/home",officialWebUrl:"https://www.beihaipark.com.cn",officialAccount:"畅游公园",qrCode:"/images/qrcodes/beihai.jpg",difficultyScore:1,audienceTags:["family","elder"],popularityScore:3,hasWebVersion:true,scrapingUrl:"https://www.beihaipark.com.cn",reservationRequired:false },
+  {spotId:"tiananmen-square",name:"天安门广场",shortName:"天安门广场",category:"广场",district:"东城区",address:"东长安街天安门广场",location:{latitude:39.9087,longitude:116.3975},officialAppid:"wx784eb46174db6aed",officialPath:"",officialWebUrl:"http://yuyue.tamgw.beijing.gov.cn",officialAccount:"",qrCode:"",difficultyScore:2,audienceTags:["elder"],popularityScore:5,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["升旗","天安门升旗","看升旗"] },
+  {spotId:"maozhuxi-jiniantang",name:"毛主席纪念堂",shortName:"纪念堂",category:"纪念场馆",district:"东城区",address:"天安门广场人民英雄纪念碑南侧",location:{latitude:39.9014,longitude:116.3956},officialAppid:"wx492b5d2f5b89c11e",officialPath:"",officialWebUrl:"https://cpc.people.com.cn/GB/143527/143528/",officialAccount:"",qrCode:"",difficultyScore:3,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["纪念堂"] },
+  {spotId:"renmin-dahuitang",name:"人民大会堂",shortName:"人民大会堂",category:"场馆",district:"西城区",address:"西长安街天安门广场西侧",location:{latitude:39.9064,longitude:116.3938},officialAppid:"wxb2809a187df8351b",officialPath:"",officialWebUrl:"",officialAccount:"",qrCode:"",difficultyScore:3,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:false,scrapingUrl:"",aliases:["大会堂"] },
+  {spotId:"junbo",name:"中国人民革命军事博物馆",shortName:"军事博物馆",category:"博物馆",district:"海淀区",address:"复兴路9号",location:{latitude:39.9078,longitude:116.3211},officialAppid:"wxe7ab4bac193578d0",officialPath:"",officialWebUrl:"http://www.jb.mil.cn",officialAccount:"中国人民革命军事博物馆",qrCode:"/images/qrcodes/junbo.jpg",difficultyScore:2,audienceTags:["family","elder"],popularityScore:5,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["军博","军事博物馆"] },
+  {spotId:"ziran-bowuguan",name:"国家自然博物馆",shortName:"自然博物馆",category:"博物馆",district:"东城区",address:"天桥南大街126号",location:{latitude:39.8796,longitude:116.3952},officialAppid:"wx3ccbf39dedcfc335",officialPath:"",officialWebUrl:"https://www.nnhm.org.cn",officialAccount:"国家自然博物馆",qrCode:"/images/qrcodes/ziran-bowuguan.jpg",difficultyScore:2,audienceTags:["family"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["自然博物馆","自然博"] },
+  {spotId:"kaogu-bowuguan",name:"中国考古博物馆",shortName:"考古博物馆",category:"博物馆",district:"朝阳区",address:"国家体育场北路1号院1号楼",location:{latitude:39.9985,longitude:116.3835},officialAppid:"wx48b5cc9990544897",officialPath:"",officialWebUrl:"https://cam.zglsyjy.cn",officialAccount:"中国考古博物馆",qrCode:"/images/qrcodes/kaogu-bowuguan.png",difficultyScore:2,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["考古博物馆","考古博"] },
+  {spotId:"tsinghua",name:"清华大学",shortName:"清华",category:"高校",district:"海淀区",address:"清华园1号",location:{latitude:40.0023,longitude:116.3262},officialAppid:"wxef227a5869ad5e4a",officialPath:"",officialWebUrl:"https://www.tsinghua.edu.cn",officialAccount:"清华大学",qrCode:"/images/qrcodes/tsinghua.png",difficultyScore:3,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["清华","清华大学参观"] },
+  {spotId:"peking-university",name:"北京大学",shortName:"北大",category:"高校",district:"海淀区",address:"颐和园路5号",location:{latitude:39.9937,longitude:116.3059},officialAppid:"wxae221464afae4826",officialPath:"",officialWebUrl:"https://www.pku.edu.cn",officialAccount:"北京大学",qrCode:"/images/qrcodes/peking-university.png",difficultyScore:3,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["北大","北京大学参观"] },
+  {spotId:"kejiguan",name:"中国科技馆",shortName:"中国科技馆",category:"博物馆",district:"朝阳区",address:"北辰东路5号",location:{latitude:40.0047,longitude:116.3898},officialAppid:"wx2c0837274f1a69e1",officialPath:"",officialWebUrl:"https://www.cstm.org.cn",officialAccount:"中国科学技术馆",qrCode:"/images/qrcodes/kejiguan.jpg",difficultyScore:2,audienceTags:["family"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["科技馆","中国科学技术馆"] },
+  {spotId:"meishuguan",name:"中国美术馆",shortName:"中国美术馆",category:"博物馆",district:"东城区",address:"五四大街1号",location:{latitude:39.9285,longitude:116.4108},officialAppid:"wx7988edf272d3bc05",officialPath:"",officialWebUrl:"https://www.namoc.cn",officialAccount:"中国美术馆",qrCode:"/images/qrcodes/meishuguan.png",difficultyScore:2,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["美术馆"] },
+  {spotId:"gongyi-meishuguan",name:"中国工艺美术馆·非遗馆",shortName:"工艺美术馆",category:"博物馆",district:"朝阳区",address:"湖景东路16号",location:{latitude:40.0067,longitude:116.3878},officialAppid:"",officialPath:"",officialWebUrl:"https://www.gmfyg.org.cn",officialAccount:"中国工美馆 中国非遗馆",qrCode:"/images/qrcodes/gongyi-meishuguan.png",difficultyScore:2,audienceTags:["family","elder"],popularityScore:3,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["工艺美术馆","非遗馆","工美馆"] },
+  {spotId:"shoubo",name:"首都博物馆",shortName:"首博",category:"博物馆",district:"西城区",address:"复兴门外大街16号",location:{latitude:39.9066,longitude:116.3479},officialAppid:"wx79ef8066f8c5edcd",officialPath:"",officialWebUrl:"http://www.capitalmuseum.org.cn",officialAccount:"首都博物馆",qrCode:"/images/qrcodes/shoubo.jpg",difficultyScore:2,audienceTags:["family","elder"],popularityScore:3,reservationRequired:false,hasWebVersion:true,scrapingUrl:"",aliases:["首博"] },
+  {spotId:"mutianyu",name:"慕田峪长城",shortName:"慕田峪",category:"古迹",district:"怀柔区",address:"渤海镇慕田峪村",location:{latitude:40.4323,longitude:116.5651},officialAppid:"wx15e60c04826479ea",officialPath:"",officialWebUrl:"https://www.mutianyugreatwall.com",officialAccount:"慕田峪长城",qrCode:"/images/qrcodes/mutianyu.png",difficultyScore:2,audienceTags:["family"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["慕田峪"] },
+  {spotId:"kongmiao-guozijian",name:"孔庙和国子监博物馆",shortName:"孔庙国子监",category:"博物馆",district:"东城区",address:"国子监街15号",location:{latitude:39.9482,longitude:116.4106},officialAppid:"",officialPath:"",officialWebUrl:"http://www.kmgzj.com",officialAccount:"孔庙和国子监博物馆",qrCode:"/images/qrcodes/kongmiao-guozijian.jpg",difficultyScore:2,audienceTags:["family","elder"],popularityScore:3,reservationRequired:false,hasWebVersion:true,scrapingUrl:"",aliases:["孔庙","国子监"] },
+  {spotId:"tianwenguan",name:"北京天文馆",shortName:"天文馆",category:"博物馆",district:"西城区",address:"西直门外大街138号",location:{latitude:39.9411,longitude:116.3404},officialAppid:"",officialPath:"",officialWebUrl:"https://www.bjp.org.cn",officialAccount:"北京天文馆",qrCode:"/images/qrcodes/tianwenguan.png",difficultyScore:1,audienceTags:["family"],popularityScore:3,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["天文馆"] },
+  {spotId:"huanqiu-yingcheng",name:"北京环球影城",shortName:"环球影城",category:"主题乐园",district:"通州区",address:"京哈高速与东六环交汇处西北角",location:{latitude:39.8597,longitude:116.6777},officialAppid:"wx3ba512d53df66a75",officialPath:"",officialWebUrl:"https://www.universalbeijingresort.com",officialAccount:"北京环球度假区",qrCode:"/images/qrcodes/huanqiu-yingcheng.png",difficultyScore:2,audienceTags:["family"],popularityScore:5,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["环球影城","环球度假区"] },
 ];
 
 /* ===== 放票规则（与 data/rules.json 同步） ===== */
@@ -52,7 +52,7 @@ const RULES = [
   {advanceDays:7,releaseTime:"12:00",releaseFrequency:"daily",closedDays:[],isRolling:false,bookingTips:"可提前1-7天预约，每日12:00分批更新可预约票量，分升旗/上午/下午/降旗时段；观看升旗须单独预约升旗时段；节假日和暑期放票后几分钟即约满，建议设闹钟卡点",openTime:"升旗时段以官方当日公示为准；广场开放约 05:00-22:00（以官方为准）",ticketPrice:"免费",idRequirement:"须持预约时使用的有效身份证件原件",ageLimit:"全员实名预约，无免约通道",lastCheckedDate:"2026-09-11",specialNotice:"",spotId:"tiananmen-square" },
   {advanceDays:6,releaseTime:"12:30",releaseFrequency:"daily",closedDays:["monday"],isRolling:false,bookingTips:"提前1-6天预约，每日12:30放票；每账号最多约5人；严禁携带照相机、摄像机、平板电脑、水杯等，手机须关机或静音，须安检",openTime:"08:00-12:00（仅上午瞻仰，以官方公示为准）",ticketPrice:"免费",idRequirement:"须持预约时使用的有效身份证件原件",ageLimit:"全员实名预约，无免约通道",lastCheckedDate:"2026-09-11",specialNotice:"",spotId:"maozhuxi-jiniantang" },
   {advanceDays:3,releaseTime:"17:00",releaseFrequency:"daily",closedDays:["monday"],isRolling:false,bookingTips:"实名预约，不设现场售票，不售当日票和团队票；提前3天、每日17:00放第三日票；周一闭馆（法定节假日除外）；须按预约时段参观，携带身份证原件；单笔订单限5张，免票人群也需预约；遇全国两会、重大外事活动临时停止参观，开放安排以小程序当日公示为准",openTime:"09:00-15:00（14:30停止检票），周一闭馆，以小程序当日公示为准",ticketPrice:"30元/人（学生票15元）",idRequirement:"须持预约时使用的有效身份证件原件",ageLimit:"18周岁以下、60周岁（含）以上中国公民及现役军人、消防救援人员、残疾人预约后免费",lastCheckedDate:"2026-09-11",specialNotice:"",spotId:"renmin-dahuitang" },
-  {advanceDays:8,releaseTime:"08:00",releaseFrequency:"daily",closedDays:["monday"],isRolling:false,bookingTips:"提前8天可约；常规每日8:00、17:00、20:00三个放票时段；2026暑期（7月27日至8月31日）每日9:00、17:00释放次日回流票，9月起以官网/公众号为准；卡点进入，约不上别退出持续刷新",openTime:"09:00-17:00（16:00停止入馆），周一闭馆",ticketPrice:"免费",idRequirement:"须持预约时使用的有效身份证件原件",ageLimit:"未满14周岁未成年人须由成年人陪同（以官方为准）",lastCheckedDate:"2026-08-24",specialNotice:"",spotId:"junbo",releaseTimes:["08:00","17:00","20:00"] },
+  {advanceDays:7,releaseTime:"08:00",releaseFrequency:"daily",closedDays:["monday"],isRolling:false,bookingTips:"提前7天可约（官网写「提前8天」，实测按提前7天放票，2026-09-22 用户核实）；常规每日8:00、17:00、20:00三个放票时段；2026暑期（7月27日至8月31日）每日9:00、17:00释放次日回流票，9月起以官网/公众号为准；卡点进入，约不上别退出持续刷新",openTime:"09:00-17:00（16:00停止入馆），周一闭馆",ticketPrice:"免费",idRequirement:"须持预约时使用的有效身份证件原件",ageLimit:"未满14周岁未成年人须由成年人陪同（以官方为准）",lastCheckedDate:"2026-09-22",specialNotice:"",spotId:"junbo",releaseTimes:["08:00","17:00","20:00"] },
   {advanceDays:3,releaseTime:"11:00",releaseFrequency:"daily",closedDays:["monday"],isRolling:false,bookingTips:"提前3天放票，每日11:00开抢（团体票10:00）；周末票比国博还难抢（场馆小票少），放票后几分钟约满；建议提前录好同行人信息、定闹钟卡点",openTime:"09:00-17:00（16:30停止入馆），周一闭馆",ticketPrice:"免费（收费临展另购）",idRequirement:"须持预约时使用的有效身份证件原件",ageLimit:"儿童无论年龄均需单独预约（以官方为准）",lastCheckedDate:"2026-08-24",specialNotice:"",spotId:"ziran-bowuguan" },
   {advanceDays:3,releaseTime:"09:00",releaseFrequency:"daily",closedDays:["monday","tuesday"],isRolling:false,bookingTips:"提前3天9:00放票，周末秒空（开馆初期官方口径每日限量暂定500人，当前限额以官方为准）；周二仅接受团体预约，散客无法入内；放票后建议持续刷新",openTime:"09:00-16:30（16:00停止检票）；周一闭馆，周二仅团体",ticketPrice:"免费",idRequirement:"须持预约时使用的有效身份证件原件",ageLimit:"以官方公示为准",lastCheckedDate:"2026-08-24",specialNotice:"",spotId:"kaogu-bowuguan" },
   {advanceDays:7,releaseTime:"08:00",releaseFrequency:"daily",closedDays:["monday"],isRolling:false,bookingTips:"通过「参观清华」小程序实名预约，双轨制：即时预约每日8:00-17:00（工作日最多提前1天，周末及节假日最多提前7天）；抽签预约每日17:00-21:45（工作日最多提前2天，周末及节假日最多提前8天，22:00公布中签）；每人每180天仅可成功预约1次",openTime:"开放日入校时段：上午8:00-11:00、下午13:00-16:00（11:00/16:00停止入校），以「参观清华」小程序当期公告为准",ticketPrice:"免费",idRequirement:"实名认证，入校时人证核验",ageLimit:"以官方公示为准",lastCheckedDate:"2026-09-11",specialNotice:"",spotId:"tsinghua" },
@@ -301,11 +301,18 @@ function buildMockTripName(city, startDate, endDate) {
 
 /* ---------- 合并判定与景点段（镜像 lib/trip.js 纯函数区） ---------- */
 
-/** TRIP-RULE-002 合并判定：同城市，且（日期有交集 或 首尾相接） */
+/**
+ * TRIP-RULE-002 合并判定（2026-09-23 收敛：同城即合并，不再按日期间隔拆分）
+ *
+ * ⚠️ **必须与云端 `cloudfunctions/reminder/lib/trip.js` 逐字同口径**。
+ * 这里一度还留着旧的「交集或首尾相接」，云端早已改成同城即合并——
+ * 模拟器里两个北京行程分段显示，真机上并成一段，而两边的单测都是绿的
+ * （各自测自己的分支）。镜像漂移就是这么发生的：改一边必须改另一边。
+ *
+ * 旧逻辑（若将来要恢复间隔拆分）：同城市 &&（日期有交集 或 一方 endDate+1 === 另一方 startDate）。
+ */
 function canMerge(a, b) {
-  if ((a.city || '') !== (b.city || '')) return false;
-  if (a.startDate <= b.endDate && b.startDate <= a.endDate) return true;
-  return addDays(a.endDate, 1) === b.startDate || addDays(b.endDate, 1) === a.startDate;
+  return (a.city || '') === (b.city || '');
 }
 
 /** 日期段取并集 */
@@ -393,6 +400,38 @@ function dropTripIfNoItem(tripId) {
   return true;
 }
 
+/** 摘要卡「即将提醒」胶囊：接下来的 limit 场放票（镜像云端 task.buildReleasePills）。
+    ⚠️ 不限 BANNER_WINDOW_HOURS 窗口——横幅只覆盖眼下一小时，胶囊摊开的是「后面还有哪几场」。 */
+function releasePillsOf(decorated, nowTs, limit) {
+  /* 先按**放票时刻**分组再取前 limit 组：同一时刻的多条提醒合成一颗胶囊
+     （「今天17:00 城楼/国博放票」）。limit 数的是**时间点**，不是项数。 */
+  const groups = new Map();
+  (decorated || [])
+    .filter(d => d.releaseAt && new Date(d.releaseAt).getTime() > nowTs.getTime())
+    .forEach(d => {
+      const ts = new Date(d.releaseAt).getTime();
+      if (!groups.has(ts)) groups.set(ts, []);
+      groups.get(ts).push(d);
+    });
+  const today = fmt(nowTs);
+  return [...groups.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .slice(0, limit)
+    .map(([ts, items], i) => {
+      const sorted = items.slice().sort((a, b) => String(a.spotName || '').localeCompare(String(b.spotName || '')));
+      const rel = new Date(ts);
+      const dayWord = fmt(rel) === today ? '今天' : (fmt(rel) === addDays(today, 1) ? '明天' : formatMonthDay(fmt(rel)));
+      return {
+        itemId: sorted[0].itemId, spotId: sorted[0].spotId,
+        itemIds: sorted.map(x => x.itemId), spotIds: sorted.map(x => x.spotId),
+        /* ⚠️ 末尾不带「放票」二字（与云端 task.buildReleasePills 逐字一致） */
+        text: `${dayWord}${formatHourMinute(rel)} ${sorted.map(x => x.spotShort || x.spotName).join('/')}`,
+        releaseAt: sorted[0].releaseAt, visitDate: sorted[0].visitDate,
+        count: sorted.length, nearest: i === 0,
+      };
+    });
+}
+
 /** 清单归属的 tripId：不传 = 暂存区（镜像 cart.cartTripIdOf） */
 function cartTripIdOf(tripId) { return tripId || PENDING_CART_TRIP_ID; }
 
@@ -403,16 +442,23 @@ function cartTripIdOf(tripId) { return tripId || PENDING_CART_TRIP_ID; }
  *   ③ 都没有 → 静默。**什么都不建议是合法的。**
  * 候选池 = 行程本身的日期范围（不含刚失败的那一天）。
  * 数据红线：不做同日回流票，不出现任何余票字段。
+ *
+ * ⚠️ `nowTs` / `decorated` 可传：`home.bootstrap` 要把候选与行程项算在**同一份
+ * 响应、同一个时刻**上（镜像 repo 的 `recoverableMapOf` 为什么必须内联的那段）。
+ * 不传时退回「读真实时钟 + 自己装饰兄弟项」的旧口径，供单测与 standalone 入口用。
  */
-function mockRecoveryCandidates(failed) {
-  const nowTs = new Date();
+function mockRecoveryCandidates(failed, nowTs, decorated) {
+  nowTs = nowTs || new Date();
   const trip = db.trips[failed.tripId] || null;
-  const siblings = Object.values(db.items).filter(i => i.tripId === failed.tripId);
+  const siblings = decorated || Object.values(db.items).filter(i => i.tripId === failed.tripId);
 
   /* 第 ① 层：同景点还有没到放票时间的备选 → 不打扰 */
-  const sameSpot = siblings.filter(i => i.spotId === failed.spotId && i._id !== failed._id);
+  const sameSpot = siblings.filter(i =>
+    i.spotId === failed.spotId && (i._id || i.itemId) !== (failed._id || failed.itemId));
   const pendingBackup = sameSpot.some(i => {
-    const d = decorateItem(i, nowTs);
+    /* `decorated` 传进来时已经是装饰结果（有 ticketState / ended / canMark），
+       只有裸库文档才需要现算一次。 */
+    const d = ('ticketState' in i) ? i : decorateItem(i, nowTs);
     return !d.ended && !d.canMark && d.ticketState === 'PENDING';
   });
   if (pendingBackup) return [];
@@ -422,7 +468,7 @@ function mockRecoveryCandidates(failed) {
   /* ⚠️ 必须排除「刚失败的那一天」：把 10月2日 原样建议回去，
      等于对用户刚说没成的事再说一次「再约这天吧」 */
   const taken = new Set([failed.visitDate].concat(sameSpot.map(i => i.visitDate)));
-  const today = fmt(new Date());
+  const today = fmt(nowTs);
 
   const out = [];
   const seen = {};
@@ -470,6 +516,30 @@ function mockRecoveryCandidates(failed) {
     if (pa !== pb) return pa - pb;
     return a.visitDate.localeCompare(b.visitDate);
   }).slice(0, 6);
+}
+
+/**
+ * 「哪些行程项还能挽回」一次算清（镜像云端 `recovery.recoverableMapOf`，
+ * 供 `home.bootstrap` 内联回填）。
+ *
+ * ⚠️ 2026-09-24：首页原先在 bootstrap 之后**另起一次请求**逐条算候选，
+ *    两次响应之间没有顺序保证——卡片先按「FAILED 但不可挽回」渲染，
+ *    挽回线就永远不出现（只在真机上偶发，本地看不出）。所以它必须内联。
+ */
+function mockRecoverableIds(decorated, nowTs) {
+  const fails = decorated.filter(d => d.result === 'FAILED' && !d.ended);
+  if (!fails.length) return [];
+  const ids = [];
+  fails.forEach(f => {
+    const siblings = decorated.filter(d => d.tripId === f.tripId);
+    /* 裸库文档形状与装饰结果不同（`_id` vs `itemId`），这里统一成装饰结果的读法 */
+    if (mockRecoveryCandidates(
+      { _id: f.itemId, itemId: f.itemId, tripId: f.tripId, spotId: f.spotId, visitDate: f.visitDate },
+      nowTs,
+      siblings
+    ).length) ids.push(f.itemId);
+  });
+  return ids;
 }
 
 function purgeTripIfNoTask(tripId) {
@@ -529,31 +599,31 @@ function buildEvents(spot, rule, seg) {
   }
   return events;
 }
-function resolveStatus(event, ctx, nowTs = new Date()) {
-  const { inCart = false, task = null, committed = false } = ctx || {};
-  if (event.reservationRequired === false) {
-    if (committed) return 'COMMITTED';
-    if (inCart) return 'IN_CART';
-    return 'SELECTABLE';
+function releaseStateOf(event, nowTs = new Date()) {
+  if (!event || event.reservationRequired === false) {
+    return { key: 'NO_RESERVATION', label: '无需预约' };
   }
-  if (event.releaseAt.getTime() > nowTs.getTime()) {
-    if (task) return task.backendStatus === 'WAITING' ? 'WAITING' : 'REMINDERED';
-    if (committed) return 'COMMITTED';
-    if (inCart) return 'IN_CART';
-    return 'SELECTABLE';
+  const releaseAt = event.releaseAt instanceof Date ? event.releaseAt : new Date(event.releaseAt);
+  if (!event.releaseAt || Number.isNaN(releaseAt.getTime()) || releaseAt.getTime() > nowTs.getTime()) {
+    return { key: 'NOT_RELEASED', label: '待开票' };
   }
-  return 'BOOKABLE';
+  return { key: 'RELEASED', label: '已开票' };
 }
+function resolveStatus(event, ctx = {}) {
+  const { inCart = false, committed = false } = ctx || {};
+  if (committed) return 'COMMITTED';
+  if (inCart) return 'IN_CART';
+  return 'SELECTABLE';
+}
+/* ⚠️ 与 `cloudfunctions/reminder/lib/timeline.js` 的 buttonOf **逐字一致**（2026-09-24 统一文案）：
+   加清单类按钮文案 = 「加入清单 / 已加清单 / 已加行程」。改一边必须改另一边，否则模拟器与
+   真机文案对不上，而两边单测各自都是绿的。 */
 function buttonOf(status, event = {}) {
   const noReservation = event.reservationRequired === false;
   switch (status) {
-    case 'SELECTABLE': return noReservation ? { text: '加入行程', enabled: true } : { text: '+ 添加提醒', enabled: true };
+    case 'SELECTABLE': return noReservation ? { text: '加入行程', enabled: true } : { text: '加入清单', enabled: true };
     case 'IN_CART': return { text: noReservation ? '已加入清单' : '已加清单', enabled: true, openCart: true };
-    case 'WAITING': return { text: '待提醒', enabled: false };
-    case 'REMINDERED': return { text: '已提醒', enabled: false };
-    case 'BOOKABLE': return { text: '立即预约', enabled: true, booking: true };
-    case 'FULL': return { text: '已约满', enabled: false };
-    case 'COMMITTED': return { text: '已加入行程', enabled: false };
+    case 'COMMITTED': return { text: '已加行程', enabled: false };
     default: return { text: '', enabled: false };
   }
 }
@@ -599,11 +669,16 @@ function deriveReleaseAt(spot, rule, visitDate) {
   return parseBeijing(addDays(visitDate, -rule.advanceDays), releaseTime);
 }
 
+/* ⚠️ 云端 `cloudfunctions/reminder/lib/item.js` 的 TICKET_STATE_LABEL 是唯一真身，
+   这里是镜像，`test/mock-mirror.test.js` 交叉比对。
+   2026-09-22 六个展示态**整体换词**（待抢→待抢票、可抢→可抢票、已成→已约到、
+   未成→未抢到、开过票了→未标记），换的是**文案不是语义**：
+   `UNMARKED` 仍是中性态，别因为「未标记」字面像「未抢到」就把它改判成失败。 */
 const TICKET_LABEL = {
-  PENDING: '待抢', BOOKABLE: '可抢', SUCCESS: '已成',
-  FAILED: '未成',
-  /* UNMARKED 是中性态，不是「未成」——放票过了 24 小时没标记不代表没抢到 */
-  UNMARKED: '开过票了',
+  PENDING: '待抢票', BOOKABLE: '可抢票', SUCCESS: '已约到',
+  FAILED: '未抢到',
+  /* UNMARKED 是中性态，不是「未抢到」——放票过了 24 小时没标记不代表没抢到 */
+  UNMARKED: '未标记',
   NO_RESERVATION: '免预约',
 };
 const REMINDER_LABEL = { NOT_SET: '未设提醒', WAITING: '待提醒', TRIGGERED: '已提醒', MISSED: '未送达' };
@@ -612,7 +687,19 @@ const REMINDER_LABEL = { NOT_SET: '未设提醒', WAITING: '待提醒', TRIGGERE
  * ENUM-007 票务展示状态。计算顺序固定：
  * 免预约 → 人工结果 → 放票前 → 放票后 24h 内 → 未标记
  */
-function ticketStateLabelOf(state) { return TICKET_LABEL[state] || '待抢'; }
+function ticketStateLabelOf(state) { return TICKET_LABEL[state] || '待抢票'; }
+
+/**
+ * 现在还能不能开启/取消提醒（镜像 item.canSetReminder，2026-09-23）。
+ * 判据 = 需预约 && 有放票时刻 && **放票时刻还没到**。放票一过，开启会即刻被判
+ * MISSED（刚点完就看到「未送达」），取消则无任务可取消 —— 两个动作都没有意义。
+ * ⚠️ 与「待抢票」不等价：清单先加、放票后才提交的项是可抢票态，但也没有入口。
+ */
+function canSetReminderOf(reservationRequired, releaseAt, nowTs) {
+  if (reservationRequired === false) return false;
+  if (!releaseAt) return false;
+  return new Date(releaseAt).getTime() > nowTs.getTime();
+}
 
 function ticketStateOf(item, reservationRequired, releaseAt, nowTs) {
   if (reservationRequired === false) return 'NO_RESERVATION';
@@ -634,8 +721,7 @@ function reminderStateOf(task, remindOn, nowTs) {
   let state = 'WAITING';
   if (status === 'TRIGGERED') state = 'TRIGGERED';
   else if (status === 'MISSED') state = 'MISSED';
-  const reason = state === 'MISSED' ? (task.missedReason || task.lastSendError || '超过放票时间点未触发成功') : null;
-  return { state, stateLabel: REMINDER_LABEL[state], reason, channels: task.channels || [], offsets: task.offsets || [] };
+  const reason = state === 'MISSED' ? (task.missedReason || task.lastSendError || '超过放票时间点未触发成功') : null;  return { state, stateLabel: REMINDER_LABEL[state], reason, channels: task.channels || [], offsets: task.offsets || [] };
 }
 
 /** 组装对外行程项（镜像 item.decorateItem，字段名/语义必须逐一对齐） */
@@ -652,6 +738,7 @@ function decorateItem(item, nowTs) {
     tripId: item.tripId,
     spotId: item.spotId,
     spotName: spot ? spot.name : '未知景点',
+    spotShort: spot ? (spot.shortName || spot.name) : '未知景点',
     visitDate: item.visitDate,
     backupGroupId: item.backupGroupId || (item.tripId + ':' + item.spotId),
     reservationRequired,
@@ -665,6 +752,8 @@ function decorateItem(item, nowTs) {
     canMark: reservationRequired && Boolean(releaseAt)
       && nowTs.getTime() >= new Date(releaseAt).getTime()
       && !marked && fmt(new Date()) <= item.visitDate,
+    /* 菜单据此渲染「开启提醒 / 取消提醒」，与 updateReminder 的闸门同源 */
+    canSetReminder: canSetReminderOf(reservationRequired, releaseAt, nowTs),
     result: item.result || null,
     resultAt: item.resultAt || null,
     undoUntil: item.resultAt
@@ -710,15 +799,27 @@ function previewTimeline(input) {
     return { success: true, events: [], byDeparture: [], bySpot: [], closedSpots: [], closedDaySkips: [], empty: true, emptyReason: '先选择想去的景点' };
   }
 
-  /* ⚠️ 预览**只读当前暂存清单**，不读 db.items / db.tasks。
-     界线：暂存清单是用户正在这一页做的、还没提交的工作，不反映它按钮就像坏的
-     （点了没变化、再点提示「已经在清单里啦」）；而 db.items 是别的行程的既成事实，
-     读它就会把历史状态带进预览——换一批日期重新生成时看到属于另一趟行程的「已在行程」。 */
+  /* ⚠️ 预览只读两样，界线各不相同（与云端 lib/timeline.js 的 preview 逐条对齐）：
+     ① 当前暂存清单：用户正在这一页做的工作，不反映它按钮就像坏的（点了没变化、
+        再点提示「已经在清单里啦」）；
+     ② committedTripId 那一趟行程的行程项：用户此刻正在编辑的那趟已经有的项，
+        要标成「已加入行程」禁选，否则他看不见已有项、不知道还该补哪个。
+        只读这一趟，绝不读别趟——读别趟会把属于另一趟行程的状态带进预览。 */
   const want = cartTripIdOf(null);
   const cartKeys = {};
   Object.values(db.carts).forEach(c => {
     if (c.tripId === want) cartKeys[c.spotId + '|' + c.visitDate] = true;
   });
+  const committedKeys = {};
+  if (input.committedTripId) {
+    /* 按 userId 一起过滤：只读**自己**那一趟的项。云端查询天生带 userId，
+       这里漏掉就等于 mock 比云端宽松，而宽松的那一侧永远测不出越权。 */
+    Object.values(db.items).forEach(it => {
+      if (it.tripId === input.committedTripId && it.userId === mockUser.openId) {
+        committedKeys[it.spotId + '|' + it.visitDate] = true;
+      }
+    });
+  }
 
   const nowTs = new Date();
   const events = [];
@@ -748,12 +849,21 @@ function previewTimeline(input) {
       });
     }
     built.forEach(event => {
-      /* inCart 反映当前暂存清单；committed 恒为 false（不读 db.items） */
+      /* inCart = 当前暂存清单；committed = 仅限 committedTripId 那一趟行程 */
+      const key = event.spotId + '|' + event.visitDate;
       const status = resolveStatus(event, {
-        inCart: !!cartKeys[event.spotId + '|' + event.visitDate],
-        task: null, committed: false,
-      }, nowTs);
-      events.push({ ...event, status, button: buttonOf(status, event), stale: false });
+        inCart: !!cartKeys[key],
+        committed: !!committedKeys[key],
+      });
+      const releaseState = releaseStateOf(event, nowTs);
+      events.push({
+        ...event,
+        releaseState: releaseState.key,
+        releaseStateLabel: releaseState.label,
+        status,
+        button: buttonOf(status, event),
+        stale: false,
+      });
     });
   });
 
@@ -814,10 +924,17 @@ function generateTimeline(tripId) {
     for (const event of built) {
       const key = `${event.spotId}|${event.visitDate}`;
       const inCart = Object.values(db.carts).some(c => c.tripId === tripId && `${c.spotId}|${c.visitDate}` === key);
-      const task = Object.values(db.tasks).find(t => t.tripId === tripId && `${t.spotId}|${t.visitDate}` === key) || null;
       const committed = Object.values(db.items).some(i => i.tripId === tripId && `${i.spotId}|${i.visitDate}` === key);
-      const status = resolveStatus(event, { inCart, task, committed }, nowTs);
-      events.push({ ...event, status, button: buttonOf(status, event), stale: !!event.releaseAt && event.releaseAt.getTime() <= nowTs.getTime() });
+      const status = resolveStatus(event, { inCart, committed });
+      const releaseState = releaseStateOf(event, nowTs);
+      events.push({
+        ...event,
+        releaseState: releaseState.key,
+        releaseStateLabel: releaseState.label,
+        status,
+        button: buttonOf(status, event),
+        stale: false,
+      });
     }
   }
   const validKeys = new Set(events.map(e => `${e.spotId}|${e.visitDate}`));
@@ -857,10 +974,62 @@ function buildMockBanner(tasks, nowTs = new Date()) {
   const vp = beijingParts(parseBeijing(soon.visitDate, '12:00'));
   return {
     type: 'UPCOMING',
-    text: `${dayWord}${formatHourMinute(releaseAt)}开抢${soon.spotName || ''}${vp.month}月${vp.day}日的门票，还有${minutesLeft}分钟`,
+    text: `${dayWord}${formatHourMinute(releaseAt)}开抢${soon.spotName || ''}${vp.month}月${vp.day}日的门票`,
     taskId: soon._id,
     minutesLeft,
   };
+}
+
+/* ===== 授权额度健康度（镜像 reminder/lib/task.js，按未发送 offset 计数） ===== */
+const MOCK_QUOTA_SAFE_BUFFER = 1;
+const MOCK_QUOTA_WARNING_WINDOW_HOURS = 48;
+
+function mockReminderHealthOf(tasks, remainingQuota, nowTs = new Date()) {
+  const nowMs = nowTs.getTime();
+  const quota = Math.max(0, Number(remainingQuota) || 0);
+  let pendingMessageCount = 0;
+  let nearestRemindAt = null;
+
+  (tasks || []).forEach(t => {
+    if (!t || t.backendStatus !== 'WAITING') return;
+    const releaseMs = new Date(t.releaseAt).getTime();
+    if (!Number.isFinite(releaseMs) || releaseMs <= nowMs) return;
+    const sent = new Set(t.sentOffsets || []);
+    (t.offsets || []).forEach(offset => {
+      if (sent.has(offset)) return;
+      pendingMessageCount += 1;
+      const remindAt = new Date(releaseMs - offset * 60000);
+      if (!nearestRemindAt || remindAt.getTime() < nearestRemindAt.getTime()) nearestRemindAt = remindAt;
+    });
+  });
+
+  let level = 'idle';
+  if (pendingMessageCount > 0) {
+    if (quota >= pendingMessageCount + MOCK_QUOTA_SAFE_BUFFER) level = 'ready';
+    else if (quota === pendingMessageCount) level = 'low';
+    else if (quota > 0) level = 'short';
+    else level = 'exhausted';
+  }
+
+  return {
+    level,
+    remainingQuota: quota,
+    pendingMessageCount,
+    nearestRemindAt,
+    shortfall: Math.max(0, pendingMessageCount - quota),
+    replenishNeeded: Math.max(0, pendingMessageCount + MOCK_QUOTA_SAFE_BUFFER - quota),
+  };
+}
+
+function mockReminderQuotaWarningOf(health, nowTs = new Date()) {
+  if (!health || !['low', 'short', 'exhausted'].includes(health.level)) return null;
+  if (!health.nearestRemindAt) return null;
+  if (health.nearestRemindAt.getTime() - nowTs.getTime() > MOCK_QUOTA_WARNING_WINDOW_HOURS * 3600000) return null;
+  let text = '';
+  if (health.level === 'low') text = '提醒授权即将用完，建议续收 1 次。';
+  else if (health.level === 'exhausted') text = '提醒授权已用完，未来提醒可能收不到。';
+  else text = `未来还有${health.pendingMessageCount}条提醒待发送，还差${health.shortfall}次授权，可能收不到。`;
+  return Object.assign({}, health, { type: 'QUOTA', text });
 }
 
 /* ===== 无感登录（2026-08-24 重构：进小程序即自动建号，镜像 reminder user.profile） ===== */
@@ -1051,8 +1220,12 @@ const handlers = {
     if (!spot) return { success: false, error: '景点不存在', errorCode: 1001 };
     const rule = RULES.find(r => r.spotId === data.spotId) || null;
     const reservationRequired = spot.reservationRequired !== false;
-    const remindable = reservationRequired && !!(rule && rule.advanceDays && rule.releaseTime);
-    if (reservationRequired && (!remindable || !data.releaseAt)) return { success: false, error: '参数不合法', errorCode: 1010 };
+    const remindable = reservationRequired && !!(rule && rule.advanceDays && (rule.releaseTime || rule.releaseTimes));
+    /* ⚠️ 放票时刻与云端一样**由服务端推**，不信任调用方传的（2026-09-24）：
+       「约其他日」只拿得到用户选的 visitDate，压根没有 releaseAt 可传
+       （见 lib/cart.js 里同一条注释）。 */
+    const derivedReleaseAt = reservationRequired ? deriveReleaseAt(spot, rule, data.visitDate) : null;
+    if (reservationRequired && (!remindable || !derivedReleaseAt)) return { success: false, error: '参数不合法', errorCode: 1010 };
     /* 不传 tripId = 操作「当前暂存清单」（纯预览化后的常规路径） */
     const targetTripId = cartTripIdOf(data.tripId);
     const exists = Object.values(db.carts).some(c => c.tripId === targetTripId && c.spotId === data.spotId && c.visitDate === data.visitDate);
@@ -1061,7 +1234,8 @@ const handlers = {
     const itemExists = Object.values(db.items).some(i => i.spotId === data.spotId && i.visitDate === data.visitDate);
     if (exists || itemExists) return { success: false, error: '这条已经在清单里啦', errorCode: 1002 };
     const weak = reservationRequired && (spot.difficultyScore || 0) <= 2;
-    const remindOn = reservationRequired
+    const releasePassed = !!derivedReleaseAt && new Date(derivedReleaseAt).getTime() <= Date.now();
+    const remindOn = reservationRequired && !releasePassed
       ? (typeof data.remindOn === 'boolean' ? data.remindOn : !weak)
       : false;
     const cartId = 'mock-cart-' + (++cartSeq);
@@ -1070,7 +1244,7 @@ const handlers = {
       tripId: targetTripId,
       spotId: data.spotId,
       visitDate: data.visitDate,
-      releaseAt: reservationRequired ? data.releaseAt : null,
+      releaseAt: reservationRequired ? derivedReleaseAt : null,
       remindOn,
       reservationRequired,
     };
@@ -1100,6 +1274,10 @@ const handlers = {
     if (!item || (item.reservationRequired === false && data.remindOn)) {
       return { success: false, error: '参数不合法', errorCode: 1010 };
     }
+    const releasePassed = item.reservationRequired !== false
+      && item.releaseAt
+      && new Date(item.releaseAt).getTime() <= Date.now();
+    if (releasePassed) return { success: false, error: '已过放票时间，提醒无法开启或取消', errorCode: 1017 };
     item.remindOn = data.remindOn === true;
     return { success: true, cartId: data.cartId, remindOn: item.remindOn };
   },
@@ -1123,8 +1301,11 @@ const handlers = {
           ...c,
           reservationRequired: false,
           remindOn: false,
+          remindLocked: false,
           spotName: spot ? spot.name : '未知景点',
+          spotShort: spot ? (spot.shortName || spot.name) : '未知景点',
           releaseAt: null,
+          releaseDateLabel: '',
           releaseTimeLabel: '无需预约',
           visitDateLabel: formatMonthDayWeek(c.visitDate) + ' · 随到随玩',
           countdown: null,
@@ -1135,11 +1316,16 @@ const handlers = {
       const expired = msLeft <= 0;
       const h = Math.max(0, Math.floor(msLeft / 3600000));
       const m = Math.max(0, Math.floor((msLeft % 3600000) / 60000));
+      const releaseDateParts = fmt(releaseAt).split('-');
       return {
         ...c,
         reservationRequired: true,
-        remindOn: c.remindOn === true,
+        remindOn: !expired && c.remindOn === true,
+        remindLocked: expired,
         spotName: spot ? spot.name : '未知景点',
+    spotShort: spot ? (spot.shortName || spot.name) : '未知景点',
+        releaseDateLabel: `${releaseDateParts[1]}月${releaseDateParts[2]}日`,
+        releaseLabel: `${releaseDateParts[1]}月${releaseDateParts[2]}日 ${formatHourMinute(releaseAt)} 放票`,
         releaseTimeLabel: formatHourMinute(releaseAt),
         visitDateLabel: '约 ' + formatMonthDayWeek(c.visitDate) + ' 门票',
         countdown: expired
@@ -1147,13 +1333,24 @@ const handlers = {
           : { hours: h, minutes: m, text: '还剩' + h + 'h ' + m + 'm', urgent: msLeft < 3600000, expired: false },
       };
     });
-    const reserved = enriched.filter(c => c.reservationRequired !== false);
-    const noReservation = enriched.filter(c => c.reservationRequired === false);
-    const groups = [];
-    const map = {};
-    reserved.forEach(c => { const ds = fmt(c.releaseAt); (map[ds] = map[ds] || []).push(c); });
-    Object.keys(map).sort().forEach(k => groups.push({ key: k, label: formatMonthDay(k), items: map[k].sort((a, b) => new Date(a.releaseAt) - new Date(b.releaseAt)) }));
-    if (noReservation.length) groups.push({ key: '__no_reservation__', label: '无需预约', items: noReservation.sort((a, b) => a.visitDate.localeCompare(b.visitDate)) });
+    const visitDates = [...new Set(enriched.map(c => c.visitDate).filter(Boolean))].sort();
+    const firstDate = visitDates[0];
+    const groups = visitDates.map(visitDate => ({
+      key: visitDate,
+      label: formatMonthDayWeek(visitDate).replace(' (', ' · ').replace(')', ''),
+      dayLabel: firstDate ? `【第${diffDays(firstDate, visitDate) + 1}天】` : '',
+      items: enriched
+        .filter(c => c.visitDate === visitDate)
+        .sort((a, b) => {
+          const af = a.reservationRequired === false ? 1 : 0;
+          const bf = b.reservationRequired === false ? 1 : 0;
+          if (af !== bf) return af - bf;
+          const at = a.releaseAt ? new Date(a.releaseAt).getTime() : Number.MAX_SAFE_INTEGER;
+          const bt = b.releaseAt ? new Date(b.releaseAt).getTime() : Number.MAX_SAFE_INTEGER;
+          if (at !== bt) return at - bt;
+          return String(a.spotName || '').localeCompare(String(b.spotName || ''), 'zh-CN');
+        }),
+    }));
     const spotCount = new Set(items.map(c => c.spotId)).size;
     const reminderCount = enriched.filter(c => c.remindOn).length;
     const summary = {
@@ -1171,10 +1368,18 @@ const handlers = {
   'task.submit': (data) => {
     /* 2026-09-20 起这是**唯一**创建行程的地方（「生成时间线」已改为纯预览）：
        读暂存清单 → 建/合并行程 → 落行程项 → 为勾了提醒的项建任务 → 清空清单 */
+    const disableReminders = data.disableReminders === true;
     const want = cartTripIdOf(data.tripId);
-    const cartItems = Object.values(db.carts).filter(c => c.tripId === want);
+    if (disableReminders && data.tripId && data.tripId !== PENDING_CART_TRIP_ID) {
+      return { success: false, error: '参数不合法', errorCode: 1010 };
+    }
+    const cartItems = Object.values(db.carts).filter(c =>
+      c.tripId === want && (!data.cartId || c._id === data.cartId));
     if (cartItems.length === 0) return { success: false, error: '先添加至少一条提醒', errorCode: 1009 };
-    const reminderItems = cartItems.filter(c => c.reservationRequired !== false && c.remindOn === true);
+    const nowTs = new Date();
+    const pastReleaseOf = c => !!c.releaseAt && new Date(c.releaseAt).getTime() <= nowTs.getTime();
+    const reminderItems = disableReminders ? [] : cartItems.filter(c =>
+      c.reservationRequired !== false && c.remindOn === true && !pastReleaseOf(c));
     const channels = data.channels || [];
     const offsets = data.offsets || [];
     if (reminderItems.length > 0 && (channels.length === 0 || offsets.length === 0 || reminderItems.some(c => !c.releaseAt))) {
@@ -1207,8 +1412,14 @@ const handlers = {
 
     let created = 0;
     let createdItems = 0;
+    let expiredReminder = 0;
     cartItems.forEach(c => {
-      const remindOn = c.reservationRequired !== false && c.remindOn === true;
+      /* ⚠️ 放票已过的项**落 false**（镜像 task.submit，2026-09-23）：
+         任务一生出来就会被收敛成 MISSED，用户提交一次就凭空收获一条失败提醒。 */
+      const wanted = !disableReminders && c.reservationRequired !== false && c.remindOn === true;
+      const pastRelease = pastReleaseOf(c);
+      const remindOn = wanted && !pastRelease;
+      if (wanted && pastRelease) expiredReminder += 1;
       let item = Object.values(db.items).find(i => i.tripId === targetTripId && i.spotId === c.spotId && i.visitDate === c.visitDate);
       if (!item) {
         const itemId = 'mock-item-' + (++itemSeq);
@@ -1253,11 +1464,18 @@ const handlers = {
       created,
       createdItems,
       createdTasks: created,
-      noReminder: cartItems.length - reminderItems.length,
+      noReminder: disableReminders ? cartItems.length : cartItems.length - reminderItems.length,
+      /* 勾了提醒但因放票时刻已过而没建任务的条数（镜像 lib/task.js） */
+      expiredReminder: disableReminders ? 0 : expiredReminder,
+      disableReminders,
       /* 契约 8.5 要求回传 tripId：前端据此写 globalData.currentTripId */
       tripId: targetTripId,
-      toast: created > 0 ? `已加入行程 · 其中 ${created} 个已设提醒` : `已加入行程 · ${createdItems} 项`,
-      needsOaAuth: channels.includes('OFFICIAL_ACCOUNT'),
+      toast: created > 0
+        ? `已加入行程 · 已设置 ${created} 个提醒`
+        : (expiredReminder > 0
+          ? `已加入行程 · ${expiredReminder} 项已过放票时间，提醒无法设置`
+          : `已加入行程 · ${createdItems} 项`),
+      needsOaAuth: !disableReminders && channels.includes('OFFICIAL_ACCOUNT'),
     };
   },
   'task.list': (data) => {
@@ -1274,7 +1492,8 @@ const handlers = {
       const expired = status === 'MISSED' || msLeft <= 0;
       return {
         ...t, backendStatus: status,
-        spotName: spot ? spot.name : '未知景点', difficultyScore: spot ? spot.difficultyScore : null,
+        spotName: spot ? spot.name : '未知景点',
+    spotShort: spot ? (spot.shortName || spot.name) : '未知景点', difficultyScore: spot ? spot.difficultyScore : null,
         releaseTimeLabel: formatHourMinute(releaseAt), releaseDateStr: fmt(releaseAt),
         grabLabel: `开抢${formatMonthDayWeekCn(t.visitDate)}门票`, statusLabel: LABELS[status] || '待提醒',
         countdown: msLeft > 0 && msLeft < 3 * 3600000 ? { text: `还剩${pad(Math.floor(msLeft / 3600000))}h ${pad(Math.floor((msLeft % 3600000) / 60000))}m`, urgent: true } : null,
@@ -1395,21 +1614,39 @@ const handlers = {
     /* 免预约项没有提醒可言：明确拒绝，不静默忽略——否则前端会以为设上了 */
     if (data.remindOn === true && !reservationRequired) return { success: false, error: '参数不合法', errorCode: 1010 };
     if (data.remindOn === true && !releaseAt) return { success: false, error: '参数不合法', errorCode: 1010 };
+    /* 放票时刻已过 → 开启与取消都没有意义（镜像 trip-item-actions，2026-09-23） */
+    if (!canSetReminderOf(reservationRequired, releaseAt, new Date())) {
+      return { success: false, error: '已过放票时间，提醒无法开启或取消', errorCode: 1017 };
+    }
 
-    item.remindOn = data.remindOn === true;
+    const taskKeys = Object.keys(db.tasks).filter(k => db.tasks[k].itemId === item._id);
+    const tasks = taskKeys.map(k => db.tasks[k]);
+    const activeKeys = taskKeys.filter(k => db.tasks[k].backendStatus === 'WAITING');
+    const next = data.remindOn === true;
+    /* ⚠️ 关闭时若还留着终态任务（已触发/已失败），**保留 remindOn** ——
+       否则 chip 会从「未送达」变成「未设提醒」，把静默失败的信号抹掉
+       （镜像 trip-item-actions 的 keepEndedRecord，2026-09-23） */
+    const turningOff = !next && item.remindOn === true;
+    const keepEndedRecord = !next && tasks.some(t => t.backendStatus !== 'WAITING');
+    item.remindOn = next ? true : (turningOff ? keepEndedRecord : item.remindOn === true);
     item.updatedAt = new Date();
-    const mine = Object.keys(db.tasks).filter(k => db.tasks[k].itemId === item._id);
-    if (!item.remindOn) {
+
+    if (!next) {
       /* ⚠️ 只删未触发的。已触发的是历史记录，且微信额度不退。 */
-      mine.forEach(k => { if (db.tasks[k].backendStatus === 'WAITING') delete db.tasks[k]; });
+      activeKeys.forEach(k => { delete db.tasks[k]; });
     } else {
-      const channels = (data.channels || []).length ? data.channels : ((db.tasks[mine[0]] || {}).channels || []);
-      const offsets = (data.offsets || []).length ? data.offsets : ((db.tasks[mine[0]] || {}).offsets || []);
+      const cur = tasks[0];
+      const channels = (data.channels || []).length ? data.channels : ((cur || {}).channels || []);
+      const offsets = (data.offsets || []).length ? data.offsets : ((cur || {}).offsets || []);
       if (!channels.length || !offsets.length) return { success: false, error: '参数不合法', errorCode: 1010 };
-      const cur = db.tasks[mine[0]];
-      const changed = cur && (String(cur.offsets || []) !== String(offsets) || String(cur.channels || []) !== String(channels));
-      if (!cur || changed) {
-        mine.forEach(k => { delete db.tasks[k]; });
+      /* 「当前任务可用吗」= 它还得是待发的。终态残留不能当成「已有提醒」。 */
+      const curActive = !!cur && cur.backendStatus === 'WAITING';
+      const changed = !curActive
+        || String(cur.offsets || []) !== String(offsets)
+        || String(cur.channels || []) !== String(channels);
+      if (changed) {
+        /* 只删未触发的，终态留着当历史（同 trip-item-actions） */
+        activeKeys.forEach(k => { delete db.tasks[k]; });
         const taskId = 'mock-task-' + (++taskSeq);
         db.tasks[taskId] = {
           _id: taskId, itemId: item._id, tripId: item.tripId, spotId: item.spotId,
@@ -1418,7 +1655,12 @@ const handlers = {
         };
       }
     }
-    return { success: true, item: decorateItem(item, new Date()), quotaRefunded: false };
+    return {
+      success: true,
+      item: decorateItem(item, new Date()),
+      quotaRefunded: false,
+      missedKept: !!(item.remindOn && tasks.some(t => t.backendStatus === 'MISSED')),
+    };
   },
   'tripItem.remove': (data) => {
     const item = db.items[data.itemId];
@@ -1480,7 +1722,19 @@ const handlers = {
   },
   'subscribe.get': (data) => {
     const tpl = data.templateId || 'mock-template';
-    return { success: true, quota: subscribeQuotas[tpl] || 0, totalQuota: subscribeSeq, quotas: subscribeQuotas, templateId: tpl };
+    const health = mockReminderHealthOf(Object.values(db.tasks), subscribeQuotas[tpl] || 0, new Date());
+    return {
+      success: true,
+      quota: subscribeQuotas[tpl] || 0,
+      totalQuota: subscribeSeq,
+      quotas: subscribeQuotas,
+      templateId: tpl,
+      pendingMessageCount: health.pendingMessageCount,
+      nearestRemindAt: health.nearestRemindAt,
+      level: health.level,
+      shortfall: health.shortfall,
+      replenishNeeded: health.replenishNeeded,
+    };
   },
 
   /* ----- feedback（意见反馈 / 信息纠错，与 cloudfunctions/feedback/lib/schema.js 对齐） ----- */
@@ -1546,6 +1800,8 @@ const handlers = {
       const entry = {
         _id: t._id, city: t.city, startDate: t.startDate, endDate: t.endDate, name: t.name,
         progress: backupGroupProgress(mine), itemCount: mine.length,
+        /* 首页预填 add-trip 用；与云端 homeBootstrap 同一口径 */
+        spotIds: [...new Set(mine.map(i => i.spotId))],
       };
       /* 结束日当天仍属进行中（还能回看和补标），次日才归入历史 */
       if (t.endDate >= today) {
@@ -1575,7 +1831,9 @@ const handlers = {
       const dayWord = fmt(rel) === today ? '今天' : (fmt(rel) === addDays(today, 1) ? '明天' : formatMonthDay(fmt(rel)));
       stickyBanner = {
         type: 'UPCOMING',
-        text: `${dayWord}${formatHourMinute(rel)}开抢${soon.spotName}${formatMonthDay(soon.visitDate)}的门票，还有${minutesLeft}分钟`,
+        /* ⚠️ 不带「还有N分钟」：提醒是在开票**前**发的，横幅讲的是开票时刻本身，
+           两者混用会让用户以为「是不是已经提醒过我了」。与云端 task.buildReleaseBanner 逐字一致。 */
+        text: `${dayWord}${formatHourMinute(rel)}开抢${soon.spotName}${formatMonthDay(soon.visitDate)}的门票`,
         itemId: soon.itemId, spotId: soon.spotId, visitDate: soon.visitDate,
         releaseAt: soon.releaseAt, minutesLeft,
       };
@@ -1598,6 +1856,15 @@ const handlers = {
       trips: activeTrips,
       history: historyTrips,
       stickyBanner,
+      reminderQuotaWarning: mockReminderQuotaWarningOf(
+        mockReminderHealthOf(Object.values(db.tasks), subscribeSeq, nowTs),
+        nowTs
+      ),
+      /* 摘要卡底部的「即将提醒」胶囊：与 stickyBanner 平级、独立，不限 1h 窗口 */
+      releasePills: releasePillsOf(decorated, nowTs, 2),
+      /* 「没抢到」之后还能换哪些日期（决策文档 4.3）。与云端 homeBootstrap 同口径：
+         必须跟着这一份响应一起来，页面不得另开一次请求去算。 */
+      recoverableIds: mockRecoverableIds(decorated, nowTs),
       homeMode: decorated.length === 0 ? 1 : 2,
       hotSpots: includeSpots ? handlers['list']().data : [],
       /* 旧字段保留一个版本，避免未升级的调用方读不到东西；新首页不消费 */
@@ -1632,9 +1899,13 @@ module.exports = {
      页面不要直接用这些内部函数——状态推导请走 home.bootstrap 返回的 ticketState。 */
   __internals: {
     ticketStateOf, ticketStateLabelOf, reminderStateOf, backupGroupProgress,
-    deriveReleaseAt, previewTimeline, mockRecoveryCandidates,
+    canSetReminderOf,
+    deriveReleaseAt, releaseStateOf, previewTimeline, mockRecoveryCandidates,
+    mockReminderHealthOf, mockReminderQuotaWarningOf,
     mockRules: () => RULES,
     TICKET_LABEL, REMINDER_LABEL,
     RESULT_UNDO_SECONDS, UNMARKED_AFTER_HOURS, PENDING_CART_TRIP_ID,
+    /* 内存库本体：仅供测试在「已有一条行程项」这类既成事实下起测 */
+    db,
   },
 };

@@ -1,5 +1,9 @@
 const app = getApp();
 const api = require('../../utils/api.js');
+const notify = require('../../utils/notify.js');
+const shareEntry = require('../../utils/share-entry.js');
+const analytics = require('../../utils/analytics.js');
+const reminderFlow = require('../../utils/reminder-flow.js');
 
 /* 景点类型 Tab（V3.0 定稿：页面唯一筛选维度，不设「预约方式」筛选） */
 const TABS = [
@@ -23,7 +27,13 @@ const DOW_EN = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'
 const BANNER_PAGE_SIZE = 3; // 每页 3 条
 const BANNER_MAX = 9; // 最多 9 条（3 页）
 const SEARCH_DEBOUNCE_MS = 300;
-const BANNER_RESUME_MS = 10000; // 手动滑动后静置多久恢复自动轮播
+
+/* 放票提醒 Banner 白名单：只从这 10 个景点中随机选品 */
+const BANNER_SPOT_IDS = new Set([
+  'gugong', 'tiananmen-chenglou', 'guobo',
+  'maozhuxi-jiniantang', 'renmin-dahuitang', 'tsinghua', 'peking-university',
+  'gongwangfu', 'tiananmen-square', 'junbo',
+]);
 
 function releaseTimesOf(card) {
   return Array.isArray(card.releaseTime) ? card.releaseTime : (card.releaseTime ? [card.releaseTime] : []);
@@ -58,10 +68,21 @@ function dateTextOf(dateStr) {
   return m ? `${Number(m[2])}月${Number(m[3])}日` : '';
 }
 
-/* 今日放票 Banner（V3.0 定稿）：候选 = 难度前 9 位中的当日真实放票节点，每页 3 条 */
+/* Fisher-Yates 洗牌（拷贝后原地打乱，不改原数组） */
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+
+/* 今日放票 Banner：随机选品 · 每页 3 条 · 前两页各保底 1 个极难约 · 不重复 */
 function buildBanner(cards, now) {
   const bj = beijingDate(now);
   const rows = cards
+    .filter(c => BANNER_SPOT_IDS.has(c.spotId))
     .filter(c => hasReleaseToday(c, now))
     .map(c => {
       const timeText = releaseTimesOf(c)[0];
@@ -69,31 +90,48 @@ function buildBanner(cards, now) {
       if (!m) return null;
       const minutes = Number(m[1]) * 60 + Number(m[2]);
       const flames = Math.max(1, c.popularityScore || 0);
+      const ds = c.difficultyScore || 0;
+      const diff = ds >= 4
+        ? { key: 'extreme', text: '极难约' }
+        : ds === 3
+          ? { key: 'normal', text: '较难约' }
+          : { key: 'easy', text: '容易约' };
       return {
         spotId: c.spotId,
         name: c.name,
         timeText,
-        dateText: dateTextOf(c.earliestDate), // 可约日期 = 放票日 + advanceDays（已顺延闭馆日）
+        dateText: dateTextOf(c.earliestDate),
         released: bj.getHours() * 60 + bj.getMinutes() >= minutes,
-        flames: Array.from({ length: flames }, (_, i) => i), // 火焰数 = popularityScore 档位
-        difficultyScore: c.difficultyScore || 0,
+        flames: Array.from({ length: flames }, (_, i) => i),
+        diffKey: diff.key,
+        diffText: diff.text,
+        difficultyScore: ds,
         popularityScore: c.popularityScore || 0,
         minutes,
       };
     })
-    .filter(Boolean)
-    .sort((a, b) =>
-      b.difficultyScore - a.difficultyScore ||
-      b.popularityScore - a.popularityScore ||
-      a.minutes - b.minutes)
-    .slice(0, BANNER_MAX);
+    .filter(Boolean);
+
+  /* 洗牌后分两堆：极难约（ds≥4）和其他；逐池消耗保证不重复 */
+  const extremes = shuffle(rows.filter(r => r.difficultyScore >= 4));
+  const others = shuffle(rows.filter(r => r.difficultyScore < 4));
+
+  const picked = [];
+  /* 前两页各保底抽 1 个极难约，其余名额从 others 随机补满到 3 */
+  for (let page = 0; page < 2; page++) {
+    if (extremes.length) picked.push(extremes.shift());
+    while (picked.length % BANNER_PAGE_SIZE !== 0 && others.length) picked.push(others.shift());
+  }
+  /* 剩余：两池合并 */
+  picked.push(...extremes, ...others);
+  const limited = picked.slice(0, BANNER_MAX);
 
   const pages = [];
-  for (let i = 0; i < rows.length; i += BANNER_PAGE_SIZE) {
-    pages.push({ key: 'p' + (i / BANNER_PAGE_SIZE), rows: rows.slice(i, i + BANNER_PAGE_SIZE) });
+  for (let i = 0; i < limited.length; i += BANNER_PAGE_SIZE) {
+    pages.push({ key: 'p' + (i / BANNER_PAGE_SIZE), rows: limited.slice(i, i + BANNER_PAGE_SIZE) });
   }
   return {
-    dateLabel: `${bj.getMonth() + 1}/${bj.getDate()}（${DOW_CN[bj.getDay()]}）`,
+    dateLabel: `${bj.getMonth() + 1}/${bj.getDate()} (${DOW_CN[bj.getDay()]})`,
     pages,
   };
 }
@@ -116,19 +154,37 @@ Page({
     searchResults: [],
     banner: null,
     bannerCurrent: 0,
-    bannerAutoplay: true,
     showSpotPopup: false,
     popupSpotId: '',
+    popupSpotMeta: null,
+    popupLandingMode: false,
+    entryContext: null,
+    /* 日期选择器 */
+    showDateSheet: false,
+    dateSpotName: '',
+    dateTitle: '',
+    dateTripDates: [],
+    dateBookedDates: [],
+    dateMinDate: '',
+    dateAction: null,
   },
 
-  onLoad() {
+  onLoad(options) {
     const g = app.globalData;
     const pinTop = (g.statusBarHeight || 20) + (g.navBarHeight || 44);
     this.setData({ statusBarHeight: g.statusBarHeight, navBarHeight: g.navBarHeight, pinTop });
+    this.applyEntry(shareEntry.consumeEntry(app, options));
     this.loadSpots();
   },
 
   onShow() {
+    /* 小程序已打开时再次从分享卡片进入，App.onShow 会把 query 暂存到这里。 */
+    const pending = shareEntry.peekPending(app);
+    if (pending && (pending.spotId || (!pending.sceneId && pending.source === 'home_share'))) {
+      shareEntry.clearPending(app);
+      this.applyEntry(pending);
+    }
+
     /* 从详情返回时静默刷新，保持规则时效 */
     if (this.data.allSpots.length > 0) {
       this.refreshBanner();
@@ -138,8 +194,36 @@ Page({
     }
   },
 
+  applyEntry(entry) {
+    const spotId = (entry && entry.spotId) || '';
+    const context = Object.assign({}, entry || {}, {
+      entryType: spotId ? 'spot' : 'list',
+    });
+    this.setData({
+      entryContext: context,
+      popupLandingMode: !!spotId,
+    });
+    if (entry && entry.source) analytics.captureLanding(context, context.entryType);
+    if (spotId) this.openDetail(spotId);
+  },
+
+  onShareAppMessage() {
+    const spot = this.data.popupSpotMeta
+      || (this.data.allSpots || []).find(s => s.spotId === this.data.popupSpotId);
+    const payload = spot
+      ? shareEntry.buildSpotSharePayload(spot, this.data.popupSpotId)
+      : shareEntry.buildSpotListPayload();
+    const type = spot ? 'spot' : 'list';
+    analytics.trackShareIntent(type, spot ? spot.spotId : 'all');
+    return payload;
+  },
+
   onPageScroll(e) {
     this._scrollTop = e.scrollTop;
+  },
+
+  onCityTap() {
+    wx.showToast({ title: '更多城市敬请期待', icon: 'none' });
   },
 
   loadSpots() {
@@ -180,7 +264,7 @@ Page({
   },
 
   refreshBanner() {
-    this.setData({ banner: buildBanner(this.data.allSpots, new Date()), bannerCurrent: 0, bannerAutoplay: true });
+    this.setData({ banner: buildBanner(this.data.allSpots, new Date()), bannerCurrent: 0 });
   },
 
   onTabTap(e) {
@@ -265,17 +349,8 @@ Page({
     wx.pageScrollTo({ scrollTop: 0, duration: 260 });
   },
 
-  /* ===== 今日放票 Banner：自动轮播循环，手动滑动暂停、静置 10s 恢复 ===== */
-  onBannerTouch() {
-    if (!this.data.bannerAutoplay) return;
-    this.setData({ bannerAutoplay: false });
-    if (this._bannerTimer) clearTimeout(this._bannerTimer);
-    this._bannerTimer = setTimeout(() => this.setData({ bannerAutoplay: true }), BANNER_RESUME_MS);
-  },
-
   onBannerChange(e) {
     this.setData({ bannerCurrent: e.detail.current });
-    if (e.detail.source === 'touch') this.onBannerTouch();
   },
 
   onBannerSpotTap(e) {
@@ -291,10 +366,55 @@ Page({
 
   openDetail(spotId) {
     if (!spotId) return;
-    this.setData({ showSpotPopup: true, popupSpotId: spotId });
+    this.setData({ showSpotPopup: true, popupSpotId: spotId, popupSpotMeta: null });
+  },
+
+  onSpotPopupLoaded(e) {
+    const spot = e && e.detail && e.detail.spot;
+    if (!spot) return;
+    this.setData({ popupSpotMeta: spot });
+    if (spot.name) {
+      const suffix = spot.reservationRequired === false ? '免预约·门票信息' : '门票预约·放票时间';
+      wx.setNavigationBarTitle({ title: spot.name + '·' + suffix });
+    }
   },
 
   onSpotPopupClose() {
-    this.setData({ showSpotPopup: false });
+    this.setData({ showSpotPopup: false, popupSpotId: '', popupSpotMeta: null });
   },
+
+  /* ===== 详情浮窗按钮：设置提醒 / 仅加行程不提醒 → 弹出日历 ===== */
+
+  onPopupSetReminder(e) {
+    const d = e.detail;
+    reminderFlow.openDateSheet(this, {
+      spotId: d.spotId,
+      spotName: d.spotName,
+      title: '设置提醒',
+      remindOn: true,
+    });
+  },
+
+  onPopupAddTripOnly(e) {
+    const d = e.detail;
+    reminderFlow.openDateSheet(this, {
+      spotId: d.spotId,
+      spotName: d.spotName,
+      title: '加入行程',
+      remindOn: false,
+    });
+  },
+
+  openDateSheet(spotId, spotName, title, remindOn) {
+    return reminderFlow.openDateSheet(this, { spotId, spotName, title, remindOn });
+  },
+
+  onDateConfirm(e) {
+    return reminderFlow.onDateConfirm(this, e);
+  },
+
+  onDateClose() {
+    reminderFlow.onDateClose(this);
+  },
+
 });

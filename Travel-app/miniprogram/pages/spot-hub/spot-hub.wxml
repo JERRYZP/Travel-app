@@ -2,7 +2,7 @@
 <view class="navbar" style="height: {{pinTop}}px;">
   <view style="height: {{statusBarHeight}}px;"></view>
   <view class="navbar-content" style="height: {{navBarHeight}}px;">
-    <view class="navbar-city">
+    <view class="navbar-city" bindtap="onCityTap">
       <svg-icon name="location" size="13px" />
       <text class="navbar-city-text">游北京</text>
       <svg-icon name="chevron-down" size="9px" />
@@ -19,21 +19,20 @@
     <view class="release-banner-inner">
       <view class="release-banner-head">
         <view class="release-banner-head-left">
-          <text class="release-banner-date">{{banner.dateLabel}}</text>
           <text class="release-banner-title">今日放票提醒</text>
+          <text class="release-banner-sep">|</text>
+          <text class="release-banner-date">{{banner.dateLabel}}</text>
         </view>
         <!-- 查看更多：本期占位，不接跳转 -->
-        <text class="release-banner-more">查看更多 ></text>
+        <text class="release-banner-more">查看更多</text>
       </view>
       <swiper
         class="release-swiper"
-        autoplay="{{bannerAutoplay}}"
+        autoplay
         circular="{{banner.pages.length > 1}}"
         interval="5000"
         duration="400"
-        current="{{bannerCurrent}}"
         bindchange="onBannerChange"
-        catchtouchstart="onBannerTouch"
       >
         <swiper-item wx:for="{{banner.pages}}" wx:for-item="page" wx:key="key">
           <view class="release-panel">
@@ -49,11 +48,9 @@
               <view class="release-row-time">
                 <text class="release-row-hh">{{row.timeText}}</text>
                 <text class="release-row-date">可约 {{row.dateText}}</text>
-                <text wx:if="{{row.released}}" class="release-row-released">已放票 ></text>
+                <text wx:if="{{row.released}}" class="release-row-released">已放票</text>
               </view>
-              <view class="release-row-flames">
-                <image wx:for="{{row.flames}}" wx:for-item="f" wx:key="*this" class="release-flame" src="/images/icons/fire.svg" />
-              </view>
+              <view class="release-row-diff diff-{{row.diffKey}}">{{row.diffText}}</view>
             </view>
           </view>
         </swiper-item>
@@ -64,27 +61,8 @@
     </view>
   </view>
 
-  <!-- 搜索 + 类型 Tab：聚焦时整页滚动，本容器 sticky 吸顶（Banner 滑出视口，不销毁） -->
+  <!-- 类型 Tab 筛选行 -->
   <view class="pin-wrap" style="top: {{pinTop}}px;">
-    <view class="search-bar">
-      <view class="search-input-wrap">
-        <svg-icon name="search" size="16px" />
-        <input
-          class="search-input"
-          placeholder="搜索景点名称"
-          placeholder-class="search-placeholder"
-          value="{{keyword}}"
-          confirm-type="search"
-          bindinput="onSearchInput"
-          bindfocus="onSearchFocus"
-        />
-        <view wx:if="{{keyword}}" class="search-clear" bindtap="onClearKeyword">
-          <svg-icon name="close" size="16px" />
-        </view>
-      </view>
-      <text wx:if="{{searchFocused}}" class="search-cancel" bindtap="onSearchCancel">取消</text>
-    </view>
-
     <scroll-view class="type-tabs" scroll-x enhanced show-scrollbar="{{false}}">
       <view class="type-tabs-inner">
         <view
@@ -133,4 +111,25 @@
 <tabbar active="spots" />
 
 <!-- 景点详情浮窗（卡片 / 今日放票 Banner 共用，全站统一形态；此入口保留底部操作栏） -->
-<spot-popup show="{{showSpotPopup}}" spot-id="{{popupSpotId}}" bind:close="onSpotPopupClose" />
+<spot-popup
+  show="{{showSpotPopup}}"
+  spot-id="{{popupSpotId}}"
+  landing-mode="{{popupLandingMode}}"
+  show-share="{{true}}"
+  bind:close="onSpotPopupClose"
+  bind:loaded="onSpotPopupLoaded"
+  bind:setreminder="onPopupSetReminder"
+  bind:addtriponly="onPopupAddTripOnly"
+/>
+
+<!-- 选日期：设置提醒 / 仅加行程不提醒 共用 -->
+<date-picker-sheet
+  show="{{showDateSheet}}"
+  spot-name="{{dateSpotName}}"
+  title="{{dateTitle}}"
+  trip-dates="{{dateTripDates}}"
+  booked-dates="{{dateBookedDates}}"
+  min-date="{{dateMinDate}}"
+  bind:confirm="onDateConfirm"
+  bind:close="onDateClose"
+/>

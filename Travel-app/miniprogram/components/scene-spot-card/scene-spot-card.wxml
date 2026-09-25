@@ -1,0 +1,18 @@
+<view wx:if="{{spot}}" class="scene-card" bindtap="onTap">
+  <image class="scene-card-img" src="/images/spots/{{spot.spotId}}.jpg" mode="aspectFill" lazy-load="{{true}}" />
+  <view class="scene-card-body">
+    <view class="scene-card-title-row">
+      <text class="scene-card-name">{{spot.name}}</text>
+      <view wx:if="{{spot.reservationRequired && spot.difficultyLabel}}" class="scene-card-diff diff-{{spot.difficultyLabel.key}}">
+        {{spot.difficultyLabel.text}}
+      </view>
+    </view>
+    <text class="scene-card-release">{{spot._sceneReleaseText}}</text>
+    <view class="scene-card-meta">
+      <text class="scene-card-status {{spot._allReleased ? 'is-released' : ''}}">{{spot._sceneStatus}}</text>
+      <text class="scene-card-earliest">{{spot._sceneEarliestText}}</text>
+    </view>
+    <text class="scene-card-verify">{{spot._sceneVerifyText}}</text>
+  </view>
+  <text class="scene-card-arrow">›</text>
+</view>

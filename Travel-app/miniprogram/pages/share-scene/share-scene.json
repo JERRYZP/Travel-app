@@ -1,12 +1,10 @@
 {
   "usingComponents": {
-    "tabbar": "/components/tabbar/tabbar",
-    "svg-icon": "/components/svg-icon/svg-icon",
-    "spot-card": "/components/spot-card/spot-card",
+    "scene-spot-card": "/components/scene-spot-card/scene-spot-card",
     "spot-popup": "/components/spot-popup/spot-popup",
     "date-picker-sheet": "/components/date-picker-sheet/date-picker-sheet",
     "van-loading": "@vant/weapp/loading/index"
   },
   "navigationStyle": "custom",
-  "navigationBarTitleText": "北京景点预约规则"
+  "navigationBarTitleText": "北京景点放票清单"
 }

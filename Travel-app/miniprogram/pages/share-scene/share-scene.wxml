@@ -1,0 +1,78 @@
+<view class="navbar" style="height: {{navTop}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack">
+      <text class="navbar-back-icon">‹</text>
+    </view>
+    <text class="navbar-title">{{scene ? scene.navTitle : '放票清单'}}</text>
+    <button class="navbar-share" open-type="share" hover-class="none">分享</button>
+  </view>
+</view>
+<view style="height: {{navTop}}px;"></view>
+
+<view wx:if="{{scene}}" class="page-body">
+  <view class="scene-hero">
+    <text class="scene-title">{{scene.title}}</text>
+    <text class="scene-subtitle">{{scene.subtitle}}</text>
+    <view class="scene-data-note">放票规则按北京时间计算 · 库存以官方为准</view>
+  </view>
+
+  <view wx:if="{{scene.notice}}" class="scene-notice">
+    <text>{{scene.notice}}</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="state-wrap">
+    <van-loading size="40rpx" color="#B8904A" />
+  </view>
+
+  <view wx:elif="{{loadFailed}}" class="state-wrap state-error">
+    <text>清单加载失败，请检查云端</text>
+    <view class="state-action" bindtap="loadScene">重新加载</view>
+  </view>
+
+  <view wx:elif="{{expired}}" class="state-wrap">
+    <text class="state-title">本期清单已结束</text>
+    <text class="state-desc">查看今天北京有哪些景点放票。</text>
+    <view class="state-action" bindtap="goToday">查看今日放票</view>
+  </view>
+
+  <view wx:elif="{{rows.length === 0}}" class="state-wrap">
+    <text class="state-title">今天暂无可展示的放票节点</text>
+    <text class="state-desc">可以先去景点页查看完整预约规则。</text>
+  </view>
+
+  <view wx:else class="scene-list">
+    <scene-spot-card
+      wx:for="{{rows}}"
+      wx:key="spotId"
+      spot="{{item}}"
+      bind:spottap="onSceneSpotTap"
+    />
+  </view>
+
+  <view wx:if="{{!loading && !expired && !loadFailed && rows.length}}" class="scene-footnote">
+    <text>“最早可约”仅按放票提前天数推算，不代表官方仍有库存。</text>
+  </view>
+</view>
+
+<spot-popup
+  show="{{showSpotPopup}}"
+  spot-id="{{popupSpotId}}"
+  landing-mode="{{true}}"
+  show-share="{{true}}"
+  bind:close="onSpotPopupClose"
+  bind:loaded="onSpotPopupLoaded"
+  bind:setreminder="onPopupSetReminder"
+  bind:addtriponly="onPopupAddTripOnly"
+/>
+
+<date-picker-sheet
+  show="{{showDateSheet}}"
+  spot-name="{{dateSpotName}}"
+  title="{{dateTitle}}"
+  trip-dates="{{dateTripDates}}"
+  booked-dates="{{dateBookedDates}}"
+  min-date="{{dateMinDate}}"
+  bind:confirm="onDateConfirm"
+  bind:close="onDateClose"
+/>

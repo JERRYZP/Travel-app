@@ -17,40 +17,43 @@
 /* ===== 今日放票 Banner（1:1 对齐 景点UI.png：紧凑单行列表 + 大标题 + 轨道式指示器） ===== */
 .release-banner {
   position: relative; overflow: hidden;
-  border-radius: 30rpx;
-  margin-bottom: 24rpx;
+  border-radius: 24rpx;
+  margin-bottom: 22rpx;
   box-shadow: var(--shadow-card);
 }
 .release-banner-bg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
-.release-banner-inner { position: relative; padding: 26rpx 20rpx 18rpx; }
+.release-banner-inner { position: relative; padding: 24rpx 20rpx 16rpx; }
 .release-banner-head {
-  display: flex; align-items: flex-end; justify-content: space-between;
-  padding: 0 12rpx 18rpx;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 8rpx 18rpx;
 }
-.release-banner-date { display: block; font-size: 28rpx; font-weight: 600; color: var(--color-primary); }
-.release-banner-title { display: block; font-size: 40rpx; font-weight: 700; color: var(--color-primary); margin-top: 2rpx; line-height: 1.3; }
+.release-banner-head-left {
+  display: flex; align-items: baseline; gap: 10rpx;
+}
+.release-banner-date { font-size: 28rpx; font-weight: 400; color: var(--color-primary); }
+.release-banner-sep { font-size: 28rpx; font-weight: 400; color: var(--color-primary); opacity: 0.4; }
+.release-banner-title { font-size: 32rpx; font-weight: 700; color: var(--color-primary); line-height: 1.2; }
 .release-banner-more {
-  font-size: 22rpx; color: var(--color-text);
+  font-size: 24rpx; color: #936F5B;
   text-decoration: underline;
-  padding-bottom: 10rpx;
 }
 
 .release-swiper { height: 224rpx; }
 .release-panel {
-  min-height: 100%; box-sizing: border-box;
+  height: 100%; box-sizing: border-box;
   background: var(--color-surface);
-  border-radius: 18rpx;
-  padding: 4rpx 20rpx;
+  border-radius: 20rpx;
+  padding: 4rpx 24rpx;
 }
 .release-row {
   display: flex; align-items: center; gap: 12rpx;
   padding: 17rpx 0;
   white-space: nowrap;
 }
-.release-row + .release-row { border-top: 1rpx solid var(--color-border); }
+.release-row + .release-row { border-top: 0.6px solid var(--color-border); }
 .release-row-name {
-  flex: 0 0 140rpx;
-  font-size: 26rpx; font-weight: 600; color: var(--color-ink);
+  flex: 0 0 185rpx;
+  font-size: 26rpx; font-weight: 400; color: #936F5B;
   text-decoration: underline;
   overflow: hidden; text-overflow: ellipsis;
 }
@@ -58,12 +61,19 @@
   flex: 1; min-width: 0;
   display: flex; align-items: center; gap: 8rpx;
   overflow: hidden;
+  margin-left: 14rpx;
 }
-.release-row-hh { font-size: 26rpx; font-weight: 700; color: var(--color-primary); flex-shrink: 0; }
-.release-row-date { font-size: 22rpx; font-weight: 500; color: var(--color-primary); flex-shrink: 0; }
-.release-row-released { font-size: 22rpx; font-weight: 600; color: var(--diff-easy-text); flex-shrink: 0; }
-.release-row-flames { display: flex; align-items: center; gap: 4rpx; flex-shrink: 0; }
-.release-flame { width: 22rpx; height: 22rpx; }
+.release-row-hh { font-size: 26rpx; font-weight: 400; color: var(--color-primary); flex-shrink: 0; }
+.release-row-date { font-size: 22rpx; font-weight: 400; color: #936F5B; flex-shrink: 0; }
+.release-row-released { font-size: 22rpx; font-weight: 400; color: var(--diff-easy-text); flex-shrink: 0; }
+.release-row-diff {
+  flex-shrink: 0; white-space: nowrap;
+  padding: 3rpx 14rpx; border-radius: 8rpx;
+  font-size: 20rpx; line-height: 1.4;
+}
+.diff-extreme { background: #F5DDD5; color: #C0472A; }
+.diff-normal { background: #F2E4C0; color: #C26B0C; }
+.diff-easy { background: #D8EAD8; color: #4A7C59; }
 
 /* 指示器：浅色轨道 pill + 金色当前段（对齐设计稿） */
 .release-dots {
@@ -73,34 +83,22 @@
   background: rgba(255, 254, 251, 0.55);
   border-radius: 999rpx;
 }
-.release-dot { width: 26rpx; height: 6rpx; border-radius: 999rpx; background: rgba(255, 254, 251, 0.9); }
-.release-dot.active { background: var(--color-muted); }
+.release-dot { width: 39rpx; height: 6rpx; border-radius: 999rpx; background: transparent; }
+.release-dot.active { background: #D5BD77; }
 
-/* ===== 搜索 + 类型 Tab 吸顶容器 ===== */
+/* ===== 类型 Tab 筛选行 ===== */
 .pin-wrap {
   position: sticky; z-index: 80;
-  margin: 0 -30rpx; padding: 8rpx 30rpx 16rpx;
+  margin: 0 -30rpx; padding: 0 30rpx 2rpx;
   background: var(--color-page);
 }
 
-.search-bar { display: flex; align-items: center; gap: 20rpx; }
-.search-input-wrap {
-  flex: 1; display: flex; align-items: center; gap: 12rpx;
-  padding: 0 24rpx; height: 76rpx;
-  background: var(--color-surface); border: 1rpx solid var(--color-border);
-  border-radius: 38rpx; box-shadow: var(--shadow-input);
-}
-.search-input { flex: 1; font-size: 26rpx; color: var(--color-ink); }
-.search-placeholder { color: var(--color-placeholder); }
-.search-clear { display: flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 8rpx; opacity: 0.5; }
-.search-cancel { flex-shrink: 0; font-size: 28rpx; color: var(--color-text); }
-
-.type-tabs { width: 100%; white-space: nowrap; margin-top: 20rpx; }
+.type-tabs { width: 100%; white-space: nowrap; }
 .type-tabs-inner { display: inline-flex; gap: 16rpx; padding: 2rpx; }
 .type-tab {
-  display: inline-flex; align-items: center; gap: 8rpx;
-  padding: 14rpx 32rpx;
-  background: var(--color-surface); border-radius: 16rpx;
+  display: inline-flex; align-items: center; gap: 6rpx;
+  padding: 13rpx 28rpx;
+  background: var(--color-surface); border-radius: 20rpx;
   box-shadow: var(--shadow-input);
   font-size: 26rpx; color: var(--color-text);
 }
@@ -109,7 +107,7 @@
 /* ===== 两列宫格（与 home hot-grid 同构：卡片定宽 337rpx + 自带下间距） ===== */
 .spot-grid {
   display: flex; flex-wrap: wrap; justify-content: space-between;
-  margin-top: 24rpx;
+  margin-top: 20rpx;
 }
 spot-card { display: block; margin-bottom: 16rpx; }
 

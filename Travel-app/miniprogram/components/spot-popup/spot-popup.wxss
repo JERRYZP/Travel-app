@@ -22,18 +22,28 @@
   padding: 0;
 }
 
-/* 滚动区：左右与顶部内边距在此，底部留白单独给。
-   不带 btn 时 = 32px 内容留白；带 btn 时收窄成 48rpx，
-   配合操作栏的 32rpx 顶部间距，正文恰好在按钮上方 32px 处停住。 */
+/* 滚动区：用 scroll-view，不用普通 view + overflow-y。
+   微信真机上后者在 fixed/flex 弹层里经常能显示内容但滚不动，
+   表现为展开「游玩信息」后后半段被底栏挡住。高度由 JS 下发明确 px。
+
+   内容左右与顶部内边距放在内层，底部留白单独按是否有操作栏切换。
+   不带 btn 时保留安全区留白；带 btn 时折叠态收窄成 8rpx，
+   展开态保留 32rpx，避免正文贴住按钮。 */
 .popup-scroll {
+  flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+}
+
+.popup-scroll-content {
   padding: 32rpx 32rpx calc(32px + env(safe-area-inset-bottom));
 }
 
-.popup-sheet--actions > .popup-scroll {
-  padding-bottom: 48rpx;
+.popup-sheet--actions > .popup-scroll > .popup-scroll-content {
+  padding-bottom: 8rpx;
+}
+
+.popup-sheet--actions > .popup-scroll > .popup-scroll-content--expanded {
+  padding-bottom: 32rpx;
 }
 
 .popup-loading {
@@ -48,7 +58,32 @@
   align-items: center;
   gap: 24rpx;
   margin-bottom: 32rpx;
+  position: relative;
 }
+
+.popup-header--share .popup-header-info {
+  padding-right: 88rpx;
+}
+
+/* 分享入口：纯图标圆形按钮，细描边与页面暖色 token 对齐。 */
+.popup-share-btn {
+  position: absolute;
+  right: 0;
+  top: 0;
+  margin: 0;
+  padding: 0;
+  width: 68rpx;
+  height: 68rpx;
+  box-sizing: border-box;
+  line-height: 1;
+  background: var(--color-surface);
+  border: 1rpx solid #E6D6B9;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.popup-share-btn::after { border: none; }
 
 .popup-spot-img {
   width: 200rpx;
@@ -111,6 +146,37 @@
   color: #A68B5B;
 }
 
+/* 分享落地摘要：保持首屏可读，不依赖折叠区。 */
+.popup-landing-summary {
+  margin: -8rpx 0 28rpx;
+  padding: 20rpx 22rpx;
+  background: #FBF5E6;
+  border: 1rpx solid #EAD9B7;
+  border-radius: 16rpx;
+}
+.popup-landing-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+.popup-landing-row + .popup-landing-row { margin-top: 8rpx; }
+.popup-landing-label { color: var(--color-muted); flex-shrink: 0; width: 96rpx; }
+.popup-landing-value { color: var(--color-ink); font-weight: 600; }
+.popup-landing-correct {
+  margin-left: auto;
+  color: #C0392B;
+  text-decoration: underline;
+  flex-shrink: 0;
+}
+.popup-landing-note {
+  margin-top: 10rpx;
+  color: var(--color-muted);
+  font-size: 21rpx;
+  line-height: 1.5;
+}
+
 .popup-section-title {
   font-size: 30rpx;
   font-weight: 600;
@@ -120,6 +186,13 @@
 
 .popup-entries {
   margin-bottom: 32rpx;
+}
+
+.popup-channel-tip {
+  margin-bottom: 18rpx; padding: 18rpx 20rpx;
+  background: #FBF5E6; border: 1rpx solid #EAD9B7; border-radius: 16rpx;
+  color: #7A5540; font-size: 22rpx; line-height: 1.65;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
 .popup-entry {
@@ -331,11 +404,11 @@
 }
 
 /* ===== 底部操作栏（V3.0：本期仅视觉占位，不接交互） =====
-   flex 尾部固定，不参与滚动：正文滚到底时停在它上方 32rpx 处，不会被按钮压住。
+   flex 尾部固定，不参与滚动：正文滚到底时停在它上方留白处，不会被按钮压住。
    顶衬满宽实底（--color-surface = #FFFEFB），左下右三边与 sheet 对齐。 */
 .popup-actions-bar {
   flex-shrink: 0;
-  padding: 32rpx 32rpx calc(16px + env(safe-area-inset-bottom));
+  padding: 24rpx 32rpx calc(16px + env(safe-area-inset-bottom));
   background: var(--color-surface);
 }
 
@@ -383,4 +456,25 @@
   font-size: 22rpx;
   color: var(--color-muted);
   margin-bottom: 14rpx;
+}
+
+
+/* 无效 / 已下线景点深链的明确失败态，避免空白弹层。 */
+.popup-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14rpx;
+  padding: 72rpx 24rpx;
+  text-align: center;
+}
+.popup-error-title { font-size: 30rpx; font-weight: 600; color: var(--color-ink); }
+.popup-error-desc { font-size: 24rpx; color: var(--color-muted); }
+.popup-error-btn {
+  margin-top: 12rpx;
+  padding: 14rpx 34rpx;
+  border-radius: 999rpx;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 24rpx;
 }
