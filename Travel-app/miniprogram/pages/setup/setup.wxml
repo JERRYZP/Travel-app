@@ -15,6 +15,11 @@
     <text class="page-title">设置提醒</text>
   </view>
 
+  <view wx:if="{{reminderCount > 0}}" class="auth-guide">
+    <svg-icon name="bell-fill" size="18px" />
+    <text>本次将设置 {{reminderCount}} 条提醒。微信按条授权；若弹窗出现“总是保持以上选择”，勾选后可减少后续弹窗。</text>
+  </view>
+
   <!-- 提醒方式 -->
   <view class="setting-card">
     <view class="setting-row" bindtap="onToggleChannel" data-key="officialAccount">

@@ -24,7 +24,7 @@
   <!-- 设置列表 1 -->
   <view class="setting-card">
     <view class="setting-row" bindtap="onNotifySettings">
-      <text class="setting-row-label">通知设置</text>
+      <text class="setting-row-label">提醒设置</text>
       <view class="setting-row-right">
         <text class="setting-row-hint setting-row-hint-{{notifyState}}">{{notifyHint}}</text>
         <svg-icon name="chevron-down" size="14px" rotate="270" />
@@ -33,7 +33,7 @@
     <view class="setting-row" bindtap="onGuide">
       <text class="setting-row-label">使用攻略</text>
       <view class="setting-row-right">
-        <text class="setting-row-hint">建议观看</text>
+        <text class="setting-row-hint">3分钟上手</text>
         <svg-icon name="chevron-down" size="14px" rotate="270" />
       </view>
     </view>
@@ -48,6 +48,17 @@
     <view class="setting-row" bindtap="onReportError">
       <text class="setting-row-label">信息纠错</text>
       <svg-icon name="chevron-down" size="14px" rotate="270" />
+    </view>
+  </view>
+
+  <!-- 仅开发版显示：用于反复检查新用户空态，不删除云端数据 -->
+  <view wx:if="{{devMode}}" class="setting-card dev-card">
+    <view class="setting-row" bindtap="onPreviewNewUser">
+      <text class="setting-row-label">开发调试</text>
+      <view class="setting-row-right">
+        <text class="setting-row-hint dev-hint">预览新用户</text>
+        <svg-icon name="chevron-down" size="14px" rotate="270" />
+      </view>
     </view>
   </view>
 </view>

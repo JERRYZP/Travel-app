@@ -30,8 +30,10 @@
 .auth-label { font-size: 28rpx; font-weight: 600; color: var(--color-ink); }
 .auth-hint { font-size: 22rpx; color: var(--color-muted); line-height: 1.4; }
 .quota-num { font-size: 32rpx; font-weight: 700; color: #C0472A; }
+.auth-health-summary { color: #7A5540; }
 .auth-status { font-size: 24rpx; flex-shrink: 0; }
 .auth-status.ok { color: #4A7C59; }
+.auth-status.warn { color: #B8860B; }
 .auth-status.off { color: #C0472A; }
 
 .auth-actions { display: flex; gap: 16rpx; margin-top: 24rpx; }

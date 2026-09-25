@@ -167,14 +167,27 @@ async function mockMirror() {
   let got = await mock.mockCall('subscribe.get', { templateId: MTPL });
   eq(got.quota, 3, 'mock 台账 3 次');
 
-  // 造一条已过期未送达的任务（mock 的 task 不带 lastSendError = 从未尝试发送）
+  /* 造一条已过期未送达的任务（mock 的 task 不带 lastSendError = 从未尝试发送）。
+     ⚠️ 2026-09-23 起不能再拿「releaseAt 已过」的清单项提交来造它了 —— 那种项现在
+        根本不建任务（提交即凭空生成一条失败提醒的闸门，见 lib/task.js）。
+        改走**真实成因**：正常提交（放票时刻在未来）建出任务，再把那条任务的 releaseAt
+        拨到过去，模拟「任务建好之后时间流逝、而 notifier 从没跑过」—— 这正是链路故障
+        的原始场景，也正是本用例要覆盖的那一档。 */
+  const pad = n => String(n).padStart(2, '0');
+  const bj = new Date(Date.now() + 8 * 3600000);
+  const visitBj = new Date(Date.UTC(bj.getUTCFullYear(), bj.getUTCMonth(), bj.getUTCDate() + 30));
+  const visit = visitBj.getUTCFullYear() + '-' + pad(visitBj.getUTCMonth() + 1) + '-' + pad(visitBj.getUTCDate());
+
   await mock.mockCall('cart.add', {
-    tripId: 'mock-trip-heal', spotId: 'gugong', visitDate: '2026-10-01',
-    releaseAt: new Date(Date.now() - 3600 * 1000), remindOn: true,
+    tripId: 'mock-trip-heal', spotId: 'gugong', visitDate: visit,
+    releaseAt: new Date(Date.now() + 20 * 86400000), remindOn: true,
   });
   await mock.mockCall('cart.commit', {
     tripId: 'mock-trip-heal', channels: ['OFFICIAL_ACCOUNT'], offsets: [5],
   });
+  const taskRows = Object.values(mock.__internals.db.tasks);
+  eq(taskRows.length >= 1, true, '正常提交仍建出任务（闸门只挡放票已过的那类）');
+  taskRows.forEach(t => { t.releaseAt = new Date(Date.now() - 3600 * 1000); });
 
   const listed = await mock.mockCall('task.list', { filter: 'expired' });
   eq(listed.counts.expired >= 1, true, 'mock 里确实有已过期任务');

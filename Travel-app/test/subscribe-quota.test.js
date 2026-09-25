@@ -42,6 +42,7 @@ const eq = (a, b, m) => {
  * ============================================================ */
 const apiStub = {
   quota: 0,
+  health: {},
   quotaFails: false,
   addCalls: 0,
   reminder: {
@@ -49,7 +50,11 @@ const apiStub = {
       add() { apiStub.addCalls += 1; return Promise.resolve({ success: true }); },
       get() {
         if (apiStub.quotaFails) return Promise.reject({ success: false });
-        return Promise.resolve({ success: true, quota: apiStub.quota, totalQuota: apiStub.quota });
+        return Promise.resolve(Object.assign({
+          success: true,
+          quota: apiStub.quota,
+          totalQuota: apiStub.quota,
+        }, apiStub.health));
       },
     },
   },
@@ -160,10 +165,16 @@ async function cloudConsumption() {
     spotIds: ['gugong', 'guobo', 'badaling', 'tiantan'],
   });
 
-  // 放票时刻设在 2.5 分钟后：offsets=[5,2] 两档的提醒时刻都落在 collectDue 的扫描窗内
+  /* 本节只关心「额度 = 项数 × 提前量数」这条公式，夹具需要的是
+     「两档提醒时刻都落在 collectDue 的扫描窗内」这个时间条件。
+
+     ⚠️ 放票时刻**直接拨任务的钟**，别再从 `cart.add` 传 releaseAt 想影响它：
+     任务的 releaseAt 由 `visitDate − advanceDays` 推导（`lib/item.deriveReleaseAt`，
+     与行程项、时间线同一真身），`cart.add` 收到的 releaseAt 已被忽略（2026-09-24）。
+     拨钟既不影响被测公式，也不依赖任何真实规则值。 */
   const releaseAt = new Date(Date.now() + 2.5 * 60 * 1000);
   const visitDate = time.addDays(start, 1);
-  const addOpts = { tripId: t.tripId, releaseAt, visitDate };
+  const addOpts = { tripId: t.tripId, visitDate };
 
   // 需预约 + 勾提醒 × 2
   await cart.add(db, USER, { ...addOpts, spotId: 'gugong', remindOn: true });
@@ -188,8 +199,9 @@ async function cloudConsumption() {
 
   const tasks = db._dump(COLLECTIONS.REMINDER_TASKS);
   eq(tasks.length, 2, '库中 2 条任务');
-
-  const due = _internal.collectDue(tasks, Date.now());
+  await Promise.all(tasks.map(x =>
+    db.collection(COLLECTIONS.REMINDER_TASKS).doc(x._id).update({ data: { releaseAt } })));
+  const due = _internal.collectDue(db._dump(COLLECTIONS.REMINDER_TASKS), Date.now());
   eq(due.length, listed.summary.reminderCount * OFFSETS.length, '待发消息数 = 项数 × 提前量数 = 2 × 2 = 4');
   eq(new Set(due.map(d => d.task._id)).size, 2, '每条任务各发 2 条（5 分钟档 + 2 分钟档）');
 
@@ -306,6 +318,22 @@ async function frontendGapFill() {
   r = await withInstantTimers(() => notify.ensureSubscribe(3));
   eq(wxState.subscribeCalls, 1, 'getSetting 失败 → 退化为只弹 1 次');
   eq(r.shortfall, 2, '缺口如实上报');
+
+  /* 统一健康状态：权限 + 额度 + 未来待发送量只在一个函数里汇总。 */
+  apiStub.quota = 1;
+  apiStub.health = {
+    pendingMessageCount: 2,
+    level: 'short',
+    shortfall: 1,
+    replenishNeeded: 2,
+  };
+  resetWx({ remembered: 'accept' });
+  const health = await notify.getReminderHealth(TPL);
+  eq(health.permissionState, 'all', '权限两项齐全');
+  eq(health.quotaLevel, 'short', '保留服务端额度等级');
+  eq(health.pendingMessageCount, 2, '返回未来待发送数');
+  eq(health.replenishNeeded, 2, '返回一键补齐目标值');
+  apiStub.health = {};
 }
 
 /* ============================================================
@@ -315,9 +343,11 @@ function crossCheck() {
   console.log('\n=== 4. 口径一致性 ===');
   const setupSrc = require('fs').readFileSync(
     path.join(__dirname, '..', 'miniprogram', 'pages', 'setup', 'setup.js'), 'utf8');
-  eq(/reminderCount/.test(setupSrc), true, 'setup 页按 summary.reminderCount 算需求量');
-  eq(/count \* perTask/.test(setupSrc), true, '需求量 = 项数 × 提前量数');
-  eq(/ensureSubscribe\(needed\)/.test(setupSrc), true, '按真实需求（非 offsets.length）申请额度');
+  const notifySrc = require('fs').readFileSync(
+    path.join(__dirname, '..', 'miniprogram', 'utils', 'notify.js'), 'utf8');
+  eq(/getReminderQuotaNeeded\(offsets\.length\)/.test(setupSrc), true, 'setup 按清单提醒数与提前量数算需求量');
+  eq(/count \* taskCount/.test(notifySrc), true, '需求量 = 项数 × 提前量数');
+  eq(/confirmReminderAccess\(needed\)/.test(setupSrc), true, 'setup 按真实需求走统一授权闸门');
 
   const mockSrc = require('fs').readFileSync(
     path.join(__dirname, '..', 'miniprogram', 'utils', 'mock.js'), 'utf8');
@@ -329,14 +359,30 @@ function crossCheck() {
      这类技术/产品侧词汇（2026-09-16 用户反馈：客户完全不懂这些概念） */
   const settingsSrc = require('fs').readFileSync(
     path.join(__dirname, '..', 'miniprogram', 'pages', 'notify-settings', 'notify-settings.js'), 'utf8');
-  eq(/quotaLabel: hasQuota \? '已授权' :/.test(settingsSrc), true, '右侧状态标签为「已授权」');
+  eq(/notify\.getReminderHealth/.test(settingsSrc), true, '设置页读取统一提醒健康状态');
+  eq(/onReplenish\(\)/.test(settingsSrc), true, '批量补齐逻辑保留，供下一期付费功能复用');
   eq(/可提醒 \$\{q\.quota\}|quotaLabel: hasQuota \? `可提醒/.test(settingsSrc), false, '标签不再出现「可提醒 N 次」');
   eq(/hintKeepAlwaysChoice/.test(settingsSrc), true, '续收成功后接上「总是保持」引导');
 
+  const profileSrc = require('fs').readFileSync(
+    path.join(__dirname, '..', 'miniprogram', 'pages', 'profile', 'profile.js'), 'utf8');
+  const profileWxml = require('fs').readFileSync(
+    path.join(__dirname, '..', 'miniprogram', 'pages', 'profile', 'profile.wxml'), 'utf8');
+  eq(/notification|notificationAuthorized/.test(profileSrc), false, '我的页不自行重推系统通知状态');
+  eq(/getReminderHealth/.test(profileSrc), true, '我的页使用统一提醒健康状态');
+  eq(/setting-row-label">提醒设置/.test(profileWxml), true, '我的页入口更名为「提醒设置」');
+
   const settingsWxml = require('fs').readFileSync(
     path.join(__dirname, '..', 'miniprogram', 'pages', 'notify-settings', 'notify-settings.wxml'), 'utf8');
-  eq(/已授权 <text class="quota-num">\{\{subscribeQuota\}\}<\/text> 次，每次授权可收 1 条放票提醒/.test(settingsWxml),
-    true, '说明行 = 次数 + 每次授权的换算关系（客户语言）');
+  eq(/navbar-title">提醒设置/.test(settingsWxml), true, '设置页标题为「提醒设置」');
+  eq(/auth-health-summary/.test(settingsWxml), true, '设置页展示动态授权摘要');
+  eq(/一键补齐/.test(settingsWxml), false, '一次授权 N 次暂不对外展示');
+  eq(/bindtap="onRequestSubscribe"[\s\S]*续收 \+1/.test(settingsWxml), true, '保留「续收 +1」');
+  eq(/bindtap="onOpenSubscribeSetting"[\s\S]*微信授权设置/.test(settingsWxml), true, '保留「微信授权设置」');
+  eq(/auth-icon-green"><svg-icon name="chat-bubble"/.test(settingsWxml), true,
+    '微信通知权限使用绿色微信气泡图标');
+  eq(/auth-icon-warm"><svg-icon name="bell-fill4"/.test(settingsWxml), true,
+    '放票提醒使用暖色新铃铛图标');
   eq(/本地记账|微信侧余额不可查/.test(settingsWxml), false, '不再出现「本地记账 / 微信侧余额不可查」等技术侧词汇');
   eq(/总是保持以上选择/.test(settingsWxml), true, 'tips 里给出勾选引导');
 }

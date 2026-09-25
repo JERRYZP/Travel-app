@@ -4,7 +4,7 @@
     <view class="navbar-back" bindtap="onBack">
       <svg-icon name="back-thick" size="18px" />
     </view>
-    <text class="navbar-title">通知设置</text>
+    <text class="navbar-title">提醒设置</text>
   </view>
 </view>
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
@@ -19,7 +19,7 @@
   <view class="auth-card">
     <view class="auth-row">
       <view class="auth-left">
-        <view class="auth-icon auth-icon-warm"><svg-icon name="bell-fill" size="20px" /></view>
+        <view class="auth-icon auth-icon-green"><svg-icon name="chat-bubble" size="20px" /></view>
         <view class="auth-info">
           <text class="auth-label">微信通知权限</text>
           <text class="auth-hint">手机系统设置 → 通知 → 微信，关闭会收不到提醒</text>
@@ -36,14 +36,14 @@
   <view class="auth-card">
     <view class="auth-row">
       <view class="auth-left">
-        <view class="auth-icon auth-icon-green"><svg-icon name="chat-bubble" size="20px" /></view>
+        <view class="auth-icon auth-icon-warm"><svg-icon name="bell-fill4" size="20px" /></view>
         <view class="auth-info">
-          <text class="auth-label">{{templateName}}</text>
+          <text class="auth-label">{{templateName}}授权</text>
           <text class="auth-hint">{{templateDesc}}；微信为一次性订阅，剩余不足时提交会再次确认</text>
-          <text wx:if="{{templateReady}}" class="auth-hint">已授权 <text class="quota-num">{{subscribeQuota}}</text> 次，每次授权可收 1 条放票提醒</text>
+          <text wx:if="{{templateReady}}" class="auth-hint auth-health-summary">{{healthSummary}}</text>
         </view>
       </view>
-      <view class="auth-status {{subscribeOk ? 'ok' : 'off'}}">{{quotaLabel}}</view>
+      <view class="auth-status {{quotaTone}}">{{quotaLabel}}</view>
     </view>
     <!-- 对齐优剪模式：每个模板单独续收，同时保留微信授权设置入口 -->
     <view class="auth-actions">

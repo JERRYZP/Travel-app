@@ -1,0 +1,6 @@
+{
+  "usingComponents": {
+    "svg-icon": "/components/svg-icon/svg-icon"
+  },
+  "navigationStyle": "custom"
+}

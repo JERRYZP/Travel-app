@@ -1,0 +1,88 @@
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack">
+      <svg-icon name="back" size="18px" />
+    </view>
+    <text class="navbar-title">使用攻略</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view class="page-body">
+  <view class="hero">
+    <text class="hero-kicker">3 分钟上手</text>
+    <text class="hero-title">不代抢不代约，只帮你记住放票时间</text>
+    <text class="hero-sub">设好提醒后，到点去官方渠道抢票即可。</text>
+  </view>
+
+  <view class="guide-card">
+    <view class="section-head">
+      <view class="section-index">1</view>
+      <view>
+        <text class="section-title">3 步设置提醒</text>
+        <text class="section-sub">生成时间线只是预览，提交后才创建行程</text>
+      </view>
+    </view>
+    <view class="step-list">
+      <view class="step-item"><text class="step-no">1</text><text>选择出行日期和想去的景点</text></view>
+      <view class="step-item"><text class="step-no">2</text><text>加入清单，进入“设置提醒”并提交</text></view>
+      <view class="step-item"><text class="step-no">3</text><text>按微信提示允许授权，放票前收到提醒</text></view>
+    </view>
+    <view class="card-action" bindtap="onAddTrip">新增提醒</view>
+  </view>
+
+  <view class="guide-card">
+    <view class="section-head">
+      <view class="section-index">2</view>
+      <view>
+        <text class="section-title">没收到提醒怎么办</text>
+        <text class="section-sub">先检查两个授权，再看行程卡状态</text>
+      </view>
+    </view>
+    <view class="tip-list">
+      <text>· 微信系统通知未开启，订阅消息也无法正常送达。</text>
+      <text>· 微信订阅消息按条授权，提交前要确认本次额度足够。</text>
+      <text>· 放票时间过后仍未送达，行程卡会显示“未送达”，可点开查看原因。</text>
+    </view>
+    <view class="card-action secondary" bindtap="onNotifySettings">打开提醒设置</view>
+  </view>
+
+  <view class="guide-card">
+    <view class="section-head">
+      <view class="section-index">3</view>
+      <view>
+        <text class="section-title">去官方渠道前</text>
+        <text class="section-sub">我们只提醒，不代填、不代抢</text>
+      </view>
+    </view>
+    <view class="tip-list">
+      <text>· 若官方渠道支持常用联系人，可提前录入游客姓名和证件信息。</text>
+      <text>· 只使用景点官方小程序、公众号或官网，不向第三方代抢渠道提供证件。</text>
+      <text>· 闭馆日、放票时间和证件要求以景点页及官方当日公告为准。</text>
+    </view>
+    <view class="action-row">
+      <view class="card-action" bindtap="onSpots">查看景点规则</view>
+      <view class="card-action secondary" bindtap="onCorrection">信息纠错</view>
+    </view>
+  </view>
+
+  <view class="faq-section">
+    <text class="faq-title">常见问题</text>
+    <view
+      wx:for="{{faqs}}"
+      wx:key="key"
+      class="faq-item {{openFaq === item.key ? 'open' : ''}}"
+      bindtap="onToggleFaq"
+      data-key="{{item.key}}"
+    >
+      <view class="faq-question">
+        <text>{{item.q}}</text>
+        <svg-icon name="{{openFaq === item.key ? 'chevron-up' : 'chevron-down'}}" size="14px" />
+      </view>
+      <text wx:if="{{openFaq === item.key}}" class="faq-answer">{{item.a}}</text>
+    </view>
+  </view>
+
+  <text class="guide-disclaimer">抢票操作请以官方渠道页面为准。本工具不代抢、不代约，也不保证抢票成功。</text>
+</view>

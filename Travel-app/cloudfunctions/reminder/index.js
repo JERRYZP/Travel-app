@@ -22,6 +22,11 @@ const task = require('./lib/task');
 const item = require('./lib/item');
 const itemActions = require('./lib/trip-item-actions');
 const recovery = require('./lib/recovery');
+const {
+  DEFAULT_SUBSCRIBE_TEMPLATE_ID,
+  subscribeQuotaOf,
+  totalSubscribeQuota,
+} = require('./lib/quota');
 
 exports.main = async (event) => {
   const { action } = event || {};
@@ -83,7 +88,7 @@ exports.main = async (event) => {
       case 'cart.add':
         return await cart.add(db, userId, event);
       case 'cart.addAll': {
-        // CART-RULE-004「一键加入待选清单」：仅作用于当前 Tab。
+        // CART-RULE-004「一键加入清单」：仅作用于当前 Tab。
         // 服务端按同一份输入重新算一遍预览事件，避免信任前端传来的事件与状态。
         // scope: 'departure'（scopeKey = visitDate）| 'spot'（scopeKey = spotId）
         const tl = await timeline.preview(db, userId, event);
@@ -194,12 +199,13 @@ async function homeBootstrap(db, userId, event = {}) {
   const nowTs = time.now();
   const today = time.todayStr();
 
-  const [tripsRes, items, spotsCall] = await Promise.all([
+  const [tripsRes, items, spotsCall, userRes] = await Promise.all([
     trip.list(db, userId),
     item.listItemsByUser(db, userId),
     includeSpots
       ? cloud.callFunction({ name: 'spots', data: { action: 'list' } }).catch(() => null)
       : Promise.resolve(null),
+    db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
   ]);
 
   const trips = (tripsRes && tripsRes.trips) || [];
@@ -216,6 +222,12 @@ async function homeBootstrap(db, userId, event = {}) {
     const spot = spotMap[t.spotId];
     return spot ? item.deriveReleaseAt(spot, ruleMap[t.spotId], t.visitDate) : null;
   });
+  const user = (userRes.data || [])[0] || {};
+  const quotaHealth = task.reminderHealthOf(
+    allTasks,
+    subscribeQuotaOf(user, DEFAULT_SUBSCRIBE_TEMPLATE_ID),
+    nowTs
+  );
 
   const taskMap = item.taskMapByItemId(allTasks);
   const decorated = items.map(it => item.decorateItem({
@@ -224,6 +236,14 @@ async function homeBootstrap(db, userId, event = {}) {
     rule: ruleMap[it.spotId],
     task: taskMap[it._id] || null,
     nowTs,
+  }));
+
+  /* 「还有别的日期可约」——候选与它要解释的那条行程项**同一次响应**到达
+     （`lib/recovery.js` 的 `recoverableMapOf`，那里记着为什么不能挪回页面侧）。
+     算在这里的另一个好处：bootstrap 已经把 spot/rule 上下文和全部行程项读齐了，
+     逐条走 `tripItem.recoveryCandidates` 会把同一批数据重复查 N 遍。 */
+  const recoverableIds = Object.keys(recovery.recoverableMapOf({
+    decorated, trips, spotMap, ruleMap, nowTs,
   }));
 
   // 行程按结束日拆进行中 / 历史（读取时计算，不落库、不依赖定时任务）
@@ -240,6 +260,10 @@ async function homeBootstrap(db, userId, event = {}) {
       name: t.name,
       progress,
       itemCount: mine.length,
+      /* 2026-09-21：首页「+ 新增提醒」要拿它预填 add-trip 的景点标签。
+         只给 id，页面再走 spots.batch 取名字——这里多查一次会让 bootstrap 变重，
+         而预填只发生在用户点按钮之后，没有必要让每次首页加载都背上它。 */
+      spotIds: [...new Set(mine.map(i => i.spotId))],
     };
     // 结束日**当天仍属于进行中**，用户还能回看和补标；次日才归入历史
     if (t.endDate >= today) activeTrips.push({ ...entry, items: item.sortItems(mine) });
@@ -259,6 +283,17 @@ async function homeBootstrap(db, userId, event = {}) {
     trips: activeTrips,
     history: historyTrips,
     stickyBanner: task.buildReleaseBanner(decorated, nowTs),
+    /* 摘要卡底部的「即将提醒」胶囊（设计稿 UI/V.0.2-0919）。
+       ⚠️ 与 stickyBanner **平级、独立**：横幅受 BANNER_WINDOW_HOURS(1h) 限制只覆盖眼下，
+       胶囊不限窗口，回答的是「后面还有哪几场」。塞进 stickyBanner 会让没有 1h 内放票
+       的行程一颗胶囊都不显示——那正是设计稿上要展示的情况。 */
+    releasePills: task.buildReleasePills(decorated, nowTs, 2),
+    reminderQuotaWarning: task.buildReminderQuotaWarning(quotaHealth, nowTs),
+    /* 「没抢到」之后还能换哪些日期（决策文档 4.3）。
+       ⚠️ **必须在这一次响应里给**：页面侧另开一次请求去算候选，会与已经带着
+       `result = FAILED` 的这份返回体错序——卡片先按「不可挽回」渲染，挽回线
+       （气泡 + 菜单项）就永远不出现。真身 `lib/recovery.js` 的 `recoverableMapOf`。 */
+    recoverableIds,
     // 兼容期：新首页靠 trips.length 判断要不要出创建引导，旧前端仍读 homeMode
     homeMode: decorated.length === 0 ? 1 : 2,
     hotSpots: spotsCall && spotsCall.result && Array.isArray(spotsCall.result.data)
@@ -362,12 +397,6 @@ async function updateUserProfile(userId, data = {}) {
 
 /* 订阅消息额度台账的唯一真身（2026-09-16 从本文件内联抽出到 lib/quota.js，
    因为 lib/task.js 的读取时兜底 sweepOverdue 也需要同一套判定） */
-const {
-  DEFAULT_SUBSCRIBE_TEMPLATE_ID,
-  subscribeQuotaOf,
-  totalSubscribeQuota,
-} = require('./lib/quota');
-
 /**
  * subscribe.add —— 用户授权某个模板后 +1 一次性额度。
  * 同时维护旧 subscribeQuota 总数，兼容现有页面和旧数据。
@@ -396,15 +425,24 @@ async function addSubscribe(userId, templateId) {
 /** subscribe.get —— 查询当前用户某个模板的本地额度 */
 async function getSubscribe(userId, templateId) {
   const tpl = templateId || DEFAULT_SUBSCRIBE_TEMPLATE_ID;
-  const res = await db.collection(COLLECTIONS.USERS).where({ openId: userId }).get();
-  if (!(res.data || []).length) return ok({ quota: 0, totalQuota: 0, quotas: {}, templateId: tpl });
-  const u = res.data[0];
+  const [res, taskRes] = await Promise.all([
+    db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
+    db.collection(COLLECTIONS.REMINDER_TASKS).where({ userId }).get(),
+  ]);
+  const u = (res.data || [])[0] || {};
   const quotas = u.subscribeQuotas || {};
+  const quota = subscribeQuotaOf(u, tpl);
+  const health = task.reminderHealthOf(taskRes.data || [], quota, time.now());
   return ok({
-    quota: subscribeQuotaOf(u, tpl),
+    quota,
     totalQuota: totalSubscribeQuota(quotas, u.subscribeQuota),
     quotas,
     templateId: tpl,
+    pendingMessageCount: health.pendingMessageCount,
+    nearestRemindAt: health.nearestRemindAt,
+    level: health.level,
+    shortfall: health.shortfall,
+    replenishNeeded: health.replenishNeeded,
   });
 }
 

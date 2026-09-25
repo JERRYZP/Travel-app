@@ -17,6 +17,14 @@
   font-size: 30rpx; color: var(--color-ink);
 }
 
+.auth-guide {
+  display: flex; align-items: flex-start; gap: 14rpx;
+  margin-top: 30rpx; padding: 22rpx 24rpx;
+  background: #FBF5E6; border: 1rpx solid #EAD9B7; border-radius: 18rpx;
+  color: #7A5540; font-size: 23rpx; line-height: 1.65;
+}
+.auth-guide text { flex: 1; }
+
 .section-label {
   display: block; font-size: 28rpx; color: var(--color-ink);
   margin-top: 44rpx; margin-bottom: 18rpx;

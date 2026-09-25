@@ -2,7 +2,17 @@ const app = getApp();
 const api = require('../../utils/api.js');
 const notify = require('../../utils/notify.js');
 
-const NOTIFY_HINT_MAP = { none: '未开启', partial: '部分开启', all: '已开启' };
+function reminderHintOf(health) {
+  if (health.permissionState === 'none') return { text: '未开启', state: 'none' };
+  if (health.permissionState === 'partial') return { text: '部分开启', state: 'partial' };
+  if (health.quotaLevel === 'unknown') return { text: '状态待刷新', state: 'partial' };
+  if (health.quotaLevel === 'exhausted') return { text: '授权已用完', state: 'exhausted' };
+  if (health.quotaLevel === 'short') {
+    return { text: '还差' + health.shortfall + '次授权', state: 'short' };
+  }
+  if (health.quotaLevel === 'low') return { text: '授权即将用完', state: 'low' };
+  return { text: '已开启', state: 'all' };
+}
 
 Page({
   data: {
@@ -11,11 +21,16 @@ Page({
     user: null,
     notifyHint: '未开启',
     notifyState: 'none',
+    devMode: false,
   },
 
   onLoad() {
     const g = app.globalData;
-    this.setData({ statusBarHeight: g.statusBarHeight, navBarHeight: g.navBarHeight });
+    this.setData({
+      statusBarHeight: g.statusBarHeight,
+      navBarHeight: g.navBarHeight,
+      devMode: g.envVersion === 'develop',
+    });
   },
 
   onShow() {
@@ -34,10 +49,11 @@ Page({
     });
   },
 
-  /* 通知设置三态：全没设 / 设了一个 / 全设（onShow 刷新，从内页返回即时更新） */
+  /* 提醒设置状态：权限三态 + 授权额度健康度（onShow 刷新，从内页返回即时更新） */
   loadNotifyHint() {
-    notify.getNotifyStatus().then(s => {
-      this.setData({ notifyHint: NOTIFY_HINT_MAP[s.state], notifyState: s.state });
+    notify.getReminderHealth().then(health => {
+      const hint = reminderHintOf(health);
+      this.setData({ notifyHint: hint.text, notifyState: hint.state });
     }).catch(() => {});
   },
 
@@ -51,7 +67,7 @@ Page({
   },
 
   onGuide() {
-    wx.showToast({ title: '攻略即将上线', icon: 'none' });
+    wx.navigateTo({ url: '/pages/guide/guide' });
   },
 
   onFeedback() {
@@ -60,6 +76,14 @@ Page({
 
   onReportError() {
     wx.navigateTo({ url: '/pages/spot-correction/spot-correction' });
+  },
+
+  /* 仅开发版：不删云端数据，首页临时按新用户空态渲染。 */
+  onPreviewNewUser() {
+    if (app.globalData.envVersion !== 'develop') return;
+    app.globalData.previewNewUser = true;
+    try { wx.removeStorageSync(notify.FIRST_REMINDER_TIP_KEY); } catch (e) {}
+    wx.redirectTo({ url: '/pages/home/home' });
   },
 
   /** 隐藏入口：长按用户信息卡进入反馈管理页（权限由 feedback 云函数 openid 白名单把关） */

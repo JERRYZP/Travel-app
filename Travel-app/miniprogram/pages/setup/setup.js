@@ -13,6 +13,7 @@ Page({
     offsets: [5],
     checkedOffset5: true,
     checkedOffset2: false,
+    reminderCount: 0,
     submitting: false,
   },
 
@@ -24,6 +25,13 @@ Page({
       statusBarHeight: g.statusBarHeight,
       navBarHeight: g.navBarHeight,
     });
+  },
+
+  onShow() {
+    api.reminder.cart.list().then(res => {
+      const count = (res && res.summary && res.summary.reminderCount) || 0;
+      this.setData({ reminderCount: count });
+    }).catch(() => {});
   },
 
   onToggleChannel(e) {
@@ -59,91 +67,43 @@ Page({
     this.setData({ submitting: true });
     wx.showLoading({ title: '正在提交...' });
 
-    const doSubmit = () => this.submitTask({ channelList, offsets });
-
-    /* ① 系统通知权限（推送能否送达的前提）未开 → 引导去系统设置 */
-    if (!notify.getSystemNotifyOk()) {
+    const doSubmit = options => this.submitTask(Object.assign({ channelList, offsets }, options || {}));
+    const finish = access => {
       wx.hideLoading();
-      this.setData({ submitting: false });
-      wx.showModal({
-        title: '开启通知',
-        content: '微信通知权限未开启，提醒可能收不到。现在去系统设置开启？',
-        confirmText: '去开启',
-        cancelText: '暂不',
-        success: res => {
-          if (res.confirm) {
-            this.setData({ submitting: true });
-            wx.showLoading({ title: '正在开启...' });
-            notify.openSystemNotifySetting();
-          }
-          doSubmit();
-        },
-      });
-      return;
-    }
-
-    /* ② 订阅额度按需授权：本次需要「将设提醒的清单项数 × 提前量个数」条额度。
-       额度足够 → 不弹；不足且勾过「总是保持以上选择」→ 微信静默连发补齐；
-       不足且没勾 → 微信每次调用必弹窗，故最多弹 1 次，缺口由 shortfall 提示用户；
-       20004（订阅消息总开关关闭）→ 引导去设置页 */
-    this.loadNeededQuota().then(needed => {
-      if (needed <= 0) {
+      if (access.action === 'ready') {
         doSubmit();
         return;
       }
-      notify.ensureSubscribe(needed).then(r => {
-        if (r.reason === 'master-switch-off' || r.reason === 'subscription-disabled') {
-          notify.guideOpenSubscribeSetting(r.reason);
-        }
-        if (r.shortfall > 0) {
-          /* 额度没补满 → 提交前说清楚，避免「提交成功却收不到提醒」 */
-          wx.hideLoading();
-          /* ⚠️ 必须复位 submitting：否则从通知设置页返回后提交按钮一直是 disabled 态点不动 */
-          this.setData({ submitting: false });
-          wx.showModal({
-            title: '提醒额度不足',
-            content: `本次要设 ${needed} 条提醒，当前只拿到 ${needed - r.shortfall} 条授权，可能有 ${r.shortfall} 条收不到。建议先去通知设置补齐。`,
-            confirmText: '去补额度',
-            cancelText: '直接提交',
-            success: m => {
-              if (m.confirm) {
-                wx.navigateTo({ url: '/pages/notify-settings/notify-settings' });
-              } else {
-                /* 直接提交：submitTask 内部会自己 showLoading */
-                this.setData({ submitting: true });
-                doSubmit();
-              }
-            },
-          });
-          return;
-        }
-        doSubmit();
-      });
-    });
-  },
+      if (access.action === 'trip-only') {
+        doSubmit({ disableReminders: true });
+        return;
+      }
+      this.setData({ submitting: false });
+      if (access.action !== 'settings') return;
+      if (access.settingsKind === 'system') notify.openSystemNotifySetting();
+      else wx.navigateTo({ url: '/pages/notify-settings/notify-settings' });
+    };
 
-  /**
-   * 本次提交需要的订阅额度 = 「将设提醒的清单项数 × 提前量个数」。
-   * - 任务数 = 清单里「需预约且勾了提醒」的项数（云端 submit 只给这些项建任务）
-   * - 每条任务按 offsets 逐个发消息（notifier 的 collectDue），所以提前量几个就要几条额度
-   * ⚠️ 不要退回成只算 offsets.length —— 清单里 6 个景点时只补 1 条，第 2 条起全部 43101「未送达」（2026-09-16 踩过）。
-   * 清单查询失败时降级为只算提前量（额度不足由 43101 自愈与提交流程兜底，不阻断提交）。
-   */
-  loadNeededQuota() {
-    const { offsets } = this.data;
-    const perTask = Math.max(1, offsets.length);
-    return api.reminder.cart.list()
-      .then(res => {
-        const count = (res && res.summary && res.summary.reminderCount) || 0;
-        return count * perTask;
+    notify.getReminderQuotaNeeded(offsets.length)
+      .then(needed => notify.confirmReminderAccess(needed).then(access => ({ needed, access })))
+      .then(({ needed, access }) => {
+        if (needed > 0) this.setData({ reminderCount: needed });
+        finish(access);
       })
-      .catch(() => perTask);
+      .catch(err => {
+        wx.hideLoading();
+        this.setData({ submitting: false });
+        api.toastError(err);
+      });
   },
 
-  submitTask({ channelList, offsets }) {
+  submitTask({ channelList, offsets, disableReminders }) {
     wx.showLoading({ title: '正在提交...' });
     /* 提交 = 唯一创建行程的时机；返回的 tripId 供首页定位新行程 */
-    api.reminder.cart.commit({ channels: channelList, offsets }).then(res => {
+    const payload = disableReminders
+      ? { disableReminders: true }
+      : { channels: channelList, offsets };
+    api.reminder.cart.commit(payload).then(res => {
       wx.hideLoading();
       this.setData({ submitting: false });
       if (res.needsOaAuth) {
@@ -159,13 +119,24 @@ Page({
           },
         });
       }
-      const toast = res.createdTasks > 0
-        ? (res.noReminder > 0 ? '已加入行程，提醒也设置好了' : '提醒已设置，放票前见')
-        : '已加入行程';
-      wx.showToast({ title: toast, icon: 'none' });
+      let toast;
+      if (disableReminders) {
+        toast = '已加入行程，未设置提醒';
+      } else if (res.createdTasks > 0 && notify.consumeFirstReminderSuccessTip()) {
+        toast = '提醒已设置，先备好游客信息';
+      } else {
+        toast = res.createdTasks > 0
+          ? (res.noReminder > 0 ? '行程已添加，提醒已设置' : '提醒已设置，放票前见')
+          : '行程已添加，未设置提醒';
+      }
+      wx.showToast({ title: toast, icon: 'none', duration: 2000 });
       /* 提交是唯一创建行程的时机，tripId 这一刻才有 —— 写给首页定位用。
-         纯预览化后「生成时间线」不再建行程，所以不能更早写。 */
-      if (res.tripId) app.globalData.currentTripId = res.tripId;
+         纯预览化后「生成时间线」不再建行程，所以不能更早写。
+         ⚠️ 只在**没有别的页在等它**时才写：从「添加提醒」带行程进来的路径上，
+         add-trip 拿到返回值后会自己写（那是回首页的那一页，它更清楚该定位到哪趟），
+         这里抢写会让首页定位到别处。条件①之外的分支都是「首页直达设置」的旧路径。 */
+      const fromAddTrip = getCurrentPages().some(p => p.route === 'pages/add-trip/add-trip');
+      if (res.tripId && !fromAddTrip) app.globalData.currentTripId = res.tripId;
       app.globalData.reminderSubmitted = true;
       setTimeout(() => {
         /* 回到首页：兼容 首页→设置（内联生成）与 首页→添加提醒→设置 两种栈深 */

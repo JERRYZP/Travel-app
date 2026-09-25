@@ -1,7 +1,7 @@
 const api = require('./api.js');
 
 /**
- * 通知授权状态工具 —— profile 三态文案 / 通知设置内页 / 设置提醒页就地授权 共用
+ * 提醒授权状态工具 —— profile 状态文案 / 提醒设置内页 / 设置提醒页就地授权 共用
  *
  * 两个前置授权项（缺一收不到提醒）：
  *   ① 微信系统通知权限  wx.getAppAuthorizeSetting().notificationAuthorized / notificationEnabled
@@ -259,7 +259,98 @@ function ensureSubscribe(needed, templateId) {
 }
 
 /**
- * 查询某个模板的本地记账「已授权次数」（用于通知设置页展示）。
+ * 本次提交需要多少条订阅额度 = 当前清单将设提醒项数 × 每条任务的提前量个数。
+ * 清单查询失败时按“至少一条任务”处理，避免静默跳过授权。
+ */
+function getReminderQuotaNeeded(perTask) {
+  const taskCount = Math.max(1, Number(perTask) || 1);
+  return api.reminder.cart.list()
+    .then(res => {
+      const count = (res && res.summary && res.summary.reminderCount) || 0;
+      return count * taskCount;
+    })
+    .catch(() => taskCount);
+}
+
+/** 订阅授权不足时让用户明确选择：补授权、仅加行程或取消。 */
+function showReminderAccessSheet(alertText, firstLabel) {
+  return new Promise(resolve => {
+    if (!wx.showActionSheet) {
+      resolve({ choice: 'cancelled', reason: 'action-sheet-unavailable' });
+      return;
+    }
+    wx.showActionSheet({
+      alertText,
+      itemList: [firstLabel, '仅加行程·不提醒', '取消'],
+      success: res => {
+        const idx = Number(res && res.tapIndex);
+        resolve({
+          choice: idx === 0 ? 'first' : (idx === 1 ? 'trip-only' : 'cancelled'),
+        });
+      },
+      fail: () => resolve({ choice: 'cancelled' }),
+    });
+  });
+}
+
+/**
+ * 设置提醒前的统一闸门。返回结果由页面决定如何提交，不在工具层直接创建行程。
+ * @returns Promise<{
+ *   action: 'ready'|'trip-only'|'settings'|'cancelled',
+ *   settingsKind?: 'system'|'subscribe',
+ *   needed: number, shortfall: number, reason?: string
+ * }>
+ */
+function confirmReminderAccess(needed, templateId) {
+  const tpl = templateIdOf(templateId);
+  const want = Math.max(0, Number(needed) || 0);
+  if (want <= 0) {
+    return Promise.resolve({ action: 'ready', needed: 0, shortfall: 0 });
+  }
+
+  if (!getSystemNotifyOk()) {
+    return showReminderAccessSheet(
+      '微信通知权限未开启，提醒可能收不到。',
+      '去开启微信通知'
+    ).then(choice => {
+      if (choice.choice === 'first') {
+        return { action: 'settings', settingsKind: 'system', needed: want, shortfall: 0, reason: 'system-notify-off' };
+      }
+      if (choice.choice === 'trip-only') {
+        return { action: 'trip-only', needed: want, shortfall: want, reason: 'system-notify-off' };
+      }
+      return { action: 'cancelled', needed: want, shortfall: want, reason: choice.reason || 'cancelled' };
+    });
+  }
+
+  return ensureSubscribe(want, tpl).then(r => {
+    if (r.shortfall <= 0) {
+      return { action: 'ready', needed: want, shortfall: 0, reason: r.reason };
+    }
+
+    return showReminderAccessSheet(
+      `本次需要 ${want} 条提醒授权，当前还差 ${r.shortfall} 条。`,
+      '去补订阅授权'
+    ).then(choice => {
+      if (choice.choice === 'first') {
+        return {
+          action: 'settings',
+          settingsKind: 'subscribe',
+          needed: want,
+          shortfall: r.shortfall,
+          reason: r.reason || 'quota-shortfall',
+        };
+      }
+      if (choice.choice === 'trip-only') {
+        return { action: 'trip-only', needed: want, shortfall: r.shortfall, reason: r.reason };
+      }
+      return { action: 'cancelled', needed: want, shortfall: r.shortfall, reason: r.reason || 'cancelled' };
+    });
+  });
+}
+
+/**
+ * 查询某个模板的本地记账「已授权次数」（用于提醒设置页展示）。
  * ⚠️ 这是本地推测值、不是微信侧真实余额（微信不提供余额查询接口），
  * 页面文案必须写「已授权 N 次」而非「可提醒 N 次」——后者等于承诺必然送达。
  */
@@ -272,8 +363,47 @@ function getSubscribeQuota(templateId) {
       totalQuota: (r && r.totalQuota) || 0,
       quotas: (r && r.quotas) || {},
       templateId: tpl,
+      pendingMessageCount: (r && r.pendingMessageCount) || 0,
+      nearestRemindAt: (r && r.nearestRemindAt) || null,
+      level: (r && r.level) || 'idle',
+      shortfall: (r && r.shortfall) || 0,
+      replenishNeeded: (r && r.replenishNeeded) || 0,
     }))
-    .catch(() => ({ ok: false, quota: 0, totalQuota: 0, quotas: {}, templateId: tpl }));
+    .catch(() => ({
+      ok: false,
+      quota: 0,
+      totalQuota: 0,
+      quotas: {},
+      templateId: tpl,
+      pendingMessageCount: 0,
+      nearestRemindAt: null,
+      level: 'unknown',
+      shortfall: 0,
+      replenishNeeded: 0,
+    }));
+}
+
+/**
+ * 统一提醒健康状态：权限 + 本地授权台账 + 未来待发送量。
+ * profile / 设置页 / 首页不要各自拼状态，避免三套口径。
+ */
+function getReminderHealth(templateId) {
+  const tpl = templateIdOf(templateId);
+  return Promise.all([getNotifyStatus(tpl), getSubscribeQuota(tpl)]).then(([permission, quota]) => ({
+    systemOk: permission.systemOk,
+    subscribeOk: permission.subscribeOk,
+    permissionState: permission.state,
+    quotaOk: quota.ok,
+    quota: quota.quota,
+    totalQuota: quota.totalQuota,
+    quotas: quota.quotas,
+    templateId: tpl,
+    pendingMessageCount: quota.pendingMessageCount,
+    nearestRemindAt: quota.nearestRemindAt,
+    quotaLevel: quota.level,
+    shortfall: quota.shortfall,
+    replenishNeeded: quota.replenishNeeded,
+  }));
 }
 
 /** 订阅消息总开关关闭/模板被拒收：引导去小程序设置页重新开启 */
@@ -306,6 +436,7 @@ function guideOpenSubscribeSetting(reason) {
  * 换 templateId 会重置，所以标记也按 templateId 分开记。
  */
 const KEEP_HINT_KEY_PREFIX = 'subscribeKeepHintShown:';
+const FIRST_REMINDER_TIP_KEY = 'firstReminderGuestInfoTipShownV1';
 
 function hintKeepAlwaysChoice(templateId) {
   const tpl = templateIdOf(templateId);
@@ -326,6 +457,17 @@ function hintKeepAlwaysChoice(templateId) {
   });
 }
 
+/** 首次成功创建提醒时返回 true；之后不再重复提示游客信息。 */
+function consumeFirstReminderSuccessTip() {
+  try {
+    if (wx.getStorageSync(FIRST_REMINDER_TIP_KEY)) return false;
+    wx.setStorageSync(FIRST_REMINDER_TIP_KEY, 1);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 module.exports = {
   SUBSCRIBE_TEMPLATES,
   SUBSCRIBE_TEMPLATE_ID,
@@ -337,8 +479,13 @@ module.exports = {
   requestSubscribe,
   requestSubscribeBurst,
   ensureSubscribe,
+  getReminderQuotaNeeded,
+  confirmReminderAccess,
   getSubscribeQuota,
+  getReminderHealth,
   guideOpenSubscribeSetting,
   hintKeepAlwaysChoice,
+  consumeFirstReminderSuccessTip,
   KEEP_HINT_KEY_PREFIX,
+  FIRST_REMINDER_TIP_KEY,
 };

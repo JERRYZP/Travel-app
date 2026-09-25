@@ -13,6 +13,10 @@ Page({
     templateDesc: '放票前通知你',
     subscribeQuota: 0,
     quotaLabel: '未生效',
+    quotaTone: 'off',
+    pendingMessageCount: 0,
+    replenishNeeded: 0,
+    healthSummary: '',
     loading: true,
   },
 
@@ -37,21 +41,35 @@ Page({
 
   /* 从系统设置 / 授权框返回时刷新状态 */
   refresh() {
-    Promise.all([
-      notify.getNotifyStatus(this.data.templateId),
-      notify.getSubscribeQuota(this.data.templateId),
-    ]).then(([s, q]) => {
-      const hasQuota = q.quota > 0;
+    return notify.getReminderHealth(this.data.templateId).then(h => {
+      const hasQuota = h.quota > 0;
+      let quotaLabel = hasQuota ? '已授权' : (h.subscribeOk ? '已允许，待续收' : '未生效');
+      let quotaTone = hasQuota ? 'ok' : 'off';
+      if (h.quotaLevel === 'exhausted') { quotaLabel = '已用完'; quotaTone = 'off'; }
+      else if (h.quotaLevel === 'short') { quotaLabel = '还差' + h.shortfall + '次'; quotaTone = 'off'; }
+      else if (h.quotaLevel === 'low') { quotaLabel = '即将用完'; quotaTone = 'warn'; }
+
+      let healthSummary = '当前没有待发送提醒，有新的提醒时会校验授权额度。';
+      if (h.pendingMessageCount > 0) {
+        if (h.quotaLevel === 'ready') {
+          healthSummary = `未来还有 ${h.pendingMessageCount} 条提醒待发送，当前已授权 ${h.quota} 次，额度充足。`;
+        } else {
+          const target = h.pendingMessageCount + 1;
+          healthSummary = `未来还有 ${h.pendingMessageCount} 条提醒待发送，当前已授权 ${h.quota} 次；建议补到 ${target} 次。`;
+        }
+      } else if (hasQuota) {
+        healthSummary = `当前已授权 ${h.quota} 次；有新的放票提醒时会再次校验额度。`;
+      }
+
       this.setData({
-        systemOk: s.systemOk,
-        subscribeOk: s.subscribeOk || hasQuota,
-        subscribeQuota: q.quota,
-        /* ⚠️ 文案是「已授权」不是「可提醒」（2026-09-16 定规）：
-           本地台账只是我们按「授权 +1 / 发送成功 -1 / 43101 清零」推测出来的计数，
-           微信侧真实余额不提供查询接口，必然存在漂移。写「可提醒 N 次」等于向用户
-           承诺「这 N 次一定会送到」，而实际可能因拒收、换模板等原因送不出去。
-           标签只陈述状态（已授权），具体次数放在下方说明行（数量 + 每次授权的换算关系）。 */
-        quotaLabel: hasQuota ? '已授权' : (s.subscribeOk ? '已允许，待续收' : '未生效'),
+        systemOk: h.systemOk,
+        subscribeOk: h.subscribeOk || hasQuota,
+        subscribeQuota: h.quota,
+        pendingMessageCount: h.pendingMessageCount,
+        replenishNeeded: h.replenishNeeded,
+        healthSummary,
+        quotaLabel,
+        quotaTone,
         loading: false,
       });
     });
@@ -62,22 +80,34 @@ Page({
   },
 
   onRequestSubscribe() {
+    this.replenishSubscribe(1, 'single');
+  },
+
+  onReplenish() {
+    /* 一次性补齐 N 次暂不对外开放；下一期接付费能力时恢复入口即可。 */
+    this.replenishSubscribe(this.data.replenishNeeded, 'bulk');
+  },
+
+  replenishSubscribe(times, mode) {
     if (!this.data.templateReady) {
       wx.showToast({ title: '推送通道准备中，请稍后再试', icon: 'none' });
       return;
     }
+    const want = Math.max(1, Number(times) || 1);
     /* 防连点：微信每次调用都会弹一次授权窗，狂点会连环弹窗（弹窗未关闭前的点击不算有效手势） */
     if (this.renewing) return;
     this.renewing = true;
     /* 兜底解锁：微信回调异常缺失时，不至于把按钮永久锁死 */
     const unlock = setTimeout(() => { this.renewing = false; }, 10000);
-    notify.requestSubscribeBurst(1, this.data.templateId).then(res => {
+    notify.requestSubscribeBurst(want, this.data.templateId).then(res => {
       clearTimeout(unlock);
       this.renewing = false;
       this.refresh();
       if (res.ok) {
-        /* silent = 用户勾过「总是保持以上选择」，微信这次没弹窗直接记账 */
-        wx.showToast({ title: res.silent ? '已续收 1 次（未弹窗）' : '已续收 1 次', icon: 'none' });
+        let title = res.silent ? `已续收 ${res.added} 次（未弹窗）` : `已续收 ${res.added} 次`;
+        if (res.shortfall > 0) title = `已续收 ${res.added} 次，还差 ${res.shortfall} 次`;
+        else if (mode === 'bulk') title = res.silent ? `已补齐 ${res.added} 次（未弹窗）` : `已续收 ${res.added} 次`;
+        wx.showToast({ title, icon: 'none' });
         /* 没勾过 → 这次是真弹了窗。趁用户刚有体感，提示一次「勾了以后就不用再点」，
            让后续「一次提交 N 条静默补满」能真的零弹窗（一辈子只提示一次） */
         if (!res.silent) notify.hintKeepAlwaysChoice(this.data.templateId);
