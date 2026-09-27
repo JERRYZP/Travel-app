@@ -131,6 +131,7 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
 
     const pv = await c('timeline.preview', { startDate: START, endDate: END, spotIds: ['gugong', 'tiantan'] });
     eq(pv.success, true, '预览成功');
+    eq(pv.byDeparture[0].dayLabel, '【第1天】', '预览分组带相对行程首日的第几天');
     eq((await c('trip.list', {})).trips.length, 0, '纯预览不创建行程');
 
     const req = pv.events.find(e => e.reservationRequired !== false);
@@ -160,6 +161,8 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     const cm = await c('cart.commit', { channels: ['OFFICIAL_ACCOUNT'], offsets: [5] });
     eq(cm.createdItems, 2, '提交创建 2 个行程项');
     eq(cm.createdTasks, 1, '仅提醒项建任务');
+    eq(cm.addedTripItemCount, 2, 'mock 返回加入行程 2 项');
+    eq(cm.addedReminderCount, 1, 'mock 返回加入提醒 1 项');
     eq(Boolean(cm.tripId), true, '回传 tripId（契约 8.5）');
     eq((await c('trip.list', {})).trips.length, 1, '提交时才创建行程');
     eq((await c('cart.list', {})).summary.count, 0, '提交后清单清空（提交即消费）');

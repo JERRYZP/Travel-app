@@ -497,6 +497,11 @@ async function submit(db, userId, event) {
     created: createdTasks.length,
     createdItems: createdItems.length,
     createdTasks: createdTasks.length,
+    /* 对外语义字段：分别表示本次提交新增的提醒数和提交进行程的项数。
+       createdItems 统计真正新建的记录；addedTripItemCount 统计本次提交消费的清单项，
+       在合并到既有行程、只更新已有记录时也能给前端准确反馈。 */
+    addedReminderCount: createdTasks.length,
+    addedTripItemCount: cartItems.length,
     noReminder,
     expiredReminder,
     disableReminders,

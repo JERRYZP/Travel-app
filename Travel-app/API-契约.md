@@ -504,7 +504,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | IN_CART | 已加清单（免预约项「已加入清单」） | true | 打开 PAGE-007 (button.openCart=true) |
 | COMMITTED | 已加行程 | false | 无（纯状态标签） |
 
-⚠️（2026-09-24）文案统一为「清单」并去掉全部图标，对齐 `UI/V.0.2-0919/32.png`：旧值 `+ 添加提醒` → `加入清单`、`已加待选` → `已加清单`、`已在行程` → `已加行程`。
+⚠️（2026-09-24）文案统一为「清单」并去掉全部图标，对齐 `UI/V.0.2-0919首页行程化改版-UI/32.png`：旧值 `+ 添加提醒` → `加入清单`、`已加待选` → `已加清单`、`已在行程` → `已加行程`。
 ⚠️ `enabled` 表达的是**能不能点**，不是**看起来像不像按钮**：`IN_CART` 为 true（点它打开清单弹层），UI 上却是中性色状态胶囊。别为了「看着像状态」把它改成 false。
 ⚠️（2026-09-25）时间线不再返回 `WAITING / REMINDERED / BOOKABLE / FULL`。`releaseAt ≤ now` 只把顶部 `releaseStateLabel` 变为「已开票」并渲染绿色文字，按钮仍是 `SELECTABLE → 加入清单`；已开票项入清单后固定 `remindOn=false`、`remindLocked=true`，清单行显示「仅加行程·不提醒」且不可修改。预约入口只保留在首页行程项和推送详情。
 
@@ -1054,7 +1054,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
                       app.globalData.currentTripId 供首页定位新行程
 ```
 
-`PAGE-008` 与首页“约其他日”、景点页直设提醒共用 `notify.getReminderQuotaNeeded()` / `confirmReminderAccess()`；只有 `action = ready` 才走普通 `cart.commit`，`trip-only` 走 `disableReminders: true`，`settings/cancelled` 不提交。
+`PAGE-008`（V0.3 硬闸门）不使用 `confirmReminderAccess()`：额度不足时主按钮禁用，只允许用户主动补齐授权，补齐后才走 `cart.commit`，不提供 `trip-only` 旁路。首页“约其他日”和景点页直设提醒等轻量入口仍共用 `notify.getReminderQuotaNeeded()` / `confirmReminderAccess()`；只有 `action = ready` 才走普通 `cart.commit`，`trip-only` 走 `disableReminders: true`，`settings/cancelled` 不提交。
 
 ⚠️ **不再传 tripId**：纯预览化后「生成时间线」不建行程，清单也不挂在行程上。
 任何页面都不应缓存或透传 tripId —— 提交返回的那个才是唯一可信的。
@@ -1313,10 +1313,11 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 #### `tripItem.removeVisitDate`
 
 ```javascript
-调用：{ action: 'tripItem.removeVisitDate', tripId, visitDate }
+调用：{ action: 'tripItem.removeVisitDate', tripId, visitDate, itemIds }
 返回：{ success: true, tripId, visitDate, removedItems, removedTasks, tripRemoved }
 ```
 
+- `itemIds` 可选；前端传该日期分组内可见的全部行程项 ID。云端以 `tripId + visitDate` 查询结果和这批 ID 取并集后整组删除，避免漏删。
 - 前端必须先明确提示“该日期下的行程项和提醒会一并删除”。
 - `tripRemoved=true` 表示行程下已无任何行程项，行程随之删除。
 
@@ -1388,6 +1389,8 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   success: true,
   createdItems: N,
   createdTasks: M,
+  addedReminderCount: M,       // 本次提交实际新增的提醒数
+  addedTripItemCount: T,       // 本次提交进行程的清单项数（含合并进既有行程的项）
   noReminder,
   expiredReminder,
   disableReminders,

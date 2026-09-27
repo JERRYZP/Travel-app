@@ -1,8 +1,15 @@
 .navbar { position: fixed; top: 0; left: 0; right: 0; z-index: 90; background: var(--color-page); }
-.navbar-content { display: flex; align-items: center; padding-left: 20rpx; }
-
-.navbar-back, .navbar-home { width: 60rpx; height: 60rpx; display: flex; align-items: center; justify-content: center; }
-.navbar-home { margin-left: 8rpx; }
+.navbar-content { display: flex; align-items: center; padding-left: 20rpx; position: relative; }
+.navbar-back { width: 60rpx; height: 60rpx; display: flex; align-items: center; justify-content: center; }
+.navbar-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
 
 .page-body { position: relative; padding: 0 30rpx 150rpx; }
 
@@ -12,14 +19,6 @@
   width: 265rpx; height: 124rpx; z-index: 0;
   pointer-events: none;
 }
-.step-caption {
-  position: relative;
-  z-index: 1;
-  padding-top: 28rpx;
-  font-size: 22rpx;
-  color: #B59E80;
-}
-
 .auth-guide {
   display: flex; align-items: flex-start; gap: 14rpx;
   margin-top: 30rpx; padding: 22rpx 24rpx;
@@ -87,6 +86,7 @@
   color: #5E3D32;
 }
 .auth-label { color: #5E3D32; }
+.quota-summary { font-size: 23rpx; }
 .auth-status.ok, .quota-ok { color: #4A7C59; }
 .auth-status.off, .quota-short { color: var(--color-primary); }
 .auth-inline-action {
@@ -103,6 +103,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 16rpx;
+  /* 本行文案整体上移 12px，贴近上方授权结果。 */
+  margin-top: -24rpx;
   min-height: 72rpx;
   font-size: 23rpx;
   color: #9B7F6F;
@@ -116,7 +118,7 @@
   font-size: 23rpx;
   font-weight: 600;
 }
-.seed-note {
+.auth-note {
   display: flex;
   flex-direction: column;
   gap: 10rpx;
@@ -128,7 +130,6 @@
   font-size: 22rpx;
   line-height: 1.6;
 }
-.seed-title { color: #B89048; font-weight: 600; }
 .sample-link {
   display: flex;
   align-items: center;
@@ -139,12 +140,6 @@
   font-size: 24rpx;
 }
 .sms-card { margin-top: 24rpx; }
-.offset-hint {
-  display: block;
-  padding: 0 0 22rpx;
-  color: #B59E80;
-  font-size: 22rpx;
-}
 .gate-hint {
   display: block;
   margin-top: 14rpx;
@@ -190,7 +185,7 @@
 .sample-scroll { white-space: nowrap; }
 .sample-list { display: inline-flex; gap: 18rpx; padding: 0 30rpx; }
 .sample-item {
-  width: 520rpx;
+  width: 468rpx;
   display: inline-flex;
   flex-direction: column;
   gap: 12rpx;
@@ -198,14 +193,14 @@
 }
 .sample-label { font-size: 23rpx; color: #5E3D32; }
 .sample-img {
-  width: 520rpx;
-  max-height: 820rpx;
+  /* widthFix 已按原图比例算高度；不要再用 max-height 约束，否则图片会被压扁。 */
+  width: 468rpx;
   border-radius: 20rpx;
   background: #F3EEE3;
 }
 .sample-placeholder {
-  width: 520rpx;
-  height: 720rpx;
+  width: 468rpx;
+  height: 648rpx;
   display: flex;
   align-items: center;
   justify-content: center;

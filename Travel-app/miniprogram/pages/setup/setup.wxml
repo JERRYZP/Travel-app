@@ -2,32 +2,28 @@
   <view style="height: {{statusBarHeight}}px;"></view>
   <view class="navbar-content" style="height: {{navBarHeight}}px;">
     <view class="navbar-back" bindtap="onBack">
-      <svg-icon name="back-thick" size="24px" />
+      <svg-icon name="back" size="18px" />
     </view>
-    <view class="navbar-home" bindtap="onHome">
-      <svg-icon name="home" size="22px" />
-    </view>
-    <text class="navbar-title">设置提醒</text>
+    <text class="navbar-title">第四步：设置提醒</text>
   </view>
 </view>
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
 
 <view class="page-body">
   <image class="page-illustration" src="/images/icons/setup-illustration.svg" mode="aspectFit" />
-  <view class="step-caption">第 4 步 · 设置提醒</view>
 
   <text class="section-label">提醒方式</text>
   <view class="setting-card auth-card">
     <view class="setting-row auth-title-row">
       <view class="setting-row-left">
-        <svg-icon name="wechat" size="26px" />
+        <svg-icon name="wechat-large" size="26px" />
         <view class="setting-row-info">
           <text class="setting-row-label">微信通知提醒</text>
           <text class="setting-row-hint">用于接收放票提醒</text>
         </view>
       </view>
-      <view class="checkbox {{accessReady ? 'checked' : ''}}">
-        <svg-icon wx:if="{{accessReady}}" name="check-white" size="12px" />
+      <view class="checkbox {{channels.officialAccount ? 'checked' : ''}}">
+        <svg-icon wx:if="{{channels.officialAccount}}" name="check-white" size="12px" />
       </view>
     </view>
 
@@ -50,13 +46,14 @@
     </view>
     <view class="quota-line">
       <text>本次 {{quotaNeeded}} 条提醒 · 已授权 {{subscribeQuota}} 次</text>
-      <view wx:if="{{shortfall > 0 && systemOk}}" class="fill-quota-btn" bindtap="onFillQuota">补齐 {{shortfall}} 次授权</view>
+      <view wx:if="{{shortfall > 0 && systemOk}}" class="fill-quota-btn" bindtap="onFillQuota">一键补全授权次数</view>
     </view>
 
-    <view class="seed-note">
-      <text class="seed-title">种子用户体验</text>
-      <text>为减少逐条操作，我们已开发“批量补齐授权”能力。点击后会按微信规则发起授权确认：如果你已勾选“总是保持以上选择”，可连续补齐；如果未勾选，微信每次只允许完成 1 次，页面会实时更新剩余次数。</text>
-      <text>该能力当前免费开放，后续正式版本可能作为付费服务提供。</text>
+    <view wx:if="{{shortfall > 0 && systemOk}}" class="auth-note">
+      <text>1、微信通知提醒需要主动授权，1次授权可发送1条提醒</text>
+      <text>2、提醒较多时，可“一键补齐授权次数”</text>
+      <text>3、如果已勾选“总是保持以上选择”，可以连续补齐;否则微信每次只允许完成1次，页面会实时更新剩余次数。</text>
+      <text>4、该能力当前限时免费，后续正式版可能付费。</text>
     </view>
 
     <view class="sample-link" bindtap="onOpenSample">
@@ -96,7 +93,6 @@
         </view>
       </view>
     </view>
-    <text class="offset-hint">建议提前 5 分钟，为进入官方渠道留出时间。</text>
   </view>
 
   <view class="submit-btn {{canSubmit ? '' : 'disabled'}}" bindtap="onSubmit">

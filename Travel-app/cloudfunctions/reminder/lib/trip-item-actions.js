@@ -346,12 +346,23 @@ async function remove(db, userId, { itemId }) {
  * 前端**必须先明确提示**「该日期下的行程项和提醒会一并删除」（8.4）。
  * @returns {removedItems, removedTasks, tripRemoved}
  */
-async function removeVisitDate(db, userId, { tripId, visitDate }) {
+async function removeVisitDate(db, userId, { tripId, visitDate, itemIds = [] }) {
   if (!tripId || !visitDate) return fail(ERRORS.BAD_PARAM);
 
+  /* 前端把该日期分组内可见的全部 itemId 一起带上。优先按 ID 取整组，
+     避免只靠 tripId + visitDate 匹配时漏掉其中一条；ID 不存在或过期时再回退日期查询。 */
+  const wantedIds = [...new Set((Array.isArray(itemIds) ? itemIds : []).filter(Boolean))];
   const res = await db.collection(COLLECTIONS.TRIP_ITEMS)
     .where({ userId, tripId, visitDate }).get();
-  const items = res.data || [];
+  const itemMap = new Map((res.data || []).map(it => [it._id, it]));
+  if (wantedIds.length > 0) {
+    const byIds = await db.collection(COLLECTIONS.TRIP_ITEMS)
+      .where({ userId, _id: db.command.in(wantedIds) }).get();
+    (byIds.data || [])
+      .filter(it => it.tripId === tripId && it.visitDate === visitDate)
+      .forEach(it => itemMap.set(it._id, it));
+  }
+  const items = [...itemMap.values()];
   if (items.length === 0) return fail(ERRORS.ITEM_NOT_FOUND);
 
   let removedTasks = 0;

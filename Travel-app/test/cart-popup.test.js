@@ -80,10 +80,55 @@ console.log('=== 4. 底部条图标、角标与安全区 ===');
     '底部条不含 env(safe-area-inset-bottom)（TabBar 已经吃掉了）');
   eq(/cart-foot-icon/.test(WXML), true, '底部条有清单圆形图标');
   eq(/cart-foot-badge/.test(WXML), true, '底部条有数量角标');
-  eq(/heart-add-white/.test(WXML), true, '提交按钮带爱心加号图标');
+  eq(/heart-add-white/.test(WXML), false, '提交按钮不再带爱心加号图标');
+  eq(/alert-circle-gold/.test(WXML), true, '温馨提示使用金色警示图标');
+  eq(/\.cart-tips-head\s*\{[^}]*color:\s*#C87D2A/.test(WXSS), true,
+    '温馨提示图标与文字使用 #C87D2A');
+  eq(/\.cart-tips-title\s*\{[^}]*font-weight:\s*400/.test(WXSS), true,
+    '温馨提示文字不加粗');
+  eq(/\.cart-foot\s*\{[^}]*background:\s*#FDFBF7/.test(WXSS), true,
+    '清单底部横条背景为 #FDFBF7');
+  eq(/\.cart-foot\s*\{[^}]*height:\s*96rpx[^}]*min-height:\s*96rpx/.test(WXSS), true,
+    '清单底部横条与行程页统一为 96rpx 高');
+  eq(/\.cart-foot-icon\s*\{[^}]*width:\s*72rpx[^}]*height:\s*72rpx/.test(WXSS), true,
+    '清单图标为行程页 60rpx 的 120%');
+  eq(/name="list-white" size="24px"/.test(WXML), true,
+    '清单图标内部图形同步放大到 120%');
+  eq(/\.cart-foot-btn\s*\{[^}]*padding:\s*16rpx 24rpx[^}]*font-size:\s*26rpx[^}]*font-weight:\s*500/.test(WXSS), true,
+    '主按钮尺寸、字号和字重与行程页一致');
+  eq(/\.cart-foot-text\s*\{[^}]*font-size:\s*21rpx/.test(WXSS), true,
+    '清单摘要字号与行程页一致');
+  eq(/cart-foot-reminder-count/.test(WXML), true, '其中 M 项数字单独高亮');
+  eq(/\.cart-foot-reminder-count\s*\{[^}]*color:\s*var\(--color-primary\)/.test(WXSS), true,
+    '提醒项数字使用主红色');
 }
 
-console.log('=== 5. 旧云端响应兼容 ===');
+console.log('=== 5. 已过去的出行日在标题标注天数 ===');
+{
+  eq(/cart-past-note/.test(WXML), true, '过去出行日有独立备注节点');
+  eq(/已过去\{\{group\.daysPast\}\}天/.test(WXML), true, '备注显示已过去 N 天');
+  eq(/\.cart-past-note\s*\{[^}]*font-size:\s*20rpx/.test(WXSS), true,
+    '过去备注使用辅助字号');
+
+  const groups = cartView.normalizeCartGroups({
+    groups: [
+      { key: '2026-09-24', label: '9月24日 · 周四', dayLabel: '【第1天】', items: [] },
+      { key: '2026-09-26', label: '9月26日 · 周六', dayLabel: '【第3天】', items: [] },
+      { key: '2026-09-27', label: '9月27日 · 周日', dayLabel: '【第4天】', items: [] },
+      { key: '2026-09-28', label: '9月28日 · 周一', dayLabel: '【第5天】', items: [] },
+    ],
+    items: [],
+  }, '2026-09-27');
+
+  eq(groups[0].isPast, true, '早于今天的出行日标记为已过去');
+  eq(groups[0].daysPast, 3, '多天前的出行日正确计算 N 天');
+  eq(groups[1].isPast, true, '昨天的出行日标记为已过去');
+  eq(groups[1].daysPast, 1, '昨天显示已过去 1 天');
+  eq(groups[2].isPast, false, '当天不标记为已过去');
+  eq(groups[3].isPast, false, '未来日期不标记为已过去');
+}
+
+console.log('=== 6. 旧云端响应兼容 ===');
 {
   const legacy = cartView.normalizeCartGroups({
     groups: [
@@ -109,7 +154,7 @@ console.log('=== 5. 旧云端响应兼容 ===');
   eq(legacy[1].items[0].subline, '无需预约，随到随玩', '免预约副行保留说明');
 }
 
-console.log('=== 6. 景点详情长内容在真机可滚动到底 ===');
+console.log('=== 7. 景点详情长内容在真机可滚动到底 ===');
 {
   eq(/<scroll-view[\s\S]*scroll-y[\s\S]*class="popup-scroll"[\s\S]*style="\{\{scrollStyle\}\}"/.test(SPOT_WXML), true,
     '景点详情使用 scroll-view，并绑定 JS 下发高度');

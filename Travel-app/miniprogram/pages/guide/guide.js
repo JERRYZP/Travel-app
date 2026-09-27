@@ -45,6 +45,10 @@ Page({
     wx.navigateTo({ url: '/pages/add-trip/add-trip' });
   },
 
+  onReminderSamples() {
+    wx.navigateTo({ url: '/pages/setup/setup?showSample=1' });
+  },
+
   onNotifySettings() {
     wx.navigateTo({ url: '/pages/notify-settings/notify-settings' });
   },

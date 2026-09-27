@@ -30,6 +30,18 @@ function dayDiff(start, end) {
   return Math.round((e - s) / 86400000) + 1;
 }
 
+/** 当前自然日（北京时间，YYYY-MM-DD）。 */
+function beijingTodayStr(now = new Date()) {
+  const p = new Date(now.getTime() + 8 * 3600000);
+  return p.getUTCFullYear() + '-' + pad(p.getUTCMonth() + 1) + '-' + pad(p.getUTCDate());
+}
+
+/** 日期早于今天时返回已过去的天数；当天与未来返回 0。 */
+function pastDaysOf(dateStr, today = beijingTodayStr()) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr || '') || dateStr >= today) return 0;
+  return Math.max(0, dayDiff(dateStr, today) - 1);
+}
+
 /** ISO 日期字符串转 "HH:MM" */
 function formatTime(isoStr) {
   const d = new Date(isoStr);
@@ -209,8 +221,8 @@ function reminderClass(state) {
  * 免预约项没有放票时刻，说「无需预约」——不能留空，留空用户会以为数据没加载出来。
  *
  * ⚠️ 2026-09-22 按设计稿**去掉「 放票」后缀**：稿子是「09月26日 10:00」，
- *   「放票」二字由紧跟其后的尾巴（「还有N天」/「立即抢票」）承担语义，不必重复。
- *   别把后缀加回来——加了之后副行会出现「10月3日 20:00 放票 · 立即抢票」这种自相矛盾的读法。
+ *   「放票」二字由紧跟其后的尾巴（「还有N天」/「现在预约」）承担语义，不必重复。
+ *   别把后缀加回来——加了之后副行会出现「10月3日 20:00 放票 · 现在预约」这种自相矛盾的读法。
  */
 function releaseLineOf(item) {
   if (!item || item.reservationRequired === false) return '无需预约 · 随到随玩';
@@ -227,7 +239,7 @@ function releaseLineOf(item) {
  *
  * ⚠️ **判定优先级：先看提醒送达态，再看票务态**。
  *   `MISSED`（提醒没送到）是这个产品里唯一会真正伤到用户的状态——用户以为会被叫醒，
- *   结果没有。它必须压过票务态显示，否则「可抢 + 未送达」的卡片会写成「立即抢票」，
+ *   结果没有。它必须压过票务态显示，否则「可抢 + 未送达」的卡片会写成「现在预约」，
  *   把「你被静默失败了」这件事盖掉。
  *
  * ⚠️ 「还有N天」算的是**距放票**天数（稿子里它紧跟在放票时刻后面），
@@ -244,15 +256,15 @@ function releaseRemainderOf(item) {
 
   const state = item.ticketState;
   if (state === 'SUCCESS') return { text: '· 已约', tone: 'muted' };
-  /* 未抢到：票已放出仍可继续抢，副行保留「立即抢票 ›」；
+  /* 未抢到：票已放出仍可继续抢，副行保留「现在预约 ›」；
      「约其他日」入口移至右侧三点菜单（trip-card.wxml），不再内联。 */
-  if (state === 'FAILED') return { text: '· 立即抢票 ›', tone: 'go' };
-  if (state === 'BOOKABLE' || state === 'UNMARKED') return { text: '· 立即抢票 ›', tone: 'go' };
+  if (state === 'FAILED') return { text: '· 现在预约 ›', tone: 'go' };
+  if (state === 'BOOKABLE' || state === 'UNMARKED') return { text: '· 现在预约 ›', tone: 'go' };
 
-  /* 剩下就是「还没到点」。releaseAt 已过（比如刚放票还没被算成 BOOKABLE）也走立即抢票，
+  /* 剩下就是「还没到点」。releaseAt 已过（比如刚放票还没被算成 BOOKABLE）也走现在预约，
      **不能显示「还有-1天」**——实测放票时刻可以落在过去。 */
   const ms = new Date(item.releaseAt).getTime() - Date.now();
-  if (ms <= 0) return { text: '· 立即抢票 ›', tone: 'go' };
+  if (ms <= 0) return { text: '· 现在预约 ›', tone: 'go' };
   return { text: '· 还有' + Math.ceil(ms / 86400000) + '天', tone: 'muted' };
 }
 
@@ -275,7 +287,7 @@ function snackbarPartsOf(spotName, isSuccess) {
 
 module.exports = {
   WEEKDAYS, DAY_CN, pad, formatDate, formatDateWithWeek,
-  formatDateRange, dayDiff, formatTime, formatReleaseDate,
+  formatDateRange, dayDiff, beijingTodayStr, pastDaysOf, formatTime, formatReleaseDate,
   countdown, difficultyClass, defaultDateRange, markSpotsSelected,
   parseDay, dayTitleOf, monthDayTime, monthDayRange, daysUntil,
   countdownTextOf, stateClass, reminderClass, releaseLineOf,

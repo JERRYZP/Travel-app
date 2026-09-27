@@ -198,7 +198,7 @@
 }
 
 .preview-note {
-  margin: -18rpx 0 30rpx;
+  margin: -18rpx 0 34rpx;
   text-align: center;
   font-size: 22rpx;
   color: #B59E80;
@@ -207,18 +207,20 @@
   display: flex;
   align-items: center;
   gap: 10rpx;
-  margin: 0 -30rpx 0;
-  padding: 28rpx 30rpx 22rpx;
-  background: var(--color-page);
+  padding: 34rpx 30rpx 30rpx;
+  background: var(--color-surface);
   color: var(--color-primary);
   font-size: 28rpx;
   font-weight: 600;
-  position: relative;
-  z-index: 1;
 }
 
 /* ===== 热门景点网格 ===== */
-.hot-section { margin-bottom: 32rpx; }
+/* 热门景点及下方内容整体上移 8px，给底部的“更多景点”按钮留出 Tab 安全距离。 */
+.hot-section {
+  margin-top: -16rpx;
+  /* 再收紧 4px，让“选择更多意向景点”比热门景点模块多上移 4px。 */
+  margin-bottom: 24rpx;
+}
 .hot-title {
   display: block;
   font-size: 28rpx;
@@ -618,6 +620,7 @@
   margin: 0 -30rpx;
   padding: 0 0 8rpx;
   background: var(--color-surface);
+  border-radius: 32rpx 32rpx 0 0;
 }
 
 /* 时间线头部（标题 → 一键加入清单）吸顶。
@@ -636,9 +639,10 @@
   /* padding-bottom 8→16rpx（2026-09-24 用户口径 +4px）：拉大「一键加入清单」
      到模块底边（那条细线）的距离。⚠️ 是**内边距**不是外边距——
      外边距推的是模块底边往下到第一张卡的距离，改错了位置用户一眼看得出来。 */
-  padding: 24rpx 0 16rpx;
+  padding: 0 0 16rpx;
   margin-bottom: 16rpx;
   background: var(--color-surface);
+  border-radius: 32rpx 32rpx 0 0;
   border-bottom: 1rpx solid var(--color-border);
   box-shadow: 0 4rpx 12rpx rgba(100,60,20,0.08);
   box-sizing: border-box;
@@ -757,6 +761,12 @@
   background: #F2E4C0;
   color: #C26B0C;
   font-size: 20rpx;
+}
+.timeline-past-note {
+  flex-shrink: 0;
+  color: #9B7F6F;
+  font-size: 20rpx;
+  white-space: nowrap;
 }
 .timeline-day-line {
   flex: 1;
@@ -905,18 +915,20 @@
   bottom: calc(100rpx + env(safe-area-inset-bottom));
   left: 0;
   right: 0;
+  height: 96rpx;
   display: flex;
   align-items: center;
   gap: 16rpx;
-  padding: 16rpx 30rpx;
-  background: var(--color-surface);
+  padding: 0 30rpx;
+  box-sizing: border-box;
+  background: #FDFBF7;
   box-shadow: 0 -2rpx 12rpx rgba(100,60,20,0.06);
   z-index: 80;
 }
 .cart-bar-icon {
   position: relative;
-  width: 60rpx;
-  height: 60rpx;
+  width: 72rpx;
+  height: 72rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -926,18 +938,20 @@
 .cart-bar-badge {
   position: absolute;
   top: -4rpx;
-  right: -8rpx;
-  min-width: 28rpx;
-  height: 28rpx;
-  line-height: 28rpx;
-  padding: 0 6rpx;
-  border-radius: 14rpx;
+  right: -4rpx;
+  min-width: 34rpx;
+  height: 34rpx;
+  line-height: 34rpx;
+  padding: 0 8rpx;
+  box-sizing: border-box;
+  border-radius: 999rpx;
   background: var(--color-primary);
   color: #fff;
-  font-size: 18rpx;
+  font-size: 20rpx;
   text-align: center;
 }
-.cart-bar-text { flex: 1; min-width: 0; font-size: 23rpx; color: var(--color-text); }
+.cart-bar-text { flex: 1; min-width: 0; font-size: 21rpx; color: var(--color-text); }
+.cart-bar-reminder-count { color: var(--color-primary); }
 .cart-bar-btn {
   flex-shrink: 0;
   display: flex;

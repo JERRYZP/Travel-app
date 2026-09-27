@@ -17,6 +17,7 @@ const PAGE_GAP_RPX = 16;
 /* 滚多少像素把导航栏底色从全透明推到不透明 */
 const NAV_FADE_PX = 50;
 const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
+const EMPTY_RELEASE_FALLBACK = release.buildHomeReleasePreview([], new Date()).sample;
 
 /**
  * 首页 · 行程状态墙（2026-09-20 首页行程化改版 P3）
@@ -48,10 +49,14 @@ Page({
     /* 摘要卡底部的「即将提醒」胶囊：接下来的放票时刻（服务端拼好文案）。
        来源是 stickyBanner.pills —— 不放独立字段，避免两处口径漂。 */
     bannerPills: [],
-    /* 完全没有行程项 = 空态。空态自带一个居中的「+ 新增提醒」，
+    /* 完全没有行程项 = 空态。空态自带一个居中的创建行程 CTA，
        所以要把悬浮按钮藏掉，避免同屏两个一模一样的入口。 */
     isBlank: false,
     previewNewUser: false,
+    /* 新用户空态的内容证据：一张真实规则预览 + 3 个近期放票节点。
+       数据来自 home.bootstrap 已返回的 hotSpots，不额外请求接口。 */
+    emptyReleaseRows: [],
+    emptyReleaseSample: EMPTY_RELEASE_FALLBACK,
     historyOpen: false,
     banner: null,
     reminderQuotaWarning: null,
@@ -168,11 +173,19 @@ Page({
         quotaWarningDayKey: '',
         isBlank: true,
         previewNewUser: true,
+        emptyReleaseRows: [],
+        emptyReleaseSample: EMPTY_RELEASE_FALLBACK,
         historyOpen: false,
         recoverableIds: [],
         menuId: '',
         menuDate: '',
       });
+      /* 开发预览没有走 bootstrap 的 hotSpots；单独取一次公开景点卡，
+         让设计/真机验收可以看到完整的“近期放票”模块。失败时保留兜底示例。 */
+      api.spots.list().then(res => {
+        const preview = release.buildHomeReleasePreview(res.data || [], new Date(), 3);
+        this.setData({ emptyReleaseRows: preview.rows, emptyReleaseSample: preview.sample });
+      }).catch(() => {});
       return;
     }
 
@@ -180,6 +193,7 @@ Page({
       const trips = (res.trips || []).map((t, i) => this.decorateTrip(t, i === 0));
       const primary = trips.length ? trips[0] : null;
       const serverNow = res.serverNow ? new Date(res.serverNow) : new Date();
+      const releasePreview = release.buildHomeReleasePreview(res.hotSpots || [], serverNow, 3);
       const quotaWarningDayKey = release.toDateStr(serverNow);
       let dismissedOn = '';
       try { dismissedOn = wx.getStorageSync(QUOTA_WARNING_DISMISS_KEY) || ''; } catch (e) {}
@@ -197,6 +211,8 @@ Page({
            那是第二套口径，必然与云端漂。 */
         bannerPills: res.releasePills || [],
         banner: res.stickyBanner || null,
+        emptyReleaseRows: releasePreview.rows,
+        emptyReleaseSample: releasePreview.sample,
         reminderQuotaWarning,
         quotaWarningDayKey,
         showReminderQuotaWarning: !!reminderQuotaWarning && dismissedOn !== quotaWarningDayKey,
@@ -301,6 +317,19 @@ Page({
         + '&spotIds=' + (t.spotIds || []).join(','))
       : '';
     wx.navigateTo({ url: '/pages/add-trip/add-trip' + q });
+  },
+
+  onEmptySpotTap(e) {
+    const spotId = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id;
+    if (spotId) this.openSpotPopup(spotId);
+  },
+
+  onOpenAllSpots() {
+    wx.redirectTo({ url: '/pages/spot-hub/spot-hub' });
+  },
+
+  onOpenReminderSamples() {
+    wx.navigateTo({ url: '/pages/setup/setup?showSample=1' });
   },
 
   onExitNewUserPreview() {
@@ -617,9 +646,11 @@ Page({
 
   /** 第二层：删某一天的全部行程项（日期分段标题右侧菜单） */
   onRemoveDate(e) {
-    const { tripId, visitDate } = e.detail;
+    const { tripId, visitDate, itemIds } = e.detail;
     const trip = this.data.trips.find(t => t._id === tripId);
-    const count = trip ? (trip.items || []).filter(i => i.visitDate === visitDate).length : 0;
+    const count = Array.isArray(itemIds) && itemIds.length
+      ? itemIds.length
+      : (trip ? (trip.items || []).filter(i => i.visitDate === visitDate).length : 0);
     wx.showModal({
       title: '删除当天的全部？',
       content: '该日期下的 ' + count + ' 条行程项和提醒会一并删除，无法恢复。',
@@ -627,7 +658,7 @@ Page({
       confirmColor: '#C0392B',
       success: r => {
         if (!r.confirm) return;
-        api.reminder.tripItem.removeVisitDate({ tripId, visitDate }).then(res => {
+        api.reminder.tripItem.removeVisitDate({ tripId, visitDate, itemIds }).then(res => {
           wx.showToast({ title: '已删除当天', icon: 'none' });
           this.loadHome({ silent: true });
         }).catch(err => api.toastError(err));

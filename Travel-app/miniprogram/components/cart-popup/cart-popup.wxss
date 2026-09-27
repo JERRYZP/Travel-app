@@ -73,10 +73,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: #B89048;
+  color: #C87D2A;
 }
 .cart-tips-title-wrap { display: flex; align-items: center; gap: 8rpx; }
-.cart-tips-title { font-size: 25rpx; font-weight: 600; }
+.cart-tips-title { font-size: 25rpx; font-weight: 400; }
 .cart-tips-body {
   display: flex;
   flex-direction: column;
@@ -129,6 +129,12 @@
   background: #F2E4C0;
   color: #C26B0C;
   font-size: 22rpx;
+}
+.cart-past-note {
+  flex-shrink: 0;
+  color: #9B7F6F;
+  font-size: 20rpx;
+  white-space: nowrap;
 }
 .cart-group-line {
   flex: 1;
@@ -275,40 +281,42 @@
 
 /* ===== 底部提交条 ===== */
 .cart-foot {
-  min-height: 126rpx;
+  /* 与行程页 .cart-bar 固定同高；图标可到 72rpx，仍留足上下空间。 */
+  height: 96rpx;
+  min-height: 96rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16rpx;
-  padding: 14rpx 30rpx;
+  padding: 0 30rpx;
   box-sizing: border-box;
   border-top: 1rpx solid #F0F0E8;
-  background: #F8F8F8;
+  background: #FDFBF7;
 }
 .cart-foot-main {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 22rpx;
+  gap: 16rpx;
 }
 .cart-foot-icon {
   position: relative;
-  width: 98rpx;
-  height: 98rpx;
+  width: 72rpx;
+  height: 72rpx;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: #B89048;
+  background: #B8904A;
 }
 .cart-foot-badge {
   position: absolute;
   top: -4rpx;
-  right: -2rpx;
-  min-width: 36rpx;
-  height: 36rpx;
+  right: -4rpx;
+  min-width: 34rpx;
+  height: 34rpx;
   padding: 0 8rpx;
   box-sizing: border-box;
   display: flex;
@@ -322,23 +330,23 @@
 }
 .cart-foot-text {
   min-width: 0;
-  font-size: 25rpx;
+  font-size: 21rpx;
   color: #5E3D32;
 }
+.cart-foot-reminder-count { color: var(--color-primary); }
 .cart-foot-btn {
   flex-shrink: 0;
-  min-height: 82rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8rpx;
-  padding: 0 28rpx;
+  padding: 16rpx 24rpx;
   box-sizing: border-box;
   border-radius: 999rpx;
   background: #C04028;
   color: #FFFEFB;
-  font-size: 25rpx;
-  font-weight: 600;
+  font-size: 26rpx;
+  font-weight: 500;
 }
 .cart-foot-btn.disabled { background: #DBCDBB; }
 .cart-foot-btn:active { opacity: .88; }

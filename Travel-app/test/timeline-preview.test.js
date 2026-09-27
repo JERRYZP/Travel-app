@@ -59,9 +59,26 @@ function digest(res) {
     eq(res.success, true, '预览成功');
     eq(res.events.length > 0, true, '故宫在日期段内生成事件');
     eq(res.events.every(e => e.releaseStateLabel === '待开票'), true, '未来事件顶部显示「待开票」');
+    eq(res.byDeparture.length > 0, true, '预览按出游日生成分组');
+    eq(res.byDeparture.every(g => g.dayLabel === `【第${time.diffDays(START, g.key) + 1}天】`), true,
+      '每个出游日相对行程首日下发第几天');
     eq(db._dump(COLLECTIONS.TRIPS).length, 0, '没有创建任何行程');
     eq(db._dump(COLLECTIONS.TRIP_ITEMS).length, 0, '没有创建任何行程项');
     eq(db._dump(COLLECTIONS.REMINDER_CART).length, 0, '没有写清单');
+  }
+
+  console.log('=== 1a. 第几天始终相对行程首日，不从首个事件重算 ===');
+  {
+    const db = freshDb();
+    let startDate = time.addDays(TODAY, 20);
+    while (time.dayNameOf(startDate) !== 'monday') startDate = time.addDays(startDate, 1);
+    const nextDate = time.addDays(startDate, 1);
+    const res = await timeline.preview(db, USER, {
+      startDate, endDate: nextDate, spotIds: ['gugong'],
+    });
+    eq(res.byDeparture.length, 1, '首日闭馆时只生成次日分组');
+    eq(res.byDeparture[0].key, nextDate, '首个事件确实落在行程第 2 天');
+    eq(res.byDeparture[0].dayLabel, '【第2天】', '首日无事件也不会把第 2 天误标成第 1 天');
   }
 
   console.log('=== 1b. 已开票：只加入清单，固定不提醒 ===');

@@ -22,7 +22,7 @@ const SPOTS = [
   {spotId:"tiananmen-square",name:"天安门广场",shortName:"天安门广场",category:"广场",district:"东城区",address:"东长安街天安门广场",location:{latitude:39.9087,longitude:116.3975},officialAppid:"wx784eb46174db6aed",officialPath:"",officialWebUrl:"http://yuyue.tamgw.beijing.gov.cn",officialAccount:"",qrCode:"",difficultyScore:2,audienceTags:["elder"],popularityScore:5,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["升旗","天安门升旗","看升旗"] },
   {spotId:"maozhuxi-jiniantang",name:"毛主席纪念堂",shortName:"纪念堂",category:"纪念场馆",district:"东城区",address:"天安门广场人民英雄纪念碑南侧",location:{latitude:39.9014,longitude:116.3956},officialAppid:"wx492b5d2f5b89c11e",officialPath:"",officialWebUrl:"https://cpc.people.com.cn/GB/143527/143528/",officialAccount:"",qrCode:"",difficultyScore:3,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["纪念堂"] },
   {spotId:"renmin-dahuitang",name:"人民大会堂",shortName:"人民大会堂",category:"场馆",district:"西城区",address:"西长安街天安门广场西侧",location:{latitude:39.9064,longitude:116.3938},officialAppid:"wxb2809a187df8351b",officialPath:"",officialWebUrl:"",officialAccount:"",qrCode:"",difficultyScore:3,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:false,scrapingUrl:"",aliases:["大会堂"] },
-  {spotId:"junbo",name:"中国人民革命军事博物馆",shortName:"军事博物馆",category:"博物馆",district:"海淀区",address:"复兴路9号",location:{latitude:39.9078,longitude:116.3211},officialAppid:"wxe7ab4bac193578d0",officialPath:"",officialWebUrl:"http://www.jb.mil.cn",officialAccount:"中国人民革命军事博物馆",qrCode:"/images/qrcodes/junbo.jpg",difficultyScore:2,audienceTags:["family","elder"],popularityScore:5,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["军博","军事博物馆"] },
+  {spotId:"junbo",name:"中国人民革命军事博物馆",shortName:"军博",category:"博物馆",district:"海淀区",address:"复兴路9号",location:{latitude:39.9078,longitude:116.3211},officialAppid:"wxe7ab4bac193578d0",officialPath:"",officialWebUrl:"http://www.jb.mil.cn",officialAccount:"中国人民革命军事博物馆",qrCode:"/images/qrcodes/junbo.jpg",difficultyScore:2,audienceTags:["family","elder"],popularityScore:5,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["军博","军事博物馆"] },
   {spotId:"ziran-bowuguan",name:"国家自然博物馆",shortName:"自然博物馆",category:"博物馆",district:"东城区",address:"天桥南大街126号",location:{latitude:39.8796,longitude:116.3952},officialAppid:"wx3ccbf39dedcfc335",officialPath:"",officialWebUrl:"https://www.nnhm.org.cn",officialAccount:"国家自然博物馆",qrCode:"/images/qrcodes/ziran-bowuguan.jpg",difficultyScore:2,audienceTags:["family"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["自然博物馆","自然博"] },
   {spotId:"kaogu-bowuguan",name:"中国考古博物馆",shortName:"考古博物馆",category:"博物馆",district:"朝阳区",address:"国家体育场北路1号院1号楼",location:{latitude:39.9985,longitude:116.3835},officialAppid:"wx48b5cc9990544897",officialPath:"",officialWebUrl:"https://cam.zglsyjy.cn",officialAccount:"中国考古博物馆",qrCode:"/images/qrcodes/kaogu-bowuguan.png",difficultyScore:2,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["考古博物馆","考古博"] },
   {spotId:"tsinghua",name:"清华大学",shortName:"清华",category:"高校",district:"海淀区",address:"清华园1号",location:{latitude:40.0023,longitude:116.3262},officialAppid:"wxef227a5869ad5e4a",officialPath:"",officialWebUrl:"https://www.tsinghua.edu.cn",officialAccount:"清华大学",qrCode:"/images/qrcodes/tsinghua.png",difficultyScore:3,audienceTags:["elder"],popularityScore:4,reservationRequired:true,hasWebVersion:true,scrapingUrl:"",aliases:["清华","清华大学参观"] },
@@ -632,7 +632,7 @@ function defaultScrollIndex(events, nowTs = new Date()) {
   const idx = sorted.findIndex(e => e.releaseAt && e.releaseAt.getTime() > nowTs.getTime());
   return idx === -1 ? Math.max(0, sorted.length - 1) : idx;
 }
-function groupByDeparture(events, nowTs) {
+function groupByDeparture(events, nowTs, tripStartDate = '') {
   const map = new Map();
   for (const e of events) {
     if (!map.has(e.visitDate)) map.set(e.visitDate, []);
@@ -642,7 +642,15 @@ function groupByDeparture(events, nowTs) {
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([visitDate, list]) => {
       const sorted = list.sort((a, b) => (a.releaseAt ? a.releaseAt.getTime() : Number.MAX_SAFE_INTEGER) - (b.releaseAt ? b.releaseAt.getTime() : Number.MAX_SAFE_INTEGER));
-      return { key: visitDate, label: formatMonthDayWeek(visitDate), events: sorted, count: sorted.length, scrollIndex: defaultScrollIndex(sorted, nowTs) };
+      return {
+        key: visitDate,
+        label: formatMonthDayWeek(visitDate),
+        /* 与云端一致：相对行程首日算，首日无事件也不能把次日误标成第1天。 */
+        dayLabel: tripStartDate ? `【第${diffDays(tripStartDate, visitDate) + 1}天】` : '',
+        events: sorted,
+        count: sorted.length,
+        scrollIndex: defaultScrollIndex(sorted, nowTs),
+      };
     });
 }
 function groupBySpot(events, nowTs) {
@@ -870,7 +878,7 @@ function previewTimeline(input) {
   return {
     success: true,
     events,
-    byDeparture: groupByDeparture(events, nowTs),
+    byDeparture: groupByDeparture(events, nowTs, startDate),
     bySpot: groupBySpot ? groupBySpot(events) : [],
     closedSpots,
     closedDaySkips,
@@ -948,8 +956,8 @@ function generateTimeline(tripId) {
     tripId,
     trip: { _id: tripId, name: trip.name, startDate: trip.startDate, endDate: trip.endDate, spotIds, spots: segs },
     events,
-    byDeparture: groupByDeparture(events, nowTs),
-    bySpot: groupBySpot(events, nowTs),
+    byDeparture: groupByDeparture(events, nowTs, trip.startDate),
+    bySpot: groupBySpot ? groupBySpot(events) : [],
     closedSpots,
     closedDaySkips,
     empty: events.length === 0,
@@ -1468,6 +1476,8 @@ const handlers = {
       created,
       createdItems,
       createdTasks: created,
+      addedReminderCount: created,
+      addedTripItemCount: cartItems.length,
       noReminder: disableReminders ? cartItems.length : cartItems.length - reminderItems.length,
       /* 勾了提醒但因放票时刻已过而没建任务的条数（镜像 lib/task.js） */
       expiredReminder: disableReminders ? 0 : expiredReminder,
@@ -1678,7 +1688,18 @@ const handlers = {
     return { success: true, itemId: data.itemId, tripId: item.tripId, removedTasks, tripRemoved };
   },
   'tripItem.removeVisitDate': (data) => {
-    const targets = Object.values(db.items).filter(i => i.tripId === data.tripId && i.visitDate === data.visitDate);
+    const wantedIds = new Set((Array.isArray(data.itemIds) ? data.itemIds : []).filter(Boolean));
+    const targetMap = new Map();
+    Object.values(db.items).forEach(i => {
+      if (i.tripId !== data.tripId || i.visitDate !== data.visitDate) return;
+      if (wantedIds.size === 0 || wantedIds.has(i._id)) targetMap.set(i._id, i);
+    });
+    /* ID 查询在真实云端与日期查询取并集；mock 同样把日期组作为基线，
+       避免只拿到前端传来的部分 ID 时漏删。 */
+    Object.values(db.items).forEach(i => {
+      if (i.tripId === data.tripId && i.visitDate === data.visitDate) targetMap.set(i._id, i);
+    });
+    const targets = [...targetMap.values()];
     if (targets.length === 0) return { success: false, error: '行程项不存在', errorCode: 1013 };
     let removedTasks = 0;
     targets.forEach(i => {

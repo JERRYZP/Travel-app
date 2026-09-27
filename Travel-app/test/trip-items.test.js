@@ -81,6 +81,8 @@ function freshDb() {
   eq(committed.success, true, '无提醒购物车直接提交成功');
   eq(committed.createdItems, 1, '创建 1 个行程项');
   eq(committed.createdTasks, 0, '免预约项不创建任务');
+  eq(committed.addedTripItemCount, 1, '返回本次加入行程项数');
+  eq(committed.addedReminderCount, 0, '返回本次加入提醒数');
   eq(db._size(COLLECTIONS.REMINDER_CART), 0, '购物车已清空');
   const freeItem = db._dump(COLLECTIONS.TRIP_ITEMS)[0];
   eq(freeItem.spotId, 'tiantan', '行程项景点正确');
@@ -146,6 +148,8 @@ function freshDb() {
   eq(mixedCommit.success, true, '混合购物车提交成功');
   eq(mixedCommit.createdItems, 2, '创建 2 个行程项');
   eq(mixedCommit.createdTasks, 1, '仅强提醒创建 1 条任务');
+  eq(mixedCommit.addedTripItemCount, 2, '返回加入行程 2 项');
+  eq(mixedCommit.addedReminderCount, 1, '返回加入提醒 1 项');
   const tasks = db._dump(COLLECTIONS.REMINDER_TASKS);
   eq(tasks.length, 1, '数据库中仅 1 条任务');
   eq(Boolean(tasks[0].itemId), true, '提醒任务已挂 itemId');
@@ -168,6 +172,8 @@ function freshDb() {
   eq(disabledCommit.disableReminders, true, '响应标记 disableReminders');
   eq(disabledCommit.createdItems, 1, '仍创建行程项');
   eq(disabledCommit.createdTasks, 0, '不创建提醒任务');
+  eq(disabledCommit.addedTripItemCount, 1, '仅加行程仍返回加入行程 1 项');
+  eq(disabledCommit.addedReminderCount, 0, '仅加行程返回加入提醒 0 项');
   eq(disabledCommit.noReminder, 1, '全部项计为不提醒');
   eq(db._size(COLLECTIONS.REMINDER_TASKS), 0, '任务集合为空');
   eq(db._dump(COLLECTIONS.TRIP_ITEMS)[0].remindOn, false, '行程项提醒开关为 false');

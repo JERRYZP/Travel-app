@@ -158,9 +158,12 @@ function resetWx(patch = {}) {
   const appJson = fs.readFileSync(path.join(ROOT, 'miniprogram/app.json'), 'utf8');
   const profileJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.js'), 'utf8');
   const guideWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/guide/guide.wxml'), 'utf8');
+  const guideJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/guide/guide.js'), 'utf8');
   eq(/"pages\/guide\/guide"/.test(appJson), true, '攻略页已注册路由');
   eq(/navigateTo\(\{ url: '\/pages\/guide\/guide' \}\)/.test(profileJs), true, '我的页入口指向攻略页');
   eq(/3 步设置提醒/.test(guideWxml), true, '攻略含三步使用说明');
+  eq(/查看提醒样式示例/.test(guideWxml), true, '攻略第一步含提醒样式入口');
+  eq(/pages\/setup\/setup\?showSample=1/.test(guideJs), true, '提醒样式入口复用设置页示例弹层');
   eq(/没收到提醒怎么办/.test(guideWxml), true, '攻略含提醒排障');
   eq(/去官方渠道前/.test(guideWxml), true, '攻略含官方渠道准备');
   eq(/回流|双设备|悬浮时钟|成功率翻倍/.test(guideWxml), false, '攻略不含高风险或过期技巧');

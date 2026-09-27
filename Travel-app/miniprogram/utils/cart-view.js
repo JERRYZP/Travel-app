@@ -48,20 +48,26 @@ function isLegacyResponse(res, items, groups) {
   return false;
 }
 
-function normalizeCartGroups(res) {
+function normalizeCartGroups(res, today = util.beijingTodayStr()) {
   const items = Array.isArray(res && res.items) ? res.items : [];
   const serverGroups = Array.isArray(res && res.groups) ? res.groups : [];
   const groups = isLegacyResponse(res, items, serverGroups)
     ? groupItemsByVisitDate(items)
     : serverGroups;
 
-  return groups.map(group => Object.assign({}, group, {
-    items: (group.items || []).map(item => Object.assign({}, item, {
-      subline: item.reservationRequired === false
-        ? '无需预约，随到随玩'
-        : (item.releaseLabel || legacyReleaseLabelOf(item)),
-    })),
-  }));
+  return groups.map(group => {
+    const visitDate = group && typeof group.key === 'string' ? group.key : '';
+    const daysPast = util.pastDaysOf(visitDate, today);
+    return Object.assign({}, group, {
+      isPast: daysPast > 0,
+      daysPast,
+      items: (group.items || []).map(item => Object.assign({}, item, {
+        subline: item.reservationRequired === false
+          ? '无需预约，随到随玩'
+          : (item.releaseLabel || legacyReleaseLabelOf(item)),
+      })),
+    });
+  });
 }
 
 module.exports = {

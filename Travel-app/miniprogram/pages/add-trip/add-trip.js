@@ -17,6 +17,48 @@ const EXTRA_HOT_IDS = ['maozhuxi-jiniantang'];
 const NAV_FADE_PX = 50;
 
 /**
+ * 日期锚点的纵向目标滚动位置。
+ * 让标题顶部落在「吸顶面板底边」，避免被吸顶导航遮住。
+ */
+function timelineAnchorScrollTop({ scrollTop, titleTop, stickyTop, panelHeight }) {
+  const current = Number(scrollTop);
+  const title = Number(titleTop);
+  const sticky = Number(stickyTop);
+  const panel = Number(panelHeight);
+  if (![current, title, sticky, panel].every(Number.isFinite)) return null;
+  if (panel < 0) return null;
+  return Math.max(0, Math.round(current + title - sticky - panel));
+}
+
+/**
+ * 横向日期锚点的目标滚动位置。
+ *
+ * 关键口径：选中项完整可见时返回 null，让胶囊随着内容自然向右推进；
+ * 只有它被横向视口遮住时，才计算把它移到视口中间所需的最小滚动距离。
+ * 这样用户能感知「日期在按顺序走」，又不会因为最右侧日期被挡住而看不到选中态。
+ */
+function timelineTabScrollTarget({ viewport, item, contentWidth, scrollLeft, edgeGap = 0 }) {
+  const viewportLeft = Number(viewport && viewport.left);
+  const viewportWidth = Number(viewport && viewport.width);
+  const itemLeft = Number(item && item.left);
+  const itemRight = Number(item && item.right);
+  const itemWidth = Number(item && item.width);
+  const innerWidth = Number(contentWidth);
+  const current = Number(scrollLeft) || 0;
+  if (![viewportLeft, viewportWidth, itemLeft, itemRight, itemWidth, innerWidth].every(Number.isFinite)) return null;
+  if (viewportWidth <= 0 || itemWidth <= 0 || innerWidth <= 0) return null;
+
+  const visibleLeft = viewportLeft + edgeGap;
+  const visibleRight = viewportLeft + viewportWidth - edgeGap;
+  if (itemLeft >= visibleLeft && itemRight <= visibleRight) return null;
+
+  const itemLeftInContent = current + itemLeft - viewportLeft;
+  const centered = itemLeftInContent + itemWidth / 2 - viewportWidth / 2;
+  const maxScrollLeft = Math.max(0, innerWidth - viewportWidth);
+  return Math.round(Math.min(maxScrollLeft, Math.max(0, centered)));
+}
+
+/**
  * 添加提醒 · 表单 + 专属放票时间线（PAGE-005，2026-09-20 拆为独立页）
  *
  * 从首页剥离出来的原因：新首页只剩行程状态墙，表单不该再混在里面；
@@ -49,7 +91,8 @@ Page({
     timelineTabs: [],
     timelineDays: [],
     timelineActiveTab: '',
-    scrollIntoView: '',
+    tabScrollLeft: 0,
+    pageScrollTop: 0,
     timelineEvents: [],
     /* ⚠️ 这里原有 `timelineClosedSpots`（闭馆/无放票时刻提示列表），2026-09-24 随
        底部提示块一并删除——行程一跨周一就是每个景点一行的恒定噪音，见 wxml 里的注释。
@@ -63,7 +106,6 @@ Page({
     showCartPopup: false,
     cartCount: 0,
     cartReminderCount: 0,
-    cartText: '清单为空',
 
     showSpotPopup: false,
     popupSpotId: '',
@@ -144,6 +186,7 @@ Page({
     const scrollTop = (d && typeof d.scrollTop === 'number')
       ? d.scrollTop
       : ((e && e.scrollTop) || 0);
+    this._pageScrollTop = scrollTop;
     const navOpacity = Math.min(1, Math.max(0, scrollTop / NAV_FADE_PX));
     if (navOpacity !== this.data.navOpacity) this.setData({ navOpacity });
     this.scheduleTimelineSpy();
@@ -173,7 +216,9 @@ Page({
           key = rect.id.replace('timeline-day-', '');
         }
       });
-      if (key && key !== this.data.timelineActiveTab) this.setData({ timelineActiveTab: key });
+      if (key && key !== this.data.timelineActiveTab) {
+        this.setData({ timelineActiveTab: key }, () => this.revealTimelineTab(key));
+      }
     }).exec();
   },
 
@@ -185,8 +230,82 @@ Page({
     const key = e.currentTarget.dataset.key;
     if (!key) return;
     this._anchorLockUntil = Date.now() + 600;
-    this.setData({ timelineActiveTab: key, scrollIntoView: '' }, () => {
-      setTimeout(() => this.setData({ scrollIntoView: 'timeline-day-' + key }), 20);
+    this.setData({ timelineActiveTab: key }, () => {
+      this.revealTimelineTab(key);
+      this.scrollTimelineDayIntoView(key);
+    });
+  },
+
+  /**
+   * 把日期标题定位到吸顶导航栏正下方。
+   *
+   * 不能再用 `scroll-into-view`：它按**分组容器**顶部对齐滚动区顶部，
+   * 吸顶的日期导航会把标题盖住。这里查询标题与吸顶面板的真实高度，
+   * 用 scroll-top 精确落到面板底边。
+   */
+  scrollTimelineDayIntoView(key) {
+    if (!key) return;
+    const query = this.createSelectorQuery ? this.createSelectorQuery() : (wx.createSelectorQuery && wx.createSelectorQuery());
+    if (!query || !query.select || !query.exec) return;
+    query.select('#page-scroll').scrollOffset();
+    query.select('#timeline-header').boundingClientRect();
+    query.select('#timeline-day-head-' + key).boundingClientRect();
+    query.exec(rects => {
+      const offset = rects[0] || {};
+      const panel = rects[1];
+      const title = rects[2];
+      const target = timelineAnchorScrollTop({
+        scrollTop: offset.scrollTop,
+        titleTop: title && title.top,
+        stickyTop: this.data.statusBarHeight + this.data.navBarHeight,
+        panelHeight: panel && panel.height,
+      });
+      if (target === null) return;
+      const current = Math.round(Number(offset.scrollTop) || 0);
+      if (target === current) {
+        if (this.data.pageScrollTop !== current) this.setData({ pageScrollTop: current });
+        return;
+      }
+      this._pageScrollTop = target;
+      this.setData({ pageScrollTop: target });
+    });
+  },
+
+  /**
+   * 只在当前日期锚点被横向遮挡时把它移到中间。
+   *
+   * ⚠️ 不要改回 `scroll-into-view`：微信会优先把目标贴到滚动容器最左侧，
+   * 于是每次滚动联动都像选中了第一项，用户看不出日期正在顺着时间线推进。
+   */
+  revealTimelineTab(key) {
+    if (!key) return;
+    const query = this.createSelectorQuery ? this.createSelectorQuery() : (wx.createSelectorQuery && wx.createSelectorQuery());
+    if (!query || !query.select || !query.exec) return;
+    query.select('#timeline-tab-scroll').boundingClientRect();
+    query.select('#timeline-tab-scroll').scrollOffset();
+    query.select('#date-anchor-' + key).boundingClientRect();
+    query.select('.tab-row-inner').boundingClientRect();
+    query.exec(rects => {
+      const viewport = rects[0];
+      const offset = rects[1] || {};
+      const item = rects[2];
+      const content = rects[3];
+      const target = timelineTabScrollTarget({
+        viewport,
+        item,
+        contentWidth: content && content.width,
+        scrollLeft: offset.scrollLeft,
+      });
+      const current = Number(offset.scrollLeft);
+      if (target === null || target === Math.round(current)) {
+        /* 用户可能手动横滑过。把 data 对齐真实位置，避免后续重渲染时
+           因旧的 scroll-left 值把导航条莫名拉回去。 */
+        if (Number.isFinite(current) && Math.round(current) !== this.data.tabScrollLeft) {
+          this.setData({ tabScrollLeft: Math.round(current) });
+        }
+        return;
+      }
+      this.setData({ tabScrollLeft: target });
     });
   },
 
@@ -326,6 +445,8 @@ Page({
         timelineTabs: tabs,
         timelineDays: this.decorateTimelineDays(tabs),
         timelineActiveTab: activeTab,
+        tabScrollLeft: 0,
+        pageScrollTop: 0,
         timelineEvents: this.decorateEvents(activeTab ? (tabs.find(t => t.key === activeTab) || {}).events || [] : []),
         timelineEmpty: res.empty,
         timelineEmptyReason: res.emptyReason,
@@ -386,7 +507,10 @@ Page({
 
   /** 平铺时间线数据：每个出游日一段，事件仍走同一套装饰逻辑。 */
   decorateTimelineDays(tabs) {
+    const startDate = this.data.startDate;
     return (tabs || []).map(tab => Object.assign({}, tab, {
+      dayLabel: tab.dayLabel || (startDate && tab.key ? `【第${util.dayDiff(startDate, tab.key)}天】` : ''),
+      daysPast: util.pastDaysOf(tab.key),
       events: this.decorateEvents(tab.events || []),
       anchorId: 'timeline-day-' + tab.key,
     }));
@@ -472,10 +596,11 @@ Page({
         timelineTabs: tabs,
         timelineDays: this.decorateTimelineDays(tabs),
         timelineActiveTab: activeTab,
+        pageScrollTop: Number.isFinite(this._pageScrollTop) ? this._pageScrollTop : this.data.pageScrollTop,
         timelineEvents: this.decorateEvents(activeTab ? (tabs.find(t => t.key === activeTab) || {}).events || [] : []),
         timelineEmpty: res.empty,
         timelineEmptyReason: res.emptyReason,
-      });
+      }, () => this.revealTimelineTab(activeTab));
       this.loadCart();
     }).catch(() => { this.loadCart(); });
   },
@@ -490,9 +615,6 @@ Page({
       this.setData({
         cartCount: count,
         cartReminderCount: reminderCount,
-        cartText: count > 0
-          ? ('已选 ' + count + ' 项，其中 ' + reminderCount + ' 项会提醒')
-          : '清单为空',
       });
     }).catch(() => {});
   },

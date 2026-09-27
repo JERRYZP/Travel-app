@@ -89,7 +89,12 @@ const app = {
   },
 };
 const pageCalls = { add: [], commit: [], toasts: [], loading: [], titles: [] };
-const todayCards = [spotA, spotB];
+/* 页面接口测试只关心“今日场景有 2 条”，不要把周一闭馆夹具带进来；
+   否则测试会在周一自然失效。闭馆过滤本身已在上面的纯函数测试覆盖。 */
+const todayCards = [
+  Object.assign({}, spotA, { closedDays: [] }),
+  Object.assign({}, spotB, { closedDays: [] }),
+];
 const apiStub = {
   spots: {
     list: () => Promise.resolve({ data: todayCards }),

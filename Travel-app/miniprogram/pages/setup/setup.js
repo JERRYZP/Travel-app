@@ -23,20 +23,25 @@ Page({
     gateText: '正在检查提醒权限',
     submitting: false,
     showSampleSheet: false,
+    sampleOnly: false,
     sampleShots: [
       { key: 'style-1', label: '通知中心 / 锁屏通知', src: '/images/reminder-samples/style-1.jpg', pending: false },
-      { key: 'style-2', label: '微信服务通知', src: '', pending: true },
-      { key: 'style-3', label: '小程序内行程提醒', src: '', pending: true },
+      { key: 'style-2', label: '提醒卡片详情', src: '/images/reminder-samples/style-2.png', pending: false },
+      { key: 'style-3', label: '微信内的提醒样式', src: '/images/reminder-samples/style-3.jpg', pending: false },
     ],
   },
 
-  onLoad() {
+  onLoad(options) {
     const g = app.globalData;
     /* 2026-09-20 纯预览化后不再有 tripId 可传：清单是「提交前的暂存区」，
-       行程要到 cart.commit 那一刻才创建/合并。这里只管提前量与通道。 */
+       行程要到 cart.commit 那一刻才创建/合并。这里只管提前量与通道。
+       从使用攻略进入时只展示样式示例，关闭后直接返回攻略。 */
+    const sampleOnly = !!(options && options.showSample === '1');
     this.setData({
       statusBarHeight: g.statusBarHeight,
       navBarHeight: g.navBarHeight,
+      showSampleSheet: sampleOnly,
+      sampleOnly,
     });
   },
 
@@ -140,7 +145,10 @@ Page({
   },
 
   onOpenSample() { this.setData({ showSampleSheet: true }); },
-  onCloseSample() { this.setData({ showSampleSheet: false }); },
+  onCloseSample() {
+    this.setData({ showSampleSheet: false });
+    if (this.data.sampleOnly) wx.navigateBack();
+  },
   onPreviewSample(e) {
     const src = e.currentTarget.dataset.src;
     if (!src) return;
@@ -229,15 +237,5 @@ Page({
 
   onBack() {
     wx.navigateBack();
-  },
-
-  onHome() {
-    const pages = getCurrentPages();
-    const homeIdx = pages.findIndex(p => p.route === 'pages/home/home');
-    if (homeIdx >= 0) {
-      wx.navigateBack({ delta: pages.length - 1 - homeIdx });
-      return;
-    }
-    wx.reLaunch({ url: '/pages/home/home' });
   },
 });

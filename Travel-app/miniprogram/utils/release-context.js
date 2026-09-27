@@ -124,6 +124,106 @@ function buildTodayRows(spots, now) {
     });
 }
 
+function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+/**
+ * 最近一次可执行的放票节点。
+ *
+ * 只做规则推算，不判断官方库存；最多向后找 14 天，覆盖黑白名单和临时不开的日子。
+ */
+function nextReleaseOf(spot, now) {
+  if (!spot || !spot.remindable) return null;
+  const times = releaseTimesOf(spot).sort((a, b) => minutesOf(a) - minutesOf(b));
+  if (!times.length) return null;
+
+  const current = beijingParts(now || new Date());
+  const nowMinutes = current.hour * 60 + current.minute;
+  const today = toDateStr(now || new Date());
+  for (let offset = 0; offset <= 14; offset += 1) {
+    const dateStr = addDaysStr(today, offset);
+    if (!isOpenOnDate(spot, dayNameOfStr(dateStr))) continue;
+    for (let i = 0; i < times.length; i += 1) {
+      const time = times[i];
+      if (offset === 0 && minutesOf(time) <= nowMinutes) continue;
+      return { dateStr, time, offset, minutes: minutesOf(time) };
+    }
+  }
+  return null;
+}
+
+function shiftTime(time, deltaMinutes) {
+  const minutes = minutesOf(time);
+  if (minutes === Number.MAX_SAFE_INTEGER) return '';
+  const shifted = Math.max(0, minutes + deltaMinutes);
+  return pad2(Math.floor(shifted / 60)) + ':' + pad2(shifted % 60);
+}
+
+/**
+ * 新用户首页的内容预览：
+ * - rows：按最近放票节点排序的热门景点，页面只渲染前 limit 条；
+ * - sample：从这批景点里选最难约的一条，翻译成“出行日 → 抢票时间 → 微信提醒”。
+ */
+function buildHomeReleasePreview(spots, now, limit = 3) {
+  const at = now || new Date();
+  const current = beijingParts(at);
+  const nowMinutes = current.hour * 60 + current.minute;
+  const rows = (spots || [])
+    /* 空态是公开内容入口，沿用首页旧网格的 S 级口径：热度 4 以上且难度 4 以上。
+       否则“按最近放票排序”会把容易约、但今天恰好放票的场馆顶上来。 */
+    .filter(spot => (spot.popularityScore || 0) >= 4 && (spot.difficultyScore || 0) >= 4)
+    .map((spot) => {
+      const next = nextReleaseOf(spot, at);
+      if (!next) return null;
+      const todayOpen = isOpenOnDate(spot, current.dayName);
+      const times = releaseTimesOf(spot);
+      const releasedToday = todayOpen && times.length > 0
+        && times.every(t => minutesOf(t) <= nowMinutes);
+      let statusText;
+      if (releasedToday) statusText = '今天已放票';
+      else if (next.offset === 0) statusText = `今天 ${next.time} 放票`;
+      else if (next.offset === 1) statusText = `明天 ${next.time} 放票`;
+      else statusText = `${formatMonthDay(next.dateStr)} ${next.time} 放票`;
+      return Object.assign({}, spot, {
+        _nextRelease: next,
+        _releaseStatusText: statusText,
+        _releaseTone: releasedToday ? 'released' : (next.offset === 0 ? 'today' : 'future'),
+        _difficultyText: (spot.difficultyLabel && spot.difficultyLabel.text) || '',
+        _difficultyKey: (spot.difficultyLabel && spot.difficultyLabel.key) || '',
+      });
+    }).filter(Boolean).sort((a, b) => {
+      const ad = a._nextRelease.dateStr + ' ' + a._nextRelease.time;
+      const bd = b._nextRelease.dateStr + ' ' + b._nextRelease.time;
+      if (ad !== bd) return ad.localeCompare(bd);
+      if ((b.popularityScore || 0) !== (a.popularityScore || 0)) {
+        return (b.popularityScore || 0) - (a.popularityScore || 0);
+      }
+      return (b.difficultyScore || 0) - (a.difficultyScore || 0);
+    });
+
+  const sampleSpot = rows.slice(0, Math.max(0, limit)).sort((a, b) => {
+    if ((b.difficultyScore || 0) !== (a.difficultyScore || 0)) {
+      return (b.difficultyScore || 0) - (a.difficultyScore || 0);
+    }
+    return (b.popularityScore || 0) - (a.popularityScore || 0);
+  })[0];
+  let sample = {
+    visitText: '出行当天 · 想去的景点',
+    releaseText: '按规则算出抢票时间',
+    remindText: '提前 5 分钟微信提醒',
+  };
+  if (sampleSpot) {
+    const next = sampleSpot._nextRelease;
+    const visitDate = addDaysStr(next.dateStr, sampleSpot.advanceDays || 0);
+    const dayLabel = next.offset === 0 ? '今天' : (next.offset === 1 ? '明天' : formatMonthDay(next.dateStr));
+    sample = {
+      visitText: `${formatMonthDay(visitDate)} · ${sampleSpot.name}`,
+      releaseText: `${dayLabel} ${next.time} 起抢`,
+      remindText: `${shiftTime(next.time, -5)} 微信提醒`,
+    };
+  }
+  return { rows: rows.slice(0, Math.max(0, limit)), sample };
+}
+
 module.exports = {
   DAY_NAMES,
   beijingParts,
@@ -139,4 +239,6 @@ module.exports = {
   formatMonthDay,
   buildSceneSpot,
   buildTodayRows,
+  nextReleaseOf,
+  buildHomeReleasePreview,
 };

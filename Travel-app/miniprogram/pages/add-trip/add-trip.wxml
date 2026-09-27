@@ -21,7 +21,7 @@
      离顶多高处，所以既不能写死 0（会被导航栏盖住），也不该在 wxss 里写常量。
      ⚠️ `bindscroll` 是导航栏淡入的**唯一入口**，别在改这块时顺手删掉：
         删了不报错、不警告，页面一切正常，只是 `navOpacity` 永远是 0。 -->
-<scroll-view scroll-y class="page-scroll" style="height: 100vh;" scroll-into-view="{{scrollIntoView}}" scroll-with-animation bindscroll="onScroll">
+<scroll-view id="page-scroll" scroll-y class="page-scroll" style="height: 100vh;" scroll-top="{{pageScrollTop}}" scroll-with-animation bindscroll="onScroll">
   <view class="page-body" style="padding-top: {{statusBarHeight + navBarHeight + 8}}px;">
     <image class="city-bg" src="/images/cities/beijing.png" mode="aspectFit" />
 
@@ -66,15 +66,23 @@
     <view class="preview-note">*仅生成预览，提交后才创建提醒</view>
 
     <!-- ===== 第二步：时间线（纯预览，不创建、不改写任何行程） ===== -->
-    <view wx:if="{{showTimeline}}" class="step-heading">
-      <svg-icon name="calendar-active" size="18px" />
-      <text>第二步，选择要加入行程的景点</text>
-    </view>
-
     <view wx:if="{{showTimeline}}" class="timeline-section">
       <view id="timeline-header" class="timeline-panel" style="top: {{statusBarHeight + navBarHeight}}px;">
-        <!-- 日期不是筛选 Tab，而是锚点：点击滚动到对应日期，下滑时选中态反向联动。 -->
-        <scroll-view scroll-x class="tab-row" wx:if="{{timelineTabs.length > 0}}" scroll-into-view="date-anchor-{{timelineActiveTab}}">
+        <!-- 第二步标题属于时间线模块，并随日期锚点一起吸顶。 -->
+        <view class="step-heading">
+          <svg-icon name="calendar-active" size="18px" />
+          <text>第二步，选择要加入行程的景点</text>
+        </view>
+        <!-- 日期不是筛选 Tab，而是锚点：点击滚动到对应日期，下滑时选中态反向联动。
+             横向位置不追着选中项贴左：先让它在条内自然向右推进，被视口遮挡后再居中。 -->
+        <scroll-view
+          id="timeline-tab-scroll"
+          scroll-x
+          class="tab-row"
+          wx:if="{{timelineTabs.length > 0}}"
+          scroll-left="{{tabScrollLeft}}"
+          scroll-with-animation
+        >
           <view class="tab-row-inner">
             <text class="tab-prefix">出游日：</text>
             <view
@@ -112,9 +120,10 @@
           id="timeline-day-{{day.key}}"
           class="timeline-day"
         >
-          <view class="timeline-day-head">
+          <view id="timeline-day-head-{{day.key}}" class="timeline-day-head">
             <text class="timeline-day-date">{{day.label}}</text>
             <text wx:if="{{day.dayLabel}}" class="timeline-day-chip">{{day.dayLabel}}</text>
+            <text wx:if="{{day.daysPast > 0}}" class="timeline-past-note">已过去{{day.daysPast}}天</text>
             <view class="timeline-day-line"></view>
           </view>
 
@@ -207,10 +216,11 @@
         左侧图标仍是「看一眼清单」，图标=看、按钮=走，两个入口分工不同。 -->
 <view wx:if="{{showTimeline}}" class="cart-bar">
   <view class="cart-bar-icon" bindtap="onInlineOpenCart">
-    <svg-icon name="list-white" size="20px" />
+    <svg-icon name="list-white" size="24px" />
     <view wx:if="{{cartCount > 0}}" class="cart-bar-badge">{{cartCount}}</view>
   </view>
-  <text class="cart-bar-text">{{cartText}}</text>
+  <text wx:if="{{cartCount > 0}}" class="cart-bar-text">已选 {{cartCount}} 项，其中 <text class="cart-bar-reminder-count">{{cartReminderCount}}</text> 项会提醒</text>
+  <text wx:else class="cart-bar-text">清单为空</text>
   <view class="cart-bar-btn {{cartCount ? '' : 'disabled'}}" bindtap="onInlineOpenCart">
     <text>第三步：确认行程清单</text>
   </view>

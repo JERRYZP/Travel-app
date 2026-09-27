@@ -52,17 +52,74 @@
 
   <!-- ===== 空态：一个行程项都没有 → 创建引导（沿用 UI-009） ===== -->
   <block wx:if="{{!loading && trips.length === 0 && history.length === 0}}">
-    <view class="empty-hero">
-      <text class="eh-title">把每张票的放票时间盯住</text>
-      <text class="eh-sub">选日期和景点 → 加入清单并提交 → 放票前微信提醒</text>
-      <view class="empty-steps">
-        <view class="empty-step"><text class="es-no">1</text><text>选择出行日期和想去的景点</text></view>
-        <view class="empty-step"><text class="es-no">2</text><text>加入清单，提交后创建行程</text></view>
-        <view class="empty-step"><text class="es-no">3</text><text>放票前收到微信提醒，去官方渠道抢票</text></view>
+    <view class="empty-onboard">
+      <view class="empty-hero">
+        <text class="eh-title">把每张票的放票时间盯住</text>
+        <text class="eh-sub">选好出行日和想去景点，直接算清哪天几点抢</text>
       </view>
-      <text class="eh-example">例：想去故宫，选好出行日，放票前 5 分钟提醒你。</text>
+
+      <!-- 用真实规则生成的结果预览替代三步说明：先让用户看见产品会产出什么。 -->
+      <view class="empty-proof-card">
+        <view class="ep-head">
+          <text class="ep-head-title">效果预览</text>
+          <text class="ep-head-tag">真实规则示例</text>
+        </view>
+
+        <view class="ep-journey">
+          <view class="ep-stop">
+            <text class="ep-stop-label">出行计划</text>
+            <text class="ep-stop-value">{{emptyReleaseSample.visitText}}</text>
+          </view>
+          <view class="ep-stop">
+            <text class="ep-stop-label">开抢时间</text>
+            <text class="ep-stop-value">{{emptyReleaseSample.releaseText}}</text>
+          </view>
+          <view class="ep-stop">
+            <text class="ep-stop-label">提前提醒</text>
+            <text class="ep-stop-value">{{emptyReleaseSample.remindText}}</text>
+          </view>
+        </view>
+
+        <view class="ep-sample-entry" bindtap="onOpenReminderSamples">
+          <view class="ep-sample-copy">
+            <text class="ep-sample-title">提醒样式示意图</text>
+            <text class="ep-sample-desc">查看通知中心、微信服务通知、小程序内提醒</text>
+          </view>
+          <svg-icon name="chevron-right" size="14px" />
+        </view>
+        <text class="ep-note">示意图，实际样式以手机系统和微信版本为准</text>
+      </view>
+
+      <view class="empty-cta" bindtap="onAddTrip">添加我的第一个行程</view>
+      <text class="empty-trust">只做提醒，不代抢 · 预约直达官方渠道</text>
     </view>
-    <view class="empty-cta" bindtap="onAddTrip">+ 新增提醒</view>
+
+    <view wx:if="{{emptyReleaseRows.length}}" class="empty-hot">
+      <view class="empty-hot-head">
+        <view class="empty-hot-head-copy">
+          <text class="empty-hot-title">近期放票</text>
+          <text class="empty-hot-note">按规则推算 · 不代表官方库存</text>
+        </view>
+        <text class="empty-hot-all" bindtap="onOpenAllSpots">全部景点</text>
+      </view>
+      <view class="empty-hot-list">
+        <view
+          wx:for="{{emptyReleaseRows}}"
+          wx:key="spotId"
+          class="empty-hot-row"
+          bindtap="onEmptySpotTap"
+          data-id="{{item.spotId}}"
+        >
+          <view class="empty-hot-dot {{item._releaseTone}}"></view>
+          <view class="empty-hot-main">
+            <text class="empty-hot-name">{{item.name}}</text>
+            <text class="empty-hot-status {{item._releaseTone}}">{{item._releaseStatusText}}</text>
+          </view>
+          <text wx:if="{{item._difficultyText}}" class="empty-hot-diff diff-{{item._difficultyKey}}">{{item._difficultyText}}</text>
+          <svg-icon name="chevron-right" size="14px" />
+        </view>
+      </view>
+    </view>
   </block>
 
   <block wx:else>

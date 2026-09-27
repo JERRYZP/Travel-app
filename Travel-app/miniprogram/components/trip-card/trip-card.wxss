@@ -118,6 +118,8 @@
 .tc-sub-tail { font-size: 22rpx; }
 .tc-sub-tail-muted { color: var(--color-muted); }
 .tc-sub-tail-go { color: var(--action-green); font-weight: 600; }
+.tc-sub-tail-go.is-action { padding: 2rpx 0; }
+.tc-sub-tail-go.is-action:active { opacity: .55; }
 
 /* ===== 右列：票务状态 · 三点菜单（**同一行**）=====
    ⚠️ 2026-09-22 由 column 改 row：竖排时菜单会掉到卡片下半部，

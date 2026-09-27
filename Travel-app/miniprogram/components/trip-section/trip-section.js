@@ -87,6 +87,7 @@ Component({
              方括号让它在视觉上更明确是「这一段是第几天」的标记，而不是一个可点的标签。
              ⚠️ 数字两侧不加空格（设计稿是 `第1天`，旧实现是 `第 1 天`）。 */
           badge: '【第' + (util.dayDiff(start, visitDate)) + '天】',
+          daysPast: util.pastDaysOf(visitDate),
           items,
           /* 菜单键只认 visitDate：同屏只会展开一趟行程的某一天
              （同一天出现在两趟行程里本就罕见，且这样不必再把 tripId 编进键里）。 */
@@ -110,10 +111,16 @@ Component({
       });
     },
     onRemoveDate(e) {
+      const visitDate = e.currentTarget.dataset.date;
+      const itemIds = (this.data.trip.items || [])
+        .filter(it => it.visitDate === visitDate)
+        .map(it => it.itemId)
+        .filter(Boolean);
       this.triggerEvent('datemenuclose');
       this.triggerEvent('removedate', {
         tripId: this.data.trip._id,
-        visitDate: e.currentTarget.dataset.date,
+        visitDate,
+        itemIds,
       });
     },
     onMenuClose() { this.triggerEvent('menuclose'); },

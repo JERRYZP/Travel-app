@@ -14,6 +14,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const WXML = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxml'), 'utf8');
 const JS = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.js'), 'utf8');
+const RELEASE_JS = fs.readFileSync(path.join(ROOT, 'miniprogram/utils/release-context.js'), 'utf8');
 
 /**
  * 剥掉注释再断言。
@@ -38,9 +39,64 @@ console.log('=== 1. 空态只在「一个行程项都没有」时出现 ===');
      不带的话新用户一进页面会先闪一下空态再切走。 */
   const blankBlock = /<block wx:if="\{\{!loading && trips\.length === 0 && history\.length === 0\}\}">/;
   eq(blankBlock.test(WXML), true, '空态块带 !loading（防加载瞬间闪空态）');
-  eq(/class="empty-cta" bindtap="onAddTrip"/.test(WXML), true, '空态里有一个「新增提醒」CTA');
-  eq(/class="empty-steps"/.test(WXML), true, '空态直接给出三步使用流程');
-  eq(/放票前 5 分钟提醒你/.test(WXML), true, '空态示例使用相对时间，不写死日期');
+  eq(/class="empty-cta" bindtap="onAddTrip"/.test(WXML), true, '空态里有一个创建行程 CTA');
+  eq(/class="empty-steps"/.test(WXML), false, '旧三步说明已由结果预览替代');
+  eq(/class="empty-proof-card"/.test(WXML), true, '空态展示行程→抢票→提醒的结果预览');
+  eq(/emptyReleaseSample\.visitText/.test(WXML), true, '预览的出行计划来自动态示例数据');
+  eq(/ep-stop-icon|ep-arrow/.test(WXML), false, '步骤区不再渲染图标');
+  eq(/class="ep-sample-entry" bindtap="onOpenReminderSamples"/.test(WXML), true,
+    '服务通知示意卡改为提醒样式示意图入口');
+  eq(/将在 5 分钟后放票/.test(RELEASE_JS), false,
+    '不再在首页伪造未经真实样式核验的通知内容');
+  eq(/class="empty-hot"/.test(WXML), true, '空态底部有近期放票模块');
+  eq(/emptyReleaseRows\.length/.test(WXML), true, '近期放票无数据时整块不渲染');
+  eq(/bindtap="onEmptySpotTap"[\s\S]*data-id="\{\{item\.spotId\}\}"/.test(WXML), true,
+    '热门景点行点击进入景点详情');
+  eq(/class="empty-hot-all" bindtap="onOpenAllSpots"/.test(WXML), true,
+    '近期放票提供「全部景点」入口');
+  eq(/buildHomeReleasePreview\(res\.hotSpots \|\| \[\], serverNow, 3\)/.test(JS), true,
+    '预览复用 home.bootstrap 已返回的 hotSpots，不额外请求接口');
+  eq(/emptyReleaseRows: releasePreview\.rows/.test(JS), true, '页面消费近期放票预览行');
+  eq(/emptyReleaseSample: releasePreview\.sample/.test(JS), true, '页面消费动态提醒示例');
+  eq(/onEmptySpotTap\(e\)[\s\S]*openSpotPopup\(spotId\)/.test(JS), true,
+    '热门景点行复用现有景点详情浮窗');
+  eq(/onOpenAllSpots\(\)[\s\S]*\/pages\/spot-hub\/spot-hub/.test(JS), true,
+    '「全部景点」复用小程序的景点页');
+  eq(/onOpenReminderSamples\(\)[\s\S]*\/pages\/setup\/setup\?showSample=1/.test(JS), true,
+    '示意图入口复用设置页已有的三种真实样式弹层');
+}
+
+console.log('=== 1.1 首页规则预览只展示高热度景点，并给出真实放票文案 ===');
+{
+  const release = require(path.join(ROOT, 'miniprogram/utils/release-context.js'));
+  const now = new Date('2026-09-28T02:00:00Z'); // 北京时间周一 10:00
+  const mk = (spotId, name, popularityScore, difficultyScore, releaseTime, closedDays) => ({
+    spotId,
+    name,
+    popularityScore,
+    difficultyScore,
+    difficultyLabel: { key: difficultyScore >= 4 ? 'EXTREME' : 'EASY', text: difficultyScore >= 4 ? '极难约' : '容易约' },
+    remindable: true,
+    advanceDays: 7,
+    releaseTime,
+    closedDays,
+    openDays: [],
+  });
+  const preview = release.buildHomeReleasePreview([
+    mk('gugong', '故宫博物院', 5, 5, '20:00', ['monday']),
+    mk('square', '极难约今日场', 5, 4, '12:00', []),
+    mk('badaling', '极难约已放票', 5, 4, '00:00', []),
+    mk('cold', '冷门场馆', 2, 1, '09:00', []),
+  ], now, 3);
+
+  eq(preview.rows.length, 3, '最多只展示 3 条');
+  eq(preview.rows.some(row => row.spotId === 'cold'), false, '热度不足的景点不进入首页');
+  eq(preview.rows.find(row => row.spotId === 'square')._releaseStatusText, '今天 12:00 放票', '当天未到点显示今天放票');
+  eq(preview.rows.find(row => row.spotId === 'badaling')._releaseStatusText, '今天已放票', '过了放票时刻显示今天已放票');
+  eq(preview.rows.find(row => row.spotId === 'gugong')._releaseStatusText, '明天 20:00 放票', '闭馆时顺延到下一个开放日');
+  eq(preview.sample.visitText, '10月6日 · 故宫博物院', '示例优先选高难度热门景点');
+  eq(preview.sample.releaseText, '明天 20:00 起抢', '示例给出该景点具体的抢票时间');
+  eq(preview.sample.remindText, '19:55 微信提醒', '示例给出提醒提前量');
 }
 
 console.log('=== 2. 悬浮按钮只在已有行程时出现 ===');
@@ -178,6 +234,10 @@ console.log('=== 4. 摘要卡底部的「即将提醒」胶囊 ===');
   /* 服务端拼文案，且**不带「还有 N 分钟」** */
   const TASK_JS = fs.readFileSync(path.join(ROOT, 'cloudfunctions/reminder/lib/task.js'), 'utf8');
   const ITEM_JS = fs.readFileSync(path.join(ROOT, 'cloudfunctions/reminder/lib/item.js'), 'utf8');
+
+  const spotsSeed = require('../data/spots.json').spots;
+  const junbo = spotsSeed.find(s => s.spotId === 'junbo') || {};
+  eq(junbo.shortName, '军博', '军博胶囊使用民间简称「军博」');
   /* 同一**时刻**的多条提醒合成一颗胶囊：用户盯的是「几点该动手」，
      17:00 城楼和国博同时放票是一次行动，拆成两颗既占宽又像要分头去抢。
      ⚠️ limit 数的是时间点不是项数——同刻 3 个景点仍只占 1 颗。 */
@@ -253,6 +313,11 @@ console.log('=== 6. 行程分段标题：摘要卡那趟不渲染，未来行程
     true, '标题行含 城市 + 日期段 + 进度');
   eq(/\.ts-head \{[^}]*\}/.test(SECTION_WXSS), true, '标题行样式在（不能只留标记）');
   eq(/progressText: p\.total > 0/.test(SECTION_JS), true, '组件重新计算进度文案');
+  eq(/daysPast: util\.pastDaysOf\(visitDate\)/.test(SECTION_JS), true,
+    '首页行程墙日期标题计算已过去天数');
+  eq(/ts-day-past-note/.test(SECTION_WXML), true, '首页行程墙日期标题渲染已过去备注');
+  eq(/\.ts-day-past-note\s*\{[^}]*font-size:\s*20rpx/.test(SECTION_WXSS), true,
+    '首页已过去备注使用辅助字号');
 
   /* 谁 weak：只看「是不是摘要卡那趟」。判断放页面（_weak），不在模板里数 index——
      模板内置计数器一加 wx:if 就会静默错位。 */
@@ -270,6 +335,10 @@ console.log('=== 6. 行程分段标题：摘要卡那趟不渲染，未来行程
 
   eq(/<view class="trip-section/.test(SECTION_WXML), true, '分段容器本身保留（日期分组还在）');
   eq(/wx:for="\{\{days\}\}"/.test(SECTION_WXML), true, '日期分段与行程项卡不受影响');
+  eq(/\.filter\(it => it\.visitDate === visitDate\)[\s\S]*?\.map\(it => it\.itemId\)/.test(SECTION_JS), true,
+    '删除当天时收集该日期全部 itemId');
+  eq(/removeVisitDate\(\{ tripId, visitDate, itemIds \}\)/.test(JS), true,
+    '删除当天把完整 itemId 列表传给云函数');
 
   /* 日期菜单的键：页面与组件各算一次，**必须逐字一致**，
      否则点日期标题右侧的菜单不展开（静默失效，不报错）。 */
@@ -410,25 +479,25 @@ console.log('=== 8.1 副行尾巴：文案与色调的分支 ===');
     '待抢 → 距放票还剩 N 天');
   eq(util.releaseRemainderOf(Object.assign({}, base, { releaseAt: future })).tone, 'muted', '倒计时是中性色');
   eq(util.releaseRemainderOf(Object.assign({}, base, { ticketState: 'BOOKABLE', releaseAt: past })).text,
-    '· 立即抢票 ›', '可抢 → 立即抢票');
+    '· 现在预约 ›', '可抢 → 现在预约');
   eq(util.releaseRemainderOf(Object.assign({}, base, { ticketState: 'BOOKABLE', releaseAt: past })).tone,
     'go', '行动文本用绿色');
   eq(util.releaseRemainderOf(Object.assign({}, base, { ticketState: 'SUCCESS', releaseAt: past })).text,
     '· 已约', '已成 → 已约');
-  /* ⚠️ 未抢到的尾巴是**「立即抢票 ›」不是「约其他日 ›」**（2026-09-24 订正断言）：
+  /* ⚠️ 未抢到的尾巴是**「现在预约 ›」不是「约其他日 ›」**（2026-09-24 订正断言）：
      票已经放出来了，那天本来就还有票可抢，副行说这件事才对；「约其他日」是
      另一条动线（换成期），由卡片底部的挽回气泡 + 菜单承担，不该挤进放票行。
      这条断言一度停在旧实现上，与 `util.js` 改了词之后就没再对齐过。 */
   eq(util.releaseRemainderOf(Object.assign({}, base, { ticketState: 'FAILED', releaseAt: past })).text,
-    '· 立即抢票 ›', '未成 → 仍可抢票（挽回不挤进放票行）');
+    '· 现在预约 ›', '未成 → 仍可抢票（挽回不挤进放票行）');
   eq(util.releaseRemainderOf(Object.assign({}, base, { ticketState: 'UNMARKED', releaseAt: past })).text,
-    '· 立即抢票 ›', '未标记 → 仍可抢票');
+    '· 现在预约 ›', '未标记 → 仍可抢票');
   /* ⚠️ 还没到点但 releaseAt 已经过去（放票时刻落在过去），不能显示「还有-1天」 */
   eq(util.releaseRemainderOf(Object.assign({}, base, { releaseAt: past })).text,
-    '· 立即抢票 ›', 'releaseAt 已过时不显示负数天数');
+    '· 现在预约 ›', 'releaseAt 已过时不显示负数天数');
 
   /* ⚠️ **MISSED 压过一切**：提醒没送到是唯一会真正伤到用户的状态，
-     被「立即抢票」盖掉等于把静默失败藏起来。 */
+     被「现在预约」盖掉等于把静默失败藏起来。 */
   eq(util.releaseRemainderOf(Object.assign({}, base, {
     ticketState: 'BOOKABLE', releaseAt: past, reminder: { state: 'MISSED' },
   })).text, '· 未送达', '未送达优先于票务态（哪怕正在可抢）');
@@ -436,6 +505,16 @@ console.log('=== 8.1 副行尾巴：文案与色调的分支 ===');
   /* 免预约项不显示尾巴，副行整句由 releaseLineOf 给 */
   eq(util.releaseRemainderOf({ reservationRequired: false }).text, '', '免预约不显示尾巴');
   eq(util.releaseLineOf({ reservationRequired: false }), '无需预约 · 随到随玩', '免预约主文本不变');
+
+  /* 绿色「现在预约」必须是可点击入口，且继续受 bookingEntryEnabled 闸门控制。 */
+  const CARD_WXML = fs.readFileSync(path.join(ROOT, 'miniprogram/components/trip-card/trip-card.wxml'), 'utf8');
+  const CARD_JS = fs.readFileSync(path.join(ROOT, 'miniprogram/components/trip-card/trip-card.js'), 'utf8');
+  const CARD_WXSS = fs.readFileSync(path.join(ROOT, 'miniprogram/components/trip-card/trip-card.wxss'), 'utf8');
+  eq(/bindtap="onRemainTap"/.test(CARD_WXML), true, '现在预约文字已绑定点击事件');
+  eq(/onRemainTap\(\)[\s\S]*?bookingEntryEnabled === false/.test(CARD_JS), true,
+    '现在预约点击受 bookingEntryEnabled 闸门控制');
+  eq(/source: 'booking_entry'/.test(CARD_JS), true, '点击后按预约入口来源打开景点详情');
+  eq(/\.tc-sub-tail-go\.is-action:active/.test(CARD_WXSS), true, '现在预约有按压反馈');
 }
 
 console.log('=== 9. 行程级倒计时文案（进行中第N天）===');

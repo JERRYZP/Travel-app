@@ -369,10 +369,13 @@ const FUTURE_VISIT = time.addDays(TODAY, 30); // releaseAt = TODAY + 23 → 还�
   {
     const db = freshDb();
     await seedTrip(db, 'T1', ['gugong', 'guobo'], time.addDays(TODAY, -1), time.addDays(TODAY, 40));
-    await seedItem(db, { tripId: 'T1', spotId: 'gugong', visitDate: PAST_VISIT });
+    const firstId = await seedItem(db, { tripId: 'T1', spotId: 'gugong', visitDate: PAST_VISIT });
     await seedItem(db, { tripId: 'T1', spotId: 'guobo', visitDate: PAST_VISIT });
     await seedItem(db, { tripId: 'T1', spotId: 'gugong', visitDate: FUTURE_VISIT });
-    const res = await actions.removeVisitDate(db, USER, { tripId: 'T1', visitDate: PAST_VISIT });
+    /* 即使前端只带到一个 itemId，也必须以“当天整组”为基线删掉全部。 */
+    const res = await actions.removeVisitDate(db, USER, {
+      tripId: 'T1', visitDate: PAST_VISIT, itemIds: [firstId],
+    });
     eq(res.success, true, '删除成功');
     eq(res.removedItems, 2, '该日期下 2 条一起删');
     eq(res.tripRemoved, false, '另一天还有行程项 → 行程保留');

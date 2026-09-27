@@ -29,6 +29,10 @@
       <view class="step-item"><text class="step-no">2</text><text>加入清单，进入“设置提醒”并提交</text></view>
       <view class="step-item"><text class="step-no">3</text><text>按微信提示允许授权，放票前收到提醒</text></view>
     </view>
+    <view class="sample-entry" bindtap="onReminderSamples">
+      <text>查看提醒样式示例</text>
+      <svg-icon name="chevron-right" size="12px" />
+    </view>
     <view class="card-action" bindtap="onAddTrip">新增提醒</view>
   </view>
 

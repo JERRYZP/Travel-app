@@ -291,7 +291,7 @@ async function preview(db, userId, { startDate, endDate, spotIds = [], segments 
 
   return ok({
     events,
-    byDeparture: groupByDeparture(events, nowTs),
+    byDeparture: groupByDeparture(events, nowTs, startDate),
     bySpot: groupBySpot(events, nowTs),
     closedSpots,
     closedDaySkips,
@@ -309,7 +309,7 @@ async function preview(db, userId, { startDate, endDate, spotIds = [], segments 
  *
  * 每个 Tab 自带 scrollIndex（UI-006 默认滚动位置按 Tab 独立计算）。
  */
-function groupByDeparture(events, nowTs = time.now()) {
+function groupByDeparture(events, nowTs = time.now(), tripStartDate = '') {
   const map = new Map();
   for (const e of events) {
     if (!map.has(e.visitDate)) map.set(e.visitDate, []);
@@ -322,6 +322,9 @@ function groupByDeparture(events, nowTs = time.now()) {
       return {
         key: visitDate,
         label: time.formatMonthDayWeek(visitDate),
+        /* 第几天必须相对用户选的行程首日，而不是分组里第一条实际有放票的日期。
+           例如首日闭馆、次日起才有事件时，次日仍应显示「第2天」。 */
+        dayLabel: tripStartDate ? `【第${time.diffDays(tripStartDate, visitDate) + 1}天】` : '',
         events: sorted,
         count: sorted.length,
         scrollIndex: defaultScrollIndex(sorted, nowTs),
@@ -460,7 +463,7 @@ async function generate(db, userId, tripId) {
     tripId,
     trip: { _id: trip._id, name: trip.name, startDate: trip.startDate, endDate: trip.endDate, spotIds, spots: segs },
     events,
-    byDeparture: groupByDeparture(events, nowTs),
+    byDeparture: groupByDeparture(events, nowTs, trip.startDate),
     bySpot: groupBySpot(events, nowTs),
     closedSpots,
     // 周一闭馆等：该景点部分日期被跳过（TIMELINE-RULE-005 补充），供前端提示「已为你跳过」

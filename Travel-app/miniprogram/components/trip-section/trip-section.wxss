@@ -40,6 +40,12 @@
   border-radius: 8rpx;
   padding: 4rpx 8rpx;
 }
+.ts-day-past-note {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
 /* 细分割线把日期标题和右侧菜单拉开 */
 .ts-day-line { flex: 1; height: 1rpx; background: var(--divider-strong); }
 

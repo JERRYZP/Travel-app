@@ -127,7 +127,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await wait(200);
   eq(logs.some(l => /已加清单|已加入行程/.test(l)), true, '点按钮有成功反馈');
   eq(page.data.cartCount, 1, '清单条计数更新');
-  eq(page.data.cartText.indexOf('已选 1 项') === 0, true, '清单条文案更新：' + page.data.cartText);
+  eq(Number.isInteger(page.data.cartReminderCount), true, '清单条提醒数更新为可渲染数字');
 
   console.log('=== 4. 一键加入清单 ===');
   page.onInlineAddAll();

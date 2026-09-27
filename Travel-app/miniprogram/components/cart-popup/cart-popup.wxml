@@ -16,7 +16,7 @@
         <view class="cart-tips-card">
           <view class="cart-tips-head" catchtap="onToggleTips">
             <view class="cart-tips-title-wrap">
-              <svg-icon name="alert-circle" size="14px" />
+              <svg-icon name="alert-circle-gold" size="14px" />
               <text class="cart-tips-title">温馨提示：</text>
             </view>
             <svg-icon name="{{tipsExpanded ? 'chevron-up' : 'chevron-down'}}" size="12px" />
@@ -40,6 +40,7 @@
             <view class="cart-group-header">
               <text class="cart-group-date">{{group.label}}</text>
               <text class="cart-day-chip">{{group.dayLabel}}</text>
+              <text wx:if="{{group.isPast}}" class="cart-past-note">已过去{{group.daysPast}}天</text>
               <view class="cart-group-line"></view>
             </view>
 
@@ -93,13 +94,13 @@
     <view class="cart-foot" catchtouchmove="noop">
       <view class="cart-foot-main">
         <view class="cart-foot-icon">
-          <svg-icon name="list-white" size="22px" />
+          <svg-icon name="list-white" size="24px" />
           <view wx:if="{{summary && summary.count}}" class="cart-foot-badge">{{summary.count}}</view>
         </view>
-        <text class="cart-foot-text">{{cartFootText}}</text>
+        <text wx:if="{{summary && summary.count}}" class="cart-foot-text">已选 {{summary.count}} 项，其中 <text class="cart-foot-reminder-count">{{summary.reminderCount}}</text> 项会提醒</text>
+        <text wx:else class="cart-foot-text">清单为空</text>
       </view>
       <view class="cart-foot-btn {{summary && summary.count ? '' : 'disabled'}}" bindtap="onSubmit">
-        <svg-icon name="heart-add-white" size="16px" />
         <text>{{cartBtnText}}</text>
       </view>
     </view>

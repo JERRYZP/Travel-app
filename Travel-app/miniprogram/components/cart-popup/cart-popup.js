@@ -28,8 +28,7 @@ Component({
     summary: null,
     loading: true,
     showClearDialog: false,
-    tipsExpanded: true,
-    cartFootText: '清单为空',
+    tipsExpanded: false,
     cartBtnText: '确认加入行程',
     /* 由 JS 计算的内联样式（px，避免微信端 vh/calc/max-height 解析不可靠） */
     bottomOffset: '0px',
@@ -50,9 +49,10 @@ Component({
   observers: {
     show: function (show) {
       if (show) {
+        /* 每次打开默认收起；用户本次手动展开后，内部刷新不强行关掉。 */
+        this.setData({ tipsExpanded: false });
         this.computeHeights();
         this.loadCart();
-      } else {
       }
     },
     aboveTabbar: function () { this.computeHeights(); },
@@ -73,8 +73,8 @@ Component({
       const tabbarRpx = this.data.aboveTabbar ? 100 : 0;
       const barPx = Math.ceil(tabbarRpx / 750 * screenW) + safeBottom;
       const sheetMax = Math.floor(screenH * 0.8) - barPx;
-      /* 头部 + 底部提交条 ≈ 110 + 130 rpx */
-      const chromePx = Math.ceil(240 / 750 * screenW);
+      /* 头部 90rpx + 底部提交条 96rpx，留少量余量按 190rpx 扣除。 */
+      const chromePx = Math.ceil(190 / 750 * screenW);
       const maxList = Math.max(140, sheetMax - chromePx);
       this.setData({
         bottomOffset: barPx + 'px',
@@ -94,9 +94,7 @@ Component({
 
     loadCart() {
       this.closeDropdown();
-      let tipsExpanded = true;
-      try { tipsExpanded = !wx.getStorageSync('cartDefaultTipsCollapsedV1'); } catch (e) {}
-      this.setData({ loading: true, tipsExpanded });
+      this.setData({ loading: true });
       /* 不传 tripId = 读「当前暂存清单」 */
       api.reminder.cart.list().then(res => {
         const groups = cartView.normalizeCartGroups(res).map(g => Object.assign({}, g, {
@@ -110,14 +108,10 @@ Component({
         }));
         const summary = res.summary || {};
         const reminderCount = summary.reminderCount || 0;
-        const count = summary.count || 0;
         this.setData({
           groups,
           summary,
           loading: false,
-          cartFootText: count > 0
-            ? ('已选 ' + count + ' 项，其中 ' + reminderCount + ' 项会提醒')
-            : '清单为空',
           cartBtnText: reminderCount > 0 ? '第四步：设置提醒方式' : '确认加入行程',
         }, () => this.fitList());
       }).catch(() => {
@@ -207,7 +201,6 @@ Component({
         wx.showToast({ title: '先添加至少一项', icon: 'none' });
         return;
       }
-      try { wx.setStorageSync('cartDefaultTipsCollapsedV1', 1); } catch (e) {}
       if (summary.reminderCount === 0) {
         this.triggerEvent('submit', { needSetup: false });
         return;

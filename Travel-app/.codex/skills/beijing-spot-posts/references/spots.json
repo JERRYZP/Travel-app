@@ -5,7 +5,7 @@
   {"name":"毛主席纪念堂","shortName":"纪念堂","n":6,"monday_closed":true,"time":"12:30","flames":3,"bookable":true},
   {"name":"天安门广场","shortName":"天安门广场","n":7,"monday_closed":false,"time":"12:00","flames":2,"bookable":true},
   {"name":"人民大会堂","shortName":"人民大会堂","n":3,"monday_closed":true,"time":"17:00","flames":3,"bookable":true},
-  {"name":"中国军事博物馆","shortName":"军事博物馆","n":7,"monday_closed":true,"time":"08:00/17:00/20:00","flames":2,"bookable":true},
+  {"name":"中国军事博物馆","shortName":"军博","n":7,"monday_closed":true,"time":"08:00/17:00/20:00","flames":2,"bookable":true},
   {"name":"清华大学","shortName":"清华","n":7,"monday_closed":true,"time":"08:00","flames":3,"bookable":true},
   {"name":"北京大学","shortName":"北大","n":7,"open":[5,6],"time":"08:00","time_note":"仅周末","flames":3,"bookable":true,"note":"平时工作日不可约，仅周末及法定节假日；寒暑假安排以学校公告为准"},
   {"name":"中国科技馆","shortName":"中国科技馆","n":7,"monday_closed":true,"time":"18:00","flames":2,"bookable":true},

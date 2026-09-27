@@ -37,11 +37,15 @@
            景点详情浮窗、`add-trip` 的时间线事件都保留，那里正是要按难易挑景点的时候。
            `item.difficulty` 字段仍然下发（服务端 `decorateItem` 照常算），只是这里不再渲染。 -->
 
-      <!-- 副行：放票时刻 + 状态尾巴（「还有N天」/「立即抢票」/「已约」…）
+      <!-- 副行：放票时刻 + 状态尾巴（「还有N天」/「现在预约」/「已约」…）
            所有分支在 util.releaseRemainderOf 里定死，这里只拼色类（WXML 不能调方法）。 -->
       <view class="tc-sub">
         <text class="tc-sub-main">{{releaseLine}}</text>
-        <text wx:if="{{remainLine}}" class="tc-sub-tail tc-sub-tail-{{remainTone}}">{{remainLine}}</text>
+        <text
+          wx:if="{{remainLine}}"
+          class="tc-sub-tail tc-sub-tail-{{remainTone}} {{remainTone === 'go' ? 'is-action' : ''}}"
+          bindtap="onRemainTap"
+        >{{remainLine}}</text>
       </view>
     </view>
 

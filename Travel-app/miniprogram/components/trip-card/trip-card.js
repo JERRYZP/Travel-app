@@ -72,6 +72,17 @@ Component({
       this.triggerEvent('spot', { spotId: this.data.item.spotId });
     },
 
+    /**
+     * 副行绿色「现在预约」文字按钮。
+     * 它和景点名走同一个事件，由首页打开景点详情浮窗；服务端
+     * bookingEntryEnabled 决定放票后到出行日结束前仍可进入官方预约渠道。
+     */
+    onRemainTap() {
+      if (this.data.history || this.data.remainTone !== 'go') return;
+      if (!this.data.item || this.data.item.bookingEntryEnabled === false) return;
+      this.triggerEvent('spot', { spotId: this.data.item.spotId, source: 'booking_entry' });
+    },
+
     onMenuToggle() {
       /* ⚠️ 这一行是**诊断用**的，不是日志洁癖：这个「点菜单没反应」的 bug
          从 09-21 起被反复「修好」又复发，根因每次都不一样（2026-09-23 一次列全）：
