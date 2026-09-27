@@ -143,9 +143,10 @@ function resetWx(patch = {}) {
   const homeSrc = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.js'), 'utf8');
   const hubSrc = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-hub/spot-hub.js'), 'utf8');
   const reminderFlowSrc = fs.readFileSync(path.join(ROOT, 'miniprogram/utils/reminder-flow.js'), 'utf8');
-  eq(/getReminderQuotaNeeded/.test(setupSrc), true, 'setup 使用共享额度接口');
-  eq(/confirmReminderAccess/.test(setupSrc), true, 'setup 使用共享授权闸门');
-  eq(/disableReminders: true/.test(setupSrc), true, 'setup 支持仅加行程');
+  eq(/reminderCount \* this\.data\.offsets\.length/.test(setupSrc), true, 'setup 按提醒条数和提前量计算额度');
+  eq(/getReminderHealth/.test(setupSrc), true, 'setup 使用统一授权健康状态');
+  eq(/requestSubscribeBurst\(shortfall\)/.test(setupSrc), true, 'setup 由用户主动补齐授权缺口');
+  eq(/confirmReminderAccess/.test(setupSrc), false, 'setup 不再提供仅加行程旁路');
   eq(/confirmReminderAccess\(1\)/.test(homeSrc), true, '挽回路径只按本次 1 条提醒校验授权');
   eq(/disableReminders: true/.test(homeSrc), true, '挽回路径支持仅加行程');
   eq(/reminderFlow\.onDateConfirm/.test(hubSrc), true, '景点页使用共享提醒流程');

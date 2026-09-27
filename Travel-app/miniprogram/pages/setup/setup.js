@@ -14,7 +14,20 @@ Page({
     checkedOffset5: true,
     checkedOffset2: false,
     reminderCount: 0,
+    quotaNeeded: 0,
+    subscribeQuota: 0,
+    shortfall: 0,
+    systemOk: false,
+    accessReady: false,
+    canSubmit: false,
+    gateText: '正在检查提醒权限',
     submitting: false,
+    showSampleSheet: false,
+    sampleShots: [
+      { key: 'style-1', label: '通知中心 / 锁屏通知', src: '/images/reminder-samples/style-1.jpg', pending: false },
+      { key: 'style-2', label: '微信服务通知', src: '', pending: true },
+      { key: 'style-3', label: '小程序内行程提醒', src: '', pending: true },
+    ],
   },
 
   onLoad() {
@@ -28,10 +41,41 @@ Page({
   },
 
   onShow() {
-    api.reminder.cart.list().then(res => {
-      const count = (res && res.summary && res.summary.reminderCount) || 0;
-      this.setData({ reminderCount: count });
-    }).catch(() => {});
+    this.loadCartAndAccess();
+  },
+
+  loadCartAndAccess() {
+    return api.reminder.cart.list().then(res => {
+      const reminderCount = (res && res.summary && res.summary.reminderCount) || 0;
+      const quotaNeeded = reminderCount * this.data.offsets.length;
+      this.setData({ reminderCount, quotaNeeded });
+      return this.refreshAccessState(quotaNeeded);
+    }).catch(() => this.refreshAccessState(this.data.quotaNeeded));
+  },
+
+  refreshAccessState(needed) {
+    const want = typeof needed === 'number' ? needed : this.data.quotaNeeded;
+    return notify.getReminderHealth().then(health => {
+      const subscribeQuota = health.quota || 0;
+      const shortfall = Math.max(0, want - subscribeQuota);
+      const hasChannel = this.data.channels.officialAccount === true;
+      const accessReady = health.systemOk && shortfall === 0 && want > 0;
+      const canSubmit = accessReady && hasChannel;
+      let gateText = '';
+      if (!hasChannel) gateText = '请选择微信通知提醒';
+      else if (!health.systemOk) gateText = '请先开启微信通知权限';
+      else if (shortfall > 0) gateText = '还差 ' + shortfall + ' 次授权，补齐后才能开启提醒';
+      else if (want === 0) gateText = '当前没有需要提醒的景点';
+      this.setData({
+        quotaNeeded: want,
+        systemOk: health.systemOk,
+        subscribeQuota,
+        shortfall,
+        accessReady,
+        canSubmit,
+        gateText,
+      });
+    });
   },
 
   onToggleChannel(e) {
@@ -39,62 +83,93 @@ Page({
     if (key === 'sms') return;
     const channels = Object.assign({}, this.data.channels);
     channels[key] = !channels[key];
-    this.setData({ channels });
+    this.setData({ channels }, () => this.refreshAccessState(this.data.quotaNeeded));
   },
 
   /* 提前量单选：5 分钟 / 2 分钟二选一（一次性订阅消息按条授权，一条任务只发一条提醒） */
   onToggleOffset(e) {
     const val = Number(e.currentTarget.dataset.val);
+    const quotaNeeded = this.data.reminderCount * 1;
     this.setData({
       offsets: [val],
       checkedOffset5: val === 5,
       checkedOffset2: val === 2,
+      quotaNeeded,
+    }, () => this.refreshAccessState(quotaNeeded));
+  },
+
+  onOpenSystem() {
+    notify.openSystemNotifySetting();
+  },
+
+  /** 硬闸门：额度不足时只能由用户点击补齐，不能由提交动作自动代替。 */
+  onFillQuota() {
+    const shortfall = Math.max(0, this.data.shortfall || 0);
+    if (shortfall <= 0) return;
+    if (!this.data.systemOk) {
+      this.onOpenSystem();
+      return;
+    }
+    wx.showLoading({ title: '正在申请授权...' });
+    return notify.requestSubscribeBurst(shortfall).then(res => {
+      wx.hideLoading();
+      return this.refreshAccessState(this.data.quotaNeeded).then(() => {
+        if (res.ok) {
+          const left = Math.max(0, this.data.shortfall || 0);
+          wx.showToast({
+            title: left > 0 ? ('已补齐 ' + res.added + ' 次，还差 ' + left + ' 次') : '授权已补齐',
+            icon: 'none',
+          });
+          if (!res.silent) notify.hintKeepAlwaysChoice();
+          return;
+        }
+        if (res.reason === 'master-switch-off' || res.reason === 'subscription-disabled') {
+          notify.guideOpenSubscribeSetting(res.reason);
+        } else if (res.reason === 'rejected') {
+          wx.showToast({ title: '已取消，本次未增加授权', icon: 'none' });
+        } else if (res.reason === 'banned') {
+          wx.showToast({ title: '该模板已被微信限制，暂无法补齐', icon: 'none' });
+        } else {
+          wx.showToast({ title: '授权未完成，请重试', icon: 'none' });
+        }
+      });
+    }).catch(() => {
+      wx.hideLoading();
+      wx.showToast({ title: '授权未完成，请重试', icon: 'none' });
     });
   },
 
+  onOpenSample() { this.setData({ showSampleSheet: true }); },
+  onCloseSample() { this.setData({ showSampleSheet: false }); },
+  onPreviewSample(e) {
+    const src = e.currentTarget.dataset.src;
+    if (!src) return;
+    wx.previewImage({ current: src, urls: [src] });
+  },
+  noop() {},
+
   onSubmit() {
     const { channels, offsets } = this.data;
-    const channelList = [];
-    if (channels.officialAccount) channelList.push('OFFICIAL_ACCOUNT');
-    if (channelList.length === 0) {
-      wx.showToast({ title: '请至少选择一种提醒方式', icon: 'none' });
+    if (!channels.officialAccount) {
+      wx.showToast({ title: '请选择微信通知提醒', icon: 'none' });
       return;
     }
-    if (offsets.length === 0) {
-      wx.showToast({ title: '请至少选择一个提醒时间', icon: 'none' });
+    if (!this.data.systemOk) {
+      wx.showToast({ title: '请先开启微信通知权限', icon: 'none' });
+      this.onOpenSystem();
+      return;
+    }
+    if (this.data.shortfall > 0) {
+      wx.showToast({ title: '请先补齐 ' + this.data.shortfall + ' 次授权', icon: 'none' });
+      return;
+    }
+    if (this.data.quotaNeeded <= 0) {
+      this.submitTask({ channelList: ['OFFICIAL_ACCOUNT'], offsets });
       return;
     }
     this.setData({ submitting: true });
     wx.showLoading({ title: '正在提交...' });
-
-    const doSubmit = options => this.submitTask(Object.assign({ channelList, offsets }, options || {}));
-    const finish = access => {
-      wx.hideLoading();
-      if (access.action === 'ready') {
-        doSubmit();
-        return;
-      }
-      if (access.action === 'trip-only') {
-        doSubmit({ disableReminders: true });
-        return;
-      }
-      this.setData({ submitting: false });
-      if (access.action !== 'settings') return;
-      if (access.settingsKind === 'system') notify.openSystemNotifySetting();
-      else wx.navigateTo({ url: '/pages/notify-settings/notify-settings' });
-    };
-
-    notify.getReminderQuotaNeeded(offsets.length)
-      .then(needed => notify.confirmReminderAccess(needed).then(access => ({ needed, access })))
-      .then(({ needed, access }) => {
-        if (needed > 0) this.setData({ reminderCount: needed });
-        finish(access);
-      })
-      .catch(err => {
-        wx.hideLoading();
-        this.setData({ submitting: false });
-        api.toastError(err);
-      });
+    this.submitTask({ channelList: ['OFFICIAL_ACCOUNT'], offsets });
   },
 
   submitTask({ channelList, offsets, disableReminders }) {
@@ -154,5 +229,15 @@ Page({
 
   onBack() {
     wx.navigateBack();
+  },
+
+  onHome() {
+    const pages = getCurrentPages();
+    const homeIdx = pages.findIndex(p => p.route === 'pages/home/home');
+    if (homeIdx >= 0) {
+      wx.navigateBack({ delta: pages.length - 1 - homeIdx });
+      return;
+    }
+    wx.reLaunch({ url: '/pages/home/home' });
   },
 });

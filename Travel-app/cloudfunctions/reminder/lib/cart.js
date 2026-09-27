@@ -15,7 +15,7 @@
  * - 弱提醒景点默认不勾提醒，用户可在清单里手动改。
  */
 
-const { COLLECTIONS, ERRORS, PENDING_CART_TRIP_ID, ok, fail } = require('./schema');
+const { COLLECTIONS, ERRORS, PENDING_CART_TRIP_ID, ok, fail, difficultyOf } = require('./schema');
 const time = require('./time');
 const item = require('./item');
 const tripItem = require('./trip-item');
@@ -259,6 +259,8 @@ async function list(db, userId, tripId = null) {
       remindOn: reservationRequired && !releasePassed && i.remindOn === true,
       remindLocked: !!releasePassed,
       spotName: spot ? spot.name : '未知景点',
+      difficulty: spot ? difficultyOf(spot.difficultyScore) : null,
+      weak: reservationRequired && !!spot && (spot.difficultyScore || 0) <= 2,
       releaseDateLabel: releaseAt
         ? formatReleaseDateLabel(releaseAt)
         : '',

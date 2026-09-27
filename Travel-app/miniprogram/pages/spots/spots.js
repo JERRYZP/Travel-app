@@ -23,6 +23,7 @@ Page({
     tripId: '',
     showSpotPopup: false,
     popupSpotId: '',
+    showClearDialog: false,
   },
 
   onLoad(options) {
@@ -181,7 +182,7 @@ Page({
       wx.showToast({ title: '已移除', icon: 'none' });
     } else {
       ids.push(spotId); spots.push(spot);
-      wx.showToast({ title: '已添加', icon: 'none' });
+      wx.showToast({ title: '已加入行程清单', icon: 'none' });
     }
     this.setData({
       selectedSpotIds: ids,
@@ -206,7 +207,15 @@ Page({
   },
 
   onClearSelected() {
+    if (!this.data.selectedSpotIds.length) return;
+    this.setData({ showClearDialog: true });
+  },
+
+  onClearCancel() { this.setData({ showClearDialog: false }); },
+
+  onClearConfirm() {
     this.setData({
+      showClearDialog: false,
       selectedSpots: [],
       selectedSpotIds: [],
       hotSpots: util.markSpotsSelected(this.data.hotSpots, []),
@@ -216,6 +225,8 @@ Page({
 
   onSpotNameTap(e) { this.setData({ showSpotPopup: true, popupSpotId: e.currentTarget.dataset.id }); },
   onSpotPopupClose() { this.setData({ showSpotPopup: false }); },
+
+  onDone() { this.onBack(); },
 
   onBack() {
     const pages = getCurrentPages();

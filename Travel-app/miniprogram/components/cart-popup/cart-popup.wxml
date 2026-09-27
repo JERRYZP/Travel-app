@@ -13,6 +13,21 @@
 
     <scroll-view scroll-y class="cart-list" style="{{listStyle}}" bindscroll="onListScroll">
       <view class="cart-list-inner">
+        <view class="cart-tips-card">
+          <view class="cart-tips-head" catchtap="onToggleTips">
+            <view class="cart-tips-title-wrap">
+              <svg-icon name="alert-circle" size="14px" />
+              <text class="cart-tips-title">温馨提示：</text>
+            </view>
+            <svg-icon name="{{tipsExpanded ? 'chevron-up' : 'chevron-down'}}" size="12px" />
+          </view>
+          <view wx:if="{{tipsExpanded}}" class="cart-tips-body">
+            <text>1、超难约的景点默认开启提醒</text>
+            <text>2、较容易约热门景点，默认不开启提醒，可手动选择开启</text>
+            <text>3、无需预约的景点，不开启提醒，仅加入行程中</text>
+          </view>
+          <text wx:else class="cart-tips-folded">默认策略：超难约开启 · 较易约关闭 · 免预约不提醒</text>
+        </view>
         <block wx:if="{{loading}}">
           <view class="cart-loading"><van-loading size="40rpx" color="#B8904A" /></view>
         </block>
@@ -35,6 +50,7 @@
                 <view class="cart-row-body">
                   <view class="cart-row-name-line">
                     <text class="cart-row-name">{{item.spotName}}</text>
+                    <text wx:if="{{item.difficulty}}" class="cart-row-diff diff-{{item.difficulty.key}}">{{item.difficulty.text}}</text>
                   </view>
                   <text class="cart-row-sub">{{item.subline}}</text>
                 </view>
@@ -80,11 +96,11 @@
           <svg-icon name="list-white" size="22px" />
           <view wx:if="{{summary && summary.count}}" class="cart-foot-badge">{{summary.count}}</view>
         </view>
-        <text class="cart-foot-text">已选 {{summary ? summary.count : 0}} 项，覆盖 {{summary ? summary.spotCount : 0}} 个景点</text>
+        <text class="cart-foot-text">{{cartFootText}}</text>
       </view>
       <view class="cart-foot-btn {{summary && summary.count ? '' : 'disabled'}}" bindtap="onSubmit">
         <svg-icon name="heart-add-white" size="16px" />
-        <text>提交行程清单</text>
+        <text>{{cartBtnText}}</text>
       </view>
     </view>
   </view>

@@ -62,6 +62,36 @@
 /* 列表：米色底；高度由 JS 内联 px 控制 */
 .cart-list { background: #F8F3EA; }
 .cart-list-inner { padding-bottom: 18rpx; }
+.cart-tips-card {
+  margin: 20rpx 30rpx 0;
+  padding: 20rpx;
+  border-radius: 20rpx;
+  background: #FFFEFB;
+  border: 1rpx solid #F0E8DE;
+}
+.cart-tips-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #B89048;
+}
+.cart-tips-title-wrap { display: flex; align-items: center; gap: 8rpx; }
+.cart-tips-title { font-size: 25rpx; font-weight: 600; }
+.cart-tips-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  margin-top: 16rpx;
+  font-size: 24rpx;
+  line-height: 1.55;
+  color: #5E3D32;
+}
+.cart-tips-folded {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: #9B7F6F;
+}
 
 .cart-loading {
   display: flex;
@@ -77,7 +107,7 @@
 }
 
 /* ===== 出行日分组 ===== */
-.cart-group { padding: 34rpx 30rpx 0; }
+.cart-group { padding: 24rpx 30rpx 0; }
 .cart-group + .cart-group { margin-top: 16rpx; }
 .cart-group-header {
   display: flex;
@@ -155,6 +185,16 @@
   text-decoration: underline;
   text-underline-offset: 4rpx;
 }
+.cart-row-diff {
+  flex-shrink: 0;
+  padding: 2rpx 10rpx;
+  border-radius: 8rpx;
+  font-size: 18rpx;
+  line-height: 1.5;
+}
+.diff-EXTREME { background: var(--diff-extreme-bg); color: var(--diff-extreme-text); }
+.diff-NORMAL { background: var(--diff-normal-bg); color: var(--diff-normal-text); }
+.diff-EASY { background: var(--diff-easy-bg); color: var(--diff-easy-text); }
 .cart-row-sub {
   display: block;
   margin-top: 8rpx;

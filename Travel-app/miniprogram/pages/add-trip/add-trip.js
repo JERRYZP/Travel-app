@@ -47,7 +47,9 @@ Page({
 
     showTimeline: false,
     timelineTabs: [],
+    timelineDays: [],
     timelineActiveTab: '',
+    scrollIntoView: '',
     timelineEvents: [],
     /* ⚠️ 这里原有 `timelineClosedSpots`（闭馆/无放票时刻提示列表），2026-09-24 随
        底部提示块一并删除——行程一跨周一就是每个景点一行的恒定噪音，见 wxml 里的注释。
@@ -60,6 +62,7 @@ Page({
 
     showCartPopup: false,
     cartCount: 0,
+    cartReminderCount: 0,
     cartText: '清单为空',
 
     showSpotPopup: false,
@@ -143,6 +146,48 @@ Page({
       : ((e && e.scrollTop) || 0);
     const navOpacity = Math.min(1, Math.max(0, scrollTop / NAV_FADE_PX));
     if (navOpacity !== this.data.navOpacity) this.setData({ navOpacity });
+    this.scheduleTimelineSpy();
+  },
+
+  /** 滚动时延迟测量当前出游日，避免每帧同步查询节点。 */
+  scheduleTimelineSpy() {
+    if (!this.data.showTimeline || !this.data.timelineDays.length) return;
+    if (this._anchorLockUntil && Date.now() < this._anchorLockUntil) return;
+    if (this._timelineSpyTimer) clearTimeout(this._timelineSpyTimer);
+    this._timelineSpyTimer = setTimeout(() => this.refreshActiveTimelineDay(), 80);
+  },
+
+  /** 以吸顶日期锚点下方为判定线，取最后一个已经越线的日期分组。 */
+  refreshActiveTimelineDay() {
+    if (!this.data.showTimeline || !this.data.timelineDays.length) return;
+    const query = this.createSelectorQuery ? this.createSelectorQuery() : (wx.createSelectorQuery && wx.createSelectorQuery());
+    if (!query || !query.selectAll) return;
+    query.selectAll('.timeline-day').boundingClientRect(rects => {
+      const list = rects || [];
+      if (!list.length) return;
+      const screenW = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()).windowWidth || 375;
+      const threshold = this.data.statusBarHeight + this.data.navBarHeight + (150 / 750 * screenW);
+      let key = this.data.timelineActiveTab;
+      list.forEach(rect => {
+        if (rect && rect.top <= threshold && rect.id) {
+          key = rect.id.replace('timeline-day-', '');
+        }
+      });
+      if (key && key !== this.data.timelineActiveTab) this.setData({ timelineActiveTab: key });
+    }).exec();
+  },
+
+  /**
+   * 顶部日期不是筛选 Tab，而是锚点：
+   * 点击滚动到对应出游日，滚动时由 scroll spy 反向更新选中态。
+   */
+  onDateAnchorTap(e) {
+    const key = e.currentTarget.dataset.key;
+    if (!key) return;
+    this._anchorLockUntil = Date.now() + 600;
+    this.setData({ timelineActiveTab: key, scrollIntoView: '' }, () => {
+      setTimeout(() => this.setData({ scrollIntoView: 'timeline-day-' + key }), 20);
+    });
   },
 
   onBack() {
@@ -174,7 +219,7 @@ Page({
       showCalendar: false,
     });
     /* 日期段变了 → 预览作废（它是按旧范围算的），必须重新生成 */
-    if (this.data.showTimeline) this.setData({ showTimeline: false, timelineEvents: [] });
+    if (this.data.showTimeline) this.setData({ showTimeline: false, timelineDays: [], timelineEvents: [] });
   },
 
   onCalendarClose() {
@@ -234,6 +279,7 @@ Page({
         Object.assign({}, card, { selected: ids.indexOf(card.spotId) >= 0 })),
       /* 景点变了 → 预览作废 */
       showTimeline: false,
+      timelineDays: [],
       timelineEvents: [],
     });
   },
@@ -278,10 +324,13 @@ Page({
       this.setData({
         showTimeline: true,
         timelineTabs: tabs,
+        timelineDays: this.decorateTimelineDays(tabs),
         timelineActiveTab: activeTab,
         timelineEvents: this.decorateEvents(activeTab ? (tabs.find(t => t.key === activeTab) || {}).events || [] : []),
         timelineEmpty: res.empty,
         timelineEmptyReason: res.emptyReason,
+      }, () => {
+        setTimeout(() => this.onDateAnchorTap({ currentTarget: { dataset: { key: activeTab } } }), 30);
       });
       this.loadCart();
     }).catch(err => {
@@ -332,9 +381,15 @@ Page({
   },
 
   onInlineTabTap(e) {
-    const key = e.currentTarget.dataset.key;
-    const tab = this.data.timelineTabs.find(t => t.key === key);
-    this.setData({ timelineActiveTab: key, timelineEvents: this.decorateEvents(tab ? tab.events : []) });
+    this.onDateAnchorTap(e);
+  },
+
+  /** 平铺时间线数据：每个出游日一段，事件仍走同一套装饰逻辑。 */
+  decorateTimelineDays(tabs) {
+    return (tabs || []).map(tab => Object.assign({}, tab, {
+      events: this.decorateEvents(tab.events || []),
+      anchorId: 'timeline-day-' + tab.key,
+    }));
   },
 
   onInlineAddAll() {
@@ -415,6 +470,7 @@ Page({
       const activeTab = tabs.some(t => t.key === keep) ? keep : (tabs.length ? tabs[0].key : '');
       this.setData({
         timelineTabs: tabs,
+        timelineDays: this.decorateTimelineDays(tabs),
         timelineActiveTab: activeTab,
         timelineEvents: this.decorateEvents(activeTab ? (tabs.find(t => t.key === activeTab) || {}).events || [] : []),
         timelineEmpty: res.empty,
@@ -429,14 +485,23 @@ Page({
   loadCart() {
     api.reminder.cart.list().then(res => {
       const s = res.summary || {};
+      const count = s.count || 0;
+      const reminderCount = s.reminderCount || 0;
       this.setData({
-        cartCount: s.count || 0,
-        cartText: s.count > 0 ? ('已选 ' + s.count + ' 项，覆盖 ' + s.spotCount + ' 个景点') : '清单为空',
+        cartCount: count,
+        cartReminderCount: reminderCount,
+        cartText: count > 0
+          ? ('已选 ' + count + ' 项，其中 ' + reminderCount + ' 项会提醒')
+          : '清单为空',
       });
     }).catch(() => {});
   },
 
   onInlineOpenCart() {
+    if (!this.data.cartCount) {
+      wx.showToast({ title: '先加入至少一项行程', icon: 'none' });
+      return;
+    }
     this.setData({ showCartPopup: !this.data.showCartPopup });
   },
 

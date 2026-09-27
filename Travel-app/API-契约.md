@@ -586,6 +586,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     tripId: "abc123",
     spotId: "gugong",
     spotName: "故宫博物院",            // 已关联（PAGE-007 景点名为纯文本，不可点 UI-004 豁免）
+    difficulty: { key: "EXTREME", text: "极难约" }, // V0.3 清单难度标签
+    weak: false,                       // 需预约且 difficultyScore≤2
     visitDate: "2026-06-01",
     releaseAt: "2026-05-25T12:00:00.000Z",
     releaseDateLabel: "05月25日",
@@ -616,7 +618,9 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   summary: {
     count: 3,                          // CART-RULE-002
     spotCount: 2,
-    text: "已选 3 项，覆盖 2 个景点"
+    reminderCount: 2,                  // V0.3：将设提醒条数
+    noReminderCount: 1,
+    text: "已选 3 项，其中 2 个将设提醒"
   }
 }
 ```
@@ -1026,7 +1030,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-005** 新增提醒（独立页） | `timeline.preview`（纯预览，不建行程）、`cart.add`、`cart.addAll`、`cart.list`（暂存清单） |
 | **PAGE-006** 景点视图 | 搁置中，不实现 |
 | **PAGE-007** 行程清单弹窗 | `cart.list`、`cart.remove`、`cart.clear`、`cart.updateRemindOn`、`cart.commit` |
-| **PAGE-008** 设置提醒 | `cart.list`（按缺口补授权）、`cart.commit`（**唯一创建行程的时机**；提交前统一检测通知/订阅授权，未满足时选择“去设置 / 仅加行程不提醒 / 取消”） |
+| **PAGE-008** 设置提醒 | V0.3 主流程：`cart.list`、`subscribe.get`（`cart.list` 算待设提醒条数，`subscribe.get` 算当前额度）、用户主动补齐授权、`cart.commit`（额度或系统权限未满足时主按钮禁用；不提供仅加行程旁路） |
 | **PAGE-010** 我的 | `user.profile`、提醒设置权限/额度健康度（`notify.getReminderHealth`，服务端额度 + 客户端权限） |
 | **PAGE-012** 编辑资料 | `user.profile`、`user.updateProfile`（头像走 `open-type="chooseAvatar"` + `wx.cloud.uploadFile` 上传） |
 | **PAGE-013** 分享场景页 | `spots.list`（today）、`spots.batch`（national-day-2026）；点击景点后 `spots.detail` |

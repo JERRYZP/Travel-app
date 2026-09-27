@@ -28,6 +28,9 @@ Component({
     summary: null,
     loading: true,
     showClearDialog: false,
+    tipsExpanded: true,
+    cartFootText: '清单为空',
+    cartBtnText: '确认加入行程',
     /* 由 JS 计算的内联样式（px，避免微信端 vh/calc/max-height 解析不可靠） */
     bottomOffset: '0px',
     listStyle: '',
@@ -91,7 +94,9 @@ Component({
 
     loadCart() {
       this.closeDropdown();
-      this.setData({ loading: true });
+      let tipsExpanded = true;
+      try { tipsExpanded = !wx.getStorageSync('cartDefaultTipsCollapsedV1'); } catch (e) {}
+      this.setData({ loading: true, tipsExpanded });
       /* 不传 tripId = 读「当前暂存清单」 */
       api.reminder.cart.list().then(res => {
         const groups = cartView.normalizeCartGroups(res).map(g => Object.assign({}, g, {
@@ -103,13 +108,25 @@ Component({
             remindText: it.remindOn ? this.data.OPTION_ON : this.data.OPTION_OFF,
           })),
         }));
-        this.setData({ groups, summary: res.summary, loading: false }, () => this.fitList());
+        const summary = res.summary || {};
+        const reminderCount = summary.reminderCount || 0;
+        const count = summary.count || 0;
+        this.setData({
+          groups,
+          summary,
+          loading: false,
+          cartFootText: count > 0
+            ? ('已选 ' + count + ' 项，其中 ' + reminderCount + ' 项会提醒')
+            : '清单为空',
+          cartBtnText: reminderCount > 0 ? '第四步：设置提醒方式' : '确认加入行程',
+        }, () => this.fitList());
       }).catch(() => {
         this.setData({ loading: false }, () => this.fitList());
       });
     },
 
     onClose() { this.closeDropdown(); this.triggerEvent('close'); },
+    onToggleTips() { this.setData({ tipsExpanded: !this.data.tipsExpanded }); },
     onMaskTap() { this.onClose(); },
     onSheetTap() { this.closeDropdown(); },
     noop() {},
@@ -190,6 +207,7 @@ Component({
         wx.showToast({ title: '先添加至少一项', icon: 'none' });
         return;
       }
+      try { wx.setStorageSync('cartDefaultTipsCollapsedV1', 1); } catch (e) {}
       if (summary.reminderCount === 0) {
         this.triggerEvent('submit', { needSetup: false });
         return;

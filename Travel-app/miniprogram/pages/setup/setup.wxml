@@ -4,36 +4,68 @@
     <view class="navbar-back" bindtap="onBack">
       <svg-icon name="back-thick" size="24px" />
     </view>
+    <view class="navbar-home" bindtap="onHome">
+      <svg-icon name="home" size="22px" />
+    </view>
+    <text class="navbar-title">设置提醒</text>
   </view>
 </view>
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
 
 <view class="page-body">
-  <!-- 页头：标题 + 右上插画 -->
-  <view class="page-header">
-    <image class="page-illustration" src="/images/icons/setup-illustration.svg" mode="aspectFit" />
-    <text class="page-title">设置提醒</text>
-  </view>
+  <image class="page-illustration" src="/images/icons/setup-illustration.svg" mode="aspectFit" />
+  <view class="step-caption">第 4 步 · 设置提醒</view>
 
-  <view wx:if="{{reminderCount > 0}}" class="auth-guide">
-    <svg-icon name="bell-fill" size="18px" />
-    <text>本次将设置 {{reminderCount}} 条提醒。微信按条授权；若弹窗出现“总是保持以上选择”，勾选后可减少后续弹窗。</text>
-  </view>
-
-  <!-- 提醒方式 -->
-  <view class="setting-card">
-    <view class="setting-row" bindtap="onToggleChannel" data-key="officialAccount">
+  <text class="section-label">提醒方式</text>
+  <view class="setting-card auth-card">
+    <view class="setting-row auth-title-row">
       <view class="setting-row-left">
-        <svg-icon name="chat-bubble" size="24px" />
+        <svg-icon name="wechat" size="26px" />
         <view class="setting-row-info">
-          <text class="setting-row-label">公众号提醒</text>
-          <text class="setting-row-hint">需打开微信通知权限</text>
+          <text class="setting-row-label">微信通知提醒</text>
+          <text class="setting-row-hint">用于接收放票提醒</text>
         </view>
       </view>
-      <view class="checkbox {{channels.officialAccount ? 'checked' : ''}}">
-        <svg-icon wx:if="{{channels.officialAccount}}" name="check-white" size="12px" />
+      <view class="checkbox {{accessReady ? 'checked' : ''}}">
+        <svg-icon wx:if="{{accessReady}}" name="check-white" size="12px" />
       </view>
     </view>
+
+    <view class="auth-divider"></view>
+
+    <view class="auth-row">
+      <text class="auth-label">微信通知权限：</text>
+      <text class="auth-status {{systemOk ? 'ok' : 'off'}}">{{systemOk ? '已开启' : '未开启'}}</text>
+    </view>
+    <view wx:if="{{!systemOk}}" class="auth-inline-action" bindtap="onOpenSystem">去开启</view>
+
+    <view class="auth-divider"></view>
+
+    <view class="auth-row">
+      <text class="auth-label">放票提醒授权：</text>
+      <view class="quota-summary">
+        <text wx:if="{{shortfall > 0}}" class="quota-short">还差 {{shortfall}} 次授权</text>
+        <text wx:else class="quota-ok">授权次数已满足</text>
+      </view>
+    </view>
+    <view class="quota-line">
+      <text>本次 {{quotaNeeded}} 条提醒 · 已授权 {{subscribeQuota}} 次</text>
+      <view wx:if="{{shortfall > 0 && systemOk}}" class="fill-quota-btn" bindtap="onFillQuota">补齐 {{shortfall}} 次授权</view>
+    </view>
+
+    <view class="seed-note">
+      <text class="seed-title">种子用户体验</text>
+      <text>为减少逐条操作，我们已开发“批量补齐授权”能力。点击后会按微信规则发起授权确认：如果你已勾选“总是保持以上选择”，可连续补齐；如果未勾选，微信每次只允许完成 1 次，页面会实时更新剩余次数。</text>
+      <text>该能力当前免费开放，后续正式版本可能作为付费服务提供。</text>
+    </view>
+
+    <view class="sample-link" bindtap="onOpenSample">
+      <text>查看提醒样式示例</text>
+      <svg-icon name="chevron-right" size="12px" />
+    </view>
+  </view>
+
+  <view class="setting-card sms-card">
     <view class="setting-row">
       <view class="setting-row-left">
         <svg-icon name="sms-bubble" size="24px" />
@@ -45,7 +77,6 @@
     </view>
   </view>
 
-  <!-- 提醒时间 -->
   <text class="section-label">提醒时间</text>
   <view class="setting-card">
     <view class="setting-row">
@@ -65,11 +96,40 @@
         </view>
       </view>
     </view>
+    <text class="offset-hint">建议提前 5 分钟，为进入官方渠道留出时间。</text>
   </view>
 
-  <!-- 提交按钮 -->
-  <view class="submit-btn {{submitting ? 'disabled' : ''}}" bindtap="onSubmit">
+  <view class="submit-btn {{canSubmit ? '' : 'disabled'}}" bindtap="onSubmit">
     <svg-icon name="check" size="14px" />
-    <text>提交</text>
+    <text>开启行程放票提醒</text>
+  </view>
+  <text wx:if="{{gateText}}" class="gate-hint">{{gateText}}</text>
+</view>
+
+<view wx:if="{{showSampleSheet}}" class="sample-mask" bindtap="onCloseSample">
+  <view class="sample-sheet" catchtap="noop">
+    <view class="sample-head">
+      <text class="sample-title">提醒样式示例</text>
+      <view class="sample-close" bindtap="onCloseSample"><svg-icon name="close" size="16px" /></view>
+    </view>
+    <text class="sample-note">示意图，实际样式以手机系统和微信版本为准。</text>
+    <scroll-view scroll-x class="sample-scroll">
+      <view class="sample-list">
+        <view class="sample-item" wx:for="{{sampleShots}}" wx:key="key">
+          <text class="sample-label">{{item.label}}</text>
+          <image
+            wx:if="{{item.src}}"
+            class="sample-img"
+            src="{{item.src}}"
+            mode="widthFix"
+            bindtap="onPreviewSample"
+            data-src="{{item.src}}"
+          />
+          <view wx:else class="sample-placeholder">
+            <text>示例图待补充</text>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
   </view>
 </view>

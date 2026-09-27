@@ -158,4 +158,21 @@
   </block>
 </view>
 
+<view wx:if="{{!searchMode}}" class="done-bar">
+  <view class="done-btn" bindtap="onDone">完成并返回</view>
+</view>
+
+<van-dialog
+  use-slot
+  show="{{showClearDialog}}"
+  show-confirm-button
+  show-cancel-button
+  confirm-button-text="确认清空"
+  cancel-button-text="取消"
+  bind:confirm="onClearConfirm"
+  bind:cancel="onClearCancel"
+>
+  <view class="dialog-body">清空已选景点？</view>
+</van-dialog>
+
 <spot-popup show="{{showSpotPopup}}" spot-id="{{popupSpotId}}" bind:close="onSpotPopupClose" />

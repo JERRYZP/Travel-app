@@ -197,6 +197,26 @@
   box-shadow: 0 4rpx 12rpx rgba(192,71,42,0.2);
 }
 
+.preview-note {
+  margin: -18rpx 0 30rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: #B59E80;
+}
+.step-heading {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin: 0 -30rpx 0;
+  padding: 28rpx 30rpx 22rpx;
+  background: var(--color-page);
+  color: var(--color-primary);
+  font-size: 28rpx;
+  font-weight: 600;
+  position: relative;
+  z-index: 1;
+}
+
 /* ===== 热门景点网格 ===== */
 .hot-section { margin-bottom: 32rpx; }
 .hot-title {
@@ -688,7 +708,6 @@
   color: var(--color-primary);
   font-weight: 500;
 }
-
 /* 说明 + 一键全部提醒 */
 .timeline-meta {
   display: flex;
@@ -715,7 +734,36 @@
 }
 
 /* ===== 时间线事件 ===== */
-.timeline-list { padding: 4rpx 30rpx 0; }
+.timeline-list { padding: 4rpx 0 0; }
+.timeline-day { padding: 0 30rpx; scroll-margin-top: 180rpx; }
+.timeline-day + .timeline-day { margin-top: 22rpx; }
+.timeline-day-head {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  min-height: 64rpx;
+  margin-bottom: 12rpx;
+}
+.timeline-day-date {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #5E3D32;
+  white-space: nowrap;
+}
+.timeline-day-chip {
+  flex-shrink: 0;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  background: #F2E4C0;
+  color: #C26B0C;
+  font-size: 20rpx;
+}
+.timeline-day-line {
+  flex: 1;
+  height: 1rpx;
+  margin-left: 4rpx;
+  background: #E7DED2;
+}
 .timeline-event {
   display: flex;
   align-items: stretch;
@@ -889,12 +937,13 @@
   font-size: 18rpx;
   text-align: center;
 }
-.cart-bar-text { flex: 1; font-size: 24rpx; color: var(--color-text); }
+.cart-bar-text { flex: 1; min-width: 0; font-size: 23rpx; color: var(--color-text); }
 .cart-bar-btn {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 8rpx;
-  padding: 16rpx 36rpx;
+  padding: 16rpx 24rpx;
   background: var(--color-primary);
   /* 2026-09-24 用户口径「圆角改为最大」= 胶囊形。用 999rpx 而不是 50%：
      50% 在宽大于高的按钮上会画成椭圆（左右两端被拉平），胶囊要的是
@@ -904,3 +953,4 @@
   font-size: 26rpx;
   font-weight: 500;
 }
+.cart-bar-btn.disabled { background: #DBCDBB; }

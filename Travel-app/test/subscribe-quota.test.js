@@ -345,9 +345,9 @@ function crossCheck() {
     path.join(__dirname, '..', 'miniprogram', 'pages', 'setup', 'setup.js'), 'utf8');
   const notifySrc = require('fs').readFileSync(
     path.join(__dirname, '..', 'miniprogram', 'utils', 'notify.js'), 'utf8');
-  eq(/getReminderQuotaNeeded\(offsets\.length\)/.test(setupSrc), true, 'setup 按清单提醒数与提前量数算需求量');
+  eq(/reminderCount \* this\.data\.offsets\.length/.test(setupSrc), true, 'setup 按清单提醒数与提前量数算需求量');
   eq(/count \* taskCount/.test(notifySrc), true, '需求量 = 项数 × 提前量数');
-  eq(/confirmReminderAccess\(needed\)/.test(setupSrc), true, 'setup 按真实需求走统一授权闸门');
+  eq(/requestSubscribeBurst\(shortfall\)/.test(setupSrc), true, 'setup 由用户主动补齐授权缺口');
 
   const mockSrc = require('fs').readFileSync(
     path.join(__dirname, '..', 'miniprogram', 'utils', 'mock.js'), 'utf8');
