@@ -74,12 +74,12 @@ npm test
 ## 常用命令
 
 ```bash
-cd Travel-app
 npm install
 npm test
 npm run check
 ```
 
+- 若从父目录 `my/` 进入，先执行 `cd Travel-app`。
 - `npm test`：当前 25 套回归测试。
 - `npm run check`：校验 WXML 方法绑定、图标资源、组件路径、CSS 变量和页面三件套。
 - 微信开发者工具：打开 `Travel-app/`；Vant 首次使用前执行“工具 -> 构建 npm”。
