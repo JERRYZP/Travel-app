@@ -5,6 +5,8 @@ description: Generate 北京景点预约提醒 daily operation posts (Markdown) 
 
 # 北京景点预约提醒 · 运营帖生成
 
+> 项目共享门禁：改项目代码或 App 数据前先读 `CLAUDE.md`、`.claude/rules/data-contracts.md`。本 Skill 的 `references/spots.json` 是运营帖独立数据源，修改它时仍要按项目规则核对 App 数据，不能形成未登记的第二套业务真相。
+
 ## 用途
 为「北京景点预约提醒」每日运营帖生成内容层（Markdown）。每个景点一行：最早可约、预约时间、预约难度。典型请求：
 - 「生成 9月8日 到 9月15日 的运营帖」

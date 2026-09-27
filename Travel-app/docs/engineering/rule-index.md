@@ -64,3 +64,10 @@
 
 - 在全新 Claude Code 会话中使用 `/memory` 检查实际加载链。
 - 分别模拟 `data/**`、`miniprogram/**`、`cloudfunctions/**` 改动，确认路径规则按预期触发。
+
+## Phase 4：跨 Agent 加载
+
+- Claude Code：自动加载根 `CLAUDE.md`；`.claude/rules/*.md` 按 `paths` 匹配加载。
+- Codex：读取 `AGENTS.md` 后手动加载 `CLAUDE.md` 以及上表中与任务匹配的规则和文档。
+- 两个入口都不复制业务正文，统一指向本索引所列的权威文件。
+- 项目 skill 只负责各自工作流，不能覆盖 `.claude/rules/data-contracts.md` 或其他项目规则。

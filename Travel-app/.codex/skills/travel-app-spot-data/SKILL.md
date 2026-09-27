@@ -13,6 +13,8 @@ user-invocable: true
 
 # Travel-app 景点数据导出
 
+> 项目共享门禁：做代码或数据改动前先读 `CLAUDE.md`、`.claude/rules/data-contracts.md` 和 `docs/engineering/current-state.md`。本 Skill 只定义导出工作流，不替代项目规则。
+
 ## 数据源（唯一真身）
 
 项目根目录：`/Users/zzmbp/Library/Mobile Documents/com~apple~CloudDocs/CCode /my/Travel-app`
