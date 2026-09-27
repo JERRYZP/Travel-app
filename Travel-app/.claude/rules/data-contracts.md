@@ -22,6 +22,8 @@ paths:
 - 运营 skill：`.codex/skills/beijing-spot-posts/references/spots.json`
 - seed：派生测试夹具，不是业务真身，不手改
 
+`shortName` 是窄容器专用民间简称；不得为完整名称足够短的景点硬造简称。宽容器继续使用全名。
+
 ## 固定流程
 
 修改数据后：

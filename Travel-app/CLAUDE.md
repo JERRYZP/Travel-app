@@ -1,174 +1,101 @@
 # Travel-app
-景点预约提醒小程序：聚合北京热门景点的放票规则，在放票前提醒用户手动去官方渠道抢票。不代抢代约。
 
-**2026-09-28 新用户首页空态：** 空态从「三步文字说明」改为「结果预览 + 近期放票」两段：动态展示真实景点规则的“出行计划 → 开抢时间 → 微信提醒”，步骤区只保留标题与文字；提醒部分只提供“提醒样式示意图”入口，复用设置页已有的三种真实示例，不在首页伪造通知内容。底部展示 3 个高热度 S 级（热度 ≥4、难度 ≥4）的近期放票节点，只写规则推算状态，不承诺库存。数据复用 `home.bootstrap` 已返回的 `hotSpots`，仅改小程序端，不需要部署云函数；回归见 `test/home-emptystate.test.js`。
+景点预约提醒小程序：聚合北京热门景点的预约与放票规则，在放票前提醒用户去官方渠道手动抢票。产品不代抢、不代约，不承诺库存。
 
-**2026-09-27 V0.3 主流程 UX 优化：** 创建行程页改为四步主流程；出游日改为锚点滚动联动并平铺渲染；想去景点采用即时生效、保存反馈、清空二次确认；行程清单增加默认策略提示和动态 CTA；设置提醒页拆分系统通知权限与放票提醒授权，额度不足时主按钮禁用，必须由用户主动“补齐 N 次授权”，不允许自动补齐或仅加行程旁路。小程序端已改 `add-trip` / `cart-popup` / `spots` / `setup`；`reminder/lib/cart.js` 增加清单难度字段，部署时需重传 `reminder`。V0.3 视觉基准在 `UI/V.0.3主流程UX优化`，交互文案以该目录 `VERSION.md` 为准。回归见 `test/v03-main-flow.test.js`。提醒样式图示三张已补齐。
+## 最高优先级门禁
 
-**2026-09-26 提醒设置与授权额度预警：** `notify-settings` 与“我的”入口统一更名为「提醒设置」；服务端按未来 WAITING 任务的未发送 offset 计算额度需求，保留 1 次安全缓冲，并输出 `idle/ready/low/short/exhausted` 五态。`subscribe.get` 增加 `pendingMessageCount / nearestRemindAt / level / shortfall / replenishNeeded`；`home.bootstrap` 在 48 小时内且额度不足时返回 `reminderQuotaWarning`。入口和设置页可提示缺口，设置页暂只保留「续收 +1 / 微信授权设置」；批量补齐逻辑与健康字段保留，下一期接付费功能后再放入口；首页预警可按北京时间当天关闭。需重新部署 `reminder`，`notifier` 不需要部署。
+1. **规则值先确认**：放票时间、提前天数、开放/闭馆日、可约窗口、票务、核验日期等任何景点规则值，都必须先报告差异并等用户确认；禁止根据资料置信度推断或替用户拍板。
+2. **保护现有工作**：开始改动前检查 `git status`。不得回滚、覆盖、格式化或清理与本任务无关的 dirty 文件。
+3. **部署必须单独授权**：没有用户当场明确确认，不部署云函数、不切环境、不修改生产配置、不执行破坏性清场。
+4. **不要制造第二套业务真相**：业务规则只保留一个真身；必要镜像必须由测试或生成脚本钉住。页面不得自行重推服务端状态。
+5. **不要伪造能力或时效**：首页提醒区域只进入真实样式示例；任何“可约/库存”都只能表述为规则推算，并明确不代表官方库存。
 
-## 当前状态（2026-09-25 已同步：分享 P0 + 最小 P1、上线前 UX 收尾、时间线已开票状态与清单提醒锁定；2026-09-20 首页行程化改版**全部落地**（P0 契约 → P2 状态回填 → P3 状态墙 → P4 纯预览）；此前 2026-09-14 行程自动合并恢复、2026-09-13 订阅消息按模板台账/43101 自愈 + notifier 60 秒、2026-09-03 数据准确性、2026-08-31 首页聚合均保留）
+## 当前状态
 
-**代码已是新形态**（行程 → 时间线 → 提醒清单 → 提醒任务；页面覆盖 PAGE-001~013）。
-**2026-09-20 首页行程化：全部实现并自有测试覆盖。** 本次改版把首页从「提醒任务列表」换成「行程状态墙」——按出行日一行行列出要去的地方，每个地方标清楚票到手没有。目标模型为 `trips + trip_items + reminder_cart + reminder_tasks`：`trip_items` 是首页状态墙、票务结果、提醒关联和删除动线的事实来源；提醒任务挂 `itemId`，不再是用户一级列表。
+- 当前分支：`codex/v0.3-main-flow-ux`。
+- V0.3 主流程已实现：四步流程、日期锚点、清单策略、PAGE-008 授权硬闸门。
+- 新用户首页空态已重构：动态结果预览、提醒样式入口、高热度 S 级景点近期放票。
+- 分享、深链、今日/国庆场景页、提醒额度健康度与 48 小时预警均已实现。
+- 当前状态是 **locally verified**；未完成云函数部署和真机 live verify。测试通过不能写成“已上线”。
+- 完整状态、待部署范围和待验证项见 `docs/engineering/current-state.md`。
 
-**2026-09-25 UX 收尾：** 攻略页、统一提醒授权、`disableReminders`、游客信息提示与开发版新用户预览已落地。
+## 权威来源
 
-**2026-09-25 分享体系 P0 + 最小 P1：** `spot-hub` 支持 `spotId` 深链并直接拉起统一 `spot-popup`；景点/首页/场景分享、首屏规则推算摘要、今日放票与国庆场景页、分享后首个价值动作埋点已落地。景点弹窗只做会话分享，`share-scene` 开放朋友圈单页。分享本身为小程序端改动，不新增云函数/表；部署/真机状态未验证。详细规则见 `产品文档.md` PAGE-013 / SHARE-RULE 与 `产品分析/2026-09-25-分享体系规划-优化版.md`。
+| 领域 | 权威文档 |
+|---|---|
+| 产品行为、页面规则、状态词 | `产品文档.md` |
+| API、请求/响应、错误码 | `API-契约.md` |
+| 数据库集合与索引 | `数据库索引.md` |
+| 视觉 token、尺寸与组件规范 | `figma_design.md` |
+| 提醒发送故障与排障 | `提醒推送排障清单.md` |
+| 工程结构、数据流、当前状态 | `docs/engineering/` |
+| 规则迁移和无丢失索引 | `docs/engineering/rule-index.md` |
 
-- **景点简称 `shortName`（2026-09-21 新增，规则值须用户确认）**：`data/spots.json` 每个景点的**民间通俗简称**（「中国国家博物馆」→「国博」）。给**窄容器**用——摘要卡底部的放票胶囊（`task.buildReleasePills` 用 `item.spotShort`）；**宽处继续用全名**（行程项卡 / 清单 / 详情浮窗 / `spots` 列表，用户要认门牌）。`decorateItem` 同时下发 `spotName` 与 `spotShort`，选哪个由渲染方按容器宽度决定。取值口径：全名本身已够短的就**等于全名**（天安门城楼/颐和园/恭王府），不硬造。⚠️ **三份数据真身 + 运营 skill 数据共四处**都要有（`data/spots.json`、`cloudfunctions/reminder/data/spots.json`、`miniprogram/utils/mock.js`、`.codex/skills/beijing-spot-posts/references/spots.json`），`mock-mirror.test.js` 的 `SPOT_FIELDS` 已纳入比对；改完跑 `python3 scripts/sync-seed-copies.py` 再 `npm test`。
-- ⚠️ **行程项卡的提醒状态（2026-09-22 定稿并已落地，覆盖 09-21 的「不显示」）**：**四态全部显示**在**景点名右侧**（中性灰 chip `.tc-remind` + `util.reminderClass` → `none/waiting/done/miss`，文案取服务端 `reminder.stateLabel`），票务状态仍居卡片最右侧。`MISSED`「未送达」前置**警告形图标**（`alert-circle-muted.svg`，圆圈 + 叹号）且**整块可点**，抛 `missedreason` 走 `home.js` 的 `onMissedReason`。**正文文案不得写「已设提醒」**（同时指 `WAITING` 与 `TRIGGERED`，歧义）。**免预约项不显示提醒状态、不显示提醒类菜单项**。回归断言在 `test/home-emptystate.test.js` 第 8 / 8.1 节（**正向锁**）。
-  - ⚠️ **09-21 删掉它的理由只对了一半**，别再据此删一次：当时说「提醒是否已设是操作结果，与摘要卡胶囊重复」——`WAITING` / `TRIGGERED` 确实重复，但 `NOT_SET` 是**打开提醒的唯一入口**（当时条件是 `remindOn && PENDING`，于是 `remindOn=false` 的项永远打不开提醒，只能删了重加，而重加会被 `cart.add` 的跨行程去重 `(spotId, visitDate)` 查 `trip_items` 拦住 —— 死胡同）；`MISSED` 是决策文档 §五 明文强制的异常信号。
-  - **菜单是「带条件的四项」**（2026-09-23 改）：删除这天（恒有）/ 标记结果（`item.canMark`）/ **提醒开关（`item.canSetReminder`，一项按态直出「开启提醒 / 取消提醒」）** / 约其他日（`FAILED && recoverable`）。平铺成固定项会让开票前出现死按钮。
-    - ⚠️ **原先是「设置提醒 / 修改提醒」互斥两项，2026-09-23 合并成一项**。「修改」这个名字从没兑现——点开只有一个开/关的 ActionSheet，改不了提前量、更改不了出行日期（**改日期走「约其他日」**，那条会生成并列的新行程项，不是改这一条）。用户点开才发现没得改，名字即成本。
-    - ⚠️ **判据是 `canSetReminder`，不是 `ticketState`**：`canSetReminder` = 需预约 && 有放票时刻 && **放票时刻还没到**（真身 `lib/item.js`，`decorateItem` 下发、`updateReminder` 同源闸门、mock 镜像）。**放票一过两个动作都没有意义**——开启会即刻被判 `MISSED`（用户刚点完「开启提醒」就看到「未送达」，因果反了；2026-09-23 实测：对「已约到」的八达岭设提醒 → 立刻未送达），取消则是没有待发任务可取消的空转。**别写成 `ticketState === 'PENDING'`**：清单先加、放票之后才提交的项是可抢票态却同样需要入口（`submit` 现在不再给这类项建任务，存量项仍可能落在这一档）。
-    - **由此「已约到」的菜单只剩「删除这天」**：`markResult` 的前置是 `nowTs >= releaseAt`，所以 `SUCCESS ⟹ canSetReminder === false`——构造上成立，不是给 SUCCESS 的特判。同日的其他备选若还没放票，仍各自有提醒入口（判断按**行程项**，别按 `backupGroupId` 组级判）。
-    - ⚠️ **放票前取消提醒不再抹掉「未送达」信号**（2026-09-23 修）：`updateReminder` 原先无条件落 `remindOn: false`，把 chip 从「未送达」洗成「未设提醒」而 MISSED 任务仍在库里。现在仅在「没有留任何终态任务」时才落 false，返回 `missedKept` 供前端说明。
-  - ⚠️ **`task.submit` 不给「放票已过」的清单项建任务**（2026-09-23）：真实路径是 11:50 加进清单、12:05 才提交，任务一生出来就是 MISSED，用户提交一次白得一条「未送达」。这类项仍照常落行程项（票还要抢），`remindOn` 落 false，返回里用 `expiredReminder` + `toast` 说明。回归断言见 `test/trip-item-actions.test.js` 第 14 / 14.1 / 14.2 节与 `test/quota-heal.test.js` 第 3 节（后者原先靠「放票已过还提交」造夹具，已改为「正常提交后把任务的 releaseAt 拨到过去」这条真实成因）。
-  - ⚠️ **`cart.add` 的放票时刻由服务端推，`releaseAt` 参数已废（2026-09-24）**：真身是 `visitDate − advanceDays`（`lib/item.deriveReleaseAt`），调用方传的值一律被覆盖、不传也合法。**起因是「约其他日」走不通**：`date-picker-sheet` 只回 `visitDate`，首页没有放票时刻可传，而 `cart.add` 原先强制 `!releaseAt → BAD_PARAM`，用户点「确定」只看到「请检查输入」（错误码 1010，日志上看不出跟挽回有关）。放票时刻是**推导值不是用户输入**，别再加回「必须传」的校验。回归断言在 `test/home-bootstrap.test.js` 第 7 节（带/不带 releaseAt 都能入清单 + 推不出来时仍 1010）。
-  - ⚠️ **「约其他日」提交前必须先要订阅授权**：这条动线落的是一个提醒任务，而微信订阅消息「一次授权 = 能发 1 条」。不要授权就提交，结果与「未送达」的静默失败一模一样（用户换了日期、行程项建好、提醒永远送不到，事后只能看到 43101）。`home.js` 的 `onRecoverConfirm` 因此先 `notify.ensureSubscribe(1)` 再 `cart.add`，偏移量 `[5]` = 1 条额度，改了要和 commit 的 `offsets` 一起改。
-  - ⚠️ **两张气泡的「忽略」要分开记 key**：`dismissed` 存 `itemId`（追问）与 `itemId:recover`（挽回），共用一个会把「先忽略追问、后补标没抢到」时新冒出来的挽回气泡压掉。
-  - ⚠️ **挽回候选随 `home.bootstrap` 一起下发（2026-09-24 修，覆盖 09-22 的「页面侧重算」）**：`home.bootstrap` 返回顶层 `recoverableIds`（`lib/recovery.js` 的 `recoverableMapOf`，遍历全部行程项、按 tripId 分组各算一次），页面直接铺进 `data.recoverableIds`。**页面不得另开一次请求逐条调 `tripItem.recoveryCandidates`**——那条独立往返与 bootstrap 返回体之间没有顺序保证，返回体已经带着 `result = FAILED` 而候选还在路上时，卡片按「FAILED 但不可挽回」渲染（气泡不显示、菜单里只剩「删除这天」），症状就是**标记「没抢到」后挽回线永远不出现**。09-22 只修了「silent 分支不重算」这一半，真正的病根是两次往返的时序；`tripItem.recoveryCandidates` 保留给按需入口，首页不再调。回归断言：`test/home-bootstrap.test.js` 第 6 节（同一次响应里给到 / 无候选时是空数组）+ `test/recovery.test.js` 第 10 节（聚合层与逐条结果逐字一致）。
-  - ~~⚠️ **`loadHome` 的 silent 分支也必须重算 `loadRecoverables`**（2026-09-22 修）~~：**已作废**——`loadRecoverables` 整体删除，候选改由 bootstrap 下发（见上一条）。留在这里只作历史参照：那次只修掉了「silent 分支不重算」这一半，真正的病根是两次往返的时序。
-  - `item.reminder` **仍由服务端下发**（`decorateItem` 照常算、`reason` 字段是静默失败的唯一出口），别把它删了。⚠️ 「MISSED 静默失败」的旧纪律仍然成立。
-- ⚠️ **六个票务展示态 2026-09-22 整体换词**（按设计稿）：`待抢票 / 可抢票 / 已约到 / 未抢到 / 未标记 / 免预约`（旧值 `待抢/可抢/已成/未成/开过票了`）。**换的是文案不是语义**——`UNMARKED` 仍是中性态、不判失败，别因为「未标记」字面像「未抢到」就把它改判。文案真身在 `cloudfunctions/reminder/lib/item.js` 的 `TICKET_STATE_LABEL`，`miniprogram/utils/mock.js` 有镜像，`test/mock-mirror.test.js` 交叉比对（含兜底值）。
-- **行程项卡副行（2026-09-22 按稿重做）**：`{{M月D日 HH:MM}}`（朱砂、**无「放票」二字**）· 状态尾巴。尾巴由 `util.releaseRemainderOf(item)` 返回 `{text,tone}`：`· 还有N天`（**距放票**，按毫秒算 `ceil((releaseAt-now)/86400000)`，**不是** `daysUntil` 那套北京时区日历日）/ `· 现在预约 ›`（绿）/ `· 已约` / `· 约其他日 ›` / `· 未送达`。⚠️ **`MISSED` 压过一切票务态**——被「现在预约」盖掉等于把静默失败藏起来。WXML 只拼色类，判断全在 util（WXML 不能调方法）。
-- ⚠️ **行程项卡不显示难约标签（2026-09-21 用户口径）**：`trip-card` 的名称行只有「景点名 + 右箭头」，`.tc-diff` 样式已一并删除。`item.difficulty` 字段**仍由服务端下发**（`decorateItem` 照常算），只是行程墙上不渲染——选景点的地方（`spots` 列表、`spot-popup`、`add-trip` 时间线事件）都保留，那里正是按难易挑景点的时候。**别把服务端的 `difficulty` 一起删了**，那会连带打掉上述三处。
-- **六个展示态** `PENDING / BOOKABLE / SUCCESS / FAILED / UNMARKED / NO_RESERVATION`（待抢/可抢/已成/未成/开过票了/免预约）。推导真身 = `cloudfunctions/reminder/lib/item.js`，**判定顺序固定**：免预约 → 人工结果 → 放票前 → 放票后 24h 内 → 未标记。⚠️ 顺序不能调，「人工结果」必须在时间条件之前，否则已标记「抢到了」的项会在某个时刻被翻回「待抢」。页面**不得自行按时间重推**。
-- **人工结果**只落 `result = SUCCESS | FAILED`，**4 秒**内可撤销（`V1.RESULT_UNDO_SECONDS`，2026-09-17 由 10 秒收紧），用页面底部 Snackbar 不用系统 Toast。
-- **票务状态与提醒送达状态分字段、分 UI 展示**。抢票失败 ≠ 提醒没送到。
-- **门票进度分母** = 按 `backupGroupId` 去重后的预约需求组；免预约项不进分母（另起一行「另有 X 处随到随玩」）；未设提醒但需预约的**仍进分母**（否则进度会伪装成已完成）。
-- **首页单形态**：全局吸顶横幅 + 最近行程摘要卡 + 纵向多行程分段墙（摘要卡那趟不渲染行程级标题，其余保留）+ 历史折叠，不做横向行程 Tab、不做视图切换。
-  - **摘要卡底部是「即将提醒」胶囊**（`HOME-RULE-003`，设计稿 `UI/V.0.2-0919首页行程化改版-UI`）：最多 2 个接下来要放票的**时间点**，如「今天20:00 城楼/国博放票」。文案由服务端拼（`task.buildReleasePills`），页面只渲染。
-    - ⚠️ **按放票时刻合并**：同一时刻的多条提醒合成一颗胶囊，景点名 `/` 连接 + 用**简称**；文案末尾**不带「放票」**。`limit` 数的是**时间点**不是项数——同刻 3 个景点仍只占 1 颗。最近的一颗带 `nearest`：**实底 `#EAD9A8` + 朱砂字 `#C0472A`**，第二颗是 `rgba(234,217,168,.25)` 浅底 + `#EAD9A8` 字（这一颗不适用「正文统一 #EAD9A8」，否则同色看不见）。
-  - **摘要卡视觉逐值锁定（`HOME-RULE-005`）**：背景 `linear-gradient(160deg, #C65941 12.9%, #B8432A 87.46%)`、圆角 `12px`、标题 38rpx（`util.tripDisplayName`）、副标题倒计时是**行程级**的 `util.tripCountdownTextOf`（进行中显示「进行中第N天」；**与行程项卡的 `countdownTextOf`「就是今天」是两套文案，别合并**；已结束判据是结束日**次日**，与服务端 `activeTrips` 同口径）、右上角衬线装饰英文（`util.tripWatermark`，仅北京；`opacity .28`、字距 `.7em`）。**卡上文字一律实色、不用 opacity 叠渐变**（渐变两端色不同，同一 opacity 上下渲染成两种颜色）；标题 `#FFFFFF`，**其余正文统一 `#EAD9A8`**（含 N/M 两个数字——它们是一个整体读数，同字号同色不加粗）。卡内纵向：标题→日期段、门票搞定→进度条均为 `4rpx`；**「门票搞定」上方是高度补偿 margin（22rpx），改上两处必须同步改它**，否则卡高会变、胶囊会上移。进度条→胶囊 `20rpx`（10px），且 `.sm-free` 上带了补偿量（现 16rpx），两处必须成对改。比例读数分子 28rpx / 分母与斜杠 21rpx（同色不加粗、基线对齐）。其余节奏 8rpx。这些是设计给的精确值，别「顺手调得更顺眼」。⚠️ 这里一度是**「未来行程」那行小字**，2026-09-21 按用户口径撤掉——那是行程结构，卡底部要的是**行动信息**。
-    - 胶囊是 `home.bootstrap` 的**顶层独立字段** `releasePills`，**不要挂在 `stickyBanner` 下**：横幅受 `BANNER_WINDOW_HOURS`（1h）限制只覆盖眼下，挂进去就等于「一小时内有票要放才显示胶囊」，而设计稿要展示的恰恰是「后面还有哪几场」。
-  - ⚠️ **吸顶横幅文案不得带「还有 N 分钟」**（2026-09-21 修正）：提醒是在开票**前 N 分钟**发的，横幅讲的是**开票时刻本身**，混用会让用户以为「是不是已经提醒过我了」。`task.js` 的注释一开始就这么规定，代码却带上了尾缀；设计稿也确认无尾缀。`minutesLeft` 留在返回值里但不得进文案。
-  - ⚠️ **行程分段标题按 `weak` 取舍，不是一刀切删（`HOME-RULE-003`）**：顶部摘要卡只展示**最近即将发生或正在发生**的那一趟（`trips[0]`），所以——`trips[0]` 那一段不渲染标题行（与摘要卡重复）；**后面还没发生的行程必须渲染**（摘要卡没覆盖它，否则塌成一堆裸日期，读不出「这是独立的一段」）。判据 = 页面 `decorateTrip(t, i)` 算出的 `_weak = (i === 0)`，模板只绑 `wx:if="{{!weak}}"`；**不在模板里数 `wx:for-index`**（内置计数器加了 `wx:if` 会静默错位）。⚠️「未来行程」那行小字是摘要卡上的**指路**，**不是标题行的替代品**（没进度、无分段边界）——**这一条我踩过：一度把未来行程的标题也删了，用户当场指出。**
-  - 已连带废止且**不得复活**：行程分段标题的**吸顶**（`ts-spacer` 占位、组件 `sticky/stickyTop/headHeight`、页面每次滚动一轮 `boundingClientRect` 的 `measureSections`——留着就是空跑查询）、右侧「行程管理」入口。日期菜单键由 `tripId|visitDate` 简化为纯 `visitDate`——**页面 `onDateMenu` 与组件 `menuOpen` 两处算法必须逐字一致**，不一致的后果是点菜单不展开且不报错。
-  - ⚠️ **删除只到「天」为止（`HOME-RULE-004`）**：只保留「删单个行程项」与「删某一天」两层，**不提供整趟行程的删除入口**（`trip-section` 的「行程管理」入口已删，`add-trip?manage=1` 一并删除——那个参数 add-trip 从没读过）。空行程由服务端自动收尾，前端**不再报「行程已删除」**。行程项卡菜单文案是**「删除这天」**（删的是单个 `tripItem`，旧文案「删除行程」会让人以为整趟要没了）。三段动线见产品文档 `HOME-RULE-002`。
-- **生成时间线是纯预览**（`timeline.preview`）：不创建/改写行程，输入恒为「当前所选日期段 × 景点」。**读暂存清单**（`reminder_cart` 的 `__pending__` 那批，否则点了「加入清单」页面毫无变化、按钮像坏的）。行程在 `cart.commit` 时**才**创建/合并，各景点保留自己的日期段。
-  - **⚠️ 2026-09-21 起 `committedTripId` 是唯一读得到的既成状态，语义收窄为「只读这一趟」**：用户从首页某趟进行中行程点「+ 新增提醒」接着补景点时，`home.js` 把 `primaryTrip` 的 `tripId/startDate/endDate/spotIds` 带进 `add-trip`（**表单预填**，用户不必重输日期和已选景点），该 tripId 继而作为 `committedTripId` 传给预览，把**这趟**已有的 `trip_items` 标成 `COMMITTED`「已加入行程」禁选——他要往这趟补，就必须看得见已经有的项。**绝不回退成「扫全部行程」**（读别趟会把不属于本次的状态带进预览，正是纯预览化要修的 bug），也不读 `reminder_tasks`；按 `userId` 过滤。不传 = 与旧口径完全一致（`committed` 恒 false）。属于别趟的同 `(spotId, visitDate)` 仍显示可选，真重复加由 `cart.add` 跨行程查重兜底。
-  - ⚠️ **时间线的顶部状态与按钮态彻底分开（2026-09-25）**：顶部 `releaseState` 只有 `待开票 / 已开票 / 无需预约`，其中「已开票」文字用绿色；按钮 `status` 只保留 `SELECTABLE / IN_CART / COMMITTED`。`releaseAt <= now` **不再变成 BOOKABLE/FULL**，已开票项仍显示「加入清单」。`ENUM-003` 已删除 `BOOKABLE / FULL / WAITING / REMINDERED`，不要再从 `timeline.generate` 的旧实现或 mock 里补回来。
-  - ⚠️ **已开票项在清单里固定不提醒（2026-09-25）**：`cart.add` 服务端按 `releaseAt` 强制 `remindOn=false`，`cart.list` 下发 `remindLocked=true`，弹层显示「仅加行程·不提醒」且不渲染提醒下拉；`cart.updateRemindOn` 对这类项返回 1017。提交照常落 `trip_items`，但不建 `reminder_tasks`。预约入口仍只保留在首页行程项与推送详情。
-  - ⚠️ **“仅加行程不提醒”的降级提交（2026-09-25）**：`cart.commit({ cartId?, disableReminders?: true })`：`cartId` 用于首页挽回和景点页补录，只消费本次新增项并保留其他暂存草稿；`disableReminders` 表示仅落行程、不建任务、不触发公众号关注引导，只允许提交暂存清单，真实 `tripId` 同传返回 1010。`mock.js`、`API-契约.md`、`trip-items.test.js` 与 `trip-entry-flow.test.js` 必须同步。
-  - ⚠️ **行程清单按出行日管理（2026-09-25，PAGE-007）**：`cart.list` 的 `groups` 改为按 `visitDate` 分组，组头是 `M月D日 · 周X + 【第N天】`（复用首页日期标题样式）；同一天的需预约项和免预约项同组。提醒控件统一：可选是金边 Default，弱提醒可切 `仅加行程·不提醒`；免预约/已开票是同尺寸灰色 Disabled，不打开菜单。下拉面板渲染在 `scroll-view` 外并用 fixed 定位，避免旧版被裁切；底部条有清单图标、数量角标、统计和带图标的提交按钮。
-  - `home.bootstrap` 的每个 trip 条目回传 `spotIds`（按 `mine` 去重，**不是** `trips.spotIds`——正被删除的项也要算进标签）供上述预填；页面再走 `spots.batch` 取名字渲染标签。
-  - ⚠️ **这条闭环最容易漏的是「文案要跟着状态走」**：预填之后，「已在行程」成为常见路径，而 `cart.addAll` 只对 `SELECTABLE` 生效，于是「一键加入清单」会回一个**信息量为零的「已加入 0 项」**；`onInlineAddReminder` 原本不看返回值一律弹「已加入提醒清单」，用户在清单和预览里都看不到变化。两处现均按真实结果分文案（`added > 0` / `skipped.length > 0` / 其余）。回归断言在 `test/add-trip-flow.test.js` 第 8 节。
-  - ⚠️ **按钮文案 2026-09-24 统一为「清单」并去掉全部图标**（对齐 `UI/V.0.2-0919首页行程化改版-UI/32.png`）：`+ 添加提醒` → **加入清单**、`已加待选` → **已加清单**、`已在行程` → **已加行程**；免预约项仍是「加入行程 / 已加入清单」。真身 = `cloudfunctions/reminder/lib/timeline.js` 的 `buttonOf`，`miniprogram/utils/mock.js` 是镜像（**两处必须逐字一致**，漂移过好几次）。`API-契约.md` 那张按钮表与 `产品文档.md` 的 PAGE-005 已同步。
-    - ⚠️ **「已加清单」是可点的**（`enabled: true`，点开清单弹层），只是长相从金边按钮改成了**中性色状态胶囊**；「已加行程」才是纯状态（`enabled: false`，无描边）。别因为「状态不该能点」就把 `IN_CART` 一并锁死——那会堵掉看清单这条路。视觉改动落在 `add-trip.wxss` 的 `.event-btn-IN_CART / -COMMITTED`。
-  - ⚠️ **时间线不承载行程级信息**：底部原有一块「闭馆 / 已为你跳过」提示，现已整块删除（见上方「闭馆日」条与 `PAGE-005-RULE-002`）。判断新信息该不该上这个页面时，先问「用户能不能拿它做决策」——跳过哪几天是客观结果，不是可操作信息。
-- **清单是「提交前的暂存区」**：没提交就暂存着，提交后立即清空；`cart.add/list/clear` 的 `tripId` 可省（占位常量 `schema.PENDING_CART_TRIP_ID = '__pending__'`）。
-- 开发前以 `API-契约.md` 第 8 节（含 **8.7 2026-09-20 口径变更**）、产品文档 **§3.11** 与 `产品分析/2026-09-14-首页行程化改版决策.md` 为准。⚠️ 此前写的「产品文档 1.6」是错的，首页口径在 **§3.11**。
+## 任务路由
 
+开始任务时，先读本文件的硬门禁，再按改动范围读取对应内容：
 
-**数据准确性（2026-09-03 定稿，把「准确性」从运营表做成用户可见功能）**：
-- **闭馆数据校正**：`data/rules.json`（与部署副本/seed 一致；`mock.js` 由 `test/mock-mirror.test.js` 单独钉住）——**清华 `closedDays` → `["monday"]`，唯一限制就是周一闭馆，工作日可约**（2026-09-11 用户核实；`openDays` 已回滚，见下）；北大 `openDays` → `["saturday","sunday"]`（平时工作日不可约、仅周末及法定节假日；用白名单而非 `closedDays:["monday"]`，因为周一至周五都不可约，黑名单表达不了）；人民大会堂 `closedDays` → `["monday"]`（2026-09-11 用户核实）；首都博物馆 `closedDays` → `["monday"]`（2026-09-11 核实，原为 `tuesday`）；天坛/北海 → `[]` + `closedDaysNote`（公园本体周一正常开放，闭的是祈年殿/琼华岛等园中园）。
-- **⚠️ 别把「提前量不同」读成「不可约」**：清华双轨制文案「即时预约工作日最多提前 1 天 / 周末及节假日最多提前 7 天」，说的是**提前天数**差异，**不是**工作日不能约。曾据此错误推断清华也有周末白名单并写进数据，已回滚（2026-09-11）。**清华只有一个限制：周一闭馆。**
-- **`openDays` 白名单机制（2026-09-11 新增）**：`rules.json` 可选字段，语义 = **非空则接管 `closedDays`、不叠加**（叠加会得出空集）。稀疏字段，**当前仅北大**在用。判定收敛到单一入口 `cloudfunctions/reminder/lib/time.js` 的 `isOpenOn(rule, dayName)`，禁止在业务代码里自行 `includes`；`cloudfunctions/spots/index.js` 与 `miniprogram/utils/mock.js` 各有一份镜像（前端 mini program 无法 require 云函数）。消费方 5 处：`timeline.js` 的 `buildEvents` 与 `closedDaySkips`、`spots/index.js` 的 `computeReleaseStatus`/`computeEarliestDate`、`spot-hub.js` 的今日放票判定（星期、日期、已放票时刻统一用同一个北京时间视图，禁止混用设备本地时间）。文案侧：白名单景点被跳过的日子说「不可约」而非「闭馆」；`openDaysLabel(rule)` 四态 —— openDays 白名单 →「仅周六、周日开放」／closedDays 黑名单 →「周一闭馆」／`closedDaysNote` → 园中园型说明／否则「全年开放」（**不能**对白名单落回「全年开放」，那正好说反）。⚠️ 寒暑假北大改为每天开放，任何写死的规则表都会偏保守，靠 `bookingTips` 文案兜底。
-- **`closedDaysNote`（2026-09-11）**：纯**展示**字段，表达「园中园周一闭馆、公园本体全开」（天坛祈年殿、北海琼华岛）。**不要**因此把 `closedDays` 改成 `["monday"]` —— 那会让 App 对公园本体报「周一闭馆」而它其实开着，属假提醒（与人民大会堂那类错误同性质）。该字段**不参与** `isOpenOn` 判定，只影响标签文案。
-- **公告自动过期 `specialNoticeUntil`（2026-09-11 新增，规则）**：`specialNotice` 必须配 `specialNoticeUntil`（YYYY-MM-DD），过期后**自动**不再下发（`time.activeNoticeOf`，含当天有效；`spots/index.js` 与 `mock.js` 各镜像一份）。缺省 = 无到期日（向后兼容）。**起因**：毛主席纪念堂的闭馆公告有效期只写在自由文本里，8/31 到期却在 App 上继续顶红条显示「暂停对外开放」11 天。纪念堂 **2026-09-01 已正式恢复开放**，公告已下掉，`lastCheckedDate` 已更新。新增任何公告都要填这个字段。
-- **核验溯源**：`miniprogram/utils/verify.js`（新）`verifiedLabel()` 从 `lastCheckedDate` 派生「数据已核验·更新于X月X日」/「尚未复核，以官方为准」。未核验景点**自动**按 `lastCheckedDate` 为空判定（当前 0 个），不硬编码清单。
-- **规则详情可信区块**：全站统一为 `spot-popup` **浮窗**形态（景点 Tab 卡片、今日放票 Banner、首页/时间线景点名共用），内容含核验状态 +「数据·核验行」+「我要纠错」。⚠️ **2026-09-20 订正**：原文写的「完整决策走 `spot-rule`、轻量查看走 `spot-popup`」两套入口**已不成立**——`spot-rule` 已被浮窗取代、**全站无入口**（文件与路由保留但不再维护，见下方页面清单），不要再按两套入口描述去改代码。
-- ~~**闭馆日贯穿提醒流程**：`timeline.generate` 新增返回 `closedDaySkips`…`home.js` 合并进现有 `timelineClosedSpots`~~ **2026-09-24 已作废两面**：
-  ① **页面侧整块删除**：`timelineClosedSpots` 这个页面状态连同底部「闭馆 / 已为你跳过」提示块已移除（`add-trip` 的 wxml/js/wxss 三处）。起因是行程一跨周一就**每个景点一行**（跨 3 个周一 = 6 行恒定噪音），且与 2026-09-20 决策「同类信息不再在时间线下方单独堆叠成区」冲突——完整口径见 `产品文档.md` 的 `PAGE-005-RULE-002`，**别再加回来**。
-  ② 那句「`home.js` 合并」是**过时描述**：首页行程化（2026-09-20）后已经没有这回事。
-  ⚠️ **但云函数与 mock 的返回值一概不动**：`timeline.preview` / `timeline.generate` / mock 照常返回 `closedSpots` + `closedDaySkips`，措辞函数 `skipReasonOf` / `closedSpotNoteOf` 也照留（数据契约不缩水、已有测试继续钉住），要恢复提示时不必回头改云函数。
-- **集合权限澄清（重要）**：微信云开发里**云函数读集合不受集合权限限制**（走服务端管理员凭据），集合权限只管小程序端直接读写。所以「景点 Tab 加载失败」**不是**集合权限问题。
-- **`spot-hub` 加载误报修复（2026-09-13）**：`spots.list` 成功后只更新数据，再用 `setData` callback 单独执行 Banner/列表渲染；渲染异常只写 `console.error`，不会再被请求 catch 误写成 `loadFailed=true`。仍需真机/模拟器复测成功页，但结构上已区分“云端请求失败”和“拿到数据后的展示异常”。`spots`/`reminder` 云端已部署 + seed 后确认 `tsinghua closedDays=["monday"]`、`lastCheckedDate="2026-09-11"`。
+| 改动范围 | 必读 |
+|---|---|
+| 产品交互、页面文案、状态 | `产品文档.md` 对应当页；`.claude/rules/frontend.md` |
+| `miniprogram/**`、`test/**` | `.claude/rules/frontend.md`、`docs/engineering/frontend-pitfalls.md` |
+| 景点/规则数据、mock、seed | `.claude/rules/data-contracts.md` |
+| `cloudfunctions/**`、appid/cloudEnv | `.claude/rules/deployment.md`、`docs/engineering/current-state.md` |
+| API 域与数据模型 | `API-契约.md`、`docs/engineering/architecture.md` |
+| 提醒发送和 MISSED | `提醒推送排障清单.md`、`docs/engineering/domain-rules.md` |
 
-**景点库分层（2026-08 定稿，2026-08-26 按 data/spots.json + data/rules.json 复核；2026-08-31 难度 V1→V2 收敛，S 级 6→3；2026-09-15 V3 勘误重评：纪念堂、人民大会堂 2→3「较难约」、均移出弱提醒，见 `产品分析/2026-08-景点难度-版本记录.md`）**：26 个景点 = 需预约 19（3 S + 16 A）+ 免预约 7（B）（2026-08-14 按官方核实更新：首博免预约、八达岭/恭王府需预约；2026-08-26 复核：恭王府 difficultyScore=3→V2 降为 2，首博与孔庙国子监免预约且 difficultyScore=2）。**不新增 tier 字段**，用 `reservationRequired` 布尔表达「是否需预约」（行为开关：false = 免预约，可进入时间线和行程项、不进入提醒任务，卡片选择按钮文案为「加入行程」、标签行显示「随到随买，当前{旺季/淡季}门票…」= `cardDesc`，云函数/mock 按 GMT+8 季节计算）；S = 需预约且 difficultyScore≥4（3 个，首页 PAGE-001 / 添加提醒页的热门网格默认只放 S 级），A = 需预约且 ≤3（16 个，PAGE-003 可加入景点混搭、S 优先全部展示、其余用 A/B 补足凑满 10 个可换一批，见 spots.js mixBatch）。⚠️ **添加提醒页的热门网格另有 `EXTRA_HOT_IDS` 补充名单**（2026-09-24 用户口径，当前 = 纪念堂）：它**只放宽网格的选卡范围，不动任何难度数据**——纪念堂照实显示「较难约」，全站四处口径不变。别用改 `difficultyScore` 的方式让它进网格（那会连带改掉景点 Tab / spots 列表 / spot-popup / 运营 skill）。**可提醒 = 需预约且有放票时刻**（18 个，`buildCard` 派生 `remindable`）；需预约但无放票时刻（仅环球影城 huanqiu-yingcheng）不可选，卡片按钮位显示「随买随用」tag，不进时间线/清单/任务；弱提醒 = 需预约且 difficultyScore≤2 且可提醒（11 个：八达岭/恭王府/天安门广场/军事博物馆/自然博物馆/考古博物馆/科技馆/美术馆/工艺美术馆/慕田峪/天文馆，`weak` 字段），标签行显示「提前N天 HH:MM放票 · 票量充足，无需卡点」。B 层 difficultyScore 不统一（首博、孔庙国子监为 2，其余为 1），UI 不渲染难度标签。详情见 `产品分析/2026-08-景点库扩容调研与分层方案.md`。
+路径规则由 Claude Code 按匹配文件自动加载；根文件不复制完整机制。
 
-- 权威需求 = `产品文档.md`（V1.0 基线，编号化条目）。视觉规范 = `figma_design.md`（第 4 节视觉基准宽度 402px，第 5 节 V1 用「页面内自绘导航」）。
-- 页面：`home`（**行程状态墙**：授权预警 + 吸顶横幅 + 摘要卡 + 多行程纵向分段 + 历史折叠；单形态，无双 Tab、无创建表单）/ `add-trip`（**新增提醒**：表单 + 纯预览时间线 + 提交清单，2026-09-20 从首页剥离）/ `spots`（景点选择）/ `setup`（设置提醒：提前量/授权提交）/ `profile`（我的）/ `profile-edit`（编辑资料：头像/昵称/手机号）/ `webview`（官方渠道外链兜底）/ `notify-settings`（提醒设置=系统通知权限 + 放票提醒授权额度）/ `feedback`（意见反馈：建议/Bug）/ `spot-correction`（信息纠错：选景点+纠错类型）。原生 `tabBar` 已移除，用 `components/tabbar` 自绘导航。（变更：2026-09-14 删除遗留页 `pages/timeline`；**2026-09-20 首页行程化**——首页创建表单迁往新页 `add-trip`，双 Tab 与提醒任务列表整体移除；`pages/spot-rule` 已被 `spot-popup` 浮窗取代、**已无入口**，文件与路由保留但不再维护）
-- 数据层：`utils/mock.js`（内存 mock 后端）+ `utils/api.js`（云函数调用封装，按 `USE_MOCK` 自动切换）。**2026-08-19 起已联调真实环境：`USE_MOCK=false`，cloudEnv=cloud1-d9g9f4hja396d6e92（填在 `app.js`；**2026-09-13 换 AppID 到 `wx05c160a589b97d76` 后新建**，旧环境 `cloud1-d5givb65417e3b8c9` 属旧号已弃用）。回退 mock 开发时改回 true。**
-- ~~**首页 Plan A 双 Tab（2026-08-26）**~~ **已于 2026-09-20 废弃**：首页行程化后只有行程状态墙一种形态，双 Tab 与 `homeMode` 形态判定整体移除（见上方当前状态与 `API-契约.md` §6）。
-- **首页加载与行程规则（2026-08-31；2026-09-14 更新合并口径；2026-09-20 改 V2）**：首页数据走 `reminder.home.bootstrap` **V2**——一次返回 `serverNow / primaryTripId / scrollTargetId / trips[{progress, items[]}] / history / stickyBanner / hotSpots`，**不再返回任务分组**。行程按 `endDate` 在**读取时**拆进行中与历史，不依赖定时任务；结束日当天仍属进行中（用户还能回看补标），次日归入历史。
-  - ⚠️ **首页不再调 `task.list`，因此读取侧的状态兜底也换了地方**：`sweepOverdue` 原本只由 `task.list` 调用，现在由 `home.bootstrap` 自己补一次（幂等）。不加这一步，一旦 notifier 定时链路出问题，过期任务会静默显示成「待提醒」。
-  - `trip.create` **恢复自动合并**（见下方 TRIP-RULE-002 专条），但**调用时机挪到 `cart.commit`**——纯预览化后「生成时间线」不再建行程。
-  - mock.js 亦有 V2 `home.bootstrap` handler（与云端对齐，由 `test/mock-mirror.test.js` 交叉断言）。
-- **前端接口契约**：`API-契约.md`（从云函数源码提取，覆盖 spots / reminder(trip/timeline/cart/task/user) / feedback(意见反馈/信息纠错) / ics-generator / notifier 的 action、入参、出参、错误码）。页面开发前必须对照此文档，不要凭空猜接口。
+## 工程事实
 
-## 技术栈
-- 前端：微信原生 + Vant Weapp 1.11（页面 `usingComponents` 里按需注册，如 `van-icon` / `van-loading`）+ 自绘组件（`components/` 下 tabbar / spot-popup / cart-popup / date-range-picker / svg-icon）
-- 后端：腾讯云开发，云函数 6 个：`reminder`（trip/timeline/cart/task/user 全模块，核心逻辑；2026-08-31 新增 `home.bootstrap` 聚合、行程按 startDate 排序；2026-09-14 恢复 `trip.create` 自动合并 + `spots` 景点日期段）、`spots`（查询+放票状态实时计算）、`feedback`（意见反馈/信息纠错，集合 `feedbacks`）、`scraper`（抓取，规则推算）、`notifier`（推送）、`ics-generator`（.ics 生成；2026-08-14 起日历通道下线，云函数保留但前端无调用）
-- 抓取：Playwright + stealth，方案见 `data/scraping-plan.md`，未部署
-- 运行时：当前 `USE_MOCK=false` 走真实云函数（见上方「数据层」）；回退 mock 开发时改回 true
+- 前端：微信原生小程序 + Vant Weapp + 自绘组件。
+- 后端：微信云开发；核心云函数 `reminder`，另有 `spots`、`notifier`、`feedback`、`scraper`、`ics-generator`。
+- 首页数据由 `reminder.home.bootstrap` 聚合；`trip_items` 是首页、票务结果、提醒关联和删除动线的事实来源。
+- 模型关系：`trips -> trip_items -> reminder_tasks`；`reminder_cart` 只是提交前暂存区。
+- 首页、行程、清单、提醒的完整规则见 `docs/engineering/domain-rules.md`。
+- 所有业务日期和放票时间均按北京时间 GMT+8。
 
-## 目录与约定
+## 数据真身
+
+- 景点真身：`data/spots.json`
+- 规则真身：`data/rules.json`
+- 云函数部署副本：`cloudfunctions/reminder/data/`
+- mock 镜像：`miniprogram/utils/mock.js`
+- 运营 skill 参考：`.codex/skills/beijing-spot-posts/references/spots.json`
+- `data/seed/*.seed.json` 是测试夹具，不是业务真身，不手改
+
+改数据后先读 `.claude/rules/data-contracts.md`，再执行：
+
+```bash
+python3 scripts/sync-seed-copies.py
+npm test
 ```
-miniprogram/pages/    页面：home / add-trip / spots / setup / profile / profile-edit / notify-settings / feedback / spot-correction / admin-feedback（`timeline` 已于 2026-09-14 删除；`spot-rule` 已无入口）
-miniprogram/components/ 自绘组件：tabbar / spot-popup / cart-popup / date-range-picker / svg-icon / spot-card
-  行程状态墙专用（2026-09-20 新增）：trip-summary-card（摘要卡）/ release-banner（吸顶横幅）/
-  trip-section（两级分段容器）/ trip-card（行程项卡）/ result-sheet（标记结果）/ date-picker-sheet（约其他日，**纵向滑动切月**）/
-  snackbar（4 秒撤销条）
-miniprogram/images/spots/  26 张景点图（文件名 = spotId，与 mock.js 的 SPOTS 对齐；新 16 张为 Wikimedia Commons 真实照片）。**图片格式必须是 jpg/png**：微信 `<image>` 不渲染本地 webp（webp 属性只支持网络资源），2026-08-18 已由 webp 全量转回 jpg/png（500px q75，包体 ~1.16MB）
-miniprogram/images/avatars/ 6 张无感登录默认头像 default-{1..6}.png（Python 生成的暖色底+白色剪影占位图）
-miniprogram/images/icons/  56 个 SVG 图标（预填色对齐设计 token；红底白字场景用 `*-white` 变体）
-miniprogram/utils/    api.js（云函数封装）/ mock.js（内存 mock 后端）/ util.js（日期等工具）
-cloudfunctions/      云函数，一函数一目录：reminder / spots / feedback / scraper / notifier / ics-generator
-data/spots.json      26 个北京景点（需预约 19 + 免预约 7），difficultyScore 取值 {1,2,3,4,5}，含 reservationRequired/aliases
-data/rules.json      对应放票规则，含 closedDays/openDays/closedDaysNote/specialNotice(+Until)/releaseFrequency
-cloudfunctions/reminder/data/  spots.json/rules.json 部署副本（云函数独立打包，改 data/ 时需同步这份）
-scripts/export-spots-table.py  从 data/spots.json + data/rules.json 导出 `产品运营/{MMDD}全量景点信息表.md`（可约日/难度/放票/核验日期）。改数据后重跑，勿手改表
-scripts/export-spots-xlsx.py   同源导出的 Excel 版 `产品运营/{MMDD}全量景点信息表.xlsx`（4 Sheet：全量景点表 / 按开票时间聚类 / 口径说明 / 临时公告），带冻结表头、筛选、层级底色；导出前自动比对部署副本，不一致会警告。需 openpyxl
-scripts/sync-seed-copies.py    `data/` 真身 → `data/seed/` 夹具同步（拆包装成裸数组）。`--check` 只检查。改数据后跑一次
-UI/V.0.1/            页面导出图 01~11.png（对应 PAGE-001~011，缺 06）
-产品分析/ 竞品资料/    调研素材，非开发依据
-```
-- 字段命名 camelCase。全系统时间按北京时间 GMT+8（`产品文档.md` TIME-RULE-001）。
-- **⚠️ 景点规则的改动必须先经用户确认（2026-09-11 定规）**：放票时刻、提前天数、闭馆日、可约窗口、票务、核验日期等**任何规则值**，都不允许依据资料置信度自行判定填写。发现数据疑似有误 → **报告差异 + 给建议 + 说明需要确认什么**，然后停下来等回复；不要先改后问，也不要因证据「置信度高」就替用户拍板。用户说「已核验」≠ 授权推断具体值，缺的值要问、不要猜。反例：曾据一份标 VERIFIED/置信度「中高」的交叉验证报告自行断定毛主席纪念堂存在「当日可约」政策，该政策**从未存在**；且那次核验本身是在该馆闭馆维修期间做的，封闭期规则未必等同恢复后规则。**保守优于猜测**：宁可保留旧口径并标注待核，也不要基于不完整证据改成「看起来更合理」的新值。
-- **选中态约定**（重要）：WXML 数据绑定不支持 `indexOf` 等数组方法调用（静默失效 → 点了不变）。选中态需在 JS 侧算成 `selected` 布尔字段（用 `util.markSpotsSelected(list, ids)`），WXML 只绑 `{{item.selected}}`。同理，setData 必须传**新数组/新对象引用**，不能原地 `push`/`splice` 后传回原引用。
-- **提醒设置 = 系统通知权限 + 订阅消息额度健康度（2026-08-14；2026-09-25 统一入口；2026-09-26 更名并接额度预警；2026-09-27 V0.3 改为硬闸门）**：两个前置项 = ①微信系统通知权限（`wx.getAppAuthorizeSetting`）②小程序订阅消息授权（`wx.getSetting` 的 `scope.subscribeMessage`）。个人中心「提醒设置」行右侧优先展示权限三态（未开启 / 部分开启 / 已开启），权限齐全后展示额度健康度（授权即将用完 / 还差 N 次授权 / 授权已用完 / 已开启），统一走 `notify.getReminderHealth()`。内页 `pages/notify-settings` 上下排列两项授权，并展示「未来还有 N 条提醒待发送，当前已授权 M 次」；有空缺时暂只提供「续收 +1 / 微信授权设置」；批量补齐逻辑保留但不展示，下一期接付费功能。**PAGE-008 设置提醒页是硬闸门：不调用 `confirmReminderAccess()`，也不提供“仅加行程不提醒”旁路；额度不足时主按钮禁用，唯一动作是用户主动补齐 `N` 次授权，补齐后主按钮才可提交。`confirmReminderAccess()` 的 `trip-only` 分支只保留在首页挽回“约其他日”和景点页直设提醒等轻量入口；任一入口都不得静默提交或假报“提醒已设置”。** 微信订阅消息是「一次性订阅」（每次授权=可发 1 条），模板注册表在 `miniprogram/utils/notify.js` 的 `SUBSCRIBE_TEMPLATES`（当前只有「放票提醒」一个，「活动开始通知」公共模板，编号 515，**字段 = 活动名称 `thing4` / 活动时间 `date5` / 温馨提示 `thing7`**）；notifier 兜底常量与 `SUBSCRIBE_TEMPLATE_ID` 环境变量保持一致。**⚠️ 模板 ID 随 appid 走**：2026-09-13 换号后新模板 ID = `V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q`，**三处必须同步**——`miniprogram/utils/notify.js` 的 `SUBSCRIBE_TEMPLATES`、`cloudfunctions/notifier/index.js` 的 `TEMPLATE_ID`、`cloudfunctions/reminder/index.js` 的 `DEFAULT_SUBSCRIBE_TEMPLATE_ID`；漏改任意一处会按旧模板记账，发送时报 `40037`（template_id 不属于该 AppID）。短信提醒下个迭代上线，页面仅占位说明。
-- **订阅消息台账（2026-09-11 按模板记账 + 自愈；2026-09-16 抽出真身 + 补台账自愈）**：`users.subscribeQuotas[templateId]` 是唯一按模板计数的本地台账，`users.subscribeQuota` 仅作旧数据/页面的总数兼容；**它不是微信真实余额**（微信不提供余额查询接口）。`reminder.subscribe.add/get` 按 `templateId` 增查；`notifier` 发送成功只扣对应模板，微信返回 `43101`（未订阅/已拒收/次数耗尽）时对应模板清零并记录 `subscribeLastError/At`。2026-09-11 排查确认：9/5 前成功发送 22 条，9/7 起持续 `43101`，本地却仍显示 19 次，导致不再触发授权、任务最终 MISSED。
-  - **真身位置（2026-09-16）**：额度读写与自愈判定统一在 `cloudfunctions/reminder/lib/quota.js`（`DEFAULT_SUBSCRIBE_TEMPLATE_ID` / `subscribeQuotaOf` / `totalSubscribeQuota` / `shouldHealQuota` / `healSubscribeQuota`），`reminder/index.js` 的内联副本已删除、改为 require 它。⚠️ `cloudfunctions/notifier` 是**独立部署单元**，无法 require 该文件，故 `shouldHealQuota` + `LOCAL_FAILURE_HINTS` 在 notifier 与 `miniprogram/utils/mock.js` 各有一份同规则副本；**三份必须逐字一致**，由 `test/quota-heal.test.js` 第 1 节（对同一组输入交叉断言）与第 4 节（源码级比对关键词清单）双向钉住，改一处必须改三处。
-  - **台账自愈（方案 2，2026-09-16）**：任务判为 MISSED 且本地台账仍 > 0 时清零该模板额度 —— 语义是「本地记着有额度、实际却发不出去」= 台账在骗人，清零让 UI 诚实并让下次提交重新走授权。⚠️ **必须带 `lastSendError` 前置条件**：为空 = 从未尝试发送（定时器没建 / 索引缺失 / 云函数没部署）= **链路故障，绝不清零**（微信侧额度依然有效，清了等于白丢用户已授权的额度）；失败原因是本地配置/网络（`未配置` / `access_token` / `超时` / `empty response` 等 `LOCAL_FAILURE_HINTS`）时同样不清零。落点：`notifier` 的 `sweepMissed`（定时主路径，返回 `{marked, zeroed}`）、`reminder/lib/task.js` 的 `sweepOverdue`（读取时兜底，`task.list` 传入 `userId`）、`mock.js` 的 `task.list` 镜像。连续清零 ≥ 3 次打 `quota-auto-zero-repeated` 告警（自愈反复触发 = 模板/发送链路有系统性问题，不要静默）。
-- **订阅消息发送链路（2026-08-21 修复，2026-09-11 运行时复核）**：定时触发不能依赖 `cloud.openapi`，改走微信服务端 HTTP `POST /cgi-bin/message/subscribe/send`（access_token 缓存 + 40001/42001 重试）。环境变量为 `WX_APPID` / `WX_APPSECRET` / `SUBSCRIBE_TEMPLATE_ID`；`notifier` 线上超时必须保持 **60 秒**，不能是默认 3 秒（现已通过云开发控制台改为 60）。提醒设置页当前只有一个模板，不展开多模板 UI；有缺口时暂时只保留「续收 +1 / 微信授权设置」；批量补齐入口隐藏到下一期付费能力。**⚠️ 文案规则（2026-09-16 定规，同日按用户反馈二次修订）**：① 绝不写「可提醒 N 次」——本地台账只是按「授权 +1 / 发送成功 -1 / 43101 清零」推测出来的计数，必然漂移，写「可提醒」等于向用户承诺「这 N 次一定会送到」，而实际可能因拒收、换模板等原因送不出去；② 说明行必须是**客户语言**，不出现「本地记账」「微信侧余额不可查」这类技术/产品侧词汇；③ 动态摘要只能写「当前已授权 M 次，未来还有 N 条提醒待发送，建议补到 X 次」这类数量与换算关系。另：用户完成一次**真弹窗**授权（`silent === false`）后调用 `notify.hintKeepAlwaysChoice()` 提示一次「勾选总是保持以上选择以后就不用再点」，用 `subscribeKeepHintShown:<templateId>` 的 storage 标记保证**一辈子只提示一次**（一次性成本换永久安静，也是「一次提交 N 条静默补满」能跑起来的前提）。
-- **⚠️ 订阅额度「需求量」算法（2026-09-16 定规，纠正 09-15 的误判）**：微信规则是「一次调用 `wx.requestSubscribeMessage` = 一次授权 = 1 条额度」，**要攒 N 条只能调 N 次**；弹窗是否出现取决于用户有没有勾过「总是保持以上选择，不再询问」——**勾过则微信不再弹窗、静默按「允许」记账（真机确认：静默连调每次确实 +1 条，可一次补满 N 条）；没勾则每次调用必弹一次窗，小程序端无法绕过**。三条已核实的事实：① **`2026-09-15` 曾据截图判定「当前模板弹窗里没有这个勾选项」，该结论错误**——真机（IMG_6888）确认弹窗含「总是保持以上选择」，且微信授权设置页里有对应的「订阅消息-接受通知」开关；② 「总是保持」**永久有效**（绑定 微信账号 × 小程序 × templateId），不存在 N 天过期、也不随小程序关闭重置，清缓存/重装微信都不重置，只能去设置页手动改；③ 该开关**不是我们代码开启的**，是用户勾「总是保持」或点「允许」时由微信记下的，微信默认状态是「询问」。**核心公式（曾经算错、务必守住）：本次提交所需额度 = 将设提醒的清单项数 × 提前量个数**——任务数 = 清单里「需预约且勾了提醒」的项数（`reminder/lib/task.js` 的 submit），每条任务按 `offsets` 逐个发消息（`notifier` 的 `collectDue`）。⚠️ **历史 bug**：`pages/setup` 曾只传 `offsets.length`，清单里 6 个景点时也只补 1 条，第 2 条起全部 `43101`「未送达」——这正是「剩余次数还有、实际却提醒不了」的真正根因（不是台账漂移）。现已改为 `notify.getReminderQuotaNeeded(offsets.length)`，补不满时由统一选择面板决定去补授权或仅加行程。实现约束：`notify.requestSubscribeBurst(times)` 只在已勾「总是保持」时静默连发（`MAX_BURST = 50`，覆盖景点库上限 26 × 至少 1 个提前量），**未勾选时最多弹 1 次**（绝不连环弹窗）；提醒设置页另有 `this.renewing` 防连点锁（含 10s 兜底解锁）。**不要为了「少弹窗」改成串行连发**——那只会让用户连吃 N 个弹窗。`ensureSubscribe(needed)` 已按台账缺口补齐并返回 `shortfall`，调用方必须传**真实需求量**、且必须处理 `shortfall > 0`。回归断言在 `test/subscribe-quota.test.js`（同时钉住云端真实消耗条数与前端补齐条数两侧）。
-- **⚠️ 提醒「已过期却显示待提醒、且没有任何提示」= 状态机被静默跳过（2026-09-14 定规）**：`REMINDER-RULE-004` 的常规落库路径是 `notifier.sweepMissed`，它依赖**三件事同时成立**——① 每分钟定时触发器已创建并启用；② `reminder_tasks` 有 `backendStatus + releaseAt` 复合索引；③ `WX_APPSECRET` 环境变量已配。任缺一项，任务就永久卡在 `WAITING`。**旧版 `tick` 三步串行**，`scanAndSend` 因缺索引抛错时 `sweepMissed` 根本不会执行，「没发出去」和「没标 MISSED」同时发生。现已三层防护：① `notifier` 的 `tick` 三步各自 try/catch（单步失败不再连带）；② `reminder.task.list` 读取时 `sweepOverdue` 兜底补判并落库（幂等，写库失败也收敛返回值）；③ 前端再兜一次——**旧版**是 `decorateTaskGroups`（已随任务列表移除），**2026-09-20 起**由 `lib/item.js` 的 `reminderStateOf` 在装饰行程项时收敛（同样按「已过 releaseAt 仍是 WAITING → MISSED」判定），页面不重推。**排障顺序**：先看 `notifier` 云函数日志有没有 `[notifier] tick` 与 `errors`，再看控制台触发器与索引，最后看 `WX_APPSECRET`。诊断力方面：发送失败时 `markResult` 会把真实原因写进 `lastSendError`，`sweepMissed` 优先用它当 `missedReason`，不要改回写死的笼统文案。**`REMINDER-RULE-005` 已于 2026-09-20 重写**：用户不再对提醒任务直接操作，任务随其所属**行程项**一并删除（含 TRIGGERED）。旧口径「已送达的提醒保留为历史、不许删」与收束动线冲突——用户标了「抢到了」要删备选，却因为那条提醒已送达而删不干净，是说不通的。后台仍按 14 天自动清理。排障步骤见根目录 `提醒推送排障清单.md`。
-- **⚠️ 行程自动合并（TRIP-RULE-002；2026-09-14 恢复，2026-09-23 收敛为「同城即合并」）**：判定只有一条——**同城市就合并**（云端 `cloudfunctions/reminder/lib/trip.js` 的 `canMerge` 就是 `(a.city||'') === (b.city||'')`）。**不再按日期间隔拆分**（旧口径「有交集或首尾相接」已于 2026-09-23 取消：主客群是外地游客、单次出行基本连续，间隔拆分只会让首页冒出多个「北京 X.X-X.X」分段、并带来 `canMerge + collapse + gap` 那一堆 bug；北京本地/多次访客频率极低，不值得维护）。合并后日期取并集，`collapse` 滚雪球式反复合并。**合并的是行程（任务分组），不是景点**——每个景点保留自己被选中时的日期段，落库为 `spots: [{spotId, startDate, endDate}]`，`spotIds` 降级为 `spots` 的去重派生字段（想去列表 / 批量查询用）。这样「北京 9.23-9.24 选故宫 + 北京 9.25-9.26 选国博」合并后：行程 = 北京 9.23-9.26（一个 Tab），时间线 = 故宫 9.23/9.24 + 国博 9.25/9.26，**不会**冒出「故宫 9.25」「国博 9.23」——这正是 08-31 取消合并想避免的问题（`timeline.generate` 拿「整段 × 全部景点」做交叉积会让事件凭空膨胀；`cart.addAll` 按 Tab 批量加时会把该景点整段的天全加进清单），靠 `spots` 段解决，不必再牺牲分组。要点：① 被吞并行程的任务与提醒清单自动改挂到存续行程（`tripId` 复用第一个被合并行程，用户无感）；② 老数据（只有 `spotIds`）由 `normalizeSpots` 按行程整段回退，与合并前口径等价，**线上行程无需数据迁移**；③ `adjustTripId`（「在当前内联时间线的行程上重新生成」）＝ 该行程景点段按本次输入**替换**（非并集），其余并入段保留。实现：`cloudfunctions/reminder/lib/trip.js`（`canMerge`/`mergeRange`/`makeSpotSegments`/`normalizeSpots`/`mergeSpots`/`collapse`/`create`/`updateSpots`/`updateRange`）、`lib/timeline.js`（`buildEvents` 按该景点的 `seg` 生成）、`miniprogram/utils/mock.js` 镜像、`pages/home/home.js` 的 `onGenerateTimeline`（单次 `trip.create`，**已删除**与合并对着干的 `createTripStrict`）。回归断言在 `test/flow.test.js` 第 1 节与第 12 节（第 12 节专门证明「合并后时间线不膨胀」）。⚠️ 易错点：`mergeRange` 只回 `{startDate,endDate}`，`mergeSpots` 里必须把 `spotId` 补回去，否则段会丢景点标识。
-  - ⚠️ **测试夹具想造「两趟行程」只能换城市（2026-09-24 定规）**：同城即合并之后，「隔开若干天」再也分不出第二趟行程了。`test/flow.test.js` 第 2/8/9 节、`test/mock-mirror.test.js` 第 3/5/8 节原先都靠「+14 天 / +20 天 / 换个日期」制造独立行程，收敛后全部并成一趟——症状是计数断言从 2 变 1、时间线冒出交叉积（第 2 节的 B 层免预约用例一度算出 25 条而不是 9 条）。这些夹具现均改为 `city: '上海'`。另外同城合并后**同一份清单属于同一趟行程**，跨小节的守卫数据（如第 1 节那条「防止行程被孤儿清理」的清单行）会跟着进后面的 `cart.commit`，需要显式 `cart.clear` 或把 `remindOn` 写死。
-  - ⚠️ **mock 的 `canMerge` 曾长期停留在旧口径**（2026-09-24 修）：云端 09-23 就收敛了，`miniprogram/utils/mock.js` 还留着「交集或首尾相接」。表现是**模拟器里分两段、真机上并成一段**，而两边单测各自都是绿的（各测各的分支）。镜像漂移就是这么发生的——改 `canMerge` 必须两边一起改。——每个景点保留自己被选中时的日期段，落库为 `spots: [{spotId, startDate, endDate}]`，`spotIds` 降级为 `spots` 的去重派生字段（想去列表 / 批量查询用）。这样「北京 9.23-9.24 选故宫 + 北京 9.25-9.26 选国博」合并后：行程 = 北京 9.23-9.26（一个 Tab），时间线 = 故宫 9.23/9.24 + 国博 9.25/9.26，**不会**冒出「故宫 9.25」「国博 9.23」——这正是 08-31 取消合并想避免的问题（`timeline.generate` 拿「整段 × 全部景点」做交叉积会让事件凭空膨胀；`cart.addAll` 按 Tab 批量加时会把该景点整段的天全加进清单），现在靠 `spots` 段解决，不必再牺牲分组。要点：① 被吞并行程的任务与提醒清单自动改挂到存续行程（`tripId` 复用第一个被合并行程，用户无感）；② 老数据（只有 `spotIds`）由 `normalizeSpots` 按行程整段回退，与合并前口径等价，**线上行程无需数据迁移**；③ `adjustTripId`（「在当前内联时间线的行程上重新生成」）＝ 该行程景点段按本次输入**替换**（非并集），其余并入段保留，仍会与其它相交/相接行程继续合并；日期与本次输入不相交/相接时按「新建行程」处理。实现：`cloudfunctions/reminder/lib/trip.js`（`canMerge`/`mergeRange`/`makeSpotSegments`/`normalizeSpots`/`mergeSpots`/`collapse`/`create`/`updateSpots`/`updateRange`）、`lib/timeline.js`（`buildEvents` 按该景点的 `seg` 生成）、`miniprogram/utils/mock.js` 镜像、`pages/home/home.js` 的 `onGenerateTimeline`（单次 `trip.create`，**已删除**与合并对着干的 `createTripStrict`）。回归断言在 `test/flow.test.js` 第 1 节与第 12 节（第 12 节专门证明「合并后时间线不膨胀」）。⚠️ 易错点：`mergeRange` 只回 `{startDate,endDate}`，`mergeSpots` 里必须把 `spotId` 补回去，否则段会丢景点标识。
-- **⚠️ 模块拆分时最容易漏的是 `require`，而纯函数测试抓不到（2026-09-20 踩过）**：`task.submit` 改为在提交时调 `trip.create`（纯预览化后行程挪到这一刻才建），但 `lib/task.js` 没加 `require('./trip')` —— 结果是**提交清单必炸**（`ReferenceError: trip is not defined`），而当时 17 套测试全绿：没有一套走「预览 → 加暂存清单 → 提交」这条完整闭环。**教训**：给某个 lib 新增跨模块调用后，必须补一条走**真实入口**（`exports.main` 或顶层业务函数）的端到端断言，纯函数单测覆盖不到模块级依赖。回归断言已补在 `test/timeline-preview.test.js` 第 14 节。
-- **⚠️ 推导类函数不要偷偷读真实时钟（2026-09-20 踩过）**：`time.todayStr()` 原签名不接受参数、直接 `new Date()`，于是 `item.isItemEnded(visitDate, nowTs)` 里的 `nowTs` 被忽略，同一个「现在」算出了自相矛盾的结论；`recovery.candidateOf` 的「已过日期」过滤同样中招。**现在 `todayStr(at)` 支持传入时刻**，推导代码一律把同一个 `nowTs` 传进去。写测试时钟控的用例能立刻暴露这类问题。
-- **⚠️ 行程是否为空一律看 `trip_items`（2026-09-20 定规，决策文档第六节）**：不能用「还有没有提醒任务」判定——只有免预约景点、没设提醒的行程会被误判成空壳删掉，而那恰恰是本次改版要补齐的内容。三处入口都按此改：`trip.removeIfEmpty`（读取时兜底）、`purgeIfNoItem`（主动删除级联，替代原 `purgeIfNoTask`）、`notifier.cleanup` 的定时级联。
-  - ⚠️ 但这**不代表可以把清单从保留条件里去掉**：`trip.removeIfEmpty` 仍要求任务、行程项、清单**三样都空**才删。清单里有未提交的行 = 用户正在「添加提醒」页挑日期，把清单从条件里去掉会连带清掉草稿。
-  - 主动删除级联（`purgeIfNoItem`，由 `task.remove` / `task.clear` / `admin.cleanup` 调用）看「无任务**且**无行程项」，不看清单——用户明确删掉内容后，空的行程不该继续占着位置。
-  - `trip.remove` 是显式删除入口（行程 + 任务 + 清单 + 行程项）。回归断言在 `test/flow.test.js` 第 10、11 节与 `test/trip-item-actions.test.js` 第 17 节。
-- **登录态 = 无感登录（2026-08-24 重构）**：进小程序即自动建号，无任何弹窗。`user.profile` 首次调用惰性创建用户并自动生成资料——昵称 = 「用户」+ 6 位随机字符（小写字母+数字，去易混淆 0/o/1/l，允许与他人重复）+ 随机默认头像（主包内 `images/avatars/default-{1..6}.png`，前端 `<image>` 直接渲染）；旧数据（昵称为空或「游客」）在后端惰性迁移补齐，用户无感知。微信**不开放**程序化读取真实头像/昵称（`wx.getUserProfile` 已回收），故「默认头像」= 生成的占位图。用户资料编辑走独立页 `pages/profile-edit`：**我的页点头像或昵称进入**（2026-08-26 起去掉昵称右侧编辑 icon），可编辑 ①头像（整行 `button open-type="chooseAvatar"` 调微信原生头像选择，不再自绘选择面板；保存时上传云存储 `avatars/{ts}_{rand}.{ext}` 换 fileID）②昵称（`input type="nickname"`，键盘上方可一键填微信昵称）③手机号（选填，须为大陆 11 位格式）。编辑页输入框组下方无提示文案。`user.updateProfile` 写 `nickname/avatarUrl/phone/profileUpdatedAt`，昵称空 → 1010，手机号格式错 → 1010。mock 的 `user.profile` 初始化即自动生成资料，同步可改。**原 `components/login-sheet` 已删除（2026-08-24 无感登录重构后无引用）；`images/icons/edit.svg` 仍被 `spot-popup` 与 `spot-rule` 引用，不是删除候选。**
-- **意见反馈 / 信息纠错（2026-08-14）**：走 `feedback` 云函数 + `feedbacks` 集合（TABLE-008，type=feedback|correction）。意见反馈只保留 建议(suggestion)/Bug(bug) 两类；信息纠错 = 选景点（`spots.search`）+ 纠错类型（RELEASE_TIME/RELEASE_RULE/OPEN_TIME/TICKET_PRICE/ADDRESS/CLOSED_DAYS/OTHER）+ 描述。提交后 Toast「感谢反馈，我们会尽快核实」。错误码 1020=内容为空。V1 不做截图上传与积分奖励。**反馈管理页（2026-08-19）**：隐藏页 `pages/admin-feedback`（我的页长按用户信息卡进入），调 `feedback.adminList`/`feedback.adminUpdateStatus`（管理员改 OPEN/PROCESSED/IGNORED），管理员白名单在 `cloudfunctions/feedback/lib/schema.js` 的 `ADMIN_OPENIDS`（openid 从控制台 feedbacks 记录 userId 取，改后需重新部署）。
-- 难度标签只有一处真身：`spots` 云函数的 `computeDifficultyLabel`（≥4 极难约 / =3 较难约 / ≤2 容易约，同 TAG-RULE-001），mock 里也有同逻辑。页面直接渲染 `difficultyLabel` 即可，不要自己再算。
-- **预约贴难度另有运营侧真身**：`.codex/skills/beijing-spot-posts/references/spots.json` 的 `flames`（3 = 🔥🔥🔥），不会自动读取 App 的 `difficultyScore`。改动任一景点难度时必须同步 **App 三份数据**（`data/spots.json`、`cloudfunctions/reminder/data/spots.json`、`miniprogram/utils/mock.js`）与该 Skill 数据；生成运营贴前先核对两套值，避免“App 已改、帖子没变”。
-- **`data/seed/` 是测试夹具，不是第四份真身（2026-09-17 定规）**：`admin.seed` 云函数读的是**随函数打包的** `cloudfunctions/reminder/data/*.json`，**不读** `data/seed/`；全仓库也**没有任何代码** require 这两个文件——`data/seed/*.seed.json` 只被 `test/opendays.test.js` 当作「独立副本」参与一致性断言。因此**它不需要跟改动同步**：改数据时不管它，跑 `npm test` 时由 opendays 断言逼你重新生成。原 CLAUDE.md 的「四份数据必须同步」是错的——`data/seed/spots.seed.json` 曾长期缺 `audienceTags`（26/26 条）无人发现，因为该断言的 `FIELDS` 清单只覆盖 rules 的 8 个字段、从没比过 spots。
-  - 重新生成：`python3 scripts/sync-seed-copies.py`。⚠️ **不是逐字拷贝**——真身带包装键（`{"spots":[...]}` / `{"rules":[...]}`），夹具必须是**裸数组**（`opendays.test.js` 直接 `forEach`/下标访问）；脚本做的是拆包装 + 规范化序列化，末尾还会复验形态。曾误按逐字拷贝写，把夹具变成对象，会当场炸掉该测试。**不要手改 seed 文件**，它是派生物。改完 `data/` 的两份真身后跑一次该脚本，再跑 `npm test` 复核。opendays 的一致性断言已从「只比 rules 的 8 个字段」升级为**四类全字段比对**（seed/deploy × spots/rules），含字段集增删检测；改动前已验证该断言能抓到「缺字段 / 值不同 / 多字段」三种漂移。
-- ~~**时间线刷新**：`loadInlineTimeline(tripId, keepTab, true)` 静默模式~~ **2026-09-20 随内联时间线一并废止**：时间线已迁到独立页 `pages/add-trip`，加清单后走 `reloadPreview()` 重算纯预览。**静默刷新的原则仍适用**：首页在标记/删除后必须走 `loadHome({ silent: true })`——置 loading 会让列表高度塌缩、页面弹回顶部（2026-08-10 踩过）。
-- **图标系统**：`components/svg-icon`（属性 `name`/`size`/`rotate`）渲染 `images/icons/*.svg`，SVG 预填色、不可用 `color` 改色。4 主页面 + tabbar 已从 `van-icon` 迁出；购物车/警告/喇叭/批量/更多景点+/新增提醒加号等缺 SVG，仍临时用 `van-icon`，待补资源。
-- **预约入口（PAGE-002 弹窗，SORT-RULE-001）**：官方小程序 `wx.navigateToMiniProgram` 直跳，失败兜底复制 `officialWebUrl`；官网用 `web-view` 打开（**真机需在微信后台配「业务域名」否则打不开**），弹窗内提供「复制链接」兜底；公众号点「查看二维码」弹二维码弹层（`show-menu-by-longpress` 长按识别；个别安卓机型/微信版本不出识别菜单属微信兼容问题）。数据在 `data/spots.json` 的 `officialAccount`/`qrCode` 字段。现状（2026-08-11）：公众号名 26/26、官网 24/26、officialAppid 22/26（**4 个无小程序**：天安门城楼/工艺美术馆/孔庙国子监/天文馆，走公众号+官网兜底）；qrCode 5/26（故宫为占位图，工艺美术馆/国博/美术馆/天文馆为官网获取的真实码），其余需各公众号后台导出（无码时点「查看二维码」降级 Toast 提示公众号名）。
-- 视觉基准宽度 402px（`figma_design.md` 第 4 节，左右内边距 16px，主内容宽 370px），非 750rpx；换算到 rpx 时以 402px 为 100% 宽计算。
-- `project.config.json` 已填真实 appid。当前 `USE_MOCK=false` 走真实云函数，依赖云开发环境就绪（集合 + 云函数部署 + seed）。
 
-## 指令集
-- 安装依赖：`cd Travel-app && npm install`
-- 构建 npm：微信开发者工具 →「工具」→「构建 npm」（Vant 必需）
-- 云函数部署：右键 `cloudfunctions/<name>` →「创建并部署：云端安装依赖」
-- 运行：微信开发者工具打开 `Travel-app/` 目录
-- 测试：`test/` 下 `flow.test.js`（FLOW-001 全链路，含第 1 节行程创建/合并与第 12 节「合并后时间线不膨胀」）/ `timeline.test.js`（时间线交叉积）/ `opendays.test.js`（开放日与公告过期 + 真身/seed/部署副本三份全字段一致性）/ `feedback.test.js`（意见反馈/信息纠错）/ `notifier.test.js`（时间窗与错峰）/ `home-bootstrap.test.js`（首页聚合）/ `task-status.test.js`（过期任务状态收敛）/ `reminder-health.test.js`（授权额度五态、offset 需求与 48 小时预警）/ `mock-mirror.test.js`（mock 后端与云端合并/时间线口径一致），多数后端套件用 `test/mock-db.js` 内存云数据库桩跑 `cloudfunctions/reminder/lib/*`，`reminder-health.test.js` 直接验证纯函数；mock 镜像套件直接 require `miniprogram/utils/mock.js`；`subscribe-quota.test.js` 钉住「额度需求 = 项数 × 提前量数」、统一健康状态与按缺口补齐逻辑，`quota-heal.test.js` 钉住台账自愈的判定规则（含「链路故障不清零」的反向分支）与三份关键词清单一致性，`trip-items.test.js` 覆盖免预约行程项与提醒分流，`trip-wall-contract.test.js` 锁定 P0 枚举与状态窗口；**2026-09-20 新增五套**——`trip-item-state.test.js`（六状态推导边界与**计算顺序**）、`trip-item-actions.test.js`（六个 tripItem 接口的边界与越权）、`trip-progress.test.js`（进度分母口径）、`recovery.test.js`（挽回三层，含两条「返回空」的分支）、`timeline-preview.test.js`（钉住预览的两条边界：已落库的行程项/任务不带入、当前暂存清单要反映）、`add-trip-flow.test.js`（**驱动 Page 方法**走完「新增提醒」全链路——其余套都只测 lib 层，而「点按钮没反应」这类问题只在页面层出现）、`cart-popup.test.js`（清单弹层：**用系统 ActionSheet 而非自绘浮层**、底部条不得重复叠加安全区）、`home-emptystate.test.js`（新用户空态：动态结果预览、真实提醒样式入口、近期放票、悬浮按钮互斥）、`prelaunch-ux.test.js`（统一订阅授权分支、禁用提醒提交、攻略页/开发预览静态约束）、`trip-entry-flow.test.js`（景点页与首页补录动线的日历上下文、提交分支和成功文案）、`share-system.test.js`（分享上下文、北京时间场景计算、埋点去重、spot-hub 深链与 share-scene 会话/朋友圈分享）；运行 `npm test`（**二十五套**）。另有 `npm run check`（`scripts/check-miniprogram.py`）做**模板层静态检查**——WXML 绑定的方法是否存在、`<svg-icon>` 图标名是否有对应文件、`usingComponents` 路径是否解析得到、WXSS 引用的 CSS 变量是否已定义、`app.json` 页面是否三件套齐全。这些都是「编译不报错、真机才发现」的问题，纯 JS 单测覆盖不到；本轮靠它抓出过 `add-trip` 上残留的 `onPageScroll` 绑定与一个不存在的图标名。
+## 常用命令
+
+```bash
+cd Travel-app
+npm install
+npm test
+npm run check
+```
+
+- `npm test`：当前 25 套回归测试。
+- `npm run check`：校验 WXML 方法绑定、图标资源、组件路径、CSS 变量和页面三件套。
+- 微信开发者工具：打开 `Travel-app/`；Vant 首次使用前执行“工具 -> 构建 npm”。
 
 ## 部署
-**⚠️ P1 部署前先在云开发控制台新建 `trip_items` 集合并按 `数据库索引.md` 建索引，再部署 `reminder`；否则免预约提交和行程项查询会失败。** 微信小程序 + 腾讯云云开发。云环境 id `cloud1-d9g9f4hja396d6e92` 写在 `miniprogram/app.js` 的 `cloudEnv`（**2026-09-13 换 AppID 到 `wx05c160a589b97d76` 后新建**；旧环境 `cloud1-d5givb65417e3b8c9` 属旧号，已弃用）。**⚠️ appid 与 cloudEnv 必须成对更换**：只改 `project.config.json` 的 appid 而不改 `cloudEnv`，会让所有 `wx.cloud.callFunction` 失败，页面表现是「景点数据加载失败，请检查云端」且顶部 Banner 整块消失（2026-09-13 实际踩过）。**2026-08-31 已重新部署 `reminder` 云函数**（含 `home.bootstrap` 聚合）；**⚠️ 2026-09-14 的行程合并改动（`lib/trip.js` / `lib/timeline.js` / `index.js`）需重新部署 `reminder` 云函数才生效**——云端未更新时，`trip.create` 仍按「不合并」建独立行程，且时间线仍按「整段 × 全部景点」生成。尚未真机验证。
-**⚠️ 2026-09-16 的台账自愈改动需要重新部署两个云函数**：`reminder`（新增 `lib/quota.js`、`index.js` 改为 require 它、`lib/task.js` 的 `sweepOverdue` 加自愈）与 `notifier`（`sweepMissed` 加自愈）。只部署其中一个不会报错，但自愈只在一半路径上生效。小程序端改动（`utils/notify.js`、`pages/setup`、`pages/notify-settings`）只需重新编译，不需要部署。
 
-**⚠️ 2026-09-20 首页行程化需要重新部署两个云函数**：
-- `reminder`：新增 `lib/item.js` / `lib/trip-item-actions.js` / `lib/recovery.js`，`index.js` 新增 6 个 `tripItem.*` action 与 `timeline.preview`，`home.bootstrap` 换成 V2 返回体，`cart` 改暂存区语义，行程判空改看 `trip_items`。**不部署则首页整块拿不到新数据。**
-- `notifier`：`cleanup()` 的行程清空判据补上 `trip_items`（少这一条会把只有免预约景点的行程当空壳删掉）。
-- 小程序端（新组件 7 个 + `pages/home` / `pages/add-trip` 重写 + `cart-popup` 改版）只需重新编译。
-- 上线前确认 `trip_items` 集合与索引已建（`数据库索引.md` 第 2 节，**共 5 条**；其中 `userId+spotId+visitDate` 与 `userId+backupGroupId` 是 2026-09-20 新增，前者是 `cart.add` 跨行程去重的唯一拦截，缺了会直接报错）。
+- 当前 appid：`wx05c160a589b97d76`
+- 当前 cloudEnv：`cloud1-d9g9f4hja396d6e92`
+- appid 与 cloudEnv 必须成对更换。
+- 部署前先按 `数据库索引.md` 建集合和索引，再按 `.claude/rules/deployment.md` 的顺序部署云函数。
+- 最新首页空态仅改小程序端，不需要部署云函数。
+- 只要本轮修改了云函数源码、接口返回体或共享业务逻辑，就必须单独核对 `reminder` / `notifier` 的部署范围。
 
-**⚠️ 2026-09-21 新增提醒预填需要再部署一次 `reminder`**：`timeline.preview` 增加 `committedTripId`（按 `userId` + 该 `tripId` 读 `trip_items`，标 `COMMITTED`）、`home.bootstrap` 的 trip 条目增加 `spotIds`。两次改动都在同一个云函数里，**与 09-20 那批一起部署即可**。小程序端（`pages/home` / `pages/add-trip` / `pages/setup`）只需重新编译。
-> 症状对照：云端停留在 09-20 之前的版本时，点「生成专属放票时间线」会弹 **`unknown action`**（错误码 `1099`，`api.js` 的错误码表里没有它，于是直出英文原文），根因是云端没有 `timeline.preview` 这个 action，**不是代码 bug**。
+## 维护规则
 
-**⚠️ 2026-09-25 分享体系本身只需重新编译小程序，不需要部署云函数**；微信后台需注册 4 个 `wx.reportEvent` 自定义事件，未注册时客户端静默降级。
-
-**⚠️ 2026-09-25 上线前 UX 收尾需重新部署**：`reminder`（`cart.commit` 的 `disableReminders`）与 `notifier`（`thing7` 文案）必须重新上传；小程序端（攻略页、统一授权、开发预览、首页空态）只需重新编译。`testSend` 和三条真机授权路径尚未验证，不能把 `npm test` / `npm run check` 当作已部署或 live verified。
-
-**⚠️ 2026-09-26 提醒设置与额度预警需重新部署 `reminder`**：`subscribe.get` 新增额度健康字段，`home.bootstrap` 新增 48 小时 `reminderQuotaWarning`；小程序端新增首页预警、入口五态与「续收 +1 / 微信授权设置」。批量补齐入口暂时隐藏，下一期接付费功能。`notifier` 无需部署。真机上仍需验证额度预警、当天关闭和单次续收流程。
+- 本文件只保留高频门禁、权威来源和路由；详细机制放入 `.claude/rules/` 或 `docs/engineering/`。
+- 新增长期约束前先更新 `docs/engineering/rule-index.md`，避免同一事实出现多处版本。
+- 历史事故和日期流水以 Git、事故文档或 `docs/engineering/current-state.md` 为准，不堆回根文件。
+- `AGENTS.md` 是 Codex 入口；它要求 Codex 先读取本文件和任务相关规则，不复制规则正文。

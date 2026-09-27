@@ -2,6 +2,7 @@
 
 > 基线：`codex/v0.3-main-flow-ux`
 > Checkpoint：`19a4798 feat(ux): 完成 V0.3 主流程与新用户首页引导`
+> Phase 1：`fda1640 docs: 建立 Claude 规则迁移骨架`
 > 更新时间：2026-09-28
 
 ## 当前定位

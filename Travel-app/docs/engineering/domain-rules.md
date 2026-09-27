@@ -36,9 +36,12 @@ PENDING / BOOKABLE / SUCCESS / FAILED / UNMARKED / NO_RESERVATION
 ## 提醒送达状态
 
 - 票务状态与提醒送达状态分字段、分 UI 展示。
-- 行程项的四态提醒标签必须保留；`NOT_SET` 是开启提醒的入口，`MISSED` 是必须暴露的异常信号。
+- 行程项提醒固定四态：`NOT_SET / WAITING / TRIGGERED / MISSED`，展示为未设提醒/待提醒/已提醒/未送达。
+- `NOT_SET` 是开启提醒的入口，`MISSED` 是必须暴露的异常信号，不允许从卡片上删除该状态。
 - `MISSED` 优先级高于一切票务展示态，不能被“现在预约”等动作文案盖住。
 - 取消提醒不能洗掉已经存在的 `MISSED` 记录。
+- 三项菜单按条件展示：删除这天恒有；标记结果读取 `canMark`；提醒开关读取 `canSetReminder`，且只显示当前可执行的开启或取消。
+- `canSetReminder` 不是 `ticketState`；它由“需预约、有放票时刻、放票时刻未到”共同决定。
 
 ## 时间线与清单
 
@@ -52,12 +55,14 @@ PENDING / BOOKABLE / SUCCESS / FAILED / UNMARKED / NO_RESERVATION
 ## 授权与提交
 
 - PAGE-008 是硬闸门：额度不足时主按钮禁用，用户必须主动补齐，不允许自动补齐，也不提供“仅加行程”旁路。
+- 授权健康输出固定五态：`idle / ready / low / short / exhausted`，必须保留一次安全缓冲。
 - `confirmReminderAccess()` 的 `trip-only` 分支只用于景点详情直设提醒、首页挽回“约其他日”等轻量入口。
 - 任一入口都不得静默提交，也不得在提醒未真正创建时提示“提醒已设置”。
 - 微信订阅消息按条授权：一次有效授权可发送一条提醒。
 
 ## 景点规则数据
 
+- `shortName` 只允许用于窄容器；行程卡、清单、详情和景点列表使用全名。
 - `advanceDays` 表示提前几天放票，不表示“不可约”。
 - `openDays` 非空时接管 `closedDays`，两者不叠加。
 - `closedDaysNote` 只影响展示，不进入开放日判定。
