@@ -1154,7 +1154,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 - `releaseAt / reservationRequired / ticketState / reminderState` 均为读取时派生，不持久化到行程项。
 - `result` 只能从 `null` 写成 `SUCCESS/FAILED`；写入后仅允许 `resultAt + 4s` 内调用 `tripItem.undoResult`。（变更：2026-09-17 由 10 秒收紧为 4 秒，常量 `V1.RESULT_UNDO_SECONDS`）
 - `backupGroupId` 由服务端按“同一行程 + 同一景点”生成，用于备选收束、进度分组和挽回建议。
-- 六个展示态的计算顺序：免预约 → 人工结果 → 放票时间前 → 放票后 24 小时内 → 未标记。
+- 六个展示态的计算顺序：免预约 → 人工结果 → 放票时间前 → 放票后 24 小时内 → 待确认。
 - 放票后官方预约入口持续可点，直到 `visitDate` 北京时间 23:59；不因进入 `UNMARKED` 或写成 `FAILED` 而消失。
 
 #### 其他表变更
@@ -1244,7 +1244,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 }
 ```
 
-状态文案固定为：`待抢票 / 可抢票 / 已约到 / 未抢到 / 未标记 / 免预约`。`UNMARKED` 的 `ticketStateLabel` 为“未标记”，**语义为中性态，不叫“未抢到”**。（变更：2026-09-22 按设计稿整体换词，旧值为 `待抢 / 可抢 / 已成 / 未成 / 开过票了`。真身在 `cloudfunctions/reminder/lib/item.js` 的 `TICKET_STATE_LABEL`，含未知态兜底值 `待抢票`）
+状态文案固定为：`待抢票 / 可抢票 / 已约到 / 未抢到 / 待确认 / 免预约`。`UNMARKED` 的 `ticketStateLabel` 为“待确认”，**语义为中性态，不叫“未抢到”**。（变更：2026-09-28 用户可见文案由“未标记”改为“待确认”，枚举与判定不变；2026-09-22 按设计稿整体换词，旧值为 `待抢 / 可抢 / 已成 / 未成 / 开过票了`。真身在 `cloudfunctions/reminder/lib/item.js` 的 `TICKET_STATE_LABEL`，含未知态兜底值 `待抢票`）
 
 `reminder.state` 为 `ENUM-009` 四态，文案固定为 `未设提醒 / 待提醒 / 已提醒 / 未送达`（`lib/item.js` 的 `REMINDER_STATE_LABEL` 为唯一口径）。
 

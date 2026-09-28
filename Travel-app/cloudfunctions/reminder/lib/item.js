@@ -29,8 +29,8 @@ const TICKET_STATE_LABEL = {
   [TicketState.BOOKABLE]: '可抢票',
   [TicketState.SUCCESS]: '已约到',
   [TicketState.FAILED]: '未抢到',
-  // UNMARKED 是中性态，不是「未抢到」。放票过了 24 小时没标记不代表没抢到。
-  [TicketState.UNMARKED]: '未标记',
+  // UNMARKED 展示为「待确认」，是中性态，不是「未抢到」。放票过了 24 小时没标记不代表没抢到。
+  [TicketState.UNMARKED]: '待确认',
   [TicketState.NO_RESERVATION]: '免预约',
 };
 
@@ -48,7 +48,7 @@ const REMINDER_STATE_LABEL = {
  * ENUM-007 票务展示状态推导。
  *
  * 计算顺序**严格固定**（API-契约 8.1 / STATE-004），顺序错了语义就反了：
- *   免预约 → 人工结果 → 放票时间前 → 放票后 24 小时内 → 未标记
+ *   免预约 → 人工结果 → 放票时间前 → 放票后 24 小时内 → 待确认
  *
  * 为什么「人工结果」排在「放票前」之前：改成 SUCCESS/FAILED 之后不该再被
  * 时间条件翻回 PENDING——结果一旦落库就是事实，只有 undoResult 能撤销。

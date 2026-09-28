@@ -82,11 +82,11 @@
 .tc-remind, .tc-state { flex-shrink: 0; }
 
 /* ===== 提醒状态 chip（2026-09-22 按决策文档 3.4 恢复）=====
-   中性灰系，与右侧彩底的票务 chip 分在两个体系里——它们回答的是两个正交的问题
+   以中性灰为基底，与右侧彩底的票务 chip 分在两个体系里——它们回答的是两个正交的问题
    （「我有没有被叫醒」vs「票到手没有」），长得一样就会被读成同一个状态词。
-   ⚠️ 四态共用一套配色（都是中性灰），**警告语义只由「未送达」那枚图标承载**。
-      不要为了「突出未送达」把它的底色改成红色——那会把它拉回票务 chip 的体系，
-      反而消掉两个轴的分工。
+   ⚠️ 四态共用中性灰底；`未送达` 是唯一例外。
+      它只增加警告色图标、深色文字和浅描边，**不改底色**——把整颗 chip 改成红/绿
+      会把它拉回票务 chip 的体系，反而消掉两个轴的分工。
    ⚠️ 只有 `.tc-remind-miss`（未送达）是可点的，其余三态点了没反应。
    ⚠️ 它现在和景点名**同一行**，而 `.tc-name` 只保住一半宽度，所以这里必须有
       max-width：`flex-shrink: 0`（不许压）配上无限宽 = 长文案直接顶穿卡片。
@@ -103,6 +103,11 @@
   color: var(--chip-muted-text);
 }
 .tc-remind text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 未送达：不改底色，只提高文字、边框和图标的告警层级。 */
+.tc-remind-miss {
+  border: 1rpx solid var(--reminder-miss-border);
+  color: var(--reminder-miss-text);
+}
 /* 可点提示：给一点按压反馈，否则用户不知道它能点 */
 .tc-remind-miss:active { background: var(--color-cream); }
 

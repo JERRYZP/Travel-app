@@ -37,23 +37,23 @@ eq(stateOf({ item: null, reservationRequired: true, releaseAt: releaseAfter(1) }
 eq(stateOf({ item: null, reservationRequired: true, releaseAt: NOW }),
   TicketState.BOOKABLE, '恰好到点 → 可抢（passedMs = 0）');
 
-console.log('=== 3. 放票后 24 小时内 → 可抢；之后 → 未标记 ===');
+console.log('=== 3. 放票后 24 小时内 → 可抢；之后 → 待确认 ===');
 eq(stateOf({ item: null, reservationRequired: true, releaseAt: releaseBefore(1) }),
   TicketState.BOOKABLE, '刚开票 1 小时 → 可抢');
 eq(stateOf({ item: null, reservationRequired: true, releaseAt: releaseBefore(V1.UNMARKED_AFTER_HOURS) }),
   TicketState.BOOKABLE, '恰好 24 小时 → 仍在可抢窗口（闭区间）');
 eq(stateOf({ item: null, reservationRequired: true, releaseAt: releaseBefore(V1.UNMARKED_AFTER_HOURS + 1) }),
-  TicketState.UNMARKED, '超过 24 小时 → 未标记');
+  TicketState.UNMARKED, '超过 24 小时 → UNMARKED（展示为待确认）');
 /* ⚠️ 2026-09-22 六个展示态**整体换词**（按设计稿）：待抢→待抢票、可抢→可抢票、
-   已成→已约到、未成→未抢到、开过票了→未标记。换的是**文案不是语义**——
-   UNMARKED 仍然是中性态，别因为「未标记」字面像「未抢到」就把它改判成失败。 */
-eq(item.ticketStateLabelOf(TicketState.UNMARKED), '未标记', 'UNMARKED 文案是中性态，不叫「未抢到」');
+   已成→已约到、未成→未抢到、开过票了→未标记；2026-09-28 UNMARKED 展示为「待确认」。
+   换的是**文案不是语义**——UNMARKED 仍然是中性态，不代表「未抢到」。 */
+eq(item.ticketStateLabelOf(TicketState.UNMARKED), '待确认', 'UNMARKED 文案是中性态，不叫「未抢到」');
 
 console.log('=== 4. 人工结果覆盖时间态（这是计算顺序的关键） ===');
 eq(stateOf({ item: { result: 'SUCCESS' }, reservationRequired: true, releaseAt: releaseAfter(10) }),
   TicketState.SUCCESS, '已标记「抢到了」不因尚未到放票时间而翻回待抢');
 eq(stateOf({ item: { result: 'SUCCESS' }, reservationRequired: true, releaseAt: releaseBefore(100) }),
-  TicketState.SUCCESS, '已标记「抢到了」不因超过 24 小时而变成未标记');
+  TicketState.SUCCESS, '已标记「抢到了」不因超过 24 小时而变成待确认');
 eq(stateOf({ item: { result: 'FAILED' }, reservationRequired: true, releaseAt: releaseBefore(100) }),
   TicketState.FAILED, '已标记「没抢到」稳定保持');
 eq(item.ticketStateLabelOf(TicketState.SUCCESS), '已约到', 'SUCCESS 文案');
@@ -68,10 +68,10 @@ eq(stateOf({ item: null, reservationRequired: true, releaseAt: null }),
 eq(item.bookingEntryEnabledOf({ ticketState: TicketState.PENDING, reservationRequired: true, visitDate: '2099-01-01', nowTs: NOW }),
   true, '无放票规则但仍需预约 → 预约入口照常可点');
 
-console.log('=== 6. 预约入口不因进入未标记或标记失败而消失 ===');
+console.log('=== 6. 预约入口不因进入待确认或标记失败而消失 ===');
 // 决策文档 3.2：入口一消失，用户会以为「没救了」
 eq(item.bookingEntryEnabledOf({ ticketState: TicketState.UNMARKED, reservationRequired: true, visitDate: '2099-01-01', nowTs: NOW }),
-  true, '未标记态仍保留官方预约入口');
+  true, '待确认态仍保留官方预约入口');
 eq(item.bookingEntryEnabledOf({ ticketState: TicketState.FAILED, reservationRequired: true, visitDate: '2099-01-01', nowTs: NOW }),
   true, '标记「没抢到」后预约入口不消失');
 eq(item.bookingEntryEnabledOf({ ticketState: TicketState.SUCCESS, reservationRequired: true, visitDate: '2099-01-01', nowTs: NOW }),
@@ -109,7 +109,7 @@ console.log('=== 9. 撤销窗口 ===');
 eq(V1.RESULT_UNDO_SECONDS, 4, '撤销窗口 4 秒');
 const markedAt = new Date(NOW.getTime() - 3000);
 eq(item.undoUntilOf({ resultAt: markedAt }).getTime() - markedAt.getTime(), 4000, 'undoUntil = resultAt + 4s');
-eq(item.undoUntilOf({ resultAt: null }), null, '未标记 → 无撤销截止时刻');
+eq(item.undoUntilOf({ resultAt: null }), null, '未记录结果 → 无撤销截止时刻');
 
 console.log('\n' + (fail === 0 ? 'ALL PASS' : ('FAIL ' + fail)));
 process.exit(fail === 0 ? 0 : 1);

@@ -4,8 +4,9 @@
   "description": "景点预约提醒小程序",
   "main": "app.js",
   "scripts": {
-    "check": "python3 scripts/check-miniprogram.py",
-    "test": "node test/flow.test.js && node test/timeline.test.js && node test/opendays.test.js && node test/feedback.test.js && node test/notifier.test.js && node test/home-bootstrap.test.js && node test/task-status.test.js && node test/reminder-health.test.js && node test/mock-mirror.test.js && node test/subscribe-quota.test.js && node test/quota-heal.test.js && node test/trip-items.test.js && node test/trip-item-state.test.js && node test/trip-item-actions.test.js && node test/trip-progress.test.js && node test/recovery.test.js && node test/timeline-preview.test.js && node test/trip-wall-contract.test.js && node test/add-trip-flow.test.js && node test/cart-popup.test.js && node test/home-emptystate.test.js && node test/prelaunch-ux.test.js && node test/trip-entry-flow.test.js && node test/share-system.test.js && node test/v03-main-flow.test.js"
+    "check": "python3 scripts/check-miniprogram.py && python3 scripts/sync-legal-pages.py --check",
+    "test": "node test/flow.test.js && node test/timeline.test.js && node test/opendays.test.js && node test/feedback.test.js && node test/notifier.test.js && node test/home-bootstrap.test.js && node test/task-status.test.js && node test/reminder-health.test.js && node test/mock-mirror.test.js && node test/subscribe-quota.test.js && node test/quota-heal.test.js && node test/trip-items.test.js && node test/trip-item-state.test.js && node test/trip-item-actions.test.js && node test/trip-progress.test.js && node test/recovery.test.js && node test/timeline-preview.test.js && node test/trip-wall-contract.test.js && node test/add-trip-flow.test.js && node test/cart-popup.test.js && node test/home-emptystate.test.js && node test/prelaunch-ux.test.js && node test/trip-entry-flow.test.js && node test/share-system.test.js && node test/v03-main-flow.test.js",
+    "sync:legal": "python3 scripts/sync-legal-pages.py"
   },
   "dependencies": {
     "@vant/weapp": "^1.11.4"

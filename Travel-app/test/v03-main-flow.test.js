@@ -213,10 +213,10 @@ console.log('\n=== 4. 设置提醒权限与硬闸门 ===');
   eq(/if \(this\.data\.sampleOnly\) wx\.navigateBack\(\)/.test(SETUP_JS), true,
     '仅查看样式时关闭后返回攻略');
   eq(/sampleShots/.test(SETUP_JS) && /查看提醒样式示例/.test(SETUP_WXML), true, '提醒样式示例直接可查看');
-  eq(/提醒卡片详情/.test(SETUP_JS) && /style-2\.png/.test(SETUP_JS), true, '补充提醒卡片详情示例');
+  eq(/提醒卡片详情/.test(SETUP_JS) && /style-2\.jpg/.test(SETUP_JS), true, '补充提醒卡片详情示例');
   eq(/微信内的提醒样式/.test(SETUP_JS) && /style-3\.jpg/.test(SETUP_JS), true, '补充微信内提醒列表示例');
   eq(fs.existsSync(path.join(ROOT, 'miniprogram/images/reminder-samples/style-1.jpg')), true, '第一张提醒样式图已进入小程序包');
-  eq(fs.existsSync(path.join(ROOT, 'miniprogram/images/reminder-samples/style-2.png')), true, '提醒卡片详情图已进入小程序包');
+  eq(fs.existsSync(path.join(ROOT, 'miniprogram/images/reminder-samples/style-2.jpg')), true, '提醒卡片详情图已进入小程序包');
   eq(fs.existsSync(path.join(ROOT, 'miniprogram/images/reminder-samples/style-3.jpg')), true, '微信内提醒样式图已进入小程序包');
 }
 

@@ -1,0 +1,29 @@
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack">
+      <svg-icon name="back" size="18px" />
+    </view>
+    <text class="navbar-title">{{navTitle}}</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view class="page-body">
+  <view class="legal-paper">
+    <text class="legal-title">{{documentTitle}}</text>
+    <view class="legal-rule"></view>
+    <block wx:for="{{blocks}}" wx:key="index">
+      <view wx:if="{{item.type === 'heading'}}" class="legal-heading legal-heading-{{item.level}}">{{item.text}}</view>
+      <view wx:elif="{{item.type === 'bullet'}}" class="legal-bullet">
+        <text class="legal-bullet-dot">•</text>
+        <text class="legal-bullet-text">{{item.text}}</text>
+      </view>
+      <view wx:else class="legal-paragraph">{{item.text}}</view>
+    </block>
+  </view>
+
+  <button wx:if="{{type === 'privacy'}}" class="legal-platform-button" bindtap="onOpenWechatPrivacy">
+    查看微信侧隐私保护指引
+  </button>
+</view>

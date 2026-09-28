@@ -30,6 +30,7 @@
 - `svg-icon` 读取 `images/icons/*.svg`；图标是预填色，不能靠 CSS `color` 改色。
 - 删除页面或图标前必须反查模板、组件、测试和路由。
 - 本地 `<image>` 不支持 webp；景点图保持 jpg/png。
+- 微信主包上限 2MB；新增或替换图片后必须运行 `npm run check`，检查会统计 `miniprogram/**`（含 `miniprogram_npm`）总体积。
 
 ## Mock 镜像
 

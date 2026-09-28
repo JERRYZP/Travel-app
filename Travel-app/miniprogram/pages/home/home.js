@@ -12,8 +12,8 @@ const NAV_BAR_RPX = 88;
 /* 标题行高（rpx）= `.navbar-title` 的 font-size 30rpx × page 的 line-height 1.5。
    导航块比标题高得多，标题在其中垂直居中，于是上下各空 (88−45)/2 ≈ 21.5rpx。 */
 const NAV_TITLE_RPX = 45;
-/* 标题下沿 → 正文顶的间距：8px */
-const PAGE_GAP_RPX = 16;
+/* 标题下沿 → 正文顶：直接对齐，不再额外留白 */
+const PAGE_GAP_RPX = 0;
 /* 滚多少像素把导航栏底色从全透明推到不透明 */
 const NAV_FADE_PX = 50;
 const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
@@ -35,7 +35,7 @@ Page({
   data: {
     statusBarHeight: 20,
     navBarHeight: 44,
-    /* 正文的 padding-top（rpx）= 标题下沿 + 8px，见 `pageTopOf()`。
+    /* 正文的 padding-top（rpx）= 标题下沿，见 `pageTopOf()`。
        导航栏是 fixed 的、不占文档流，正文不让位就会被它盖住（横幅首当其冲）。
        ⚠️ 这里**不含横幅高度**：横幅就在正文里，高度由它自己占。 */
     pageTop: 0,
@@ -53,7 +53,7 @@ Page({
        所以要把悬浮按钮藏掉，避免同屏两个一模一样的入口。 */
     isBlank: false,
     previewNewUser: false,
-    /* 新用户空态的内容证据：一张真实规则预览 + 3 个近期放票节点。
+    /* 新用户空态的内容证据：一张真实规则预览 + 3 个近期热门景点放票节点。
        数据来自 home.bootstrap 已返回的 hotSpots，不额外请求接口。 */
     emptyReleaseRows: [],
     emptyReleaseSample: EMPTY_RELEASE_FALLBACK,
@@ -181,7 +181,7 @@ Page({
         menuDate: '',
       });
       /* 开发预览没有走 bootstrap 的 hotSpots；单独取一次公开景点卡，
-         让设计/真机验收可以看到完整的“近期放票”模块。失败时保留兜底示例。 */
+         让设计/真机验收可以看到完整的“近期热门景点放票”模块。失败时保留兜底示例。 */
       api.spots.list().then(res => {
         const preview = release.buildHomeReleasePreview(res.data || [], new Date(), 3);
         this.setData({ emptyReleaseRows: preview.rows, emptyReleaseSample: preview.sample });
@@ -473,7 +473,7 @@ Page({
   },
 
   /* ===== 忽略气泡 =====
-     语义 = 提前进入「未标记」中性态：不再主动追问，补标走三点菜单。
+     语义 = 提前进入「待确认」中性态：不再主动追问，补标走三点菜单。
 
      ⚠️ **两个气泡要分开记，不能共用一个 itemId**（2026-09-22 修）：
      卡片上有两个「忽略」——「票抢到了吗」气泡的和「还有其他日期可约」气泡的。
@@ -743,11 +743,11 @@ Page({
 });
 
 /**
- * 正文顶（rpx）= **标题下沿** + 8px。
+ * 正文顶（rpx）= **标题下沿**。
  *
- * ⚠️ 不是「导航栏底边 + 8px」：导航块 88rpx 是给胶囊按钮留的高度，
- * 标题在它里面垂直居中，底边到标题下沿还空着 (88−45)/2 ≈ 17rpx。
- * 按底边算就多出这一截，实测 16.5px —— 用户一眼看出「间隔太大」。
+ * ⚠️ 不是「导航栏底边」：导航块 88rpx 是给胶囊按钮留的高度，
+ * 标题在它里面垂直居中，底边到标题下沿还空着 (88−45)/2 ≈ 21.5rpx。
+ * 按底边算会多出这一截；当前正文直接与标题下沿对齐。
  * ⚠️ 状态栏是 px 且带小数（iPhone 15 实测 48.5px），换算成 rpx 必须 ×2。
  * ⚠️ 这个值**不含横幅高度**：横幅排在正文内部，占位由它自己负责。
  */

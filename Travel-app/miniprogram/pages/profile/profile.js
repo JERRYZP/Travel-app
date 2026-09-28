@@ -78,6 +78,11 @@ Page({
     wx.navigateTo({ url: '/pages/spot-correction/spot-correction' });
   },
 
+  onLegal(e) {
+    const type = e.currentTarget.dataset.type === 'terms' ? 'terms' : 'privacy';
+    wx.navigateTo({ url: `/pages/legal/legal?type=${type}` });
+  },
+
   /* 仅开发版：不删云端数据，首页临时按新用户空态渲染。 */
   onPreviewNewUser() {
     if (app.globalData.envVersion !== 'develop') return;

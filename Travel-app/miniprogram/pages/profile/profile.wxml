@@ -51,6 +51,18 @@
     </view>
   </view>
 
+  <!-- 隐私与协议：与微信后台《用户隐私保护指引》同步核验入口 -->
+  <view class="setting-card">
+    <view class="setting-row" bindtap="onLegal" data-type="privacy">
+      <text class="setting-row-label">隐私政策</text>
+      <svg-icon name="chevron-down" size="14px" rotate="270" />
+    </view>
+    <view class="setting-row" bindtap="onLegal" data-type="terms">
+      <text class="setting-row-label">用户服务协议</text>
+      <svg-icon name="chevron-down" size="14px" rotate="270" />
+    </view>
+  </view>
+
   <!-- 仅开发版显示：用于反复检查新用户空态，不删除云端数据 -->
   <view wx:if="{{devMode}}" class="setting-card dev-card">
     <view class="setting-row" bindtap="onPreviewNewUser">

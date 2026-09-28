@@ -21,6 +21,7 @@ import sys
 
 ROOT = "miniprogram"
 SKIP_DIRS = {"miniprogram_npm", "node_modules"}
+MAX_PACKAGE_BYTES = 2 * 1024 * 1024
 
 problems = []
 
@@ -97,6 +98,24 @@ def check_css_vars(files):
                 problems.append(f"{f}: 未定义的 CSS 变量 --{m.group(1)}")
 
 
+def check_package_size():
+    """Fail before WeChat's hard 2MB main-package limit.
+
+    This intentionally counts every file under miniprogram/, including the
+    miniprogram_npm build output, because both sources and built components
+    contribute to the uploaded main package.
+    """
+    total = 0
+    for dirpath, dirnames, filenames in os.walk(ROOT):
+        dirnames[:] = [d for d in dirnames if d != "node_modules"]
+        for fn in filenames:
+            total += os.path.getsize(os.path.join(dirpath, fn))
+    if total > MAX_PACKAGE_BYTES:
+        problems.append(
+            f"miniprogram 主包体积 {total / 1024:.1f}KB 超过 2048KB；请压缩图片或拆分分包"
+        )
+
+
 def main():
     files = list(walk(ROOT))
     check_icons(files)
@@ -104,6 +123,7 @@ def main():
     check_pages()
     check_handlers(files)
     check_css_vars(files)
+    check_package_size()
     if problems:
         print(f"发现 {len(problems)} 个问题：")
         for p in problems:

@@ -26,7 +26,7 @@ Page({
     sampleOnly: false,
     sampleShots: [
       { key: 'style-1', label: '通知中心 / 锁屏通知', src: '/images/reminder-samples/style-1.jpg', pending: false },
-      { key: 'style-2', label: '提醒卡片详情', src: '/images/reminder-samples/style-2.png', pending: false },
+      { key: 'style-2', label: '提醒卡片详情', src: '/images/reminder-samples/style-2.jpg', pending: false },
       { key: 'style-3', label: '微信内的提醒样式', src: '/images/reminder-samples/style-3.jpg', pending: false },
     ],
   },

@@ -3,7 +3,7 @@
     <view class="tabbar-icon-wrap">
       <svg-icon name="{{active === 'home' ? 'reminder-active' : 'reminder'}}" size="22px" />
     </view>
-    <text class="tabbar-label" style="color: {{active === 'home' ? '#C0472A' : '#B09878'}}">提醒</text>
+    <text class="tabbar-label" style="color: {{active === 'home' ? '#C0472A' : '#B09878'}}">行程·提醒</text>
   </view>
   <view class="tabbar-item {{active === 'spots' ? 'active' : ''}}" bindtap="onTap" data-tab="spots">
     <view class="tabbar-icon-wrap">

@@ -14,11 +14,11 @@
   </view>
 </view>
 
-<!-- ⚠️ `pageTop` = 标题下沿 + 8px（**不是**导航栏底边 + 8px）。
+<!-- ⚠️ `pageTop` = 标题下沿（**不是**导航栏底边）。
      导航块 88rpx 是给胶囊按钮留的常规高度，标题在其中垂直居中，
-     所以底边到标题下沿还空着 17rpx —— 加在这里就是 8 + 8.5 = 16.5px，
-     用户一眼就能看出「间隔太大」（2026-09-23 报的）。
-     现在只让出「(88 − 标题行高) / 2」那一截，剩下的才是那 8px。
+     所以底边到标题下沿还空着约 21.5rpx —— 当前正文直接与标题下沿对齐，
+     不再额外留白。
+     现在只让出「(88 − 标题行高) / 2」那一截，不再补额外间距。
      导航栏是 fixed、正文必须让出它的高度，否则第一块内容会钻到标题底下；
      这里只让导航块的内缩，**不让横幅的高度**——横幅就在正文里，占位归它自己。 -->
 <view class="page-body" style="padding-top: {{pageTop}}rpx;">
@@ -36,9 +36,8 @@
        ⚠️ 不要改回 `position: fixed`：那是「挡住行程卡」和「间距永远凑不准」
           两个问题的共同根源，原因写在 wxss 的 `.sticky-banner` 上。
        ⚠️ 与摘要卡之间**没有间距**（2026-09-23 用户要求去掉，原先的 16rpx
-          margin-bottom 已删）；横幅当前只带 -4rpx 上移，抵掉 `.page-body`
-          padding-top 里的部分留白。2026-09-25 上移补偿从 -16rpx 收窄到 -4rpx，
-          让横幅与标题区比原版多出约 6px 间距。别再按「上下各 8px」的口径加 margin。 -->
+          margin-bottom 已删）；横幅当前 `margin-top: 0`，与标题下沿直接对齐。
+          2026-09-28 顶部基准不再额外留白，别再按旧口径加 margin。 -->
   <!-- ⚠️ 没有 `&& !hideBanner` 这类收起条件：它跟着内容滚，滑下去自然被导航栏盖住。
        按滚动阈值把它摘出文档流会让下面的内容跳一个横幅高，别再加回来。 -->
   <view wx:if="{{banner}}" class="sticky-banner {{showReminderQuotaWarning ? 'sticky-banner--after-warning' : ''}}">
@@ -97,10 +96,13 @@
     <view wx:if="{{emptyReleaseRows.length}}" class="empty-hot">
       <view class="empty-hot-head">
         <view class="empty-hot-head-copy">
-          <text class="empty-hot-title">近期放票</text>
+          <text class="empty-hot-title">近期热门景点放票</text>
           <text class="empty-hot-note">按规则推算 · 不代表官方库存</text>
         </view>
-        <text class="empty-hot-all" bindtap="onOpenAllSpots">全部景点</text>
+        <view class="empty-hot-all" bindtap="onOpenAllSpots">
+          <text class="empty-hot-all-text">全部景点</text>
+          <svg-icon name="chevron-right" size="12px" />
+        </view>
       </view>
       <view class="empty-hot-list">
         <view
@@ -110,7 +112,7 @@
           bindtap="onEmptySpotTap"
           data-id="{{item.spotId}}"
         >
-          <view class="empty-hot-dot {{item._releaseTone}}"></view>
+          <image class="empty-hot-img" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" lazy-load="{{true}}" />
           <view class="empty-hot-main">
             <text class="empty-hot-name">{{item.name}}</text>
             <text class="empty-hot-status {{item._releaseTone}}">{{item._releaseStatusText}}</text>

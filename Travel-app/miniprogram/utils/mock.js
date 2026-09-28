@@ -680,20 +680,20 @@ function deriveReleaseAt(spot, rule, visitDate) {
 /* ⚠️ 云端 `cloudfunctions/reminder/lib/item.js` 的 TICKET_STATE_LABEL 是唯一真身，
    这里是镜像，`test/mock-mirror.test.js` 交叉比对。
    2026-09-22 六个展示态**整体换词**（待抢→待抢票、可抢→可抢票、已成→已约到、
-   未成→未抢到、开过票了→未标记），换的是**文案不是语义**：
-   `UNMARKED` 仍是中性态，别因为「未标记」字面像「未抢到」就把它改判成失败。 */
+   未成→未抢到、开过票了→未标记；2026-09-28「未标记」→「待确认」），换的是**文案不是语义**：
+   `UNMARKED` 仍是中性态，别因为「待确认」字面需要用户确认就把它改判成失败。 */
 const TICKET_LABEL = {
   PENDING: '待抢票', BOOKABLE: '可抢票', SUCCESS: '已约到',
   FAILED: '未抢到',
   /* UNMARKED 是中性态，不是「未抢到」——放票过了 24 小时没标记不代表没抢到 */
-  UNMARKED: '未标记',
+  UNMARKED: '待确认',
   NO_RESERVATION: '免预约',
 };
 const REMINDER_LABEL = { NOT_SET: '未设提醒', WAITING: '待提醒', TRIGGERED: '已提醒', MISSED: '未送达' };
 
 /**
  * ENUM-007 票务展示状态。计算顺序固定：
- * 免预约 → 人工结果 → 放票前 → 放票后 24h 内 → 未标记
+ * 免预约 → 人工结果 → 放票前 → 放票后 24h 内 → 待确认
  */
 function ticketStateLabelOf(state) { return TICKET_LABEL[state] || '待抢票'; }
 
@@ -755,7 +755,7 @@ function decorateItem(item, nowTs) {
     difficulty: spot ? difficultyOf(spot.difficultyScore) : null,
     ticketState,
     ticketStateLabel: TICKET_LABEL[ticketState],
-    /* 预约入口不因进入「开过票了」或标记失败而消失，保留到出行日 23:59 */
+    /* 预约入口不因进入「待确认」或标记失败而消失，保留到出行日 23:59 */
     bookingEntryEnabled: reservationRequired && Boolean(item.visitDate) && fmt(new Date()) <= item.visitDate,
     canMark: reservationRequired && Boolean(releaseAt)
       && nowTs.getTime() >= new Date(releaseAt).getTime()

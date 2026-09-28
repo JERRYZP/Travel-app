@@ -14,6 +14,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const WXML = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxml'), 'utf8');
 const JS = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.js'), 'utf8');
+const HOME_WXSS = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxss'), 'utf8');
 const RELEASE_JS = fs.readFileSync(path.join(ROOT, 'miniprogram/utils/release-context.js'), 'utf8');
 
 /**
@@ -48,15 +49,23 @@ console.log('=== 1. 空态只在「一个行程项都没有」时出现 ===');
     '服务通知示意卡改为提醒样式示意图入口');
   eq(/将在 5 分钟后放票/.test(RELEASE_JS), false,
     '不再在首页伪造未经真实样式核验的通知内容');
-  eq(/class="empty-hot"/.test(WXML), true, '空态底部有近期放票模块');
-  eq(/emptyReleaseRows\.length/.test(WXML), true, '近期放票无数据时整块不渲染');
+  eq(/class="empty-hot"/.test(WXML), true, '空态底部有近期热门景点放票模块');
+  eq(/emptyReleaseRows\.length/.test(WXML), true, '近期热门景点放票无数据时整块不渲染');
   eq(/bindtap="onEmptySpotTap"[\s\S]*data-id="\{\{item\.spotId\}\}"/.test(WXML), true,
     '热门景点行点击进入景点详情');
+  eq(/class="empty-hot-img" src="\/images\/spots\/\{\{item\.spotId\}\}\.jpg"[\s\S]*lazy-load="\{\{true\}\}"/.test(WXML), true,
+    '近期热门景点放票行展示对应景点缩略图');
   eq(/class="empty-hot-all" bindtap="onOpenAllSpots"/.test(WXML), true,
-    '近期放票提供「全部景点」入口');
+    '近期热门景点放票提供「全部景点」入口');
+  eq(/class="empty-hot-all" bindtap="onOpenAllSpots"[\s\S]*empty-hot-all-text[\s\S]*chevron-right/.test(WXML), true,
+    '「全部景点」带下划线文字和右箭头');
+  eq(/\.ep-stop-label \{[^}]*color:\s*#AA927C/.test(HOME_WXSS), true,
+    '步骤标题颜色加深一级');
+  eq(/\.ep-stop-value \{[^}]*font-size:\s*22rpx/.test(HOME_WXSS), true,
+    '步骤内容字号增大一级');
   eq(/buildHomeReleasePreview\(res\.hotSpots \|\| \[\], serverNow, 3\)/.test(JS), true,
     '预览复用 home.bootstrap 已返回的 hotSpots，不额外请求接口');
-  eq(/emptyReleaseRows: releasePreview\.rows/.test(JS), true, '页面消费近期放票预览行');
+  eq(/emptyReleaseRows: releasePreview\.rows/.test(JS), true, '页面消费近期热门景点放票预览行');
   eq(/emptyReleaseSample: releasePreview\.sample/.test(JS), true, '页面消费动态提醒示例');
   eq(/onEmptySpotTap\(e\)[\s\S]*openSpotPopup\(spotId\)/.test(JS), true,
     '热门景点行复用现有景点详情浮窗');
@@ -382,6 +391,14 @@ console.log('=== 8. 行程项卡的提醒状态（四态上卡）与菜单显示
   /* ① 提醒 chip 存在，且样式类**由 state 推导**（不是由文案推导） */
   eq(/tc-remind/.test(CARD_WXML), true, '卡片渲染提醒状态 chip');
   eq(/tc-remind/.test(codeOf(CARD_WXSS)), true, '提醒 chip 有对应样式');
+  eq(/alert-circle/.test(CARD_WXML), true, '未送达保留警告形状图标');
+  eq(/alert-circle-muted/.test(CARD_WXML), false, '未送达图标不再使用弱化色，改用警告色提高可见性');
+  eq(/\.tc-remind-miss\s*\{[^}]*border:\s*1rpx solid var\(--reminder-miss-border\)/.test(codeOf(CARD_WXSS)), true,
+    '未送达增加浅描边');
+  eq(/\.tc-remind-miss\s*\{[^}]*color:\s*var\(--reminder-miss-text\)/.test(codeOf(CARD_WXSS)), true,
+    '未送达文字加深');
+  eq(/\.tc-remind-miss\s*\{[^}]*background:\s*var\(--chip-red-bg\)/.test(codeOf(CARD_WXSS)), false,
+    '未送达不改红底，避免与票务轴混色');
   eq(/reminderClass/.test(codeOf(CARD_JS)), true, '样式类由 state 推导（reminderClass）');
   /* 文案必须取服务端 stateLabel —— 四态文案的**唯一真身**在云端 REMINDER_STATE_LABEL，
      前端自己拼一套必然漂 */
@@ -491,7 +508,7 @@ console.log('=== 8.1 副行尾巴：文案与色调的分支 ===');
   eq(util.releaseRemainderOf(Object.assign({}, base, { ticketState: 'FAILED', releaseAt: past })).text,
     '· 现在预约 ›', '未成 → 仍可抢票（挽回不挤进放票行）');
   eq(util.releaseRemainderOf(Object.assign({}, base, { ticketState: 'UNMARKED', releaseAt: past })).text,
-    '· 现在预约 ›', '未标记 → 仍可抢票');
+    '· 现在预约 ›', '待确认 → 仍可抢票');
   /* ⚠️ 还没到点但 releaseAt 已经过去（放票时刻落在过去），不能显示「还有-1天」 */
   eq(util.releaseRemainderOf(Object.assign({}, base, { releaseAt: past })).text,
     '· 现在预约 ›', 'releaseAt 已过时不显示负数天数');
@@ -586,7 +603,7 @@ console.log('=== 10. 组件抛出的事件，页面必须都接上了 ===');
     '横幅在模板里是普通节点（不带内联 top），并识别额度预警前置态');
 }
 
-console.log('=== 11. 顶部布局：横幅在文档流里 / 上下各 8px / 卡片右列 ===');
+console.log('=== 11. 顶部布局：横幅在文档流里 / 标题下沿对齐 / 卡片右列 ===');
 {
   /* 用户 2026-09-22 报的三个问题，根因是同一个：**横幅曾经是 `position: fixed`**。
      fixed 元素不占文档流，于是「不被它压住」只能靠给内容加 padding 去凑，
@@ -596,18 +613,15 @@ console.log('=== 11. 顶部布局：横幅在文档流里 / 上下各 8px / 卡�
   const WXSS = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxss'), 'utf8');
 
   const bannerRule = (/\.sticky-banner \{[^}]*\}/.exec(WXSS) || [''])[0];
-  /* ⚠️ 2026-09-23 订正：原断言找的是 `.sticky-banner { margin: 0 0 16rpx }`，
-     那条间距已按用户要求删掉，横幅现在只留 `margin-top: -16rpx` 抵掉
-     `.page-body` padding-top 里导航栏下方那一截。断言随之改为锁「不写间距」——
-     把一个已经作废的期望值留在测试里，比没有断言更糟：它会逼下一个人把
-     「去掉间距」又改回去。 */
+  /* ⚠️ 2026-09-28：顶部基准已直接对齐标题下沿，横幅不再用负 margin 抵消留白。
+     这里同时锁住「没有下间距」和「没有残余上移补偿」，避免旧口径复活。 */
   eq(bannerRule.length > 0, true, '找得到 .sticky-banner 规则');
   eq(/position:\s*fixed/.test(bannerRule), false,
     '横幅**不是** fixed（回到文档流，跟着内容一起上滑）');
   eq(/margin-bottom|margin:\s*0 0/.test(bannerRule), false,
     '横幅与摘要卡之间不留间距（2026-09-23 用户口径：别再给 margin-bottom）');
-  eq(/margin-top:\s*-4rpx/.test(bannerRule), true,
-    '横幅上移补偿收窄 12rpx，顶部间距比原版增加约 6px');
+  eq(/margin-top:\s*0/.test(bannerRule), true,
+    '横幅与标题下沿直接对齐，不再通过负 margin 抵消留白');
 
   /* ⚠️ 导航栏是 fixed、不占文档流 → **正文必须自己让出它的高度**，
      否则第一块内容（加了横幅时就是横幅）会钻到标题底下被盖住。
@@ -620,7 +634,9 @@ console.log('=== 11. 顶部布局：横幅在文档流里 / 上下各 8px / 卡�
   eq(/const titleInset = \(NAV_BAR_RPX - NAV_TITLE_RPX\) \/ 2;/.test(JS), true,
     'pageTop 减掉的是导航块比标题高出来的一半（居中内缩）');
   eq(/return \(statusBarHeight \|\| 20\) \* 2 \+ NAV_BAR_RPX \+ PAGE_GAP_RPX - titleInset;/.test(JS), true,
-    'pageTop = 状态栏(px→rpx) + 导航块 + 8px − 内缩 = 标题下沿 + 8px');
+    'pageTop = 状态栏(px→rpx) + 导航块 − 内缩 = 标题下沿');
+  eq(/const PAGE_GAP_RPX = 0;/.test(JS), true,
+    '正文直接与标题下沿对齐');
   eq(/const NAV_TITLE_RPX = 45;/.test(JS), true,
     '标题行高 45rpx（30rpx × page line-height 1.5）');
   /* ⚠️ 但**不能**把横幅高度也让进去：横幅就在正文里，占位它自己负责，

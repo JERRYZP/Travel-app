@@ -30,7 +30,7 @@ eq(Object.values(TicketState).join(','), 'PENDING,BOOKABLE,SUCCESS,FAILED,UNMARK
 eq(Object.values(TicketResult).join(','), 'SUCCESS,FAILED', '人工结果仅 SUCCESS/FAILED');
 eq(Object.values(ReminderDeliveryState).join(','), 'NOT_SET,WAITING,TRIGGERED,MISSED', '提醒送达状态独立');
 eq(V1.RESULT_UNDO_SECONDS, 4, '人工结果撤销窗口为 4 秒（2026-09-17 由 10 秒收紧）');
-eq(V1.UNMARKED_AFTER_HOURS, 24, '未标记中性态在放票 24 小时后');
+eq(V1.UNMARKED_AFTER_HOURS, 24, 'UNMARKED 中性态在放票 24 小时后，展示为待确认');
 eq(ERRORS.ITEM_NOT_FOUND.code, 1013, '行程项不存在错误码');
 eq(ERRORS.ITEM_RESULT_INVALID.code, 1014, '结果标记非法错误码');
 eq(ERRORS.ITEM_UNDO_EXPIRED.code, 1015, '撤销过期错误码');

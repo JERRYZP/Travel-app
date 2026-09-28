@@ -32,7 +32,7 @@ page {
   --state-success-text: #3E7D4F;
   --state-failed-bg: #F5DDD5;       /* 未成 */
   --state-failed-text: #C0472A;
-  --state-unmarked-bg: #EDE5D2;     /* 开过票了：中性态，不判失败 */
+  --state-unmarked-bg: #EDE5D2;     /* 待确认：中性态，不判失败 */
   --state-unmarked-text: #7A5540;
   --state-free-bg: #EDE5D2;         /* 免预约 */
   --state-free-text: #7A5540;
@@ -49,8 +49,10 @@ page {
         `--color-text`/`--color-ink` 偏深，chip 文字和景点名要用更浅的一档；
         `--color-page` 虽然数值等于 chip 底色，但语义是「页面底色」，
         chip 借它用会在改页面底色时被一起改掉。 */
-  --chip-muted-bg: #F8F3EA;         /* 中性 chip 底：提醒状态 / 未标记 / 免预约 */
+  --chip-muted-bg: #F8F3EA;         /* 中性 chip 底：提醒状态 / 待确认 / 免预约 */
   --chip-muted-text: #936F5B;       /* 中性 chip 字 */
+  --reminder-miss-border: #D8B6A6;  /* 未送达 chip 描边：只强化异常，不引入票务色底 */
+  --reminder-miss-text: #754634;    /* 未送达 chip 文字：比普通提醒态更深 */
   --chip-gold-bg: #F2E4C0;          /* 待抢票 / 日期徽标 */
   --chip-gold-text: #C26B0C;
   --chip-green-bg: #D8EAD8;         /* 可抢票 / 已约到 */

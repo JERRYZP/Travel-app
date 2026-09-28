@@ -11,6 +11,7 @@
     "pages/webview/webview",
     "pages/notify-settings/notify-settings",
     "pages/guide/guide",
+    "pages/legal/legal",
     "pages/feedback/feedback",
     "pages/spot-correction/spot-correction",
     "pages/admin-feedback/admin-feedback",

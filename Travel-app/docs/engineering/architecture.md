@@ -30,6 +30,7 @@
 | `pages/setup` | PAGE-008 设置提醒；V0.3 授权硬闸门 |
 | `pages/notify-settings` | 系统通知权限与提醒额度设置 |
 | `pages/profile` | 我的 |
+| `pages/legal` | 隐私政策与用户服务协议 |
 | `pages/feedback` | 意见反馈 |
 | `pages/spot-correction` | 景点信息纠错 |
 | `pages/share-scene` | 今日/国庆公开场景页 |

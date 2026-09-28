@@ -14,7 +14,8 @@
              「提醒状态 | 紧跟景点名右侧（中性 chip）」）。
              2026-09-22 首次落地时它被写在名字行**下方**（`.tc-title` 是 column，chip 是
              名字行的兄弟节点），读起来像第二行副标题，与「右侧」不符，本轮移到行内。
-             四态 `未设提醒 / 待提醒 / 已提醒 / 未送达`，中性灰系，与右侧彩底的票务 chip 分开。
+             四态 `未设提醒 / 待提醒 / 已提醒 / 未送达`，底色保持中性灰，与右侧彩底的票务 chip 分开。
+             `未送达` 只用警告色图标、深色文字和浅描边提高扫视命中率，不改成彩色底。
              ⚠️ **免预约项不显示**（它恒为 NOT_SET 且没有提醒可言，同一张卡上不该出现
                 「免预约」+「未设提醒」两个标签）。历史区也不显示——没有可做的动作了。
              ⚠️ 「未送达」**整块可点**（图标与文字同热区），点开看原因。
@@ -26,7 +27,7 @@
           class="tc-remind tc-remind-{{reminderClass}}"
           bindtap="onMissedTap"
         >
-          <svg-icon wx:if="{{reminderClass === 'miss'}}" name="alert-circle-muted" size="12px" />
+          <svg-icon wx:if="{{reminderClass === 'miss'}}" name="alert-circle" size="12px" />
           <text>{{reminderChip}}</text>
         </view>
       </view>

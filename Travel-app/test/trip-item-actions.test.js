@@ -180,7 +180,7 @@ const FUTURE_VISIT = time.addDays(TODAY, 30); // releaseAt = TODAY + 23 → 还�
     eq(res.success, false, '不是那一次标记 → 拒绝，不撤销别的东西');
   }
 
-  console.log('=== 11. undoResult：未标记过的不可撤销 ===');
+  console.log('=== 11. undoResult：未记录结果的不可撤销 ===');
   {
     const db = freshDb();
     await seedTrip(db, 'T1', ['gugong'], time.addDays(TODAY, -1), time.addDays(TODAY, 40));
@@ -289,7 +289,7 @@ const FUTURE_VISIT = time.addDays(TODAY, 30); // releaseAt = TODAY + 23 → 还�
     await seedTrip(db, 'T1', ['gugong'], time.addDays(TODAY, -1), time.addDays(TODAY, 40));
     /* 造一条「放票刚过去、仍在 24h 窗口内」的项 —— 故宫 advanceDays=7、放票 20:00，
        所以取**最近一次已经过去的 20:00**（距现在必然 < 24h），其 +7 天就是出行日。
-       ⚠️ 不能用 PAST_VISIT：那条的 releaseAt 早了 6 天，票务态是「未标记」不是「可抢票」——
+       ⚠️ 不能用 PAST_VISIT：那条的 releaseAt 早了 6 天，票务态是「待确认」不是「可抢票」——
        本用例要的正是「可抢票且提醒窗口已关」这一档。 */
     const pad2 = n => String(n).padStart(2, '0');
     const iso2 = x => x.getFullYear() + '-' + pad2(x.getMonth() + 1) + '-' + pad2(x.getDate());
