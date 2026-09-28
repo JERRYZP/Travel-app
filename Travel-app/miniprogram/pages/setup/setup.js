@@ -205,21 +205,28 @@ Page({
       let toast;
       if (disableReminders) {
         toast = '已加入行程，未设置提醒';
+      } else if ((res.expiredReminder || 0) > 0) {
+        /* 勾了提醒、但放票时刻在提交前已经过去 —— 服务端这类项照常落行程项、
+           不再建任务（见 lib/task.js）。文案由前端生成，服务端那句同义的 toast
+           在 PAGE-008 这条路径上没有出口。
+           ⚠️ 必须排在 createdTasks > 0 之前判断：过期项同时计入 noReminder，
+              排在后面会掉进「提醒已设置」分支，等于告诉用户提醒设上了，而实际没设。 */
+        toast = `已加入行程 · ${res.expiredReminder} 项已过放票时间，提醒无法设置`;
       } else if (res.createdTasks > 0 && notify.consumeFirstReminderSuccessTip()) {
         toast = '提醒已设置，先备好游客信息';
       } else {
         toast = res.createdTasks > 0
-          ? (res.noReminder > 0 ? '行程已添加，提醒已设置' : '提醒已设置，放票前见')
+          ? '提醒已设置，放票前见'
           : '行程已添加，未设置提醒';
       }
       wx.showToast({ title: toast, icon: 'none', duration: 2000 });
       /* 提交是唯一创建行程的时机，tripId 这一刻才有 —— 写给首页定位用。
          纯预览化后「生成时间线」不再建行程，所以不能更早写。
-         ⚠️ 只在**没有别的页在等它**时才写：从「添加提醒」带行程进来的路径上，
-         add-trip 拿到返回值后会自己写（那是回首页的那一页，它更清楚该定位到哪趟），
-         这里抢写会让首页定位到别处。条件①之外的分支都是「首页直达设置」的旧路径。 */
-      const fromAddTrip = getCurrentPages().some(p => p.route === 'pages/add-trip/add-trip');
-      if (res.tripId && !fromAddTrip) app.globalData.currentTripId = res.tripId;
+         ⚠️ 这里**必须无条件写**（只要拿到 tripId）。原先假设「从添加提醒进来的
+            路径上 add-trip 会自己写」，但下方 navigateBack 会把 add-trip 从页面栈
+            里弹掉，它拿不到这次返回值，那个假设不成立——两边都不写就没人写了。
+            （当前 `currentTripId` 全项目无人读取，所以此前没暴露成用户可见问题。） */
+      if (res.tripId) app.globalData.currentTripId = res.tripId;
       app.globalData.reminderSubmitted = true;
       setTimeout(() => {
         /* 回到首页：兼容 首页→设置（内联生成）与 首页→添加提醒→设置 两种栈深 */

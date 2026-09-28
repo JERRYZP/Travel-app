@@ -1,6 +1,10 @@
 const app = getApp();
 const api = require('../../utils/api.js');
 const util = require('../../utils/util.js');
+/* `afterCommit` 用到了 notify.consumeFirstReminderSuccessTip，此前一直没导入。
+   当前 `afterCommit` 只在「全是仅加行程项」的提交上触发，`createdTasks` 恒为 0，
+   `&&` 短路让它没炸；但那是巧合，不是设计——补上导入，别留一颗哑弹。 */
+const notify = require('../../utils/notify.js');
 
 const { spotsListCards } = require('../../utils/mock.js');
 

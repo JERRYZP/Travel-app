@@ -593,9 +593,20 @@ Page({
           this._recovering = false;
           wx.hideLoading();
           const dateLabel = util.formatDate(visitDate);
-          let title = tripOnly
-            ? `已加入 ${dateLabel}行程，未设置提醒`
-            : `已加入 ${dateLabel}行程，提醒已设置`;
+          /* ⚠️ 文案必须看 `createdTasks`：选中的日期放票时刻可能已经过去，
+             `cart.add` 会把该条 remindOn 落成 false，提交后一个提醒都没建。
+             无条件写「提醒已设置」就是在骗用户——症状和下面注释里说的
+             「静默失败」一模一样（只是这次是提醒根本没生成）。 */
+          let title;
+          if (tripOnly) {
+            title = `已加入 ${dateLabel}行程，未设置提醒`;
+          } else if ((res.expiredReminder || 0) > 0) {
+            title = `已加入 ${dateLabel}行程 · 已过放票时间，提醒无法设置`;
+          } else if (res.createdTasks > 0) {
+            title = `已加入 ${dateLabel}行程，提醒已设置`;
+          } else {
+            title = `已加入 ${dateLabel}行程，未设置提醒`;
+          }
           if (!tripOnly && res.createdTasks > 0 && notify.consumeFirstReminderSuccessTip()) {
             title = '提醒已设置，先备好游客信息';
           }
