@@ -96,6 +96,7 @@ const feedback = {
   submit: (p) => call('feedback', { action: 'feedback.submit', ...p }),
   list: () => call('feedback', { action: 'feedback.list' }),
   /* 管理端（反馈管理页，后端 openid 白名单鉴权） */
+  adminStatus: () => call('feedback', { action: 'feedback.adminStatus' }),
   adminList: (p) => call('feedback', { action: 'feedback.adminList', ...p }),
   adminUpdateStatus: (p) => call('feedback', { action: 'feedback.adminUpdateStatus', ...p }),
 };

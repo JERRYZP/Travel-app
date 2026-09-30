@@ -90,3 +90,5 @@
 
   <text class="guide-disclaimer">抢票操作请以官方渠道页面为准。本工具不代抢、不代约，也不保证抢票成功。</text>
 </view>
+
+<reminder-sample-sheet show="{{showSampleSheet}}" bind:close="onCloseReminderSamples" />

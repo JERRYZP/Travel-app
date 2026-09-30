@@ -44,7 +44,8 @@ console.log('=== 1. 空态只在「一个行程项都没有」时出现 ===');
   eq(/class="empty-steps"/.test(WXML), false, '旧三步说明已由结果预览替代');
   eq(/class="empty-proof-card"/.test(WXML), true, '空态展示行程→抢票→提醒的结果预览');
   eq(/emptyReleaseSample\.visitText/.test(WXML), true, '预览的出行计划来自动态示例数据');
-  eq(/ep-stop-icon|ep-arrow/.test(WXML), false, '步骤区不再渲染图标');
+  eq(/ep-stop-label-row[\s\S]*plan-gold[\s\S]*clock-gold[\s\S]*chat-linear/.test(WXML), true,
+    '案例展示的三种信息均配独立图标');
   eq(/class="ep-sample-entry" bindtap="onOpenReminderSamples"/.test(WXML), true,
     '服务通知示意卡改为提醒样式示意图入口');
   eq(/将在 5 分钟后放票/.test(RELEASE_JS), false,
@@ -53,16 +54,16 @@ console.log('=== 1. 空态只在「一个行程项都没有」时出现 ===');
   eq(/emptyReleaseRows\.length/.test(WXML), true, '近期热门景点放票无数据时整块不渲染');
   eq(/bindtap="onEmptySpotTap"[\s\S]*data-id="\{\{item\.spotId\}\}"/.test(WXML), true,
     '热门景点行点击进入景点详情');
-  eq(/class="empty-hot-img" src="\/images\/spots\/\{\{item\.spotId\}\}\.jpg"[\s\S]*lazy-load="\{\{true\}\}"/.test(WXML), true,
+  eq(/class="empty-hot-img" src="\{\{asset\.spot\(item\.spotId\)\}\}"[\s\S]*lazy-load="\{\{true\}\}"/.test(WXML), true,
     '近期热门景点放票行展示对应景点缩略图');
   eq(/class="empty-hot-all" bindtap="onOpenAllSpots"/.test(WXML), true,
     '近期热门景点放票提供「全部景点」入口');
   eq(/class="empty-hot-all" bindtap="onOpenAllSpots"[\s\S]*empty-hot-all-text[\s\S]*chevron-right/.test(WXML), true,
     '「全部景点」带下划线文字和右箭头');
-  eq(/\.ep-stop-label \{[^}]*color:\s*#AA927C/.test(HOME_WXSS), true,
-    '步骤标题颜色加深一级');
-  eq(/\.ep-stop-value \{[^}]*font-size:\s*22rpx/.test(HOME_WXSS), true,
-    '步骤内容字号增大一级');
+  eq(/\.ep-stop-label \{[^}]*color:\s*#8B725F/.test(HOME_WXSS), true,
+    '步骤标题采用设计稿金棕文字色');
+  eq(/\.ep-stop-value \{[^}]*font-size:\s*24rpx/.test(HOME_WXSS), true,
+    '步骤内容采用设计稿正文尺寸');
   eq(/buildHomeReleasePreview\(res\.hotSpots \|\| \[\], serverNow, 3\)/.test(JS), true,
     '预览复用 home.bootstrap 已返回的 hotSpots，不额外请求接口');
   eq(/emptyReleaseRows: releasePreview\.rows/.test(JS), true, '页面消费近期热门景点放票预览行');
@@ -71,8 +72,10 @@ console.log('=== 1. 空态只在「一个行程项都没有」时出现 ===');
     '热门景点行复用现有景点详情浮窗');
   eq(/onOpenAllSpots\(\)[\s\S]*\/pages\/spot-hub\/spot-hub/.test(JS), true,
     '「全部景点」复用小程序的景点页');
-  eq(/onOpenReminderSamples\(\)[\s\S]*\/pages\/setup\/setup\?showSample=1/.test(JS), true,
-    '示意图入口复用设置页已有的三种真实样式弹层');
+  eq(/onOpenReminderSamples\(\)[\s\S]*showSampleSheet: true/.test(JS), true,
+    '示意图入口在当前页打开');
+  eq(/reminder-sample-sheet show="\{\{showSampleSheet\}\}"/.test(WXML), true,
+    '首页复用共享提醒样式弹层');
 }
 
 console.log('=== 1.1 首页规则预览只展示高热度景点，并给出真实放票文案 ===');
@@ -106,6 +109,16 @@ console.log('=== 1.1 首页规则预览只展示高热度景点，并给出真�
   eq(preview.sample.visitText, '10月6日 · 故宫博物院', '示例优先选高难度热门景点');
   eq(preview.sample.releaseText, '明天 20:00 起抢', '示例给出该景点具体的抢票时间');
   eq(preview.sample.remindText, '19:55 微信提醒', '示例给出提醒提前量');
+
+  const guobo = Object.assign(
+    mk('guobo', '中国国家博物馆', 5, 5, '20:00', ['monday']),
+    { shortName: '国博' }
+  );
+  const preferred = release.buildHomeReleasePreview([
+    mk('gugong', '故宫博物院', 5, 5, '20:00', ['monday']),
+    guobo,
+  ], now, 3);
+  eq(preferred.sample.visitText, '10月6日 · 国博', '有国博时示例固定使用国博简称');
 }
 
 console.log('=== 2. 悬浮按钮只在已有行程时出现 ===');
@@ -293,6 +306,10 @@ console.log('=== 5. 删除只到「天」为止，整趟行程的删除入口已
   eq(/manage=1/.test(JS), false, 'home.js 不再跳 add-trip?manage=1（add-trip 也从没读过它）');
   eq(/\?manage=1|'manage'/.test(fs.readFileSync(path.join(ROOT, 'miniprogram/pages/add-trip/add-trip.js'), 'utf8')),
     false, 'add-trip 里没有 manage 的残留');
+  eq(/const emptyHome = !!this\.data\.isBlank \|\| !!this\.data\.previewNewUser/.test(JS), true,
+    '空白首页按新用户处理');
+  eq(/const t = emptyHome \? null : this\.data\.primaryTrip/.test(JS), true,
+    '空白首页不再用旧 primaryTrip 预填 PAGE-005');
 
   /* 卡片菜单里那条删的是**一个行程项**，文案不能写成「删除行程」——那会让人
      以为整趟都要没了。 */
@@ -327,6 +344,22 @@ console.log('=== 6. 行程分段标题：摘要卡那趟不渲染，未来行程
   eq(/ts-day-past-note/.test(SECTION_WXML), true, '首页行程墙日期标题渲染已过去备注');
   eq(/\.ts-day-past-note\s*\{[^}]*font-size:\s*20rpx/.test(SECTION_WXSS), true,
     '首页已过去备注使用辅助字号');
+
+  eq(/pastCount: 0/.test(SECTION_JS) && /pastElapsedDays: 0/.test(SECTION_JS) && /pastItemCount: 0/.test(SECTION_JS),
+    true, '已过去日期默认折叠，并保留天数/项数状态');
+  eq(/const pastDays = history \? \[\] : days\.filter\(day => day\.daysPast > 0\)/.test(SECTION_JS),
+    true, '只在进行中行程折叠已结束日期，历史行程不重复折叠');
+  eq(/onPastToggle\(\)[\s\S]*pastOpen: !this\.data\.pastOpen/.test(SECTION_JS),
+    true, '点击折叠入口切换展开态');
+  eq(/pastElapsedDays = pastDays\.length \? pastDays\[0\]\.daysPast : 0/.test(SECTION_JS),
+    true, '折叠入口按最早已结束日期展示真实已过去天数');
+  eq(/class="ts-past-fold" bindtap="onPastToggle"/.test(SECTION_WXML), true,
+    '折叠入口渲染在日期列表前');
+  eq(/ts-past-fold[\s\S]*wx:for="\{\{days\}\}"[\s\S]*history \|\| dayIndex >= pastCount \|\| pastOpen/.test(SECTION_WXML),
+    true, '折叠入口位于今天/未来日期之前，展开后才渲染已过去日期');
+  eq(/\.ts-past-fold \{[^}]*\}/.test(SECTION_WXSS), true, '折叠入口样式在');
+  eq(/\.ts-past-title \{[^}]*color: var\(--color-text\)/.test(SECTION_WXSS), true,
+    '已过去天数比强正文弱一阶');
 
   /* 谁 weak：只看「是不是摘要卡那趟」。判断放页面（_weak），不在模板里数 index——
      模板内置计数器一加 wx:if 就会静默错位。 */
@@ -488,36 +521,51 @@ console.log('=== 8.1 副行尾巴：文案与色调的分支 ===');
   /* `releaseRemainderOf` 的全部判断都收在这里，WXML 只拼色类
      （WXML 不能调方法，在模板里写判断会静默失效）。 */
   const util = require(path.join(ROOT, 'miniprogram/utils/util.js'));
-  const future = new Date(Date.now() + 3 * 86400000).toISOString();
-  const past = new Date(Date.now() - 3600000).toISOString();
+  const NOW = Date.parse('2026-09-29T03:00:00.000Z'); // 北京时间 11:00
+  const at = ms => new Date(NOW + ms).toISOString();
   const base = { reservationRequired: true, ticketState: 'PENDING', reminder: { state: 'NOT_SET' } };
+  const remain = ms => util.releaseRemainderOf(
+    Object.assign({}, base, { releaseAt: at(ms) }), NOW).text;
+  const remainTone = ms => util.releaseRemainderOf(
+    Object.assign({}, base, { releaseAt: at(ms) }), NOW).tone;
+  const past = at(-3600000);
 
-  eq(util.releaseRemainderOf(Object.assign({}, base, { releaseAt: future })).text, '· 还有3天',
-    '待抢 → 距放票还剩 N 天');
-  eq(util.releaseRemainderOf(Object.assign({}, base, { releaseAt: future })).tone, 'muted', '倒计时是中性色');
-  eq(util.releaseRemainderOf(Object.assign({}, base, { ticketState: 'BOOKABLE', releaseAt: past })).text,
-    '· 现在预约 ›', '可抢 → 现在预约');
-  eq(util.releaseRemainderOf(Object.assign({}, base, { ticketState: 'BOOKABLE', releaseAt: past })).tone,
-    'go', '行动文本用绿色');
-  eq(util.releaseRemainderOf(Object.assign({}, base, { ticketState: 'SUCCESS', releaseAt: past })).text,
-    '· 已约', '已成 → 已约');
+  eq(remain(3 * 86400000), '· 还有3天', '待抢 → 距放票还剩 N 天');
+  eq(remainTone(3 * 86400000), 'muted', '倒计时是中性色');
+  /* 用户反馈：今天 12:00 放票，11:00 时必须显示 1 小时，不能再 ceil 成 1 天。 */
+  eq(remain(3600000), '· 还有1小时', '1 小时至不足 24 小时 → 按小时显示，不误报为 1 天');
+  eq(remain(2 * 3600000), '· 还有2小时', '多小时内显示剩余完整小时数');
+  eq(remain(30 * 60000), '· 还有30分钟', '1 分钟至不足 1 小时 → 按分钟显示');
+  eq(remain(59000), '· 即将开始', '不足 1 分钟 → 即将开始');
+
+  eq(util.releaseRemainderOf(Object.assign({}, base, {
+    ticketState: 'BOOKABLE', releaseAt: past,
+  }), NOW).text, '· 现在预约 ›', '可抢 → 现在预约');
+  eq(util.releaseRemainderOf(Object.assign({}, base, {
+    ticketState: 'BOOKABLE', releaseAt: past,
+  }), NOW).tone, 'go', '行动文本用绿色');
+  eq(util.releaseRemainderOf(Object.assign({}, base, {
+    ticketState: 'SUCCESS', releaseAt: past,
+  }), NOW).text, '· 已约', '已成 → 已约');
   /* ⚠️ 未抢到的尾巴是**「现在预约 ›」不是「约其他日 ›」**（2026-09-24 订正断言）：
      票已经放出来了，那天本来就还有票可抢，副行说这件事才对；「约其他日」是
      另一条动线（换成期），由卡片底部的挽回气泡 + 菜单承担，不该挤进放票行。
      这条断言一度停在旧实现上，与 `util.js` 改了词之后就没再对齐过。 */
-  eq(util.releaseRemainderOf(Object.assign({}, base, { ticketState: 'FAILED', releaseAt: past })).text,
-    '· 现在预约 ›', '未成 → 仍可抢票（挽回不挤进放票行）');
-  eq(util.releaseRemainderOf(Object.assign({}, base, { ticketState: 'UNMARKED', releaseAt: past })).text,
-    '· 现在预约 ›', '待确认 → 仍可抢票');
+  eq(util.releaseRemainderOf(Object.assign({}, base, {
+    ticketState: 'FAILED', releaseAt: past,
+  }), NOW).text, '· 现在预约 ›', '未成 → 仍可抢票（挽回不挤进放票行）');
+  eq(util.releaseRemainderOf(Object.assign({}, base, {
+    ticketState: 'UNMARKED', releaseAt: past,
+  }), NOW).text, '· 现在预约 ›', '待确认 → 仍可抢票');
   /* ⚠️ 还没到点但 releaseAt 已经过去（放票时刻落在过去），不能显示「还有-1天」 */
-  eq(util.releaseRemainderOf(Object.assign({}, base, { releaseAt: past })).text,
+  eq(util.releaseRemainderOf(Object.assign({}, base, { releaseAt: past }), NOW).text,
     '· 现在预约 ›', 'releaseAt 已过时不显示负数天数');
 
   /* ⚠️ **MISSED 压过一切**：提醒没送到是唯一会真正伤到用户的状态，
      被「现在预约」盖掉等于把静默失败藏起来。 */
   eq(util.releaseRemainderOf(Object.assign({}, base, {
     ticketState: 'BOOKABLE', releaseAt: past, reminder: { state: 'MISSED' },
-  })).text, '· 未送达', '未送达优先于票务态（哪怕正在可抢）');
+  }), NOW).text, '· 未送达', '未送达优先于票务态（哪怕正在可抢）');
 
   /* 免预约项不显示尾巴，副行整句由 releaseLineOf 给 */
   eq(util.releaseRemainderOf({ reservationRequired: false }).text, '', '免预约不显示尾巴');
@@ -771,9 +819,12 @@ console.log('=== 11. 顶部布局：横幅在文档流里 / 标题下沿对齐 /
  *      而它们嵌在 `catchtap="onMenuToggle"`（开合）的容器**内部** ——
  *      点面板任意位置 = 先关再开，菜单弹不出来；日期菜单更狠，「删除当天行程」
  *      的动作被自己的关闭抢先截胡。同时两处**根本没有捕获层**（09-23 上）。
- *   ④ **唯一入口只有 52rpx 的图标，展开后被自己的全屏蒙层埋掉**（09-23 本轮真因）：
+ *   ④ **唯一入口只有 52rpx 的图标，展开后被自己的全屏蒙层埋掉**（09-23 真因）：
  *      `.tc-menu` 只有图标那点宽度，它是唯一的开合入口；而上一轮加的
  *      `position: fixed` 全屏蒙层把它整个盖住了 —— 第一次点开之后就再也点不回去。
+ *   ⑤ **日期菜单展开后整层仍为 31，被后续景点卡片的同层菜单热区盖住**（09-29）：
+ *      日期弹层与下方 `.tc-menu` 重叠时，DOM 更后的景点菜单截走右段点击，
+ *      表现为「删除当天行程」左半能点、右半却打开景点菜单。
  *
  * ⚠️ ④ 是我上一轮**自己写错、又自己写断言锁住**的：断言只查了「蒙层存在且层级递增」，
  *    没有查「图标是否浮在蒙层之上」。设计错了，锁就跟着错。
@@ -811,12 +862,17 @@ console.log('=== 9. 下拉菜单：面板不自关、捕获层在容器外、图
     '卡片捕获层在 `.tc-menu` 之外且排在它之前（同 z-index 时靠文档序决胜）');
   eq(cardMenuAt < cardPopAt, true, '图标在捕获层之后、面板之前');
   eq(/catchtap="onMenuClose"/.test(CARD_WXML3), true, '捕获层负责关闭（catch 而非 bind）');
-  eq(/catchtouchmove="noop"/.test(CARD_WXML3), true, '捕获层吞掉 touchmove（不让页面跟着滚）');
+  eq(/catchtouchmove="noop"/.test(CARD_WXML3), false,
+    '捕获层不拦截 touchmove（菜单展开时页面仍可滚动）');
+  eq(/if \(this\.data\.menuId\) patch\.menuId = ''/.test(JS), false,
+    '页面滚动不主动收起单条提醒菜单');
 
-  const dayMenuAt = SECT_WXML.indexOf('class="ts-day-menu"');
+  const dayMenuAt = SECT_WXML.search(/class="ts-day-menu[ "]/);
   const dayCatchAt = SECT_WXML.indexOf('class="ts-day-catch"');
   eq(dayCatchAt > 0 && dayCatchAt < dayMenuAt, true, '日期菜单捕获层同样在容器外且在前');
   eq(/catchtap="onMenuClose"/.test(SECT_WXML), true, '日期菜单捕获层负责关闭');
+  eq(/class="ts-day-menu \{\{day\.menuOpen \? 'is-open' : ''\}\}"/.test(SECT_WXML), true,
+    '日期菜单展开时加 is-open 类');
 
   /* --- ③ 捕获层浮在卡片之上（fixed + 铺满 + z-index 高于卡片） --- */
   const cardCatchRule = ruleOf(CARD_WXSS3, 'tc-menu-catch');
@@ -846,8 +902,13 @@ console.log('=== 9. 下拉菜单：面板不自关、捕获层在容器外、图
   const dz = zOf(SECT_WXSS, 'ts-day-catch');
   const dmenuZ = zOf(SECT_WXSS, 'ts-day-menu');
   const dpz = zOf(SECT_WXSS, 'ts-day-pop');
+  const dmenuOpenZ = zOf(SECT_WXSS, 'ts-day-menu.is-open');
   eq(dmenuZ >= dz && dpz > dmenuZ, true,
     '日期菜单层级：容器(' + dmenuZ + ') ≥ 捕获层(' + dz + ')、面板(' + dpz + ') 最高');
+  eq(dmenuOpenZ > dmenuZ, true,
+    '日期菜单展开态抬层（展开 ' + dmenuOpenZ + ' > 收起 ' + dmenuZ + '）');
+  eq(dmenuOpenZ >= 40, true,
+    '日期菜单展开层级至少 40，不被后续景点卡片的同层菜单热区盖住');
   eq(SECT_WXSS.indexOf('.ts-day-catch {') > SECT_WXSS.indexOf('.ts-day-menu {'), true,
     '日期菜单同级时同样靠文档序');
 
@@ -885,10 +946,10 @@ console.log('=== 9. 下拉菜单：面板不自关、捕获层在容器外、图
   eq(/top:\s*77rpx/.test(ruleOf(SECT_WXSS, 'ts-day-pop')), true,
     '日期菜单面板 top 77rpx（旧 44 + 纵向 margin 33）');
 
-  /* --- ⑤ 两个组件都实现了捕获层的 touchmove 回调（否则 catchtouchmove 是死绑定） --- */
+  /* --- ⑤ 单条提醒菜单不拦截 touchmove；日期菜单仍维持原有行为 --- */
   const CARD_JS3 = fs.readFileSync(path.join(ROOT, 'miniprogram/components/trip-card/trip-card.js'), 'utf8');
   const SECT_JS = fs.readFileSync(path.join(ROOT, 'miniprogram/components/trip-section/trip-section.js'), 'utf8');
-  eq(/noop\(\)\s*\{\s*\}/.test(CARD_JS3), true, 'trip-card 有 noop 方法');
+  eq(/noop\(\)\s*\{\s*\}/.test(CARD_JS3), false, 'trip-card 无 touchmove 吞事件方法');
   eq(/noop\(\)\s*\{\s*\}/.test(SECT_JS), true, 'trip-section 有 noop 方法');
 
   /* --- ⑥ wxml 绑定的「裸属性」必须在 properties/data 里声明（09-23 第五种根因） ---

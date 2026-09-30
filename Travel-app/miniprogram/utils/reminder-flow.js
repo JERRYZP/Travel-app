@@ -79,8 +79,11 @@ function onDateConfirm(page, e) {
       }
       rollbackAdded(cartId);
       if (access.action === 'settings') {
-        if (access.settingsKind === 'system') notify.openSystemNotifySetting();
-        else wx.navigateTo({ url: '/pages/notify-settings/notify-settings' });
+        notify.openReminderAccessSettings(access);
+      } else if (access.action === 'cancelled' && access.reason === 'rejected') {
+        wx.showToast({ title: '已取消，本次未设置提醒', icon: 'none' });
+      } else if (access.action === 'cancelled' && access.reason === 'quota-shortfall') {
+        wx.showToast({ title: '授权还未补齐，请再试一次', icon: 'none' });
       }
       return { res: null, mode: '' };
     });

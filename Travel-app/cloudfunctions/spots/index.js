@@ -180,6 +180,7 @@ function buildCard(spot, rule, now) {
   return {
     spotId: spot.spotId,
     name: spot.name,
+    shortName: spot.shortName || spot.name,
     category: spot.category,
     audienceTags: spot.audienceTags || [],
     district: spot.district,

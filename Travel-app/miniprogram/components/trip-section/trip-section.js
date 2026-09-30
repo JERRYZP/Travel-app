@@ -48,11 +48,16 @@ Component({
     days: [],
     progressText: '',
     dateRange: '',
+    pastCount: 0,
+    pastElapsedDays: 0,
+    pastItemCount: 0,
+    pastRangeText: '',
+    pastOpen: false,
   },
 
   observers: {
-    'trip, menuDate, dismissed, recoverableIds': function (
-      trip, menuDate, dismissed, recoverableIds
+    'trip, menuDate, dismissed, recoverableIds, history': function (
+      trip, menuDate, dismissed, recoverableIds, history
     ) {
       if (!trip) return;
       const dismissedSet = {};
@@ -94,15 +99,32 @@ Component({
           menuOpen: menuDate === visitDate,
         }));
 
+      /* 进行中的行程只把「今天/未来」留在展开区；已结束日期默认收成一枚入口，
+         入口仍在它们上方，展开后顺序不变。历史行程本身已在页面底部整趟折叠，
+         这里不能再套一层，否则要连点两次才能看到记录。 */
+      const pastDays = history ? [] : days.filter(day => day.daysPast > 0);
+      const pastElapsedDays = pastDays.length ? pastDays[0].daysPast : 0;
+      const pastItemCount = pastDays.reduce((sum, day) => sum + day.items.length, 0);
+      const pastRangeText = pastDays.length === 1
+        ? pastDays[0].title
+        : (pastDays.length > 1 ? util.monthDayRange(pastDays[0].key, pastDays[pastDays.length - 1].key) : '');
+
       this.setData({
         days,
         dateRange: util.monthDayRange(trip.startDate, trip.endDate),
         progressText: p.total > 0 ? ('搞定 ' + p.done + '/' + p.total) : '随到随玩',
+        pastCount: pastDays.length,
+        pastElapsedDays,
+        pastItemCount,
+        pastRangeText,
       });
     },
   },
 
   methods: {
+    onPastToggle() {
+      this.setData({ pastOpen: !this.data.pastOpen });
+    },
     onDateMenuToggle(e) {
       if (this.data.history) return;
       this.triggerEvent('datemenu', {

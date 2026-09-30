@@ -1,7 +1,7 @@
 # Travel-app 前端接口契约 V1.3
 
 > 面向：前端（微信小程序页面开发）
-> 更新：2026-09-25 `cart.commit` 新增 `cartId`（补录只提交本次项）与 `disableReminders`（仅加行程不提醒）。此前 2026-09-16 首页行程化 V2 契约定稿，新增 `trip_items`、`tripItem.*`、`cart.commit` 与新版 `home.bootstrap`；旧第 2.0 / 2.1 / 2.3 / 2.4 中面向“提醒任务列表 / 双 Tab 首页”的接口在 V2 实现时由第 8 节取代。此前 2026-08-26 spots `remindable` / `weak`、2026-08-19 feedback 管理端、2026-08-14 日历通道下线等变更继续有效。
+> 更新：2026-09-29 明确微信一次性订阅每次用户点击最多增加 1 条额度，禁止异步连发伪装批量授权。2026-09-25 `cart.commit` 新增 `cartId`（补录只提交本次项）与 `disableReminders`（仅加行程不提醒）；此前 2026-09-16 首页行程化 V2 契约定稿，新增 `trip_items`、`tripItem.*`、`cart.commit` 与新版 `home.bootstrap`；旧第 2.0 / 2.1 / 2.3 / 2.4 中面向“提醒任务列表 / 双 Tab 首页”的接口在 V2 实现时由第 8 节取代。此前 2026-08-26 spots `remindable` / `weak`、2026-08-19 feedback 管理端、2026-08-14 日历通道下线等变更继续有效。
 > 调用方式：`wx.cloud.callFunction({ name: '<函数名>', data: { action: '<域>.<动作>', ...params } })`
 
 ---
@@ -103,6 +103,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   data: [{
     spotId: "gugong",
     name: "故宫博物院",
+    shortName: "故宫",                  // 窄容器专用简称；无值时前端回退 name
     category: "博物馆",
     district: "东城区",
     audienceTags: ["family", "elder"],  // 2026-09-06 景点聚合页：人群标签（family=亲子 / elder=带父母），无标注为 []
@@ -158,7 +159,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 }
 ```
 
-> 前端交互（PAGE-002）：MINIPROGRAM → `wx.navigateToMiniProgram` 直跳，失败兜底复制 `url`（官网链接）并 Toast「跳转失败，已复制官网链接」；WEB → `web-view` 打开（真机需在微信公众平台「开发管理 → 开发设置 → 业务域名」配置对应官网域名，否则打不开），弹窗内提供「复制链接」兜底；OFFICIAL_ACCOUNT → 有 `qrCode` 则弹二维码弹层（长按识别），无 `qrCode` 则 Toast 提示关注。`qrCode` 图片放 `miniprogram/images/qrcodes/`，用各公众号后台导出的真实二维码替换占位图。
+> 前端交互（PAGE-002）：MINIPROGRAM → `wx.navigateToMiniProgram` 直跳，失败兜底复制 `url`（官网链接）并 Toast「跳转失败，已复制官网链接」；WEB → `web-view` 打开（真机需在微信公众平台「开发管理 → 开发设置 → 业务域名」配置对应官网域名，否则打不开），弹窗内提供「复制链接」兜底；OFFICIAL_ACCOUNT → 有 `qrCode` 则弹二维码弹层（长按识别），无 `qrCode` 则 Toast 提示关注。`qrCode` 字段保留 `/images/qrcodes/...` 逻辑路径，源图放 `cloud-assets/images/qrcodes/` 并上传到 `static/v0.3/images/qrcodes/`；前端通过 `utils/assets.js` 转成云文件 ID，不把二维码打进代码包。
 
 ### 1.3 `batch` — 批量取景点卡
 
@@ -658,13 +659,13 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     sentOffsets: [],
     createdAt: "..."
   }],
-  needsOaAuth: true                    // 前端据此决定是否弹公众号授权引导
+  needsOaAuth: true                    // 预留：公众号渠道接入后用于前端关注引导
 }
 // 失败：{ success: false, error: "...", errorCode: 1009/1010/1011 }
 ```
 
 **前端提交后流程：**
-1. `needsOaAuth` 为 true → 弹公众号授权引导（软引导，可跳过）
+1. `needsOaAuth` 字段暂不触发 UI。公众号渠道尚未打通，提交成功后直接 Toast 并回首页。
 
 #### `task.list` — 任务列表
 
@@ -848,6 +849,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 `wx.requestSubscribeMessage` 每次授权 = 可发 1 条订阅消息。额度按模板存入 `users.subscribeQuotas[templateId]`，同时维护旧字段 `users.subscribeQuota` 作为总数；授权成功 +1、notifier 发送成功 -1、微信返回 `43101` 时对应模板清零。当前业务只有「放票提醒」一个模板，但协议按 templateId 设计，后续可直接扩展多模板。
 
+> ⚠️ 微信限制：一次用户点击只能触发一次同模板授权申请，最多增加 1 条额度。“总是保持以上选择”只免去后续弹窗，不允许在一次点击后的异步链里连续申请 N 条；客户端必须按“一次点击 → 最多 +1”展示和上报缺口。
+
 **`subscribe.add`**（用户授权后前端调用，云端按当前 openid 记 +1）：
 
 ```
@@ -879,7 +882,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   nearestRemindAt: "2026-09-27T...",
   level: "short",              // idle | ready | low | short | exhausted
   shortfall: 1,                // max(0, pendingMessageCount - quota)
-  replenishNeeded: 2           // 补到 pendingMessageCount + 1 缓冲所需次数
+  replenishNeeded: 2           // 补到 pendingMessageCount + 1 缓冲的目标次数；客户端仍需一次点击补 1 条
 }
 ```
 
@@ -935,7 +938,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ## 3.5 feedback（意见反馈 / 信息纠错）
 
 **云函数名：`feedback`**
-**说明：** 意见反馈 / 信息纠错 统一入口，共用 `feedbacks` 集合（TABLE-008），`type` 区分两类。页面：PAGE-010 我的 → 意见反馈 / 信息纠错。
+**说明：** 意见反馈 / 信息纠错 统一入口，共用 `feedbacks` 集合（TABLE-008），`type` 区分两类。页面：PAGE-010 我的 → PAGE-010-4 帮助与反馈 → 意见反馈 / 信息纠错。
 
 ### `feedback.submit` — 提交反馈 / 纠错
 
@@ -962,7 +965,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 { success: true, id: "..." }
 ```
 
-### `feedback.list` — 本人提交历史
+### `feedback.list` — 本人提交历史（我的反馈页）
 
 ```
 调用：{ action: 'feedback.list' }
@@ -976,6 +979,20 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   items: [{ _id, type, category, spotId, spotName, errorType, content, contact, status, createdAt }]
   // 按 createdAt 倒序，最多 50 条；status = OPEN 待处理 | PROCESSED 已处理 | IGNORED 已忽略
 }
+```
+
+### `feedback.adminStatus` — 管理员入口校验
+
+```
+调用：{ action: 'feedback.adminStatus' }
+```
+
+**用途：** “我的”页长按用户信息卡时，先由服务端判断当前 openid 是否在 `ADMIN_OPENIDS` 白名单内；只有 `isAdmin=true` 才进入反馈管理页。失败或非管理员均不跳转。
+
+**返回：**
+
+```javascript
+{ success: true, isAdmin: true | false }
 ```
 
 ### `feedback.adminList` — 管理员查看全部（反馈管理页）
@@ -1030,14 +1047,16 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-005** 新增提醒（独立页） | `timeline.preview`（纯预览，不建行程）、`cart.add`、`cart.addAll`、`cart.list`（暂存清单） |
 | **PAGE-006** 景点视图 | 搁置中，不实现 |
 | **PAGE-007** 行程清单弹窗 | `cart.list`、`cart.remove`、`cart.clear`、`cart.updateRemindOn`、`cart.commit` |
-| **PAGE-008** 设置提醒 | V0.3 主流程：`cart.list`、`subscribe.get`（`cart.list` 算待设提醒条数，`subscribe.get` 算当前额度）、用户主动补齐授权、`cart.commit`（额度或系统权限未满足时主按钮禁用；不提供仅加行程旁路） |
+| **PAGE-008** 设置提醒 | V0.3 主流程：`cart.list`、`subscribe.get`（`cart.list` 算待设提醒条数，`subscribe.get` 算当前额度）、用户主动点击「点击补授权次数」（每次最多 +1）、`cart.commit`（额度或系统权限未满足时主按钮禁用；不提供仅加行程旁路） |
 | **PAGE-010** 我的 | `user.profile`、提醒设置权限/额度健康度（`notify.getReminderHealth`，服务端额度 + 客户端权限） |
 | **PAGE-012** 编辑资料 | `user.profile`、`user.updateProfile`（头像走 `open-type="chooseAvatar"` + `wx.cloud.uploadFile` 上传） |
 | **PAGE-013** 分享场景页 | `spots.list`（today）、`spots.batch`（national-day-2026）；点击景点后 `spots.detail` |
-| **PAGE-010-1** 提醒设置 | `subscribe.get` + 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`（模板未配置时「去授权」置灰） |
+| **PAGE-010-1** 提醒设置 | `subscribe.get` + 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`；缺口按钮为「补授权次数+1」，点击一次最多申请 1 条（模板未配置时「去授权」置灰） |
+| **PAGE-010-4** 帮助与反馈 | 微信原生客服 `button open-type="contact"`；无云函数调用 |
 | **PAGE-010-2** 意见反馈 | `feedback.submit`（type=feedback，category=suggestion/bug） |
 | **PAGE-010-3** 信息纠错 | `spots.search`（选景点）、`feedback.submit`（type=correction） |
-| **隐藏管理页**（反馈管理） | `feedback.adminList`、`feedback.adminUpdateStatus`；入口 = 我的页长按用户信息卡；后端 openid 白名单鉴权 |
+| **PAGE-010-5** 我的反馈 | `feedback.list`（本人历史，最多 50 条，倒序） |
+| **隐藏管理页**（反馈管理） | `feedback.adminStatus`、`feedback.adminList`、`feedback.adminUpdateStatus`；入口 = 我的页长按用户信息卡，服务端确认管理员后才跳转；后端 openid 白名单鉴权 |
 
 ---
 
@@ -1054,7 +1073,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
                       app.globalData.currentTripId 供首页定位新行程
 ```
 
-`PAGE-008`（V0.3 硬闸门）不使用 `confirmReminderAccess()`：额度不足时主按钮禁用，只允许用户主动补齐授权，补齐后才走 `cart.commit`，不提供 `trip-only` 旁路。首页“约其他日”和景点页直设提醒等轻量入口仍共用 `notify.getReminderQuotaNeeded()` / `confirmReminderAccess()`；只有 `action = ready` 才走普通 `cart.commit`，`trip-only` 走 `disableReminders: true`，`settings/cancelled` 不提交。
+`PAGE-008`（V0.3 硬闸门）不使用 `confirmReminderAccess()`：额度不足时主按钮禁用，只允许用户主动点击「点击补授权次数」，微信一次性订阅每次点击最多增加 1 条；仍不足时继续保留缺口，不用异步连发伪装补齐。全部满足后才走 `cart.commit`，不提供 `trip-only` 旁路。首页“约其他日”和景点页直设提醒等轻量入口仍共用 `notify.getReminderQuotaNeeded()` / `confirmReminderAccess()`；订阅不足时先就地说明缺口，用户主动选择「补授权并继续」后才调用微信授权，成功后沿当前动线继续，只有 `action = ready` 才走普通 `cart.commit`，`trip-only` 走 `disableReminders: true`，`settings/cancelled` 不提交（详见 `REMINDER-RULE-009`）。
 
 ⚠️ **不再传 tripId**：纯预览化后「生成时间线」不建行程，清单也不挂在行程上。
 任何页面都不应缓存或透传 tripId —— 提交返回的那个才是唯一可信的。

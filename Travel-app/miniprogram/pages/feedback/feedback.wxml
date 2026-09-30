@@ -50,4 +50,9 @@
     <svg-icon name="check" size="14px" />
     <text>提交</text>
   </view>
+
+  <view class="service-fallback">
+    <text>需要立即沟通？</text>
+    <button class="service-link" open-type="contact" hover-class="service-link-hover">联系在线客服</button>
+  </view>
 </view>

@@ -5,6 +5,7 @@ Page({
     statusBarHeight: 20,
     navBarHeight: 44,
     openFaq: '',
+    showSampleSheet: false,
     faqs: [
       {
         key: 'commit',
@@ -46,7 +47,11 @@ Page({
   },
 
   onReminderSamples() {
-    wx.navigateTo({ url: '/pages/setup/setup?showSample=1' });
+    this.setData({ showSampleSheet: true });
+  },
+
+  onCloseReminderSamples() {
+    this.setData({ showSampleSheet: false });
   },
 
   onNotifySettings() {

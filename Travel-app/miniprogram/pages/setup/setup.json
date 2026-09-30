@@ -1,6 +1,7 @@
 {
   "usingComponents": {
-    "svg-icon": "/components/svg-icon/svg-icon"
+    "svg-icon": "/components/svg-icon/svg-icon",
+    "reminder-sample-sheet": "/components/reminder-sample-sheet/reminder-sample-sheet"
   },
   "navigationStyle": "custom"
 }

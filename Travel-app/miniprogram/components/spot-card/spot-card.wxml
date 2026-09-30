@@ -1,7 +1,8 @@
+<wxs module="asset" src="../../utils/cloud-assets.wxs"></wxs>
 <wxs module="fmt" src="../../utils/format.wxs"></wxs>
 <!-- 卡片样式与首页「北京热门景点推荐」（home.wxml spot-card）一模一样，仅不渲染选择按钮（聚合页行动收敛到详情浮窗） -->
 <view class="spot-card" bindtap="onTap">
-  <image class="spot-card-img" src="/images/spots/{{spot.spotId}}.jpg" mode="aspectFill" lazy-load="{{true}}" />
+  <image class="spot-card-img" src="{{asset.spot(spot.spotId)}}" mode="aspectFill" lazy-load="{{true}}" />
   <view class="spot-card-body">
     <view class="spot-card-title">
       <text class="spot-card-name">{{spot.name}}</text>

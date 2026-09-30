@@ -12,7 +12,7 @@
 <view class="page-body">
   <view class="intro">
     <text class="intro-title">按次获取提醒，放票前不缺席</text>
-    <text class="intro-desc">每次授权 = 1 条放票提醒，可多次点击“续收 +1”</text>
+    <text class="intro-desc">每次授权 = 1 条放票提醒，可多次点击“补授权次数+1”</text>
   </view>
 
   <!-- ① 微信系统通知权限 -->
@@ -48,7 +48,7 @@
     <!-- 对齐优剪模式：每个模板单独续收，同时保留微信授权设置入口 -->
     <view class="auth-actions">
       <view class="auth-btn {{templateReady ? '' : 'disabled'}}" bindtap="onRequestSubscribe">
-        <text>{{templateReady ? '续收 +1' : '通道准备中'}}</text>
+        <text>{{templateReady ? '补授权次数+1' : '通道准备中'}}</text>
       </view>
       <view class="auth-btn secondary" bindtap="onOpenSubscribeSetting">
         <text>微信授权设置</text>
@@ -59,8 +59,8 @@
   <!-- 说明 -->
   <view class="tips-card">
     <text class="tips-title">提醒机制说明</text>
-    <text class="tips-item">· 微信订阅消息为「一次性订阅」：每次授权对应可发送 1 条放票提醒；可多次点击“续收 +1”积累，若微信侧拒收或耗尽会自动归零。</text>
-    <text class="tips-item">· 续收时微信会弹一次确认窗，这是微信一次性订阅的固定规则，小程序无法跳过。弹窗里勾上「总是保持以上选择，不再询问」再点允许，以后续收就都不弹窗了（勾选状态永久有效，想改只能去微信设置里改）。</text>
+    <text class="tips-item">· 微信订阅消息为「一次性订阅」：每次授权对应可发送 1 条放票提醒；可多次点击“补授权次数+1”积累，若微信侧拒收或耗尽会自动归零。</text>
+    <text class="tips-item">· 补授权时微信会弹一次确认窗，这是微信一次性订阅的固定规则，小程序无法跳过。弹窗里勾上「总是保持以上选择，不再询问」再点允许，以后补授权就都不弹窗了（勾选状态永久有效，想改只能去微信设置里改）。</text>
     <text class="tips-item">· 短信提醒将在下个迭代上线，敬请期待。</text>
   </view>
 </view>

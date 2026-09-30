@@ -1,5 +1,6 @@
+<wxs module="asset" src="../../utils/cloud-assets.wxs"></wxs>
 <view wx:if="{{spot}}" class="scene-card" bindtap="onTap">
-  <image class="scene-card-img" src="/images/spots/{{spot.spotId}}.jpg" mode="aspectFill" lazy-load="{{true}}" />
+  <image class="scene-card-img" src="{{asset.spot(spot.spotId)}}" mode="aspectFill" lazy-load="{{true}}" />
   <view class="scene-card-body">
     <view class="scene-card-title-row">
       <text class="scene-card-name">{{spot.name}}</text>

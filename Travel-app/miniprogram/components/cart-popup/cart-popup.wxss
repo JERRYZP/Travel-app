@@ -210,6 +210,7 @@
   font-size: 23rpx;
   color: #C04028;
 }
+.cart-row-sub.is-released { color: var(--chip-green-text); }
 
 .cart-row-action {
   flex-shrink: 0;

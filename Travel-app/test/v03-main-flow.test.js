@@ -31,6 +31,9 @@ const SPOTS_WXML = read('miniprogram/pages/spots/spots.wxml');
 const SPOTS_JS = read('miniprogram/pages/spots/spots.js');
 const SETUP_WXML = read('miniprogram/pages/setup/setup.wxml');
 const SETUP_JS = read('miniprogram/pages/setup/setup.js');
+const SAMPLE_JS = read('miniprogram/components/reminder-sample-sheet/reminder-sample-sheet.js');
+const SAMPLE_WXML = read('miniprogram/components/reminder-sample-sheet/reminder-sample-sheet.wxml');
+const SAMPLE_WXSS = read('miniprogram/components/reminder-sample-sheet/reminder-sample-sheet.wxss');
 
 console.log('=== 1. 创建行程主流程 ===');
 {
@@ -138,7 +141,11 @@ console.log('=== 1. 创建行程主流程 ===');
 
 console.log('\n=== 2. 行程清单 ===');
 {
-  eq(/超难约的景点默认开启提醒/.test(CART_WXML), true, '默认提醒策略可见');
+  eq(/超难约的景点默认开启提醒/.test(CART_WXML), true, '展开后的默认提醒策略可见');
+  eq(/cart-tips-title">默认提醒策略</.test(CART_WXML), true, '温馨提示标题改为默认提醒策略');
+  eq(/cart-tips-folded">超难约开启 · 较易约关闭 ·免预约不提醒 · 已开票不提醒</.test(CART_WXML), true,
+    '收起态正文去掉重复前缀');
+  eq(/已过放票时间的景点不予提醒/.test(CART_WXML), true, '温馨提示包含已过放票时间不提醒规则');
   eq(/tipsExpanded/.test(CART_WXML + CART_JS), true, '温馨提示支持展开与折叠');
   eq(/tipsExpanded: false/.test(CART_JS), true, '温馨提示默认收起');
   eq(/cartDefaultTipsCollapsedV1/.test(CART_JS), false, '不再依赖旧的本机展开记忆');
@@ -175,14 +182,15 @@ console.log('\n=== 4. 设置提醒权限与硬闸门 ===');
   eq(/name="check-white"/.test(SETUP_WXML), true, '勾选框默认显示选中图标');
   eq(/微信通知权限：/.test(SETUP_WXML), true, '系统通知权限单独展示');
   eq(/放票提醒授权：/.test(SETUP_WXML), true, '订阅授权单独展示');
-  eq(/一键补全授权次数/.test(SETUP_WXML), true, '缺口按钮改为一键补全授权次数');
+  eq(/点击补授权次数/.test(SETUP_WXML), true, '缺口按钮使用点击补授权次数文案');
   eq(/\.quota-summary\s*\{[^}]*font-size:\s*23rpx/.test(SETUP_WXSS), true,
     '还差授权提示降一号字号');
   eq(/开启行程放票提醒/.test(SETUP_WXML), true, '主 CTA 使用最终文案');
   eq(/加满提醒授权/.test(SETUP_WXML + SETUP_JS), false, '移除“加满”文案');
   eq(/经过二次开发|限种子用户使用/.test(SETUP_WXML + SETUP_JS), false, '移除内部实现语言');
   eq(/暂不开启提醒|仅加入行程/.test(SETUP_WXML + SETUP_JS), false, '设置提醒页不提供绕过授权的出口');
-  eq(/requestSubscribeBurst\(shortfall\)/.test(SETUP_JS), true, '补齐授权必须由用户主动点击');
+  eq(/requestSubscribeBurst\(1\)/.test(SETUP_JS), true,
+    'PAGE-008 每次用户点击只申请 1 条授权');
   eq(/confirmReminderAccess/.test(SETUP_JS), false, '提交不再调用带“仅加行程”分支的旧闸门');
   eq(/还差 \' \+ shortfall \+ \' 次授权，补齐后才能开启提醒/.test(SETUP_JS), true, '额度不足时给出明确硬提示');
   eq(/view class="submit-btn \{\{canSubmit \? '' : 'disabled'\}\}"/.test(SETUP_WXML), true, '额度不足时主按钮禁用');
@@ -191,10 +199,10 @@ console.log('\n=== 4. 设置提醒权限与硬闸门 ===');
   eq(/种子用户体验/.test(SETUP_WXML + SETUP_JS), false, '移除种子用户体验标题');
   eq(/1、微信通知提醒需要主动授权，1次授权可发送1条提醒/.test(SETUP_WXML), true,
     '第一条说明主动授权用途');
-  eq(/2、提醒较多时，可“一键补齐授权次数”/.test(SETUP_WXML), true,
-    '第二条说明批量补齐');
-  eq(/3、如果已勾选“总是保持以上选择”，可以连续补齐;否则微信每次只允许完成1次，页面会实时更新剩余次数。/.test(SETUP_WXML), true,
-    '第三条说明连续补齐规则');
+  eq(/2、微信一次性订阅每次点击最多增加 1 次授权，需要几次请重复点击/.test(SETUP_WXML), true,
+    '第二条说明每次点击的真实授权上限');
+  eq(/3、“总是保持以上选择”只会免去后续弹窗，不会让一次点击增加多次授权/.test(SETUP_WXML), true,
+    '第三条说明总是保持不改变单次授权上限');
   eq(/4、该能力当前限时免费，后续正式版可能付费。/.test(SETUP_WXML), true, '第四条短句说明限时免费');
   eq(/class="sample-link" bindtap="onOpenSample"/.test(SETUP_WXML), true,
     '查看提醒样式示例保持常驻');
@@ -202,32 +210,37 @@ console.log('\n=== 4. 设置提醒权限与硬闸门 ===');
     '移除放票提前量下方提示');
   eq(/\.quota-line\s*\{[^}]*margin-top:\s*-24rpx/.test(SETUP_WXSS), true,
     '本次提醒文案上移 12px');
-  eq(/\.sample-item\s*\{[^}]*width:\s*468rpx/.test(SETUP_WXSS), true,
+  eq(/\.sample-item\s*\{[^}]*width:\s*468rpx/.test(SAMPLE_WXSS), true,
     '提醒样式示例整体缩至原来的 90%');
-  const sampleImgDecl = (/\.sample-img\s*\{[^}]*\}/.exec(SETUP_WXSS) || [''])[0].replace(/\/\*[\s\S]*?\*\//g, '');
-  eq(/\.sample-img\s*\{[^}]*width:\s*468rpx/.test(SETUP_WXSS)
+  const sampleImgDecl = (/\.sample-img\s*\{[^}]*\}/.exec(SAMPLE_WXSS) || [''])[0].replace(/\/\*[\s\S]*?\*\//g, '');
+  eq(/\.sample-img\s*\{[^}]*width:\s*468rpx/.test(SAMPLE_WXSS)
     && /max-height\s*:/.test(sampleImgDecl) === false, true,
   '提醒样式图片按原比例显示且不再压扁');
-  eq(/mode="widthFix"/.test(SETUP_WXML), true, '图片使用等比宽度模式');
-  eq(/options\.showSample === '1'/.test(SETUP_JS), true, '设置页支持从攻略直接打开样式示例');
-  eq(/if \(this\.data\.sampleOnly\) wx\.navigateBack\(\)/.test(SETUP_JS), true,
-    '仅查看样式时关闭后返回攻略');
-  eq(/sampleShots/.test(SETUP_JS) && /查看提醒样式示例/.test(SETUP_WXML), true, '提醒样式示例直接可查看');
-  eq(/提醒卡片详情/.test(SETUP_JS) && /style-2\.jpg/.test(SETUP_JS), true, '补充提醒卡片详情示例');
-  eq(/微信内的提醒样式/.test(SETUP_JS) && /style-3\.jpg/.test(SETUP_JS), true, '补充微信内提醒列表示例');
-  eq(fs.existsSync(path.join(ROOT, 'miniprogram/images/reminder-samples/style-1.jpg')), true, '第一张提醒样式图已进入小程序包');
-  eq(fs.existsSync(path.join(ROOT, 'miniprogram/images/reminder-samples/style-2.jpg')), true, '提醒卡片详情图已进入小程序包');
-  eq(fs.existsSync(path.join(ROOT, 'miniprogram/images/reminder-samples/style-3.jpg')), true, '微信内提醒样式图已进入小程序包');
+  eq(/mode="widthFix"/.test(SAMPLE_WXML), true, '图片使用等比宽度模式');
+  eq(/reminder-sample-sheet show="\{\{showSampleSheet\}\}" bind:close="onCloseSample"/.test(SETUP_WXML), true,
+    '设置页复用共享提醒样式组件');
+  eq(/options\.showSample|sampleOnly/.test(SETUP_JS), false, '设置页不再承担示例中转');
+  eq(/sampleShots/.test(SAMPLE_JS) && /查看提醒样式示例/.test(SETUP_WXML), true, '提醒样式示例直接可查看');
+  eq(/提醒卡片详情/.test(SAMPLE_JS) && /reminderSample\('style-2'\)/.test(SAMPLE_JS), true, '补充提醒卡片详情示例');
+  eq(/微信内的提醒样式/.test(SAMPLE_JS) && /reminderSample\('style-3'\)/.test(SAMPLE_JS), true, '补充微信内提醒列表示例');
+  eq(fs.existsSync(path.join(ROOT, 'cloud-assets/images/reminder-samples/style-1.jpg')), true, '第一张提醒样式图已保留云上传源文件');
+  eq(fs.existsSync(path.join(ROOT, 'cloud-assets/images/reminder-samples/style-2.jpg')), true, '提醒卡片详情图已保留云上传源文件');
+  eq(fs.existsSync(path.join(ROOT, 'cloud-assets/images/reminder-samples/style-3.jpg')), true, '微信内提醒样式图已保留云上传源文件');
+  eq(fs.existsSync(path.join(ROOT, 'miniprogram/images/reminder-samples/style-1.jpg')), false, '提醒样式图不再占用代码包图片额度');
 }
 
 console.log('\n=== 5. 设置提醒页面行为 ===');
 const apiCalls = { commits: [] };
 const toasts = [];
+const modalCalls = [];
 const apiStub = {
   reminder: {
     cart: {
       list: () => Promise.resolve({ summary: { reminderCount: 10 } }),
-      commit: payload => { apiCalls.commits.push(payload); return Promise.resolve({ createdTasks: 10, tripId: 'trip-v03' }); },
+      commit: payload => {
+        apiCalls.commits.push(payload);
+        return Promise.resolve({ createdTasks: 10, tripId: 'trip-v03', needsOaAuth: true });
+      },
     },
   },
   toastError: () => {},
@@ -251,7 +264,7 @@ global.wx = {
   showLoading: () => {},
   hideLoading: () => {},
   showToast: o => toasts.push(o.title),
-  showModal: () => {},
+  showModal: o => modalCalls.push(o.title),
   navigateBack: () => {},
   previewImage: () => {},
   getWindowInfo: () => ({ windowWidth: 402, windowHeight: 800, safeArea: { bottom: 800 } }),
@@ -298,10 +311,12 @@ function instantiate(def) {
   health.quota = 10;
   await page.refreshAccessState(10);
   eq(page.data.canSubmit, true, '授权满足后启用主按钮');
+  modalCalls.length = 0;
   page.onSubmit();
   await new Promise(r => setTimeout(r, 20));
   eq(apiCalls.commits.length, 1, '授权满足后主按钮触发提交');
   eq(apiCalls.commits[0].channels[0], 'OFFICIAL_ACCOUNT', '提交走微信通知通道');
+  eq(modalCalls.length, 0, '提交成功后不弹公众号关注引导');
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);

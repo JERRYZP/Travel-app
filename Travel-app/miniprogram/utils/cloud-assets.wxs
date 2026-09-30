@@ -1,0 +1,19 @@
+var CLOUD_ROOT = 'cloud://cloud1-d9g9f4hja396d6e92.636c-cloud1-d9g9f4hja396d6e92-1487385918/static/v0.3/images/';
+
+function spot(spotId) {
+  return CLOUD_ROOT + 'spots/' + spotId + '.jpg';
+}
+
+function city(name) {
+  return CLOUD_ROOT + 'cities/' + name;
+}
+
+function home(name) {
+  return CLOUD_ROOT + 'home/' + name;
+}
+
+module.exports = {
+  spot: spot,
+  city: city,
+  home: home
+};

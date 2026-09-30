@@ -8,6 +8,7 @@ const { COLLECTIONS, TripStatus, V1, ERRORS, ok, fail } = require('./schema');
 const time = require('./time');
 const tripItem = require('./trip-item');
 const item = require('./item');
+const cart = require('./cart');
 
 /* ============ 纯函数区：可脱离云环境测试 ============ */
 
@@ -376,9 +377,9 @@ async function removeIfEmpty(db, userId, tripId) {
  * （决策文档第六节：不能用「还有没有提醒任务」判定，否则只有免预约景点、
  * 没设提醒的行程会被误判成空的删掉）。
  *
- * 还要额外保护一种情形：行程下**还有未提交的清单草稿**时也不能删——
- * 用户正在「添加提醒」页挑日期，行程是提交时才会创建的，
- * 此时若把行程删掉，草稿就没了归属。
+ * 行程下遗留的清单草稿不再作为「行程非空」的保留条件：用户显式删掉最后一笔
+ * 行程项时，真实 tripId 下的残留清单会一并清掉；无主暂存草稿则由显式删除动线
+ * 调用 cart.clearPendingIfNoItems 清理。
  */
 async function purgeIfNoItem(db, userId, tripId) {
   if (!tripId) return false;
@@ -390,6 +391,14 @@ async function purgeIfNoItem(db, userId, tripId) {
   const itemCount = await db.collection(COLLECTIONS.TRIP_ITEMS)
     .where({ userId, tripId }).count();
   if (itemCount.total > 0) return false;
+
+  /* 行程已被删除后，挂在这个真实 tripId 下的遗留清单也必须一起清掉。
+     暂存区（__pending__）是否清理由显式删除动线单独判断，读取侧清理不碰它。 */
+  const cartRes = await db.collection(COLLECTIONS.REMINDER_CART)
+    .where({ userId, tripId }).get();
+  for (const c of (cartRes.data || [])) {
+    await db.collection(COLLECTIONS.REMINDER_CART).doc(c._id).remove();
+  }
 
   await db.collection(COLLECTIONS.TRIPS).doc(tripId).remove();
   return true;
@@ -427,6 +436,7 @@ async function purgeIfNoTask(db, userId, tripId) {
   }
 
   await db.collection(COLLECTIONS.TRIPS).doc(tripId).remove();
+  await cart.clearPendingIfNoItems(db, userId);
   return true;
 }
 
@@ -456,6 +466,7 @@ async function remove(db, userId, tripId) {
   }
 
   await db.collection(COLLECTIONS.TRIPS).doc(tripId).remove();
+  await cart.clearPendingIfNoItems(db, userId);
   return ok({
     tripId,
     removedTasks: (taskRes.data || []).length,

@@ -15,6 +15,7 @@ const {
 const time = require('./time');
 const item = require('./item');
 const tripItem = require('./trip-item');
+const cart = require('./cart');
 
 /* ============ 内部工具 ============ */
 
@@ -74,6 +75,9 @@ async function dropTripIfEmpty(db, userId, tripId) {
     await db.collection(COLLECTIONS.REMINDER_CART).doc(c._id).remove();
   }
   await db.collection(COLLECTIONS.TRIPS).doc(tripId).remove();
+  /* 用户明确删掉了账号里的最后一笔行程项：此时暂存区里的旧草稿已无行程可挂，
+     否则下次进入 PAGE-005 会“复活”成一份看起来凭空出现的清单。 */
+  await cart.clearPendingIfNoItems(db, userId);
   return true;
 }
 

@@ -33,10 +33,6 @@
 .release-banner-date { font-size: 28rpx; font-weight: 400; color: var(--color-primary); }
 .release-banner-sep { font-size: 28rpx; font-weight: 400; color: var(--color-primary); opacity: 0.4; }
 .release-banner-title { font-size: 32rpx; font-weight: 700; color: var(--color-primary); line-height: 1.2; }
-.release-banner-more {
-  font-size: 24rpx; color: #936F5B;
-  text-decoration: underline;
-}
 
 .release-swiper { height: 224rpx; }
 .release-panel {

@@ -49,6 +49,3 @@
 .setting-row-hint-short { color: #C0472A; font-weight: 600; }
 .setting-row-hint-exhausted { color: var(--color-primary); font-weight: 600; }
 .setting-row-hint-all { color: #4A7C59; }
-
-.dev-card { border: 1rpx dashed #C8A96A; }
-.dev-hint { color: #A66A2C; font-weight: 600; }

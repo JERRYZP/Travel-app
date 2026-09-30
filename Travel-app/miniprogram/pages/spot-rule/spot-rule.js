@@ -1,6 +1,7 @@
 const app = getApp();
 const api = require('../../utils/api.js');
 const verify = require('../../utils/verify.js');
+const assets = require('../../utils/assets.js');
 
 Page({
   data: {
@@ -85,7 +86,7 @@ Page({
       });
     } else if (entry.type === 'OFFICIAL_ACCOUNT') {
       if (entry.qrCode) {
-        this.setData({ showQr: true, qrSpot: { name: entry.value || '公众号', qrCode: entry.qrCode } });
+        this.setData({ showQr: true, qrSpot: { name: entry.value || '公众号', qrCode: assets.fromLocalPath(entry.qrCode) } });
       } else {
         wx.showToast({ title: '请关注公众号「' + entry.value + '」', icon: 'none' });
       }

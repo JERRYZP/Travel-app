@@ -22,6 +22,23 @@
   padding: 2rpx 10rpx;
 }
 
+/* 已结束日期折叠入口。它是**索引**，不是提醒：保持中性浅底，
+   不把过去的待确认态重新包装成需要今天处理的任务。 */
+.ts-past-fold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin: 24rpx 0 0;
+  padding: 16rpx 20rpx;
+  background: var(--color-cream);
+  border-radius: 14rpx;
+}
+.ts-past-fold:active { opacity: .78; }
+.ts-past-copy { display: flex; align-items: baseline; gap: 12rpx; min-width: 0; }
+.ts-past-title { flex-shrink: 0; font-size: 24rpx; font-weight: 500; color: var(--color-text); }
+.ts-past-range { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 20rpx; color: var(--color-muted); }
+
 /* 日期分段标题 */
 .ts-day { margin-bottom: 16rpx; }
 .ts-day-head {
@@ -65,6 +82,10 @@
   margin: -33rpx;
   flex-shrink: 0;
 }
+/* ⚠️ 展开态必须抬到 40，与卡片菜单 `.tc-menu.is-open` 同高。
+   否则日期弹层仍在 31，而下方景点卡的 `.tc-menu` 也是 31 且 DOM 更靠后；
+   两者重叠时，右段「删除当天行程」会被景点菜单的 104rpx 热区截走。 */
+.ts-day-menu.is-open { z-index: 40; }
 .ts-day-btn { position: relative; }
 /* 捕获层：菜单展开时铺满**整张卡片**（`.ts-day-catch`），原理与四边写死的理由
    见 `trip-card.wxss` 的 `.tc-menu-catch`。这里只改前缀，结构完全一致。 */

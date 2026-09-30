@@ -89,11 +89,44 @@ function defaultDateRange() {
    已删除——行程合并在云端 trip.create 内完成（含 canMerge/mergeRange/collapse），
    前端不再持有第二份副本，避免口径分叉。 */
 
-/** 给景点卡数组打 selected 标记，供 WXML 直接绑定（WXML 不支持 indexOf 方法调用） */
+/** 景点 ID 去重，保持首次出现顺序；空值直接丢弃 */
+function uniqueSpotIds(ids) {
+  const seen = {};
+  const out = [];
+  (ids || []).forEach(raw => {
+    const id = String(raw || '').trim();
+    if (!id || seen[id]) return;
+    seen[id] = true;
+    out.push(id);
+  });
+  return out;
+}
+
+/** 按传入 ID 顺序取唯一景点卡，用于“已选景点”横排；不依赖云端的 DB 返回顺序 */
+function selectSpotsByIds(list, ids) {
+  const wanted = uniqueSpotIds(ids);
+  const byId = {};
+  (list || []).forEach(s => {
+    if (s && s.spotId && !byId[s.spotId]) byId[s.spotId] = s;
+  });
+  return wanted
+    .map(id => byId[id])
+    .filter(Boolean)
+    .map(s => Object.assign({}, s, { selected: true }));
+}
+
+/** 给景点卡数组打 selected 标记，供 WXML 直接绑定；按 spotId 去重，避免重复卡片 */
 function markSpotsSelected(list, ids) {
   const set = {};
-  (ids || []).forEach(id => { set[id] = true; });
-  return (list || []).map(s => Object.assign({}, s, { selected: !!set[s.spotId] }));
+  uniqueSpotIds(ids).forEach(id => { set[id] = true; });
+  const seen = {};
+  const out = [];
+  (list || []).forEach(s => {
+    if (!s || !s.spotId || seen[s.spotId]) return;
+    seen[s.spotId] = true;
+    out.push(Object.assign({}, s, { selected: !!set[s.spotId] }));
+  });
+  return out;
 }
 
 /* ===== 行程状态墙视图层（2026-09-20 首页行程化改版）=====
@@ -242,11 +275,15 @@ function releaseLineOf(item) {
  *   结果没有。它必须压过票务态显示，否则「可抢 + 未送达」的卡片会写成「现在预约」，
  *   把「你被静默失败了」这件事盖掉。
  *
- * ⚠️ 「还有N天」算的是**距放票**天数（稿子里它紧跟在放票时刻后面），
+ * ⚠️ 行程项卡倒计时算的是**距放票**时长（稿子里它紧跟在放票时刻后面），
  *   与 `daysUntil` / `countdownTextOf` 那套「距出行日」的北京时区日历日算法**不是一回事**，
  *   不要图省事改去调它们——放票时刻带时分，按毫秒算才对得上。
+ *
+ * ⚠️ 展示必须分级，不能只算天数后再向上取整：今天 12:00 放票、现在 11:00 时，
+ *   `Math.ceil(1h / 24h)` 会误显示「还有1天」。这里 ≥24h 继续按天向上取整；
+ *   24h 内显示完整的小时/分钟；最后不到 1 分钟显示「即将开始」。
  */
-function releaseRemainderOf(item) {
+function releaseRemainderOf(item, now = Date.now()) {
   if (!item || item.reservationRequired === false) return { text: '', tone: '' };
 
   /* 提醒没送到压过一切票务态 */
@@ -263,9 +300,12 @@ function releaseRemainderOf(item) {
 
   /* 剩下就是「还没到点」。releaseAt 已过（比如刚放票还没被算成 BOOKABLE）也走现在预约，
      **不能显示「还有-1天」**——实测放票时刻可以落在过去。 */
-  const ms = new Date(item.releaseAt).getTime() - Date.now();
+  const ms = new Date(item.releaseAt).getTime() - now;
   if (ms <= 0) return { text: '· 现在预约 ›', tone: 'go' };
-  return { text: '· 还有' + Math.ceil(ms / 86400000) + '天', tone: 'muted' };
+  if (ms >= 86400000) return { text: '· 还有' + Math.ceil(ms / 86400000) + '天', tone: 'muted' };
+  if (ms >= 3600000) return { text: '· 还有' + Math.floor(ms / 3600000) + '小时', tone: 'muted' };
+  if (ms >= 60000) return { text: '· 还有' + Math.floor(ms / 60000) + '分钟', tone: 'muted' };
+  return { text: '· 即将开始', tone: 'muted' };
 }
 
 /**
@@ -288,7 +328,7 @@ function snackbarPartsOf(spotName, isSuccess) {
 module.exports = {
   WEEKDAYS, DAY_CN, pad, formatDate, formatDateWithWeek,
   formatDateRange, dayDiff, beijingTodayStr, pastDaysOf, formatTime, formatReleaseDate,
-  countdown, difficultyClass, defaultDateRange, markSpotsSelected,
+  countdown, difficultyClass, defaultDateRange, uniqueSpotIds, selectSpotsByIds, markSpotsSelected,
   parseDay, dayTitleOf, monthDayTime, monthDayRange, daysUntil,
   countdownTextOf, stateClass, reminderClass, releaseLineOf,
   releaseRemainderOf, snackbarPartsOf,

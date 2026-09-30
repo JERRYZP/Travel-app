@@ -13,18 +13,16 @@
 <view style="height: {{pinTop}}px;"></view>
 
 <view class="page-body">
-  <!-- 今日放票 Banner（V3.0）：3 条/页 · 最多 9 条 · 轮播循环 · 点景点名进详情 -->
+  <!-- 今日热门放票提醒 Banner（V3.0）：3 条/页 · 最多 9 条 · 轮播循环 · 点景点名进详情 -->
   <view wx:if="{{banner && banner.pages.length}}" class="release-banner">
     <image class="release-banner-bg" src="/images/banner_bg.png" mode="aspectFill" />
     <view class="release-banner-inner">
       <view class="release-banner-head">
         <view class="release-banner-head-left">
-          <text class="release-banner-title">今日放票提醒</text>
+          <text class="release-banner-title">今日热门放票提醒</text>
           <text class="release-banner-sep">|</text>
           <text class="release-banner-date">{{banner.dateLabel}}</text>
         </view>
-        <!-- 查看更多：本期占位，不接跳转 -->
-        <text class="release-banner-more">查看更多</text>
       </view>
       <swiper
         class="release-swiper"

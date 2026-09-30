@@ -119,15 +119,23 @@ function resetWx(patch = {}) {
   resetWx({ system: 'authorized', quota: 0, actionIndex: 1 });
   wxState.subscribeValue = 'accept';
   access = await notify.confirmReminderAccess(2);
-  eq(wxState.subscribeCalls, 1, '授权不足先弹一次微信授权');
+  eq(wxState.subscribeCalls, 0, '用户选择仅加行程时不触发微信授权');
   eq(access.action, 'trip-only', '用户可选仅加行程');
-  eq(access.shortfall, 1, '返回真实缺口');
+  eq(access.shortfall, 2, '仅加行程时返回用户未补授权前的真实缺口');
   eq(wxState.actionCalls[0].itemList[1], '仅加行程·不提醒', '选择面板有仅加行程入口');
 
   resetWx({ system: 'authorized', quota: 0, actionIndex: 0 });
+  access = await notify.confirmReminderAccess(1);
+  eq(wxState.subscribeCalls, 1, '用户点“补授权并继续”后才发起微信授权');
+  eq(access.action, 'ready', '补授权成功后原地继续本次提醒');
+  eq(access.shortfall, 0, '补授权成功后缺口清零');
+  eq(wxState.actionCalls[0].itemList[0], '补授权并继续', '选择面板首项明确说明会继续原流程');
+
+  resetWx({ system: 'authorized', quota: 0, actionIndex: 0 });
   access = await notify.confirmReminderAccess(2);
-  eq(access.action, 'settings', '订阅不足时可去补授权');
-  eq(access.settingsKind, 'subscribe', '设置类型为订阅授权');
+  eq(access.action, 'cancelled', '一次手势只补到 1 条时不能假装全部补齐');
+  eq(access.reason, 'quota-shortfall', '部分补齐返回明确原因');
+  eq(access.shortfall, 1, '部分补齐返回真实缺口');
 
   resetWx({ system: 'denied', actionIndex: 0 });
   access = await notify.confirmReminderAccess(1);
@@ -145,7 +153,8 @@ function resetWx(patch = {}) {
   const reminderFlowSrc = fs.readFileSync(path.join(ROOT, 'miniprogram/utils/reminder-flow.js'), 'utf8');
   eq(/reminderCount \* this\.data\.offsets\.length/.test(setupSrc), true, 'setup 按提醒条数和提前量计算额度');
   eq(/getReminderHealth/.test(setupSrc), true, 'setup 使用统一授权健康状态');
-  eq(/requestSubscribeBurst\(shortfall\)/.test(setupSrc), true, 'setup 由用户主动补齐授权缺口');
+  eq(/requestSubscribeBurst\(1\)/.test(setupSrc), true,
+    'setup 每次用户点击只申请 1 条授权');
   eq(/confirmReminderAccess/.test(setupSrc), false, 'setup 不再提供仅加行程旁路');
   eq(/confirmReminderAccess\(1\)/.test(homeSrc), true, '挽回路径只按本次 1 条提醒校验授权');
   eq(/disableReminders: true/.test(homeSrc), true, '挽回路径支持仅加行程');
@@ -163,11 +172,46 @@ function resetWx(patch = {}) {
   eq(/navigateTo\(\{ url: '\/pages\/guide\/guide' \}\)/.test(profileJs), true, '我的页入口指向攻略页');
   eq(/3 步设置提醒/.test(guideWxml), true, '攻略含三步使用说明');
   eq(/查看提醒样式示例/.test(guideWxml), true, '攻略第一步含提醒样式入口');
-  eq(/pages\/setup\/setup\?showSample=1/.test(guideJs), true, '提醒样式入口复用设置页示例弹层');
+  eq(/onReminderSamples\(\)[\s\S]*showSampleSheet: true/.test(guideJs), true,
+    '提醒样式入口在当前页打开');
+  eq(/reminder-sample-sheet show="\{\{showSampleSheet\}\}"/.test(guideWxml), true,
+    '攻略页复用共享提醒样式弹层');
+  eq(/pages\/setup\/setup\?showSample=1/.test(guideJs), false,
+    '提醒样式入口不再跳设置页中转');
   eq(/没收到提醒怎么办/.test(guideWxml), true, '攻略含提醒排障');
   eq(/去官方渠道前/.test(guideWxml), true, '攻略含官方渠道准备');
   eq(/回流|双设备|悬浮时钟|成功率翻倍/.test(guideWxml), false, '攻略不含高风险或过期技巧');
 
+  console.log('\n=== 4.0 帮助与反馈入口 ===');
+  const helpWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/help-feedback/help-feedback.wxml'), 'utf8');
+  const helpJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/help-feedback/help-feedback.js'), 'utf8');
+  const myFeedbackJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/my-feedback/my-feedback.js'), 'utf8');
+  const feedbackWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/feedback/feedback.wxml'), 'utf8');
+  const helpWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/help-feedback/help-feedback.wxss'), 'utf8');
+  eq(/"pages\/help-feedback\/help-feedback"/.test(appJson), true, '帮助与反馈页已注册路由');
+  eq(/"pages\/my-feedback\/my-feedback"/.test(appJson), true, '我的反馈页已注册路由');
+  eq(/onHelpFeedback/.test(profileJs) && /\/pages\/help-feedback\/help-feedback/.test(profileJs), true,
+    '我的页统一进入帮助与反馈');
+  eq(/api\.feedback\.adminStatus\(\)[\s\S]*res\.isAdmin[\s\S]*\/pages\/admin-feedback\/admin-feedback/.test(profileJs), true,
+    '长按头像仅在服务端确认管理员后进入反馈管理页');
+  eq(/<button class="setting-row service-row" open-type="contact"/.test(helpWxml), true,
+    '帮助与反馈页提供微信原生在线客服');
+  eq(helpWxml.indexOf('在线客服') < helpWxml.indexOf('意见反馈')
+    && helpWxml.indexOf('意见反馈') < helpWxml.indexOf('信息纠错'), true,
+  '上方依次展示在线客服、意见反馈、信息纠错');
+  eq(/setting-card my-feedback-card[\s\S]*我的反馈/.test(helpWxml), true,
+    '我的反馈使用下方独立卡片');
+  eq(/常见问题/.test(helpWxml), false, '帮助页不重复展示攻略中的常见问题');
+  eq(/onFeedback\(\)[\s\S]*\/pages\/feedback\/feedback/.test(helpJs), true, '意见反馈直接进入表单页');
+  eq(/onReportError\(\)[\s\S]*\/pages\/spot-correction\/spot-correction/.test(helpJs), true,
+    '信息纠错直接进入纠错页');
+  eq(/onMyFeedback\(\)[\s\S]*\/pages\/my-feedback\/my-feedback/.test(helpJs), true,
+    '我的反馈直接进入记录页');
+  eq(/open-type="contact"/.test(feedbackWxml), true, '意见反馈页保留次要在线客服入口');
+  eq(/api\.feedback\.list\(\)/.test(myFeedbackJs), true, '我的反馈读取本人历史接口');
+  eq(/util\.monthDayTime\(item\.createdAt\)/.test(myFeedbackJs), true, '反馈时间按北京时间展示');
+  eq(/\.service-row \{[^}]*border-bottom: 1rpx solid var\(--color-border\)/.test(helpWxss), true,
+    '在线客服与意见反馈之间有分隔线');
   const notifierSrc = fs.readFileSync(path.join(ROOT, 'cloudfunctions/notifier/index.js'), 'utf8');
   eq(/thing7: \{ value: `\$\{offset\}分钟后放票，记得备好游客信息` \}/.test(notifierSrc), true,
     '订阅消息保留倒计时并提示游客信息');
@@ -175,10 +219,10 @@ function resetWx(patch = {}) {
   console.log('\n=== 4.1 开发环境新用户预览 ===');
   const appSrc = fs.readFileSync(path.join(ROOT, 'miniprogram/app.js'), 'utf8');
   const profileWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.wxml'), 'utf8');
+  const profileWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.wxss'), 'utf8');
   const homeWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxml'), 'utf8');
-  eq(/envVersion === 'develop'/.test(fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.js'), 'utf8')),
-    true, '开发调试入口仅 develop 环境生效');
-  eq(/wx:if="\{\{devMode\}\}"[\s\S]*onPreviewNewUser/.test(profileWxml), true, '开发调试入口按环境显隐');
+  eq(/开发调试|onPreviewNewUser|devMode|dev-card|dev-hint/.test(profileJs + profileWxml + profileWxss),
+    false, '我的页不展示开发调试入口');
   eq(/previewNewUser: false/.test(appSrc), true, '全局默认不开启新用户预览');
   eq(/g\.envVersion === 'develop' && g\.previewNewUser/.test(homeSrc), true,
     '首页仅在 develop 且开关开启时强制空态');

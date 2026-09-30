@@ -161,7 +161,7 @@ function shiftTime(time, deltaMinutes) {
 /**
  * 新用户首页的内容预览：
  * - rows：按最近放票节点排序的热门景点，页面只渲染前 limit 条；
- * - sample：从这批景点里选最难约的一条，翻译成“出行日 → 抢票时间 → 微信提醒”。
+ * - sample：优先使用国博做示例，缺失时再选最难约的一条，翻译成“出行日 → 抢票时间 → 微信提醒”。
  */
 function buildHomeReleasePreview(spots, now, limit = 3) {
   const at = now || new Date();
@@ -200,12 +200,14 @@ function buildHomeReleasePreview(spots, now, limit = 3) {
       return (b.difficultyScore || 0) - (a.difficultyScore || 0);
     });
 
-  const sampleSpot = rows.slice(0, Math.max(0, limit)).sort((a, b) => {
-    if ((b.difficultyScore || 0) !== (a.difficultyScore || 0)) {
-      return (b.difficultyScore || 0) - (a.difficultyScore || 0);
-    }
-    return (b.popularityScore || 0) - (a.popularityScore || 0);
-  })[0];
+  const sampleRows = rows.slice(0, Math.max(0, limit));
+  const sampleSpot = sampleRows.find(spot => spot.spotId === 'guobo')
+    || sampleRows.sort((a, b) => {
+      if ((b.difficultyScore || 0) !== (a.difficultyScore || 0)) {
+        return (b.difficultyScore || 0) - (a.difficultyScore || 0);
+      }
+      return (b.popularityScore || 0) - (a.popularityScore || 0);
+    })[0];
   let sample = {
     visitText: '出行当天 · 想去的景点',
     releaseText: '按规则算出抢票时间',
@@ -216,7 +218,7 @@ function buildHomeReleasePreview(spots, now, limit = 3) {
     const visitDate = addDaysStr(next.dateStr, sampleSpot.advanceDays || 0);
     const dayLabel = next.offset === 0 ? '今天' : (next.offset === 1 ? '明天' : formatMonthDay(next.dateStr));
     sample = {
-      visitText: `${formatMonthDay(visitDate)} · ${sampleSpot.name}`,
+      visitText: `${formatMonthDay(visitDate)} · ${sampleSpot.shortName || sampleSpot.name}`,
       releaseText: `${dayLabel} ${next.time} 起抢`,
       remindText: `${shiftTime(next.time, -5)} 微信提醒`,
     };

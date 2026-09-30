@@ -39,15 +39,14 @@
     </view>
   </view>
 
-  <!-- 设置列表 2 -->
+  <!-- 帮助与反馈：在线客服、反馈、纠错与反馈记录统一收口 -->
   <view class="setting-card">
-    <view class="setting-row" bindtap="onFeedback">
-      <text class="setting-row-label">意见反馈</text>
-      <svg-icon name="chevron-down" size="14px" rotate="270" />
-    </view>
-    <view class="setting-row" bindtap="onReportError">
-      <text class="setting-row-label">信息纠错</text>
-      <svg-icon name="chevron-down" size="14px" rotate="270" />
+    <view class="setting-row" bindtap="onHelpFeedback">
+      <text class="setting-row-label">帮助与反馈</text>
+      <view class="setting-row-right">
+        <text class="setting-row-hint">在线客服 / 反馈与纠错</text>
+        <svg-icon name="chevron-down" size="14px" rotate="270" />
+      </view>
     </view>
   </view>
 
@@ -63,16 +62,6 @@
     </view>
   </view>
 
-  <!-- 仅开发版显示：用于反复检查新用户空态，不删除云端数据 -->
-  <view wx:if="{{devMode}}" class="setting-card dev-card">
-    <view class="setting-row" bindtap="onPreviewNewUser">
-      <text class="setting-row-label">开发调试</text>
-      <view class="setting-row-right">
-        <text class="setting-row-hint dev-hint">预览新用户</text>
-        <svg-icon name="chevron-down" size="14px" rotate="270" />
-      </view>
-    </view>
-  </view>
 </view>
 
 <tabbar active="profile" />

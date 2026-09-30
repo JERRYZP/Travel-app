@@ -2,8 +2,6 @@ const app = getApp();
 const api = require('../../utils/api.js');
 const util = require('../../utils/util.js');
 
-const { spotsListCards } = require('../../utils/mock.js');
-
 Page({
   data: {
     statusBarHeight: 20,
@@ -34,7 +32,7 @@ Page({
       tripId: options.tripId || '',
     });
     if (options.spotIds) {
-      const ids = options.spotIds.split(',').filter(Boolean);
+      const ids = util.uniqueSpotIds(options.spotIds.split(','));
       this.setData({ selectedSpotIds: ids });
       this.loadSelectedSpots(ids);
     }
@@ -49,9 +47,9 @@ Page({
   loadSelectedSpots(ids) {
     if (ids.length === 0) return;
     api.spots.batch(ids).then(res => {
-      this.setData({ selectedSpots: util.markSpotsSelected(res.data || [], ids) });
+      this.setData({ selectedSpots: util.selectSpotsByIds(res.data || [], ids) });
     }).catch(() => {
-      this.setData({ selectedSpots: util.markSpotsSelected(spotsListCards().filter(s => ids.indexOf(s.spotId) >= 0), ids) });
+      this.setData({ selectedSpots: [] });
     });
   },
 
@@ -59,7 +57,7 @@ Page({
   loadHotSpots() {
     api.spots.list().then(res => {
       this.applyHotPool(res.data || []);
-    }).catch(() => { this.applyHotPool(spotsListCards()); });
+    }).catch(() => { this.applyHotPool([]); });
   },
 
   applyHotPool(list) {
@@ -138,8 +136,7 @@ Page({
       this.setData({ searchResults: util.markSpotsSelected(res.data || [], this.data.selectedSpotIds), searching: false, hasSearched: true });
       this.loadHistory();
     }).catch(() => {
-      const results = spotsListCards().filter(s => s.name.indexOf(kw) >= 0 || s.spotId.indexOf(kw.toLowerCase()) >= 0);
-      this.setData({ searchResults: util.markSpotsSelected(results, this.data.selectedSpotIds), searching: false, hasSearched: true });
+      this.setData({ searchResults: [], searching: false, hasSearched: true });
       this.loadHistory();
     });
   },
@@ -169,38 +166,43 @@ Page({
   onSpotToggle(e) {
     const spotId = e.currentTarget.dataset.id;
     const spot = e.currentTarget.dataset.spot;
+    if (!spotId || !spot) return;
     const addable = spot && (spot.addable === true || spot.remindable || spot.reservationRequired === false);
     if (spot && !addable) {
       wx.showToast({ title: '该景点无固定放票时刻，随买随用即可', icon: 'none' });
       return;
     }
-    const ids = [].concat(this.data.selectedSpotIds);
-    const spots = [].concat(this.data.selectedSpots);
-    const idx = ids.indexOf(spotId);
-    if (idx >= 0) {
-      ids.splice(idx, 1); spots.splice(idx, 1);
+    const ids = util.uniqueSpotIds(this.data.selectedSpotIds);
+    const spots = util.markSpotsSelected(this.data.selectedSpots, ids);
+    const selected = ids.indexOf(spotId) >= 0;
+    let nextIds;
+    let nextSpots;
+    if (selected) {
+      nextIds = ids.filter(id => id !== spotId);
+      nextSpots = spots.filter(s => s && s.spotId !== spotId);
       wx.showToast({ title: '已移除', icon: 'none' });
     } else {
-      ids.push(spotId); spots.push(spot);
+      nextIds = ids.concat(spotId);
+      nextSpots = util.markSpotsSelected(spots.concat(spot), nextIds);
       wx.showToast({ title: '已加入行程清单', icon: 'none' });
     }
     this.setData({
-      selectedSpotIds: ids,
-      selectedSpots: util.markSpotsSelected(spots, ids),
-      hotSpots: util.markSpotsSelected(this.data.hotSpots, ids),
-      searchResults: util.markSpotsSelected(this.data.searchResults, ids),
+      selectedSpotIds: util.uniqueSpotIds(nextIds),
+      selectedSpots: util.markSpotsSelected(nextSpots, nextIds),
+      hotSpots: util.markSpotsSelected(this.data.hotSpots, nextIds),
+      searchResults: util.markSpotsSelected(this.data.searchResults, nextIds),
     });
   },
 
   onRemoveSelected(e) {
     const spotId = e.currentTarget.dataset.id;
-    const ids = [].concat(this.data.selectedSpotIds);
-    const spots = [].concat(this.data.selectedSpots);
-    const idx = ids.indexOf(spotId);
-    if (idx >= 0) { ids.splice(idx, 1); spots.splice(idx, 1); }
+    if (!spotId) return;
+    const ids = util.uniqueSpotIds(this.data.selectedSpotIds).filter(id => id !== spotId);
+    const spots = util.markSpotsSelected(this.data.selectedSpots, ids)
+      .filter(s => s && s.spotId !== spotId);
     this.setData({
       selectedSpotIds: ids,
-      selectedSpots: util.markSpotsSelected(spots, ids),
+      selectedSpots: spots,
       hotSpots: util.markSpotsSelected(this.data.hotSpots, ids),
       searchResults: util.markSpotsSelected(this.data.searchResults, ids),
     });
@@ -235,12 +237,23 @@ Page({
     if (this.data.tripId) {
       api.reminder.trip.updateSpots({
         tripId: this.data.tripId,
-        spotIds: this.data.selectedSpotIds,
+        spotIds: util.uniqueSpotIds(this.data.selectedSpotIds),
       }).catch(() => {});
     }
     // Set data on previous page for immediate UI update
     if (prev) {
-      prev.setData({ selectedSpotIds: this.data.selectedSpotIds, selectedSpots: this.data.selectedSpots });
+      const selectedSpotIds = util.uniqueSpotIds(this.data.selectedSpotIds);
+      const patch = {
+        selectedSpotIds,
+        selectedSpots: util.selectSpotsByIds(this.data.selectedSpots, selectedSpotIds),
+      };
+      /* 添加提醒页同时渲染「北京热门景点预约状态」网格。
+         该网格的选中态是卡片的 `selected` 布尔值，不能只回写 selectedSpotIds，
+         否则数据已更新但 WXML 仍显示旧按钮。 */
+      if (Array.isArray(prev.data && prev.data.hotSpots)) {
+        patch.hotSpots = util.markSpotsSelected(prev.data.hotSpots, selectedSpotIds);
+      }
+      prev.setData(patch);
     }
     wx.navigateBack();
   },

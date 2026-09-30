@@ -1,11 +1,7 @@
 <view class="navbar" style="height: {{navTop}}px;">
   <view style="height: {{statusBarHeight}}px;"></view>
   <view class="navbar-content" style="height: {{navBarHeight}}px;">
-    <view class="navbar-back" bindtap="onBack">
-      <text class="navbar-back-icon">‹</text>
-    </view>
     <text class="navbar-title">{{scene ? scene.navTitle : '放票清单'}}</text>
-    <button class="navbar-share" open-type="share" hover-class="none">分享</button>
   </view>
 </view>
 <view style="height: {{navTop}}px;"></view>
@@ -13,8 +9,8 @@
 <view wx:if="{{scene}}" class="page-body">
   <view class="scene-hero">
     <text class="scene-title">{{scene.title}}</text>
+    <text class="scene-date">{{scene.dateText}}</text>
     <text class="scene-subtitle">{{scene.subtitle}}</text>
-    <view class="scene-data-note">放票规则按北京时间计算 · 库存以官方为准</view>
   </view>
 
   <view wx:if="{{scene.notice}}" class="scene-notice">
@@ -53,6 +49,11 @@
   <view wx:if="{{!loading && !expired && !loadFailed && rows.length}}" class="scene-footnote">
     <text>“最早可约”仅按放票提前天数推算，不代表官方仍有库存。</text>
   </view>
+</view>
+
+<!-- 返回主页：分享落地页的用户多半是第一次来，底部常驻一个明确出口 -->
+<view class="home-float" bindtap="goHome" hover-class="home-float-hover">
+  <text class="home-float-text">返回主页</text>
 </view>
 
 <spot-popup

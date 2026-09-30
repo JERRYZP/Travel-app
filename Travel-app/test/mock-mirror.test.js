@@ -312,6 +312,29 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     eq(offRes.missedKept, true, '回传 missedKept（镜像云端）');
   }
 
+  /* ============ 8.1 最后一笔行程项删除时，暂存清单镜像清理 ============ */
+  console.log('\n=== 8.1 删除最后一笔行程项时清理无主暂存清单 ===');
+  {
+    const m = freshMock();
+    const c = (n, d) => m.mockCall(n, d);
+    const visit = '2027-01-10';
+    const releaseAt = new Date('2027-01-03T20:00:00+08:00');
+
+    await c('cart.add', { spotId: 'gugong', visitDate: visit, releaseAt, remindOn: false });
+    await c('cart.commit', {});
+    const item = (await c('home.bootstrap', {})).trips[0].items[0];
+
+    await c('cart.add', {
+      spotId: 'guobo', visitDate: '2027-01-11',
+      releaseAt: new Date('2027-01-04T20:00:00+08:00'), remindOn: true,
+    });
+    eq((await c('cart.list', {})).summary.count, 1, '删除前暂存清单仍有 1 条草稿');
+
+    const rm = await c('tripItem.remove', { itemId: item.itemId });
+    eq(rm.tripRemoved, true, '删除最后一笔行程项 → 行程消失');
+    eq((await c('cart.list', {})).summary.count, 0, '失去归属的暂存草稿同步清空');
+  }
+
   /* ============ 9. 首页 V2 形状（镜像 homeBootstrap）============ */
   console.log('\n=== 9. home.bootstrap V2 形状 ===');
   {
@@ -436,6 +459,19 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
 
     eq(drift.length, 0, 'mock 内嵌 SPOTS/RULES 与 data/ 真身无漂移');
     if (drift.length) drift.slice(0, 8).forEach(x => console.log('     漂移:', x));
+  }
+
+  console.log('\n=== 11. 我的反馈镜像 ===');
+  {
+    const m = freshMock();
+    const c = (n, d) => m.mockCall(n, d);
+    for (let i = 0; i < 51; i += 1) {
+      await c('feedback.submit', { type: 'feedback', category: 'suggestion', content: `反馈 ${i}` });
+    }
+    const res = await c('feedback.list', {});
+    eq(res.items.length, 50, 'mock 与云端一致：本人反馈最多返回 50 条');
+    const times = res.items.map(i => new Date(i.createdAt).getTime());
+    eq(times.every((t, i) => i === 0 || times[i - 1] >= t), true, 'mock 与云端一致：按 createdAt 倒序');
   }
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');

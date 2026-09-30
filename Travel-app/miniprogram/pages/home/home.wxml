@@ -1,3 +1,4 @@
+<wxs module="asset" src="../../utils/cloud-assets.wxs"></wxs>
 <wxs module="u" src="../../utils/format.wxs"></wxs>
 <!-- 自定义导航栏：单形态，不再有双 Tab。
      ⚠️ 导航栏高度不读 app.js 的 navBarHeight（那是用胶囊按钮位置反推的，
@@ -44,53 +45,66 @@
     <release-banner banner="{{banner}}" bind:open="onBannerOpen" />
   </view>
 
-  <view wx:if="{{previewNewUser}}" class="dev-preview-notice">
-    <text>开发预览：当前只是新用户空态，云端数据没有删除</text>
-    <text class="dev-preview-exit" bindtap="onExitNewUserPreview">退出预览</text>
-  </view>
-
   <!-- ===== 空态：一个行程项都没有 → 创建引导（沿用 UI-009） ===== -->
   <block wx:if="{{!loading && trips.length === 0 && history.length === 0}}">
     <view class="empty-onboard">
-      <view class="empty-hero">
-        <text class="eh-title">把每张票的放票时间盯住</text>
-        <text class="eh-sub">选好出行日和想去景点，直接算清哪天几点抢</text>
+      <view class="empty-hero-card">
+        <image class="empty-hero-bg" src="{{asset.home('empty-hero-bg.png')}}" mode="aspectFill" />
+        <view class="empty-hero-content">
+          <image class="empty-hero-logo" src="{{asset.home('empty-hero-logo.png')}}" mode="aspectFit" />
+          <view class="empty-hero-copy">
+            <text class="empty-hero-title">把每张票的放票时间盯住</text>
+            <text class="empty-hero-sub">选好出行日和想去景点，直接算清哪天几点抢</text>
+          </view>
+        </view>
       </view>
 
       <!-- 用真实规则生成的结果预览替代三步说明：先让用户看见产品会产出什么。 -->
       <view class="empty-proof-card">
         <view class="ep-head">
-          <text class="ep-head-title">效果预览</text>
-          <text class="ep-head-tag">真实规则示例</text>
+          <text class="ep-head-title">案例展示</text>
+          <text class="ep-head-tag">景点真实规则展示</text>
         </view>
 
         <view class="ep-journey">
           <view class="ep-stop">
-            <text class="ep-stop-label">出行计划</text>
+            <view class="ep-stop-label-row">
+              <svg-icon name="plan-gold" size="14px" />
+              <text class="ep-stop-label">出行计划</text>
+            </view>
             <text class="ep-stop-value">{{emptyReleaseSample.visitText}}</text>
           </view>
           <view class="ep-stop">
-            <text class="ep-stop-label">开抢时间</text>
+            <view class="ep-stop-label-row">
+              <svg-icon name="clock-gold" size="14px" />
+              <text class="ep-stop-label">开抢时间</text>
+            </view>
             <text class="ep-stop-value">{{emptyReleaseSample.releaseText}}</text>
           </view>
           <view class="ep-stop">
-            <text class="ep-stop-label">提前提醒</text>
+            <view class="ep-stop-label-row">
+              <svg-icon name="chat-linear" size="14px" />
+              <text class="ep-stop-label">提前提醒</text>
+            </view>
             <text class="ep-stop-value">{{emptyReleaseSample.remindText}}</text>
           </view>
         </view>
 
         <view class="ep-sample-entry" bindtap="onOpenReminderSamples">
+          <svg-icon class="ep-wechat-icon" name="wechat-linear" size="28px" />
           <view class="ep-sample-copy">
-            <text class="ep-sample-title">提醒样式示意图</text>
-            <text class="ep-sample-desc">查看通知中心、微信服务通知、小程序内提醒</text>
+            <view class="ep-sample-title-row">
+              <text class="ep-sample-title">微信提示样式示例</text>
+              <text class="ep-sample-action">点击查看</text>
+            </view>
+            <text class="ep-sample-desc">查看通知中心/锁屏界面、提醒卡片详情、微信内提醒</text>
           </view>
           <svg-icon name="chevron-right" size="14px" />
         </view>
-        <text class="ep-note">示意图，实际样式以手机系统和微信版本为准</text>
-      </view>
 
-      <view class="empty-cta" bindtap="onAddTrip">添加我的第一个行程</view>
-      <text class="empty-trust">只做提醒，不代抢 · 预约直达官方渠道</text>
+        <view class="empty-cta" bindtap="onAddTrip">添加我的第一个行程</view>
+        <text class="empty-trust">*只做提醒，不代抢 · 预约直达官网渠道</text>
+      </view>
     </view>
 
     <view wx:if="{{emptyReleaseRows.length}}" class="empty-hot">
@@ -112,13 +126,13 @@
           bindtap="onEmptySpotTap"
           data-id="{{item.spotId}}"
         >
-          <image class="empty-hot-img" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" lazy-load="{{true}}" />
+          <image class="empty-hot-img" src="{{asset.spot(item.spotId)}}" mode="aspectFill" lazy-load="{{true}}" />
           <view class="empty-hot-main">
             <text class="empty-hot-name">{{item.name}}</text>
             <text class="empty-hot-status {{item._releaseTone}}">{{item._releaseStatusText}}</text>
           </view>
           <text wx:if="{{item._difficultyText}}" class="empty-hot-diff diff-{{item._difficultyKey}}">{{item._difficultyText}}</text>
-          <svg-icon name="chevron-right" size="14px" />
+          <svg-icon name="chevron-right-gold" size="14px" />
         </view>
       </view>
     </view>
@@ -178,6 +192,11 @@
       <van-loading size="40rpx" color="#B8904A" />
     </view>
   </block>
+
+  <view wx:if="{{previewNewUser}}" class="dev-preview-notice">
+    <text>开发预览：当前只是新用户空态，云端数据没有删除</text>
+    <text class="dev-preview-exit" bindtap="onExitNewUserPreview">退出预览</text>
+  </view>
 </view>
 
 <!-- 悬浮新增提醒。
@@ -191,7 +210,17 @@
 </view>
 
 <!-- 景点详情浮窗（首页入口不渲染底部操作栏：首页即提醒动线的起点） -->
-<spot-popup show="{{showSpotPopup}}" spot-id="{{popupSpotId}}" show-actions="{{false}}" bind:close="onSpotPopupClose" />
+<spot-popup
+  show="{{showSpotPopup}}"
+  spot-id="{{popupSpotId}}"
+  show-actions="{{false}}"
+  show-share="{{true}}"
+  bind:close="onSpotPopupClose"
+  bind:loaded="onSpotPopupLoaded"
+/>
+
+<!-- 提醒样式示例：当前页直接弹出，不从设置页中转 -->
+<reminder-sample-sheet show="{{showSampleSheet}}" bind:close="onCloseReminderSamples" />
 
 <!-- 标记结果（次入口：补标走这里；主入口是卡片上的可抢态气泡） -->
 <result-sheet

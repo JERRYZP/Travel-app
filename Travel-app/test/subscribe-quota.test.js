@@ -45,9 +45,17 @@ const apiStub = {
   health: {},
   quotaFails: false,
   addCalls: 0,
+  addGate: null,
   reminder: {
     subscribe: {
-      add() { apiStub.addCalls += 1; return Promise.resolve({ success: true }); },
+      add() {
+        apiStub.addCalls += 1;
+        const complete = () => {
+          apiStub.quota += 1;
+          return { success: true };
+        };
+        return apiStub.addGate ? apiStub.addGate.then(complete) : Promise.resolve(complete());
+      },
       get() {
         if (apiStub.quotaFails) return Promise.reject({ success: false });
         return Promise.resolve(Object.assign({
@@ -69,10 +77,18 @@ const wxState = {
   storage: {},                // 本地 storage 桩（hintKeepAlwaysChoice 用）
   storageFails: false,
   modalCalls: [],
+  rememberAfterAccept: false,
+  rememberAfterGetSettingCalls: 0,
+  getSettingCalls: 0,
 };
 global.wx = {
   getSetting({ success, fail }) {
+    wxState.getSettingCalls += 1;
     if (wxState.getSettingFails) { if (fail) fail({}); return; }
+    if (wxState.rememberAfterGetSettingCalls
+        && wxState.getSettingCalls >= wxState.rememberAfterGetSettingCalls) {
+      wxState.setting.subscriptionsSetting.itemSettings[TPL] = 'accept';
+    }
     if (success) success(JSON.parse(JSON.stringify(wxState.setting)));
   },
   requestSubscribeMessage({ tmplIds, success, fail }) {
@@ -82,6 +98,9 @@ global.wx = {
     const value = typeof wxState.subscribeValue === 'function'
       ? wxState.subscribeValue(tpl) : wxState.subscribeValue;
     if (success) success({ [tpl]: value });
+    if (wxState.rememberAfterAccept && value === 'accept') {
+      wxState.setting.subscriptionsSetting.itemSettings[tpl] = 'accept';
+    }
   },
   getAppAuthorizeSetting() {
     return { notificationAuthorized: 'authorized', notificationEnabled: true };
@@ -127,11 +146,21 @@ async function withInstantTimers(fn) {
   try { return await fn(); } finally { global.setTimeout = real; }
 }
 
-function resetWx({ remembered, value = 'accept', getSettingFails = false, subscribeFail = null } = {}) {
+function resetWx({
+  remembered,
+  value = 'accept',
+  getSettingFails = false,
+  subscribeFail = null,
+  rememberAfterAccept = false,
+  rememberAfterGetSettingCalls = 0,
+} = {}) {
   wxState.getSettingFails = getSettingFails;
   wxState.subscribeCalls = 0;
   wxState.subscribeValue = value;
   wxState.subscribeFail = subscribeFail;
+  wxState.rememberAfterAccept = rememberAfterAccept;
+  wxState.rememberAfterGetSettingCalls = rememberAfterGetSettingCalls;
+  wxState.getSettingCalls = 0;
   wxState.setting = {
     authSetting: {},
     subscriptionsSetting: {
@@ -145,6 +174,7 @@ function resetApi({ quota = 0, quotaFails = false } = {}) {
   apiStub.quota = quota;
   apiStub.quotaFails = quotaFails;
   apiStub.addCalls = 0;
+  apiStub.addGate = null;
 }
 
 /* ============================================================
@@ -212,19 +242,18 @@ async function cloudConsumption() {
  * 2. 前端按缺口补齐（公式的左半边）
  * ============================================================ */
 async function frontendGapFill() {
-  console.log('\n=== 2. requestSubscribeBurst：勾过「总是保持」才连发，未勾只弹 1 次 ===');
+  console.log('\n=== 2. requestSubscribe：一次用户动作只申请 1 条额度 ===');
 
-  eq(notify.MAX_BURST >= 26, true, `MAX_BURST(${notify.MAX_BURST}) 覆盖景点库上限 26 × 至少 1 个提前量`);
-
-  // 已勾「总是保持」→ 静默连发 3 次
+  // 已勾「总是保持」→ 本次静默，但仍然只增加 1 条额度
   resetWx({ remembered: 'accept' });
   resetApi();
   let r = await withInstantTimers(() => notify.requestSubscribeBurst(3));
-  eq(wxState.subscribeCalls, 3, '已勾「总是保持」→ 静默连发 3 次');
-  eq(r.added, 3, '拿到 3 条额度');
-  eq(r.silent, true, '全程未弹窗');
-  eq(r.shortfall, 0, '无缺口');
-  eq(r.ok, true, '整体成功');
+  eq(wxState.subscribeCalls, 1, '已勾「总是保持」也只调用 1 次');
+  eq(r.added, 1, '本次只拿到 1 条额度');
+  eq(r.silent, true, '本次静默，无确认弹窗');
+  eq(r.remembered, true, '已记住允许');
+  eq(r.shortfall, 2, '剩余 2 条必须由后续用户动作补齐');
+  eq(r.ok, true, '本次授权成功');
 
   // 未勾 → 只调 1 次，绝不连环弹窗
   resetWx({ remembered: null });
@@ -233,15 +262,32 @@ async function frontendGapFill() {
   eq(wxState.subscribeCalls, 1, '未勾「总是保持」→ 只弹 1 次');
   eq(r.added, 1, '只拿到 1 条额度');
   eq(r.silent, false, '本次是弹窗路径');
+  eq(r.remembered, false, '未勾选总是保持时不冒充已记住');
   eq(r.shortfall, 2, '缺口如实上报 2 条');
 
-  // 超过防滥用上限：shortfall 必须相对原始需求算，不能被上限截断成 0
-  resetWx({ remembered: 'accept' });
+  // 云端入账必须先完成，调用方随后的 subscribe.get 才不会读到旧余额
+  resetWx({ remembered: null });
   resetApi();
-  r = await withInstantTimers(() => notify.requestSubscribeBurst(notify.MAX_BURST + 10));
-  eq(wxState.subscribeCalls, notify.MAX_BURST, `连发次数封顶在 MAX_BURST=${notify.MAX_BURST}`);
-  eq(r.added, notify.MAX_BURST, '拿到上限条数');
-  eq(r.shortfall, 10, '缺口相对原始需求算，未被上限掩盖');
+  let releaseAdd;
+  apiStub.addGate = new Promise(resolve => { releaseAdd = resolve; });
+  let burstDone = false;
+  const pendingBurst = withInstantTimers(() => notify.requestSubscribeBurst(1))
+    .then(value => { burstDone = true; return value; });
+  await Promise.resolve();
+  eq(burstDone, false, '云端额度落账前不提前返回成功');
+  releaseAdd();
+  r = await pendingBurst;
+  eq(r.ok, true, '额度落账完成后返回成功');
+  eq(apiStub.quota, 1, '云端真实余额已增加');
+
+  // 云端落账失败不能谎报补齐成功
+  resetWx({ remembered: null });
+  resetApi();
+  apiStub.addGate = Promise.reject(new Error('ledger unavailable'));
+  r = await withInstantTimers(() => notify.requestSubscribeBurst(1));
+  eq(r.ok, false, '云端入账失败时不标记补齐成功');
+  eq(r.added, 0, '入账失败不计入新增额度');
+  eq(r.reason, 'account-failed', '向上游返回明确入账失败原因');
 
   // 记住的是「拒绝」→ 一次都不该调
   resetWx({ remembered: 'reject' });
@@ -280,22 +326,22 @@ async function frontendGapFill() {
   eq(wxState.subscribeCalls, 0, '一次都没弹');
   eq(r.shortfall, 0, '无缺口');
 
-  // 额度为 0 + 已勾「总是保持」→ 静默补满 6 条
+  // 额度为 0 + 已勾「总是保持」→ 本次静默 +1，剩余缺口如实返回
   resetWx({ remembered: 'accept' });
   resetApi({ quota: 0 });
   r = await withInstantTimers(() => notify.ensureSubscribe(6));
-  eq(wxState.subscribeCalls, 6, '缺口 6 → 静默连发 6 次');
-  eq(r.added, 6, '补满 6 条');
-  eq(r.shortfall, 0, '补满后无缺口');
+  eq(wxState.subscribeCalls, 1, '缺口 6 仍只申请 1 条');
+  eq(r.added, 1, '本次增加 1 条');
+  eq(r.shortfall, 5, '剩余 5 条留给后续用户动作');
   eq(r.remembered, true, '静默路径');
 
-  // 额度只剩 2 → 只补缺口 4 条
+  // 额度只剩 2 → 本次仍只申请 1 条
   resetWx({ remembered: 'accept' });
   resetApi({ quota: 2 });
   r = await withInstantTimers(() => notify.ensureSubscribe(6));
-  eq(wxState.subscribeCalls, 4, '只补缺口 4 条（不是重新补 6 条）');
-  eq(r.added, 4, '新增 4 条');
-  eq(r.shortfall, 0, '补满后无缺口');
+  eq(wxState.subscribeCalls, 1, '一次用户动作只申请 1 条');
+  eq(r.added, 1, '新增 1 条');
+  eq(r.shortfall, 3, '剩余缺口为 3 条');
 
   // 额度为 0 + 未勾 → 只弹 1 次，缺口上报给页面
   resetWx({ remembered: null });
@@ -309,8 +355,8 @@ async function frontendGapFill() {
   resetWx({ remembered: 'accept' });
   resetApi({ quotaFails: true });
   r = await withInstantTimers(() => notify.ensureSubscribe(2));
-  eq(wxState.subscribeCalls, 2, '台账查询失败 → 按额度 0 补齐');
-  eq(r.shortfall, 0, '补齐成功');
+  eq(wxState.subscribeCalls, 1, '台账查询失败 → 仍只申请 1 条');
+  eq(r.shortfall, 1, '剩余缺口如实返回');
 
   // getSetting 失败 → 按「未勾」处理，仍只弹 1 次
   resetWx({ remembered: null, getSettingFails: true });
@@ -332,7 +378,7 @@ async function frontendGapFill() {
   eq(health.permissionState, 'all', '权限两项齐全');
   eq(health.quotaLevel, 'short', '保留服务端额度等级');
   eq(health.pendingMessageCount, 2, '返回未来待发送数');
-  eq(health.replenishNeeded, 2, '返回一键补齐目标值');
+  eq(health.replenishNeeded, 2, '返回建议补齐目标次数（仍需逐次授权）');
   apiStub.health = {};
 }
 
@@ -347,7 +393,8 @@ function crossCheck() {
     path.join(__dirname, '..', 'miniprogram', 'utils', 'notify.js'), 'utf8');
   eq(/reminderCount \* this\.data\.offsets\.length/.test(setupSrc), true, 'setup 按清单提醒数与提前量数算需求量');
   eq(/count \* taskCount/.test(notifySrc), true, '需求量 = 项数 × 提前量数');
-  eq(/requestSubscribeBurst\(shortfall\)/.test(setupSrc), true, 'setup 由用户主动补齐授权缺口');
+  eq(/requestSubscribeBurst\(1\)/.test(setupSrc), true,
+    'setup 每次用户点击只申请 1 条授权');
 
   const mockSrc = require('fs').readFileSync(
     path.join(__dirname, '..', 'miniprogram', 'utils', 'mock.js'), 'utf8');
@@ -360,9 +407,10 @@ function crossCheck() {
   const settingsSrc = require('fs').readFileSync(
     path.join(__dirname, '..', 'miniprogram', 'pages', 'notify-settings', 'notify-settings.js'), 'utf8');
   eq(/notify\.getReminderHealth/.test(settingsSrc), true, '设置页读取统一提醒健康状态');
-  eq(/onReplenish\(\)/.test(settingsSrc), true, '批量补齐逻辑保留，供下一期付费功能复用');
+  eq(/onReplenish\(\)/.test(settingsSrc), true, '历史批量入口保留但不再一次补多');
   eq(/可提醒 \$\{q\.quota\}|quotaLabel: hasQuota \? `可提醒/.test(settingsSrc), false, '标签不再出现「可提醒 N 次」');
   eq(/hintKeepAlwaysChoice/.test(settingsSrc), true, '续收成功后接上「总是保持」引导');
+  eq(/未弹窗/.test(settingsSrc), false, '成功提示不暴露「未弹窗」等实现细节');
 
   const profileSrc = require('fs').readFileSync(
     path.join(__dirname, '..', 'miniprogram', 'pages', 'profile', 'profile.js'), 'utf8');
@@ -376,8 +424,8 @@ function crossCheck() {
     path.join(__dirname, '..', 'miniprogram', 'pages', 'notify-settings', 'notify-settings.wxml'), 'utf8');
   eq(/navbar-title">提醒设置/.test(settingsWxml), true, '设置页标题为「提醒设置」');
   eq(/auth-health-summary/.test(settingsWxml), true, '设置页展示动态授权摘要');
-  eq(/一键补齐/.test(settingsWxml), false, '一次授权 N 次暂不对外展示');
-  eq(/bindtap="onRequestSubscribe"[\s\S]*续收 \+1/.test(settingsWxml), true, '保留「续收 +1」');
+  eq(/一键补齐/.test(settingsWxml), false, '不展示一次授权 N 次的批量入口');
+  eq(/bindtap="onRequestSubscribe"[\s\S]*补授权次数\+1/.test(settingsWxml), true, '按钮文案为「补授权次数+1」');
   eq(/bindtap="onOpenSubscribeSetting"[\s\S]*微信授权设置/.test(settingsWxml), true, '保留「微信授权设置」');
   eq(/auth-icon-green"><svg-icon name="chat-bubble"/.test(settingsWxml), true,
     '微信通知权限使用绿色微信气泡图标');

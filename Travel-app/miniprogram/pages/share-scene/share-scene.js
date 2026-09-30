@@ -7,6 +7,15 @@ const shareEntry = require('../../utils/share-entry.js');
 const analytics = require('../../utils/analytics.js');
 const reminderFlow = require('../../utils/reminder-flow.js');
 
+const BEIJING_WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+
+/** 卡片标题后的日期行：按北京时间取，与页内所有放票推算同一时区口径。 */
+function buildDateText(now) {
+  const p = release.beijingParts(now || new Date());
+  const weekday = BEIJING_WEEKDAYS[new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay()];
+  return `${p.year}年${p.month}月${p.day}日 周${weekday}`;
+}
+
 function orderByIds(items, ids) {
   const map = {};
   (items || []).forEach(s => { map[s.spotId] = s; });
@@ -25,6 +34,7 @@ Page({
     sceneId: 'today',
     rows: [],
     entryContext: null,
+    subtitleOverride: '',
     showSpotPopup: false,
     popupSpotId: '',
     popupSpotMeta: null,
@@ -67,7 +77,15 @@ Page({
       sceneId: scene.id,
       entryType: 'scene',
     });
-    this.setData({ sceneId: scene.id, entryContext: context });
+    const preferred = this.data.subtitleOverride;
+    this.setData({
+      sceneId: scene.id,
+      entryContext: context,
+      scene: Object.assign({}, scene, {
+        dateText: buildDateText(),
+        subtitle: preferred || scene.subtitle,
+      }),
+    });
     wx.setNavigationBarTitle({ title: scene.navTitle });
     if (entry && entry.source) analytics.captureLanding(context, 'scene');
   },
@@ -97,7 +115,20 @@ Page({
       rows.forEach(s => {
         s._sceneVerifyText = verify.verifiedLabel(s.lastCheckedDate);
       });
-      this.setData({ loading: false, rows });
+      /* 副标题只讲价值，不再重复「按北京时间/库存以官方为准」——
+         卡片已带核验日期，底部另有一行口径说明。 */
+      const subtitleOverride = scene.kind === 'today'
+        ? `${rows.length} 个热门景点，今天几点放票一目了然`
+        : '';
+      this.setData({
+        loading: false,
+        rows,
+        subtitleOverride,
+        scene: Object.assign({}, scene, {
+          dateText: buildDateText(now),
+          subtitle: subtitleOverride || scene.subtitle,
+        }),
+      });
     }).catch(() => {
       this.setData({ loading: false, loadFailed: true, rows: [] });
     });
@@ -146,18 +177,17 @@ Page({
     reminderFlow.onDateClose(this);
   },
 
-  onBack() {
-    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
-    if (pages.length > 1) {
-      wx.navigateBack();
-      return;
-    }
-    wx.switchTab({ url: '/pages/home/home' });
-  },
-
   goToday() {
     wx.redirectTo({
       url: shareEntry.buildScenePath('today', (this.data.entryContext || {}).source || 'direct'),
+    });
+  },
+
+  /* 返回主页：从分享卡片进栈时（栈里只有聊天/小程序列表）navigateBack 必然失败，
+     失败后回退 reLaunch 重建首页，避免用户卡在落地页。 */
+  goHome() {
+    wx.navigateBack({
+      fail: () => wx.reLaunch({ url: '/pages/home/home' }),
     });
   },
 

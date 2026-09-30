@@ -11,6 +11,7 @@
 const path = require('path');
 const Module = require('module');
 const ROOT = path.join(__dirname, '..');
+const util = require(path.join(ROOT, 'miniprogram/utils/util.js'));
 
 let fail = 0;
 const eq = (a, b, m) => {
@@ -68,9 +69,14 @@ Module._load = function (request, parent, isMain) {
 };
 
 require(path.join(ROOT, 'miniprogram/pages/add-trip/add-trip.js'));
+const addTripPageDef = pageDef;
+let spotsPageDef = null;
+global.Page = o => { spotsPageDef = o; };
+require(path.join(ROOT, 'miniprogram/pages/spots/spots.js'));
 const mock = Module._forcedMock;
 Module._load = origLoad;
 if (!mock || !mock.USE_MOCK) throw new Error('测试前置失败：mock 没有被强制打开');
+if (!addTripPageDef || !spotsPageDef) throw new Error('测试前置失败：页面定义未捕获');
 
 function instantiate(def) {
   const p = Object.assign({}, def);
@@ -228,11 +234,23 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 
     /* 不带 tripId 进来（空态首页）→ 与旧口径完全一致 */
     const page3 = instantiate(pageDef);
+    /* 模拟页面实例在复用前还留着上一趟表单与时间线。onLoad 必须先把它们清空，
+       否则新用户首页再次进入时会看到已经删除行程的日期。 */
+    page3.data.startDate = START;
+    page3.data.endDate = END;
+    page3.data.dateRangeText = '旧行程日期';
+    page3.data.dayCount = 5;
+    page3.data.selectedSpotIds = ['gugong'];
+    page3.data.selectedSpots = [{ spotId: 'gugong', name: '故宫博物院' }];
+    page3.data.showTimeline = true;
+    page3.data.timelineEvents = [{ spotId: 'gugong' }];
     page3.onLoad({});
     await wait(200);
     eq(page3.data.entryTripId, '', '没带行程时 entryTripId 为空');
     eq(page3.data.startDate, '', '没带行程时日期不预填');
     eq(page3.data.selectedSpotIds.length, 0, '没带行程时景点不预填');
+    eq(page3.data.showTimeline, false, '没带行程时旧时间线不残留');
+    eq(page3.data.timelineEvents.length, 0, '没带行程时旧时间线事件不残留');
   }
 
   console.log('=== 9. 热门网格的选卡范围（2026-09-24 用户口径）===');
@@ -263,6 +281,57 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     /* 数据不动：口径真身里的分数仍是 3 */
     const spot = mock.SPOTS.find(s => s.spotId === 'maozhuxi-jiniantang');
     eq(spot.difficultyScore, 3, '⚠️ data 里的难度分仍为 3（只放宽卡片范围，不改难度）');
+  }
+
+  console.log('=== 10. 已选景点去重与按 spotId 删除（顺序漂移回归）===');
+  {
+    const spotsPage = instantiate(spotsPageDef);
+    spotsPage.onLoad({ spotIds: 'guobo,guobo,gugong' });
+    await wait(200);
+    eq(spotsPage.data.selectedSpotIds.join(','), 'guobo,gugong', '重复 ID 只保留一份');
+    eq(spotsPage.data.selectedSpots.map(s => s.spotId).join(','), 'guobo,gugong',
+      '已选卡片按传入 ID 顺序展示，不跟数据库顺序漂移');
+
+    spotsPage.onRemoveSelected({ currentTarget: { dataset: { id: 'guobo' } } });
+    eq(spotsPage.data.selectedSpotIds.join(','), 'gugong', '删除按 spotId 命中，不受数组下标影响');
+    eq(spotsPage.data.selectedSpots.map(s => s.spotId).join(','), 'gugong', '对应卡片同步删除');
+
+    spotsPage.onSpotToggle({ currentTarget: { dataset: {
+      id: 'guobo',
+      spot: { spotId: 'guobo', name: '中国国家博物馆', remindable: true },
+    } } });
+    eq(spotsPage.data.selectedSpotIds.join(','), 'gugong,guobo', '重新加入只追加一个 ID');
+    eq(spotsPage.data.selectedSpots.map(s => s.spotId).join(','), 'gugong,guobo',
+      '重新加入不会生成重复卡片');
+
+    const addTripPage = instantiate(pageDef);
+    addTripPage.onLoad({ spotIds: 'guobo,gugong' });
+    await wait(200);
+    eq(addTripPage.data.selectedSpots.map(s => s.spotId).join(','), 'guobo,gugong',
+      '新增提醒页预填也按传入 ID 顺序归一');
+    addTripPage.onSpotSelectToggle({ currentTarget: { dataset: {
+      id: 'guobo',
+      spot: addTripPage.data.selectedSpots.find(s => s.spotId === 'guobo'),
+    } } });
+    eq(addTripPage.data.selectedSpotIds.join(','), 'gugong', '新增提醒页取消选择同样按 spotId 删除');
+    eq(addTripPage.data.selectedSpots.map(s => s.spotId).join(','), 'gugong',
+      '新增提醒页不会误删另一张景点卡');
+
+    /* PAGE-003 返回时，添加提醒页的热门网格也要同步 selected 布尔值。
+       只回写 selectedSpotIds 时，用户会看到表单已选但网格按钮仍显示「选择」。 */
+    const originalGetCurrentPages = global.getCurrentPages;
+    const returnTarget = instantiate(pageDef);
+    returnTarget.onLoad({});
+    await wait(200);
+    returnTarget.data.hotSpots = util.markSpotsSelected(returnTarget.data.hotSpots, []);
+    spotsPage.data.selectedSpotIds = ['gugong'];
+    spotsPage.data.selectedSpots = [{ spotId: 'gugong', name: '故宫博物院' }];
+    global.getCurrentPages = () => [returnTarget, spotsPage];
+    spotsPage.onBack();
+    global.getCurrentPages = originalGetCurrentPages;
+    eq(returnTarget.data.selectedSpotIds.join(','), 'gugong', '返回后已选 ID 带回上一页');
+    eq((returnTarget.data.hotSpots.find(s => s.spotId === 'gugong') || {}).selected, true,
+      '返回后热门网格同步已选状态');
   }
 
   console.log('\n' + (fail === 0 ? 'ALL PASS' : ('FAIL ' + fail)));

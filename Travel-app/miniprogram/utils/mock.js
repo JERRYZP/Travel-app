@@ -265,6 +265,7 @@ function buildCard(spot) {
   return {
     spotId: spot.spotId,
     name: spot.name,
+    shortName: spot.shortName || spot.name,
     category: spot.category,
     audienceTags: spot.audienceTags || [],
     district: spot.district,
@@ -397,7 +398,21 @@ function dropTripIfNoItem(tripId) {
   if (Object.values(db.items).some(i => i.tripId === tripId)) return false;
   Object.keys(db.carts).forEach(id => { if (db.carts[id].tripId === tripId) delete db.carts[id]; });
   delete db.trips[tripId];
+  clearPendingIfNoItems();
   return true;
+}
+
+/** 用户显式删掉最后一笔行程项后，清掉失去归属的暂存清单；普通新草稿不受影响。 */
+function clearPendingIfNoItems() {
+  if (Object.values(db.items).length > 0) return 0;
+  let removed = 0;
+  Object.keys(db.carts).forEach(id => {
+    if (db.carts[id].tripId === PENDING_CART_TRIP_ID) {
+      delete db.carts[id];
+      removed += 1;
+    }
+  });
+  return removed;
 }
 
 /** 摘要卡「即将提醒」胶囊：接下来的 limit 场放票（镜像云端 task.buildReleasePills）。
@@ -548,6 +563,7 @@ function purgeTripIfNoTask(tripId) {
   if (Object.values(db.items).some(i => i.tripId === tripId)) return false;
   Object.keys(db.carts).forEach(id => { if (db.carts[id].tripId === tripId) delete db.carts[id]; });
   delete db.trips[tripId];
+  clearPendingIfNoItems();
   return true;
 }
 
@@ -1036,7 +1052,7 @@ function mockReminderQuotaWarningOf(health, nowTs = new Date()) {
   let text = '';
   if (health.level === 'low') text = '提醒授权即将用完，建议续收 1 次。';
   else if (health.level === 'exhausted') text = '提醒授权已用完，未来提醒可能收不到。';
-  else text = `未来还有${health.pendingMessageCount}条提醒待发送，还差${health.shortfall}次授权，可能收不到。`;
+  else text = `还有${health.pendingMessageCount}条提醒待发送，还差${health.shortfall}次授权，可能收不到。`;
   return Object.assign({}, health, { type: 'QUOTA', text });
 }
 
@@ -1215,6 +1231,7 @@ const handlers = {
     Object.keys(db.carts).forEach(id => { if (db.carts[id].tripId === data.tripId) { delete db.carts[id]; removedCartItems += 1; } });
     Object.keys(db.items).forEach(id => { if (db.items[id].tripId === data.tripId) { delete db.items[id]; removedItems += 1; } });
     delete db.trips[data.tripId];
+    clearPendingIfNoItems();
     return { success: true, tripId: data.tripId, removedTasks, removedCartItems, removedItems };
   },
 
@@ -1790,8 +1807,12 @@ const handlers = {
   },
   'feedback.list': () => ({
     success: true,
-    items: Object.values(db.feedbacks).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+    items: Object.values(db.feedbacks)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 50),
   }),
+  /* mock 用户按普通用户处理；管理员入口必须走真实 feedback 云函数白名单。 */
+  'feedback.adminStatus': () => ({ success: true, isAdmin: false }),
 
   /* 首页聚合（镜像云端 reminder homeBootstrap）：复用各域 handler 组合返回，供 USE_MOCK=true 时首页使用 */
   /* 首页行程状态墙 V2（镜像 reminder/index.js 的 homeBootstrap，API-契约 8.2）*/

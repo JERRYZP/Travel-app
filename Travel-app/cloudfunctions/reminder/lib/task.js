@@ -87,7 +87,7 @@ function buildReminderQuotaWarning(health, nowTs = time.now()) {
   } else if (health.level === 'exhausted') {
     text = '提醒授权已用完，未来提醒可能收不到。';
   } else {
-    text = `未来还有${health.pendingMessageCount}条提醒待发送，还差${health.shortfall}次授权，可能收不到。`;
+    text = `还有${health.pendingMessageCount}条提醒待发送，还差${health.shortfall}次授权，可能收不到。`;
   }
 
   return Object.assign({}, health, { type: 'QUOTA', text });

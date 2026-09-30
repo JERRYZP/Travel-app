@@ -63,3 +63,25 @@
   color: #fff; font-size: 28rpx; font-weight: 600;
 }
 .submit-btn.disabled { opacity: 0.6; }
+
+.service-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  margin-top: 32rpx;
+  font-size: 26rpx;
+  color: var(--color-muted);
+}
+.service-link {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--color-primary);
+  font-size: 26rpx;
+  line-height: 1.5;
+}
+.service-link::after { border: none; }
+.service-link-hover { opacity: 0.65; }

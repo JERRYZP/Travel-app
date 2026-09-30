@@ -8,6 +8,8 @@
     "pages/setup/setup",
     "pages/profile/profile",
     "pages/profile-edit/profile-edit",
+    "pages/help-feedback/help-feedback",
+    "pages/my-feedback/my-feedback",
     "pages/webview/webview",
     "pages/notify-settings/notify-settings",
     "pages/guide/guide",

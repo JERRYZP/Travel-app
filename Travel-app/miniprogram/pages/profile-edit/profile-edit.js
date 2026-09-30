@@ -1,6 +1,5 @@
 const app = getApp();
 const api = require('../../utils/api.js');
-const { USE_MOCK } = require('../../utils/mock.js');
 
 Page({
   data: {
@@ -76,7 +75,7 @@ Page({
    */
   resolveAvatarUrl() {
     const url = (this.data.avatarUrl || '').trim();
-    if (!url || /^cloud:\/\//.test(url) || url.indexOf('/images/') === 0 || USE_MOCK || !wx.cloud) {
+    if (!url || /^cloud:\/\//.test(url) || url.indexOf('/images/') === 0 || !wx.cloud) {
       return Promise.resolve(url || '');
     }
     /* 上传失败时的回退：优先已有持久化头像，否则空串（前端显示占位，避免持久化临时路径导致下次裂图） */

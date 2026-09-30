@@ -6,8 +6,6 @@ const util = require('../../utils/util.js');
    `&&` 短路让它没炸；但那是巧合，不是设计——补上导入，别留一颗哑弹。 */
 const notify = require('../../utils/notify.js');
 
-const { spotsListCards } = require('../../utils/mock.js');
-
 /**
  * 热门网格里**除 S 级外额外保留**的景点（2026-09-24 用户口径）。
  *
@@ -128,8 +126,35 @@ Page({
     this.setData({
       statusBarHeight: g.statusBarHeight,
       navBarHeight: g.navBarHeight,
+      navOpacity: 0,
       minDate: this.fmtDate(now),
       maxDate: this.fmtDate(new Date(now.getTime() + 90 * 86400000)),
+      /* 页面实例被复用时，上一次表单/时间线不能继续留在 data 里。
+         先回到全新的空表单，再只按本次 URL 参数预填。 */
+      startDate: '',
+      endDate: '',
+      dateRangeText: '',
+      dayCount: 0,
+      showCalendar: false,
+      selectedSpots: [],
+      selectedSpotIds: [],
+      hotSpots: [],
+      showTimeline: false,
+      timelineTabs: [],
+      timelineDays: [],
+      timelineActiveTab: '',
+      tabScrollLeft: 0,
+      pageScrollTop: 0,
+      timelineEvents: [],
+      timelineEmpty: false,
+      timelineEmptyReason: '',
+      timelineLoading: false,
+      submitting: false,
+      showCartPopup: false,
+      cartCount: 0,
+      cartReminderCount: 0,
+      showSpotPopup: false,
+      popupSpotId: '',
       entryTripId: opts.tripId || '',
     });
     /* 从首页某趟进行中的行程进来 → 预填它的日期段与景点。
@@ -148,7 +173,7 @@ Page({
   prefillFromTrip(opts) {
     const startDate = opts.startDate || '';
     const endDate = opts.endDate || startDate;
-    const ids = (opts.spotIds || '').split(',').filter(Boolean);
+    const ids = util.uniqueSpotIds((opts.spotIds || '').split(','));
     const patch = {};
     if (startDate && endDate) {
       patch.startDate = startDate;
@@ -160,7 +185,7 @@ Page({
     if (Object.keys(patch).length > 0) this.setData(patch);
     if (ids.length === 0) return;
     api.spots.batch(ids).then(res => {
-      const list = util.markSpotsSelected(res.data || [], ids);
+      const list = util.selectSpotsByIds(res.data || [], ids);
       /* 只在用户还没动过景点时回填，避免覆盖他预填后立刻手点掉的选择 */
       if (this.data.selectedSpotIds.join(',') === ids.join(',')) {
         this.setData({ selectedSpots: list });
@@ -354,10 +379,12 @@ Page({
   },
 
   loadHotSpots() {
+    /* 取不到就留空白网格，不再往客户端塞一份景点数据兜底：
+       `spots` 是业务数据的唯一真身，客户端兜底副本会漂移，且直接把 mock 拖进主包。 */
     api.spots.list().then(res => {
       this.setData({ hotSpots: this.buildHotSpots(res.data || [], this.data.selectedSpotIds) });
     }).catch(() => {
-      this.setData({ hotSpots: this.buildHotSpots(spotsListCards(), this.data.selectedSpotIds) });
+      this.setData({ hotSpots: [] });
     });
   },
 
@@ -384,22 +411,29 @@ Page({
   onSpotSelectToggle(e) {
     const spotId = e.currentTarget.dataset.id;
     const spot = e.currentTarget.dataset.spot;
+    if (!spotId || !spot) return;
     /* 免预约景点可加入行程；仅「需预约但无固定放票时刻」的景点不可选 */
-    const addable = spot && (spot.addable === true || spot.remindable || spot.reservationRequired === false);
-    if (spot && !addable) {
+    const addable = spot.addable === true || spot.remindable || spot.reservationRequired === false;
+    if (!addable) {
       wx.showToast({ title: '该景点无固定放票时刻，随买随用即可', icon: 'none' });
       return;
     }
-    const ids = [].concat(this.data.selectedSpotIds);
-    const spots = [].concat(this.data.selectedSpots);
-    const idx = ids.indexOf(spotId);
-    if (idx >= 0) { ids.splice(idx, 1); spots.splice(idx, 1); }
-    else { ids.push(spotId); spots.push(spot); }
+    const ids = util.uniqueSpotIds(this.data.selectedSpotIds);
+    const spots = util.markSpotsSelected(this.data.selectedSpots, ids);
+    const selected = ids.indexOf(spotId) >= 0;
+    let nextIds;
+    let nextSpots;
+    if (selected) {
+      nextIds = ids.filter(id => id !== spotId);
+      nextSpots = spots.filter(s => s && s.spotId !== spotId);
+    } else {
+      nextIds = ids.concat(spotId);
+      nextSpots = util.markSpotsSelected(spots.concat(spot), nextIds);
+    }
     this.setData({
-      selectedSpotIds: ids,
-      selectedSpots: spots,
-      hotSpots: this.data.hotSpots.map(card =>
-        Object.assign({}, card, { selected: ids.indexOf(card.spotId) >= 0 })),
+      selectedSpotIds: util.uniqueSpotIds(nextIds),
+      selectedSpots: util.markSpotsSelected(nextSpots, nextIds),
+      hotSpots: util.markSpotsSelected(this.data.hotSpots, nextIds),
       /* 景点变了 → 预览作废 */
       showTimeline: false,
       timelineDays: [],

@@ -1,3 +1,4 @@
+<wxs module="asset" src="../../utils/cloud-assets.wxs"></wxs>
 <view wx:if="{{show}}" class="cart-popup {{aboveTabbar ? 'above-tabbar' : ''}}">
   <view class="cart-mask" style="bottom: {{bottomOffset}};" bindtap="onMaskTap" catchtouchmove="noop"></view>
 
@@ -17,7 +18,7 @@
           <view class="cart-tips-head" catchtap="onToggleTips">
             <view class="cart-tips-title-wrap">
               <svg-icon name="alert-circle-gold" size="14px" />
-              <text class="cart-tips-title">温馨提示：</text>
+              <text class="cart-tips-title">默认提醒策略</text>
             </view>
             <svg-icon name="{{tipsExpanded ? 'chevron-up' : 'chevron-down'}}" size="12px" />
           </view>
@@ -25,8 +26,9 @@
             <text>1、超难约的景点默认开启提醒</text>
             <text>2、较容易约热门景点，默认不开启提醒，可手动选择开启</text>
             <text>3、无需预约的景点，不开启提醒，仅加入行程中</text>
+            <text>4、已过放票时间的景点不予提醒</text>
           </view>
-          <text wx:else class="cart-tips-folded">默认策略：超难约开启 · 较易约关闭 · 免预约不提醒</text>
+          <text wx:else class="cart-tips-folded">超难约开启 · 较易约关闭 ·免预约不提醒 · 已开票不提醒</text>
         </view>
         <block wx:if="{{loading}}">
           <view class="cart-loading"><van-loading size="40rpx" color="#B8904A" /></view>
@@ -46,14 +48,14 @@
 
             <view class="cart-group-list">
               <view wx:for="{{group.items}}" wx:key="_id" wx:for-item="item" class="cart-row">
-                <image class="cart-row-thumb" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" />
+                <image class="cart-row-thumb" src="{{asset.spot(item.spotId)}}" mode="aspectFill" />
 
                 <view class="cart-row-body">
                   <view class="cart-row-name-line">
                     <text class="cart-row-name">{{item.spotName}}</text>
                     <text wx:if="{{item.difficulty}}" class="cart-row-diff diff-{{item.difficulty.key}}">{{item.difficulty.text}}</text>
                   </view>
-                  <text class="cart-row-sub">{{item.subline}}</text>
+                  <text class="cart-row-sub {{item.releasePassed ? 'is-released' : ''}}">{{item.subline}}</text>
                 </view>
 
                 <view class="cart-row-action">

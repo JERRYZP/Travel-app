@@ -1,0 +1,44 @@
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack">
+      <svg-icon name="back-thick" size="18px" />
+    </view>
+    <text class="navbar-title">我的反馈</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view class="page-body">
+  <view class="state-block" wx:if="{{loading}}">
+    <text class="state-text">加载中...</text>
+  </view>
+
+  <view class="state-block state-error" wx:elif="{{failed}}" bindtap="onRetry">
+    <text class="state-text">加载失败，点击重试</text>
+  </view>
+
+  <view class="state-block" wx:elif="{{!items.length}}">
+    <text class="state-text">还没有提交过反馈</text>
+  </view>
+
+  <block wx:else>
+    <view class="fb-card" wx:for="{{items}}" wx:key="id">
+      <view class="fb-card-head">
+        <view class="fb-tags">
+          <view class="fb-tag fb-tag-{{item.typeKey}}">{{item.typeLabel}}</view>
+          <view class="fb-tag fb-status fb-status-{{item.statusCls}}">{{item.statusLabel}}</view>
+        </view>
+        <text class="fb-time">{{item.time}}</text>
+      </view>
+
+      <view class="fb-spot" wx:if="{{item.isCorrection}}">
+        <text>{{item.spotName || '景点'}}</text>
+        <text class="fb-spot-divider">·</text>
+        <text>{{item.errorTypeLabel}}</text>
+      </view>
+
+      <text class="fb-content">{{item.content}}</text>
+    </view>
+  </block>
+</view>

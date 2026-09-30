@@ -1,9 +1,10 @@
+<wxs module="asset" src="../../utils/cloud-assets.wxs"></wxs>
 <view class="trip-card {{history ? 'is-history' : ''}}">
   <!-- 主行：缩略图 + 左列（名字行（含提醒 chip）+ 放票行） + 右列（票务状态 · 三点菜单）
        ⚠️ 2026-09-22 按设计稿改为**左右两列**（原来票务标签和菜单与信息同排），
        右列内部再横排「票务 chip | 菜单」。 -->
   <view class="tc-main">
-    <image class="tc-thumb" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" bindtap="onTapSpot" />
+    <image class="tc-thumb" src="{{asset.spot(item.spotId)}}" mode="aspectFill" bindtap="onTapSpot" />
 
     <view class="tc-info">
       <view class="tc-name-row">
@@ -38,7 +39,7 @@
            景点详情浮窗、`add-trip` 的时间线事件都保留，那里正是要按难易挑景点的时候。
            `item.difficulty` 字段仍然下发（服务端 `decorateItem` 照常算），只是这里不再渲染。 -->
 
-      <!-- 副行：放票时刻 + 状态尾巴（「还有N天」/「现在预约」/「已约」…）
+      <!-- 副行：放票时刻 + 状态尾巴（「还有N天/N小时/N分钟」/「现在预约」/「已约」…）
            所有分支在 util.releaseRemainderOf 里定死，这里只拼色类（WXML 不能调方法）。 -->
       <view class="tc-sub">
         <text class="tc-sub-main">{{releaseLine}}</text>
@@ -67,7 +68,7 @@
            永远浮不到自己父节点之上（z-index 只兄弟间比较，压不过父节点整棵子树），
            于是图标照样被埋、菜单点开后就关不掉。
            平级放、排在前面，两者同为 z-index 31 → **文档序决胜，图标在后胜出**。 -->
-      <view wx:if="{{menuOpen && !history}}" class="tc-menu-catch" catchtap="onMenuClose" catchtouchmove="noop"></view>
+      <view wx:if="{{menuOpen && !history}}" class="tc-menu-catch" catchtap="onMenuClose"></view>
       <!-- 三点菜单。
            它是**唯一**的开合入口，靠 `bindtap` 开合（没有子节点需要阻止冒泡，
            所以这里不用 catchtap）；真正的风险全在子节点上，见各自注释。 -->

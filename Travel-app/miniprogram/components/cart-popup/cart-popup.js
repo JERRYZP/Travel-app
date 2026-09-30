@@ -14,7 +14,8 @@ const cartView = require('../../utils/cart-view.js');
  *   ① 这张票什么时候放（或「无需预约，随到随玩」）；
  *   ② 要不要提醒（下拉二选一）。
  * 弱提醒景点默认「仅加行程·不提醒」，可手动改；免预约项固定不可改。
- * 已开票项同样固定不可改：服务端下发 remindLocked，页面只渲染「仅加行程·不提醒」。
+ * 已开票项同样固定不可改：服务端下发 remindLocked，页面只渲染「仅加行程·不提醒」，
+ * 点击时说明「放票时间已过」。
  */
 Component({
   properties: {
@@ -139,8 +140,13 @@ Component({
     onToggleDropdown(e) {
       const cartId = e.currentTarget.dataset.id;
       const item = this.findItem(cartId);
-      /* 免预约/已开票项固定不可改：保留同款灰态，但不打开菜单。 */
-      if (!item || !item.canToggle) return;
+      if (!item) return;
+      /* 免预约/已开票项固定不可改：保留同款灰态，但不打开菜单。
+         已开票项要明确解释锁定原因，免预约项无需重复左侧副行说明。 */
+      if (!item.canToggle) {
+        if (item.remindLocked) wx.showToast({ title: '放票时间已过', icon: 'none' });
+        return;
+      }
       this.createSelectorQuery().select('#cart-drop-' + cartId).boundingClientRect(rect => {
         if (!rect) return;
         const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();

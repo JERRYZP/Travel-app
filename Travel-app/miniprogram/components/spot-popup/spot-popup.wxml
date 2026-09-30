@@ -1,3 +1,4 @@
+<wxs module="asset" src="../../utils/cloud-assets.wxs"></wxs>
 <wxs module="fmt" src="../../utils/format.wxs"></wxs>
 <view wx:if="{{show}}" class="popup-mask" bindtap="onMaskTap" catchtouchmove="onSheetTap">
   <view
@@ -31,7 +32,7 @@
     <block wx:elif="{{spot}}">
       <!-- 头部：缩略图 + 名称/难度 + 核心标签 -->
       <view class="popup-header {{spot.specialNotice ? 'popup-header--with-notice' : ''}} {{showShare ? 'popup-header--share' : ''}}">
-        <image class="popup-spot-img" src="/images/spots/{{spot.spotId}}.jpg" mode="aspectFill" />
+        <image class="popup-spot-img" src="{{asset.spot(spot.spotId)}}" mode="aspectFill" />
         <button
           wx:if="{{showShare}}"
           class="popup-share-btn"

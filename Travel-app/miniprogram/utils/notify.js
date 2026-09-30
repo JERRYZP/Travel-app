@@ -120,7 +120,7 @@ function reasonOfValue(value) {
  * @returns Promise<{ ok: Boolean, reason?: string, value?: string }>
  *   reason: 'template-not-ready' 模板未配置 / 'master-switch-off' 用户关了订阅消息总开关(20004)
  *         / 'rejected' 用户点了取消 / 'banned' 模板被封禁 / 'template-filtered' 模板同名被后台过滤
- *         / 'request-failed' 其他失败
+ *         / 'account-failed' 微信已允许但云端额度落账失败 / 'request-failed' 其他失败
  */
 function requestSubscribe(templateId) {
   const tpl = templateIdOf(templateId);
@@ -135,90 +135,87 @@ function requestSubscribe(templateId) {
         const value = res[tpl];
         const ok = isAcceptedValue(value);
         if (ok) {
-          // 授权成功 → 云端 +1 一次性订阅额度（best-effort，不影响提交流程）
-          api.reminder.subscribe.add(tpl).catch(() => {});
+          /* 授权成功 → 等云端 +1 落账后再返回。否则调用方马上 subscribe.get
+             会读到旧余额，用户明明刚授权却看到“还差 1 次”，被迫再点一遍。 */
+          api.reminder.subscribe.add(tpl)
+            .then(() => resolve({ ok: true, value }))
+            .catch(error => resolve({ ok: false, reason: 'account-failed', value, error }));
+          return;
         }
-        resolve({ ok, reason: ok ? undefined : reasonOfValue(value), value });
+        resolve({ ok: false, reason: reasonOfValue(value), value });
       },
       fail: err => {
         // 20004 = 用户关闭了订阅消息总开关（微信设置-订阅消息），弹不出授权框，需引导去设置页开启
         if (err && err.errCode === 20004) {
-          resolve({ ok: false, reason: 'master-switch-off' });
+          resolve({ ok: false, reason: 'master-switch-off', errCode: err.errCode, errMsg: err.errMsg });
         } else {
-          resolve({ ok: false, reason: 'request-failed' });
+          resolve({ ok: false, reason: 'request-failed', errCode: err && err.errCode, errMsg: err && err.errMsg });
         }
       },
     });
   });
 }
 
-// 一次点击最多连发几次授权（只在「总是保持以上选择」已生效时才会连发，防止无上限刷额度）。
-// 取值依据：一次提交最多 = 将设提醒的清单项数（景点库上限 26）× 提前量个数，留出余量。
-const MAX_BURST = 50;
-// 连发之间的间隔，给微信客户端留出处理时间
-const BURST_INTERVAL = 120;
-
 /**
- * 连发订阅授权。
- * ⚠️ 微信规则：`wx.requestSubscribeMessage` 一次调用 = 一次授权 = 1 条额度，要攒 N 条只能调 N 次。
- * 弹窗是否出现，取决于用户有没有勾过「总是保持以上选择，不再询问」：
- *  - 勾过 → 微信不再弹窗，静默按「允许」记账，连发多少次都零打扰（可安全补齐缺口）
- *  - 没勾 → **每次调用必弹一次窗**（小程序端无法绕过），因此最多只调 1 次，绝不连环弹窗骚扰用户
- * @param {number} times 目标次数（真实需求，可超过 MAX_BURST）
+ * 申请一次订阅授权。
+ *
+ * ⚠️ 微信一次性订阅的原子约束：一次 `wx.requestSubscribeMessage` 调用只增加
+ * 同一模板 1 条额度；用户要 N 条就必须产生 N 次独立授权动作。函数名
+ * `requestSubscribeBurst` 是历史兼容名，`times` 只用于计算剩余缺口，不再连发。
+ *
+ * 「总是保持以上选择」的作用仅是下次调用不弹窗，不会让一次点击批量增加额度；
+ * 把多次调用塞在同一个异步链里，第二次已脱离用户手势上下文，真机会被微信拒绝。
+ *
+ * @param {number} times 本次目标次数，用于计算 shortfall
+ * @param {string} [templateId]
  * @returns Promise<{ ok, added, called, silent, shortfall, reason? }>
- *   added = 实际拿到的额度条数；shortfall = 相对原始需求还差几条；silent = 本次是否全程没弹窗
+ *   added = 本次实际拿到的额度条数（0 或 1）；shortfall = 相对目标还差几条
  */
 function requestSubscribeBurst(times, templateId) {
   const tpl = templateIdOf(templateId);
   const want = Math.max(1, Number(times) || 1);
-  // target 只是「本次最多连发几次」的防滥用上限；shortfall 始终相对 want 计算，不被上限截断影响
-  const target = Math.min(want, MAX_BURST);
-  const done = b => ({
-    ok: b.added > 0,
-    added: b.added,
-    called: true,
-    silent: b.silent,
-    shortfall: Math.max(0, want - b.added),
-    reason: b.added > 0 ? undefined : b.reason,
-  });
   return new Promise(resolve => {
     wx.getSetting({
       withSubscriptions: true,
       success: res => {
-        // 「总是保持」保持的是上一次选择，reject/ban 不能当成可继续下发
         const remembered = rememberedSubscribeValue(res, tpl);
         if (remembered === 'reject' || remembered === 'ban') {
-          resolve({ ok: false, added: 0, called: false, silent: false, shortfall: want, reason: 'subscription-disabled' });
+          resolve({
+            ok: false,
+            added: 0,
+            called: false,
+            silent: false,
+            remembered: false,
+            shortfall: want,
+            reason: 'subscription-disabled',
+          });
           return;
         }
-        fireBurst(target, tpl, hasRememberedSubscribe(res, tpl)).then(b => resolve(done(b)));
+        const silentlyAllowed = hasRememberedSubscribe(res, tpl);
+        requestSubscribe(tpl).then(r => resolve({
+          ok: r.ok,
+          added: r.ok ? 1 : 0,
+          called: true,
+          silent: silentlyAllowed,
+          remembered: silentlyAllowed,
+          shortfall: Math.max(0, want - (r.ok ? 1 : 0)),
+          reason: r.ok ? undefined : r.reason,
+          errCode: r.errCode,
+          errMsg: r.errMsg,
+        }));
       },
-      fail: () => fireBurst(target, tpl, false).then(b => resolve(done(b))),
+      fail: () => requestSubscribe(tpl).then(r => resolve({
+        ok: r.ok,
+        added: r.ok ? 1 : 0,
+        called: true,
+        silent: false,
+        remembered: false,
+        shortfall: Math.max(0, want - (r.ok ? 1 : 0)),
+        reason: r.ok ? undefined : r.reason,
+        errCode: r.errCode,
+        errMsg: r.errMsg,
+      })),
     });
-  });
-}
-
-/** 串行连发：静默时发满 target 次，未勾「总是保持」时只发 1 次（弹窗躲不掉，不能连环弹） */
-function fireBurst(target, tpl, silent) {
-  const rounds = silent ? target : 1;
-  return new Promise(resolve => {
-    let added = 0;
-    let reason;
-    const step = i => {
-      requestSubscribe(tpl).then(r => {
-        if (r.ok) {
-          added += 1;
-        } else if (!reason) {
-          reason = r.reason;
-        }
-        if (i + 1 >= rounds) {
-          resolve({ added, silent, reason });
-          return;
-        }
-        setTimeout(() => step(i + 1), BURST_INTERVAL);
-      });
-    };
-    step(0);
   });
 }
 
@@ -231,10 +228,9 @@ function fireBurst(target, tpl, silent) {
  *   ⚠️ 历史 bug（2026-09-16 修正）：调用方曾传 `offsets.length`（只算了提前量），
  *   清单里 6 个景点时也只补 1 条，导致第 2 条起全部 43101「未送达」。
  *
- * 只在「剩余额度不足本次需求」时才真弹授权窗：
+ * 只在「剩余额度不足本次需求」时申请一次：
  *  - 剩余额度足够 → 既不弹也不调用
- *  - 已勾「总是保持以上选择，不再询问」→ 微信不弹窗，按缺口静默连发补齐（可一次补满 N 条）
- *  - 未勾 → 微信每次调用必弹窗，因此最多只弹 1 次，缺口由 shortfall 回报给页面提示用户
+ *  - 不足 → 一次用户动作最多增加 1 条，剩余缺口由 shortfall 回报给调用方
  * @param {number} needed 本次提交需要的订阅消息条数
  * @returns Promise<{ ok, reason?, called, remembered, added, shortfall }>
  */
@@ -251,7 +247,7 @@ function ensureSubscribe(needed, templateId) {
       ok: b.ok,
       reason: b.reason,
       called: b.called,
-      remembered: b.silent,
+      remembered: !!b.remembered,
       added: b.added,
       shortfall: b.shortfall,
     }));
@@ -294,7 +290,41 @@ function showReminderAccessSheet(alertText, firstLabel) {
 }
 
 /**
+ * 用户明确选择“补授权并继续”后，才发起微信一次性订阅授权。
+ * 这里不能再自动触发：轻量入口经过 cart.add / 查额度等多段异步后，
+ * 直接 requestSubscribeMessage 既容易失去用户手势上下文，也让用户不知道为何弹窗。
+ */
+function completeSubscribeShortfall(shortfall, tpl, needed) {
+  return requestSubscribeBurst(shortfall, tpl).then(r => {
+    if (r.shortfall <= 0) {
+      return { action: 'ready', needed, shortfall: 0, added: r.added, reason: r.reason };
+    }
+    if (r.reason === 'master-switch-off' || r.reason === 'subscription-disabled') {
+      return {
+        action: 'settings',
+        settingsKind: 'subscribe',
+        needed,
+        shortfall: r.shortfall,
+        added: r.added,
+        reason: r.reason,
+      };
+    }
+    return {
+      action: 'cancelled',
+      needed,
+      shortfall: r.shortfall,
+      added: r.added,
+      reason: r.reason || 'quota-shortfall',
+    };
+  });
+}
+
+/**
  * 设置提醒前的统一闸门。返回结果由页面决定如何提交，不在工具层直接创建行程。
+ *
+ * 订阅额度不足时先说明“本次为什么需要授权”，等用户点“补授权并继续”
+ * 再调用微信授权接口；成功后把 ready 交回原动线继续提交。
+ *
  * @returns Promise<{
  *   action: 'ready'|'trip-only'|'settings'|'cancelled',
  *   settingsKind?: 'system'|'subscribe',
@@ -323,28 +353,24 @@ function confirmReminderAccess(needed, templateId) {
     });
   }
 
-  return ensureSubscribe(want, tpl).then(r => {
-    if (r.shortfall <= 0) {
-      return { action: 'ready', needed: want, shortfall: 0, reason: r.reason };
+  return getSubscribeQuota(tpl).then(q => {
+    const quota = q.ok ? q.quota : 0;
+    const shortfall = Math.max(0, want - quota);
+    if (shortfall <= 0) {
+      return { action: 'ready', needed: want, shortfall: 0 };
     }
 
     return showReminderAccessSheet(
-      `本次需要 ${want} 条提醒授权，当前还差 ${r.shortfall} 条。`,
-      '去补订阅授权'
+      `本次设置提醒需要 ${want} 次微信授权，当前还差 ${shortfall} 次。补齐后会继续完成刚才的提醒。`,
+      '补授权并继续'
     ).then(choice => {
       if (choice.choice === 'first') {
-        return {
-          action: 'settings',
-          settingsKind: 'subscribe',
-          needed: want,
-          shortfall: r.shortfall,
-          reason: r.reason || 'quota-shortfall',
-        };
+        return completeSubscribeShortfall(shortfall, tpl, want);
       }
       if (choice.choice === 'trip-only') {
-        return { action: 'trip-only', needed: want, shortfall: r.shortfall, reason: r.reason };
+        return { action: 'trip-only', needed: want, shortfall, reason: 'quota-shortfall' };
       }
-      return { action: 'cancelled', needed: want, shortfall: r.shortfall, reason: r.reason || 'cancelled' };
+      return { action: 'cancelled', needed: want, shortfall, reason: choice.reason || 'cancelled' };
     });
   });
 }
@@ -423,6 +449,25 @@ function guideOpenSubscribeSetting(reason) {
 }
 
 /**
+ * 轻量提醒入口遇到 settings 分支时统一处理：
+ * - 微信通知权限问题：打开系统通知设置；
+ * - 订阅消息总开关/模板保持拒绝：只打开设置引导，不去“提醒设置”页绕一圈。
+ */
+function openReminderAccessSettings(access) {
+  if (!access || access.action !== 'settings') return false;
+  if (access.settingsKind === 'system') {
+    openSystemNotifySetting();
+    return true;
+  }
+  if (access.settingsKind === 'subscribe') {
+    guideOpenSubscribeSetting(access.reason);
+    return true;
+  }
+  wx.navigateTo({ url: '/pages/notify-settings/notify-settings' });
+  return true;
+}
+
+/**
  * 「总是保持以上选择」引导（2026-09-16）
  *
  * 微信规则：没勾过这个选项时，**每次**调用 `wx.requestSubscribeMessage` 都会弹一次窗，
@@ -471,8 +516,6 @@ function consumeFirstReminderSuccessTip() {
 module.exports = {
   SUBSCRIBE_TEMPLATES,
   SUBSCRIBE_TEMPLATE_ID,
-  MAX_BURST,
-  BURST_INTERVAL,
   getSystemNotifyOk,
   getNotifyStatus,
   openSystemNotifySetting,
@@ -481,6 +524,7 @@ module.exports = {
   ensureSubscribe,
   getReminderQuotaNeeded,
   confirmReminderAccess,
+  openReminderAccessSettings,
   getSubscribeQuota,
   getReminderHealth,
   guideOpenSubscribeSetting,

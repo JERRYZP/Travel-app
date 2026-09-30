@@ -68,6 +68,14 @@ async function list(db, userId) {
 }
 
 /**
+ * adminStatus -- 当前调用者是否为管理员（客户端仅用于控制隐藏入口显隐）
+ * 不返回任何反馈数据；真正的数据操作仍由 adminList/adminUpdateStatus 再次鉴权。
+ */
+function adminStatus(userId) {
+  return ok({ isAdmin: isAdmin(userId) });
+}
+
+/**
  * adminList -- 管理员查看全部反馈（反馈管理页）
  * params.type 可选筛选：feedback / correction，不传返回全部。
  */
@@ -96,4 +104,4 @@ async function adminUpdateStatus(db, userId, { id, status } = {}) {
   return ok({ updated: res.stats ? res.stats.updated : 1 });
 }
 
-module.exports = { validateSubmit, submit, list, adminList, adminUpdateStatus };
+module.exports = { validateSubmit, submit, list, adminStatus, adminList, adminUpdateStatus };

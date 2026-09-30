@@ -225,6 +225,22 @@ async function clear(db, userId, tripId = null) {
 }
 
 /**
+ * 用户显式删掉最后一笔行程项后，清掉已经失去归属的暂存清单。
+ *
+ * 普通未提交清单必须跨退出/重启保留；这里只在「账号下已无任何 trip_items」
+ * 且由删除动线主动调用时执行，避免把用户正在新建的第一趟行程草稿误删。
+ */
+async function clearPendingIfNoItems(db, userId) {
+  const itemCount = await db.collection(COLLECTIONS.TRIP_ITEMS)
+    .where({ userId }).count();
+  if (itemCount.total > 0) return ok({ removed: 0 });
+
+  const res = await db.collection(COLLECTIONS.REMINDER_CART)
+    .where({ userId, tripId: PENDING_CART_TRIP_ID }).remove();
+  return ok({ removed: res.stats ? res.stats.removed : 0 });
+}
+
+/**
  * 列出清单，关联景点名并分组。
  *
  * 不传 tripId = 读**暂存区**（这正是「添加提醒」页要的：用户挑完日期先放这里，
@@ -302,5 +318,6 @@ module.exports = {
   updateRemindOn,
   remove,
   clear,
+  clearPendingIfNoItems,
   list,
 };

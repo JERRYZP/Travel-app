@@ -73,6 +73,8 @@ Page({
 
     showSpotPopup: false,
     popupSpotId: '',
+    popupSpotMeta: null,
+    showSampleSheet: false,
     showResultSheet: false,
     showDateSheet: false,
     sheetItemId: '',
@@ -113,13 +115,16 @@ Page({
     this.loadHome();
   },
 
-  onShareAppMessage() {
+  onShareAppMessage(options) {
+    /* 详情浮窗里的 open-type=share 也会走页面生命周期。
+       只有按钮发起的转发才按景点分享；右上角菜单仍分享首页今日场景。 */
+    if ((!options || options.from === 'button') && this.data.showSpotPopup && this.data.popupSpotMeta) {
+      const spot = this.data.popupSpotMeta;
+      analytics.trackShareIntent('spot', spot.spotId || this.data.popupSpotId);
+      return shareEntry.buildSpotSharePayload(spot, this.data.popupSpotId);
+    }
     analytics.trackShareIntent('home', 'today');
-    return {
-      title: '北京景点放票时间，出发前先设提醒',
-      path: shareEntry.buildScenePath('today', 'home_share'),
-      imageUrl: '/images/banner_bg.png',
-    };
+    return shareEntry.buildHomeSharePayload();
   },
 
   onPageScroll(e) {
@@ -139,9 +144,6 @@ Page({
        ⚠️ 只在值真的变了才 setData：每帧带上一个没变的浮点也会触发一次 diff。 */
     const navOpacity = Math.min(1, Math.max(0, scrollTop / NAV_FADE_PX));
     if (navOpacity !== this.data.navOpacity) patch.navOpacity = navOpacity;
-    /* 滚动即收起菜单，避免浮层跟着页面乱跑 */
-    if (this.data.menuId) patch.menuId = '';
-    if (this.data.menuDate) patch.menuDate = '';
     /* ⚠️ 这里**没有 hideBanner 了**（2026-09-23 删）。横幅在文档流里、
        跟着内容一起滚，本来就会滑到导航栏底下 —— 它自己会走。
        而按阈值把它从文档里摘掉，会让下面的内容**瞬间上跳一个横幅的高度**。 */
@@ -305,11 +307,14 @@ Page({
    * 提交时行程的创建与合并照旧由 TRIP-RULE-002 判定（多半会并回这一趟）。
    */
   onAddTrip() {
+    /* 空态（含开发预览）永远从零填写。即使页面因刷新时序暂时留着旧
+       primaryTrip，也不能把已删除行程的日期段带进 PAGE-005。 */
+    const emptyHome = !!this.data.isBlank || !!this.data.previewNewUser;
     if (this.data.previewNewUser) {
       app.globalData.previewNewUser = false;
       this.setData({ previewNewUser: false });
     }
-    const t = this.data.primaryTrip;
+    const t = emptyHome ? null : this.data.primaryTrip;
     const q = (t && t._id)
       ? ('?tripId=' + t._id
         + '&startDate=' + t.startDate
@@ -329,7 +334,11 @@ Page({
   },
 
   onOpenReminderSamples() {
-    wx.navigateTo({ url: '/pages/setup/setup?showSample=1' });
+    this.setData({ showSampleSheet: true });
+  },
+
+  onCloseReminderSamples() {
+    this.setData({ showSampleSheet: false });
   },
 
   onExitNewUserPreview() {
@@ -355,11 +364,16 @@ Page({
   },
 
   openSpotPopup(spotId) {
-    this.setData({ showSpotPopup: true, popupSpotId: spotId });
+    this.setData({ showSpotPopup: true, popupSpotId: spotId, popupSpotMeta: null });
+  },
+
+  onSpotPopupLoaded(e) {
+    const spot = e && e.detail && e.detail.spot;
+    if (spot) this.setData({ popupSpotMeta: spot });
   },
 
   onSpotPopupClose() {
-    this.setData({ showSpotPopup: false });
+    this.setData({ showSpotPopup: false, popupSpotMeta: null });
   },
 
   onToggleHistory() {
@@ -556,7 +570,7 @@ Page({
      而微信订阅消息是「一次授权 = 能发 1 条」。不要授权直接提交，
      结果就是用户换了个日期、行程项建好了、提醒却永远送不到——
      症状与「未送达」的静默失败一模一样，事后排查只能看到 43101。
-     额度已经拿到过就不重复弹（`ensureSubscribe` 内部按台账缺口判断）。 */
+     额度已经拿到过就不重复弹；额度不足时先就地解释，用户点“补授权并继续”后再弹微信授权。 */
   onRecoverConfirm(e) {
     const { visitDate } = e.detail || {};
     if (!visitDate || !this.data.sheetSpotId) return;
@@ -571,8 +585,7 @@ Page({
         if (access.action === 'settings') {
           this._recovering = false;
           wx.hideLoading();
-          if (access.settingsKind === 'system') notify.openSystemNotifySetting();
-          else wx.navigateTo({ url: '/pages/notify-settings/notify-settings' });
+          notify.openReminderAccessSettings(access);
           return null;
         }
         if (access.action === 'cancelled') {

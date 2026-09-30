@@ -29,7 +29,9 @@
 | `pages/spot-hub` | 景点 Tab、今日放票 Banner、景点列表与详情入口 |
 | `pages/setup` | PAGE-008 设置提醒；V0.3 授权硬闸门 |
 | `pages/notify-settings` | 系统通知权限与提醒额度设置 |
-| `pages/profile` | 我的 |
+| `pages/profile` | 我的；帮助与反馈统一入口 |
+| `pages/help-feedback` | 帮助与反馈二级入口：在线客服、意见反馈、信息纠错、我的反馈 |
+| `pages/my-feedback` | 当前用户最近 50 条反馈/纠错记录，只读 |
 | `pages/legal` | 隐私政策与用户服务协议 |
 | `pages/feedback` | 意见反馈 |
 | `pages/spot-correction` | 景点信息纠错 |

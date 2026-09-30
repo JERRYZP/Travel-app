@@ -1,0 +1,48 @@
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack">
+      <svg-icon name="back-thick" size="18px" />
+    </view>
+    <text class="navbar-title">帮助与反馈</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view class="page-body">
+  <view class="setting-card">
+    <button class="setting-row service-row" open-type="contact" hover-class="setting-row-hover">
+      <text class="setting-row-label">在线客服</text>
+      <view class="setting-row-right">
+        <text class="setting-row-hint">有问题直接沟通</text>
+        <svg-icon name="chevron-down" size="14px" rotate="270" />
+      </view>
+    </button>
+
+    <view class="setting-row" bindtap="onFeedback">
+      <text class="setting-row-label">意见反馈</text>
+      <view class="setting-row-right">
+        <text class="setting-row-hint">建议 / Bug</text>
+        <svg-icon name="chevron-down" size="14px" rotate="270" />
+      </view>
+    </view>
+
+    <view class="setting-row" bindtap="onReportError">
+      <text class="setting-row-label">信息纠错</text>
+      <view class="setting-row-right">
+        <text class="setting-row-hint">景点信息有误</text>
+        <svg-icon name="chevron-down" size="14px" rotate="270" />
+      </view>
+    </view>
+  </view>
+
+  <view class="setting-card my-feedback-card">
+    <view class="setting-row" bindtap="onMyFeedback">
+      <text class="setting-row-label">我的反馈</text>
+      <view class="setting-row-right">
+        <text class="setting-row-hint">查看处理进度</text>
+        <svg-icon name="chevron-down" size="14px" rotate="270" />
+      </view>
+    </view>
+  </view>
+</view>

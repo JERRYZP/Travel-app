@@ -45,7 +45,7 @@ const CORRECTION_ERROR_TYPES = [
  * 填入后需重新部署 feedback 云函数。
  */
 const ADMIN_OPENIDS = [
-  'ot0AjxqLvqyo1HcAIWTQsxjIU7Lk',
+  'oZ6IFxvYK1mKzBaehMcOPIl_CgN0',
 ];
 
 /** 是否管理员 */

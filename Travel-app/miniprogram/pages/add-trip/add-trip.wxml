@@ -1,3 +1,4 @@
+<wxs module="asset" src="../../utils/cloud-assets.wxs"></wxs>
 <wxs module="fmt" src="../../utils/format.wxs"></wxs>
 <!-- 自绘导航栏：带返回箭头（32.png）
      ⚠️ 底色由 `navOpacity` 逐帧给出（滚 50px、透明度 0→1），口径与首页一致。
@@ -23,7 +24,7 @@
         删了不报错、不警告，页面一切正常，只是 `navOpacity` 永远是 0。 -->
 <scroll-view id="page-scroll" scroll-y class="page-scroll" style="height: 100vh;" scroll-top="{{pageScrollTop}}" scroll-with-animation bindscroll="onScroll">
   <view class="page-body" style="padding-top: {{statusBarHeight + navBarHeight + 8}}px;">
-    <image class="city-bg" src="/images/cities/beijing.png" mode="aspectFit" />
+    <image class="city-bg" src="{{asset.city('beijing.png')}}" mode="aspectFit" />
 
     <!-- 行程模块：城市 + 日期段 -->
     <view class="form-section form-section-first">
@@ -170,7 +171,7 @@
       <text class="hot-title">北京热门景点预约状态</text>
       <view class="hot-grid">
         <view wx:for="{{hotSpots}}" wx:key="spotId" class="spot-card">
-          <image class="spot-card-img" src="/images/spots/{{item.spotId}}.jpg" mode="aspectFill" bindtap="onSpotNameTap" data-id="{{item.spotId}}" />
+          <image class="spot-card-img" src="{{asset.spot(item.spotId)}}" mode="aspectFill" bindtap="onSpotNameTap" data-id="{{item.spotId}}" />
           <view class="spot-card-body">
             <view class="spot-card-title">
               <text class="spot-card-name" bindtap="onSpotNameTap" data-id="{{item.spotId}}">{{item.name}}</text>

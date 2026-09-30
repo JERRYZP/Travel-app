@@ -104,13 +104,13 @@ Page({
       this.renewing = false;
       this.refresh();
       if (res.ok) {
-        let title = res.silent ? `已续收 ${res.added} 次（未弹窗）` : `已续收 ${res.added} 次`;
+        let title = `已续收 ${res.added} 次`;
         if (res.shortfall > 0) title = `已续收 ${res.added} 次，还差 ${res.shortfall} 次`;
-        else if (mode === 'bulk') title = res.silent ? `已补齐 ${res.added} 次（未弹窗）` : `已续收 ${res.added} 次`;
+        else if (mode === 'bulk') title = `已续收 ${res.added} 次`;
         wx.showToast({ title, icon: 'none' });
         /* 没勾过 → 这次是真弹了窗。趁用户刚有体感，提示一次「勾了以后就不用再点」，
            让后续「一次提交 N 条静默补满」能真的零弹窗（一辈子只提示一次） */
-        if (!res.silent) notify.hintKeepAlwaysChoice(this.data.templateId);
+        if (!res.silent && !res.remembered) notify.hintKeepAlwaysChoice(this.data.templateId);
       } else if (res.reason === 'master-switch-off' || res.reason === 'subscription-disabled') {
         /* 总开关关闭或模板保持拒绝：弹不出有效授权框，引导去设置页开启 */
         notify.guideOpenSubscribeSetting(res.reason);

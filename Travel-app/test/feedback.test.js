@@ -87,6 +87,9 @@ const USER = 'openid_test_001';
 
   console.log('\n=== 5. 管理端（adminList / adminUpdateStatus） ===');
   // 普通用户：全部拒绝
+  const deniedStatus = await feedback.adminStatus(USER);
+  eq(deniedStatus.success, true, '非管理员状态查询成功');
+  eq(deniedStatus.isAdmin, false, '非管理员身份为 false');
   const deniedList = await feedback.adminList(db, USER, {});
   eq(deniedList.success, false, '非管理员 adminList 拒绝');
   eq(deniedList.errorCode, 1040, '拒绝错误码 1040');
@@ -96,6 +99,9 @@ const USER = 'openid_test_001';
 
   // 注入管理员白名单（isAdmin 引用同一数组，push 即生效）
   ADMIN_OPENIDS.push('openid_admin_001');
+  const adminStatus = await feedback.adminStatus('openid_admin_001');
+  eq(adminStatus.success, true, '管理员状态查询成功');
+  eq(adminStatus.isAdmin, true, '管理员身份为 true');
 
   // 另一个用户提交一条，验证管理员能看到全部（不按 userId 过滤）
   await feedback.submit(db, 'openid_test_002', {
@@ -122,6 +128,18 @@ const USER = 'openid_test_001';
   const reopen = await feedback.adminUpdateStatus(db, 'openid_admin_001', { id: first._id, status: 'OPEN' });
   eq(reopen.success, true, '重新打开成功');
   eq(db._dump(COLLECTIONS.FEEDBACKS).find(d => d._id === first._id).status, 'OPEN', '状态已回到 OPEN');
+
+  console.log('\n=== 6. 本人反馈列表最多返回 50 条 ===');
+  for (let i = 0; i < 48; i += 1) {
+    await feedback.submit(db, USER, {
+      type: FeedbackType.FEEDBACK,
+      category: FeedbackCategory.SUGGESTION,
+      content: `分页边界 ${i}`,
+    });
+  }
+  const capped = await feedback.list(db, USER);
+  eq(capped.success, true, '超过 50 条时 list 仍成功');
+  eq(capped.items.length, 50, '本人反馈历史最多返回 50 条');
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);

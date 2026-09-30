@@ -112,9 +112,6 @@ Component({
       this.triggerEvent('menuclose');
     },
 
-    /* 蒙层上的 touchmove 吞掉，防止在蒙层上拖动时页面跟着滚 */
-    noop() {},
-
     /**
      * 点三点菜单的**开合**。
      *

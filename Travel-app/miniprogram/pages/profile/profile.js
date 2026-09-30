@@ -21,7 +21,6 @@ Page({
     user: null,
     notifyHint: '未开启',
     notifyState: 'none',
-    devMode: false,
   },
 
   onLoad() {
@@ -29,7 +28,6 @@ Page({
     this.setData({
       statusBarHeight: g.statusBarHeight,
       navBarHeight: g.navBarHeight,
-      devMode: g.envVersion === 'develop',
     });
   },
 
@@ -70,12 +68,8 @@ Page({
     wx.navigateTo({ url: '/pages/guide/guide' });
   },
 
-  onFeedback() {
-    wx.navigateTo({ url: '/pages/feedback/feedback' });
-  },
-
-  onReportError() {
-    wx.navigateTo({ url: '/pages/spot-correction/spot-correction' });
+  onHelpFeedback() {
+    wx.navigateTo({ url: '/pages/help-feedback/help-feedback' });
   },
 
   onLegal(e) {
@@ -83,16 +77,18 @@ Page({
     wx.navigateTo({ url: `/pages/legal/legal?type=${type}` });
   },
 
-  /* 仅开发版：不删云端数据，首页临时按新用户空态渲染。 */
-  onPreviewNewUser() {
-    if (app.globalData.envVersion !== 'develop') return;
-    app.globalData.previewNewUser = true;
-    try { wx.removeStorageSync(notify.FIRST_REMINDER_TIP_KEY); } catch (e) {}
-    wx.redirectTo({ url: '/pages/home/home' });
-  },
-
-  /** 隐藏入口：长按用户信息卡进入反馈管理页（权限由 feedback 云函数 openid 白名单把关） */
+  /** 隐藏入口：长按用户信息卡时先向服务端确认管理员身份，非管理员静默不跳转。 */
   onAdminEntry() {
-    wx.navigateTo({ url: '/pages/admin-feedback/admin-feedback' });
+    if (this._adminEntryChecking) return;
+    this._adminEntryChecking = true;
+    api.feedback.adminStatus().then(res => {
+      this._adminEntryChecking = false;
+      if (res && res.isAdmin) {
+        wx.navigateTo({ url: '/pages/admin-feedback/admin-feedback' });
+      }
+    }).catch(() => {
+      /* 校验失败按无权限处理；反馈管理页自身仍会再次鉴权。 */
+      this._adminEntryChecking = false;
+    });
   },
 });

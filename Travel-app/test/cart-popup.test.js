@@ -44,6 +44,8 @@ console.log('=== 2. 可选与不可选提醒共用同一控件形态 ===');
     'disabled 使用灰底');
   eq(/chevron-down-muted/.test(WXML), true,
     'disabled 使用灰色箭头');
+  eq(/if \(item\.remindLocked\) wx\.showToast\(\{ title: '放票时间已过', icon: 'none' \}\)/.test(JS), true,
+    '点击已开票项的禁用下拉时说明「放票时间已过」');
   eq(/\.cart-drop\s*\{[^}]*width:\s*252rpx/.test(WXSS), true,
     '单选下拉宽度容纳完整文案和箭头');
   eq(/\.cart-drop-option\s*\{[^}]*font-size:\s*24rpx/.test(WXSS), true,
@@ -63,6 +65,10 @@ console.log('=== 3. 清单视觉基线 ===');
   eq(/chevron-right-ink/.test(WXML), false, '景点名称右侧不再渲染箭头');
   eq(/\.cart-row-name\s*\{[^}]*text-decoration:\s*underline/.test(WXSS), true,
     '景点名称按链接样式加下划线');
+  eq(/class="cart-row-sub \{\{item\.releasePassed \? 'is-released' : ''\}\}"/.test(WXML), true,
+    '已过放票时间的副行使用独立绿色态');
+  eq(/\.cart-row-sub\.is-released\s*\{[^}]*color:\s*var\(--chip-green-text\)/.test(WXSS), true,
+    '「已放票」副行使用绿色文字');
   eq(/\.cart-header\s*\{[^}]*background:\s*#FFFEFB/.test(WXSS), true,
     '清单标题背景为 #FFFEFB');
   eq(/\.cart-row-action\s*\{[^}]*margin-right:\s*8rpx/.test(WXSS), true,
@@ -154,7 +160,22 @@ console.log('=== 6. 旧云端响应兼容 ===');
   eq(legacy[1].items[0].subline, '无需预约，随到随玩', '免预约副行保留说明');
 }
 
-console.log('=== 7. 景点详情长内容在真机可滚动到底 ===');
+console.log('=== 7. 已过放票时间的副行与锁定态 ===');
+{
+  const lockedItem = {
+    _id: 'c', spotId: 'gugong', spotName: '故宫博物院', visitDate: '2026-10-02',
+    releaseAt: '2026-09-25T02:00:00.000Z', releaseLabel: '09月25日 10:00 放票',
+    reservationRequired: true, remindLocked: true,
+  };
+  const passed = cartView.normalizeCartGroups({
+    groups: [{ key: '2026-10-02', label: '10月2日 · 周五', dayLabel: '【第1天】', items: [lockedItem] }],
+    items: [lockedItem],
+  });
+  eq(passed[0].items[0].releasePassed, true, '服务端锁定态映射为已过放票时间');
+  eq(passed[0].items[0].subline, '已放票', '已过放票时间的副行改为「已放票」');
+}
+
+console.log('=== 8. 景点详情长内容在真机可滚动到底 ===');
 {
   eq(/<scroll-view[\s\S]*scroll-y[\s\S]*class="popup-scroll"[\s\S]*style="\{\{scrollStyle\}\}"/.test(SPOT_WXML), true,
     '景点详情使用 scroll-view，并绑定 JS 下发高度');

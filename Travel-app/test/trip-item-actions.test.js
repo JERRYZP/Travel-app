@@ -7,7 +7,7 @@
  * 运行：node test/trip-item-actions.test.js
  */
 const { createDb } = require('./mock-db');
-const { COLLECTIONS } = require('../cloudfunctions/reminder/lib/schema');
+const { COLLECTIONS, PENDING_CART_TRIP_ID } = require('../cloudfunctions/reminder/lib/schema');
 const trip = require('../cloudfunctions/reminder/lib/trip');
 const cart = require('../cloudfunctions/reminder/lib/cart');
 const task = require('../cloudfunctions/reminder/lib/task');
@@ -392,7 +392,43 @@ const FUTURE_VISIT = time.addDays(TODAY, 30); // releaseAt = TODAY + 23 → 还�
     eq(db._dump(COLLECTIONS.TRIPS).length, 0, '行程已删除');
   }
 
-  console.log('=== 20. 越权：别人的行程项操作不到 ===');
+  console.log('=== 20. remove：删掉最后一笔行程项时清理失去归属的暂存清单 ===');
+  {
+    const db = freshDb();
+    await seedTrip(db, 'T1', ['gugong'], time.addDays(TODAY, -1), time.addDays(TODAY, 40));
+    const id = await seedItem(db, { tripId: 'T1', spotId: 'gugong', visitDate: FUTURE_VISIT });
+    await db.collection(COLLECTIONS.REMINDER_CART).add({
+      data: {
+        userId: USER, tripId: PENDING_CART_TRIP_ID, spotId: 'guobo',
+        visitDate: FUTURE_VISIT, releaseAt: time.parseBeijing(time.addDays(FUTURE_VISIT, -7), '20:00'),
+        remindOn: true,
+      },
+    });
+
+    const res = await actions.remove(db, USER, { itemId: id });
+    eq(res.tripRemoved, true, '最后一笔行程项删除 → 行程消失');
+    eq(db._size(COLLECTIONS.REMINDER_CART), 0, '暂存清单随账号行程清空一起清理');
+  }
+
+  console.log('=== 21. remove：账号仍有行程项时保留暂存清单 ===');
+  {
+    const db = freshDb();
+    await seedTrip(db, 'T1', ['gugong'], time.addDays(TODAY, -1), time.addDays(TODAY, 40));
+    const a = await seedItem(db, { tripId: 'T1', spotId: 'gugong', visitDate: FUTURE_VISIT });
+    await seedItem(db, { tripId: 'T1', spotId: 'gugong', visitDate: time.addDays(FUTURE_VISIT, 1) });
+    await db.collection(COLLECTIONS.REMINDER_CART).add({
+      data: {
+        userId: USER, tripId: PENDING_CART_TRIP_ID, spotId: 'guobo',
+        visitDate: FUTURE_VISIT, releaseAt: time.parseBeijing(time.addDays(FUTURE_VISIT, -7), '20:00'),
+        remindOn: true,
+      },
+    });
+
+    await actions.remove(db, USER, { itemId: a });
+    eq(db._size(COLLECTIONS.REMINDER_CART), 1, '账号仍有行程项时，不应误删暂存草稿');
+  }
+
+  console.log('=== 22. 越权：别人的行程项操作不到 ===');
   {
     const db = freshDb();
     await seedTrip(db, 'T1', ['gugong'], time.addDays(TODAY, -1), time.addDays(TODAY, 40));

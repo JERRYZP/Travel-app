@@ -21,41 +21,32 @@
   font-weight: 600;
   color: var(--color-ink);
 }
-.navbar-back {
-  position: absolute;
-  left: 18rpx;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 64rpx;
-  height: 64rpx;
+/* 返回主页悬浮按钮：底部居中，距底 40px（含安全区） */
+.home-float {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(40px + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
   justify-content: center;
+  height: 88rpx;
+  padding: 0 56rpx;
+  border-radius: 999rpx;
+  background: var(--color-primary);
+  box-shadow: 0 8rpx 24rpx rgba(192, 71, 42, 0.32);
+  z-index: 95;
 }
-.navbar-back-icon {
-  font-size: 60rpx;
-  line-height: 1;
-  color: var(--color-ink);
+.home-float-hover { opacity: 0.85; }
+.home-float-text {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 1rpx;
 }
-.navbar-share {
-  position: absolute;
-  right: 24rpx;
-  top: 50%;
-  transform: translateY(-50%);
-  margin: 0;
-  padding: 0 12rpx;
-  width: auto;
-  height: 56rpx;
-  line-height: 56rpx;
-  background: transparent;
-  border: 0;
-  font-size: 25rpx;
-  color: var(--color-primary);
-}
-.navbar-share::after { border: 0; }
-
 .page-body {
-  padding: 24rpx 30rpx 100rpx;
+  /* 底部 176rpx：避开 88rpx 的「返回主页」悬浮按钮 + 40px 间距 */
+  padding: 24rpx 30rpx 176rpx;
 }
 
 .scene-hero {
@@ -71,19 +62,20 @@
   font-weight: 700;
   color: var(--color-ink);
 }
+.scene-date {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #936F5B;
+  letter-spacing: 0.5rpx;
+}
 .scene-subtitle {
   display: block;
-  margin-top: 12rpx;
+  margin-top: 8rpx;
   font-size: 24rpx;
   line-height: 1.5;
   color: #936F5B;
-}
-.scene-data-note {
-  margin-top: 20rpx;
-  padding-top: 18rpx;
-  border-top: 1rpx solid rgba(184, 144, 74, 0.25);
-  font-size: 21rpx;
-  color: var(--color-muted);
 }
 
 .scene-notice {

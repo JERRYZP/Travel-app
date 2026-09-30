@@ -127,6 +127,7 @@ exports.main = async (event) => {
         // TRIP-RULE-004 级联：行程是否为空**只看 trip_items**，
         // 否则只有免预约景点、没设提醒的行程会被误判成空的删掉（决策文档第六节）
         const tripRemoved = await trip.purgeIfNoItem(db, userId, res.tripId);
+        if (tripRemoved) await cart.clearPendingIfNoItems(db, userId);
         return ok({ ...res, tripRemoved });
       }
       case 'task.clear': {
@@ -141,6 +142,7 @@ exports.main = async (event) => {
         for (const tid of (res.affectedTripIds || [])) {
           if (await trip.purgeIfNoItem(db, userId, tid)) removedTripIds.push(tid);
         }
+        if (removedTripIds.length > 0) await cart.clearPendingIfNoItems(db, userId);
         return ok({ ...res, removedTripIds });
       }
 

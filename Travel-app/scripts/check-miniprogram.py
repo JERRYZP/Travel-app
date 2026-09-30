@@ -9,6 +9,8 @@
   3. `app.json` 的 pages 是否三件套齐全
   4. WXML 绑定的方法在对应 js 里是否存在（拼错就是点了没反应）
   5. WXSS 引用的 CSS 变量是否在 app.wxss 里定义（未定义 = 静默失效成默认色）
+  6. 主包体积（代码质量线 1.5MB）与图片/音频资源总量（代码质量线 200KB）
+  7. mock.js 只被 utils/api.js 引用（否则 121KB 镜像被打进主包）
 
 用法：python3 scripts/check-miniprogram.py   （退出码非 0 表示有问题）
 
@@ -21,7 +23,7 @@ import sys
 
 ROOT = "miniprogram"
 SKIP_DIRS = {"miniprogram_npm", "node_modules"}
-MAX_PACKAGE_BYTES = 2 * 1024 * 1024
+MAX_PACKAGE_BYTES = int(1.5 * 1024 * 1024)
 
 problems = []
 
@@ -29,6 +31,13 @@ problems = []
 def walk(base):
     for dirpath, dirnames, filenames in os.walk(base):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        for fn in filenames:
+            yield os.path.join(dirpath, fn)
+
+
+def walk_all(base):
+    for dirpath, dirnames, filenames in os.walk(base):
+        dirnames[:] = [d for d in dirnames if d != "node_modules"]
         for fn in filenames:
             yield os.path.join(dirpath, fn)
 
@@ -62,6 +71,19 @@ def check_components(files):
                 else os.path.join(os.path.dirname(f), path)
             if not os.path.exists(base + ".wxml"):
                 problems.append(f"{f}: 组件 {name} → {path} 找不到")
+
+
+def check_wxs(files):
+    for f in files:
+        if not f.endswith(".wxml"):
+            continue
+        src = open(f, encoding="utf-8").read()
+        for m in re.finditer(r'<wxs[^>]*src="([^"]+)"', src):
+            path = m.group(1)
+            base = os.path.join(ROOT, path.lstrip("/")) if path.startswith("/") \
+                else os.path.join(os.path.dirname(f), path)
+            if not os.path.exists(base):
+                problems.append(f"{f}: WXS {path} 找不到")
 
 
 def check_pages():
@@ -99,7 +121,7 @@ def check_css_vars(files):
 
 
 def check_package_size():
-    """Fail before WeChat's hard 2MB main-package limit.
+    """Fail before WeChat DevTools' 1.5MB main-package quality limit.
 
     This intentionally counts every file under miniprogram/, including the
     miniprogram_npm build output, because both sources and built components
@@ -112,18 +134,68 @@ def check_package_size():
             total += os.path.getsize(os.path.join(dirpath, fn))
     if total > MAX_PACKAGE_BYTES:
         problems.append(
-            f"miniprogram 主包体积 {total / 1024:.1f}KB 超过 2048KB；请压缩图片或拆分分包"
+            f"miniprogram 主包体积 {total / 1024:.1f}KB 超过 1536KB；请压缩图片或拆分分包"
         )
+
+
+# 微信「代码质量」会把整个代码包内的图片/音频字节数相加，阈值只有 200KB。
+# 大图统一放云存储，仓库根目录的 cloud-assets/ 是上传源文件，不进入代码包。
+MAX_ASSET_BYTES = 200 * 1024
+ASSET_EXTS = (".jpg", ".jpeg", ".png", ".svg", ".webp", ".gif", ".flac",
+              ".m4a", ".ogg", ".ape", ".amr", ".wma", ".wav", ".mp3",
+              ".mp4", ".aac", ".aiff", ".caf", ".bmp")
+
+
+def check_asset_size(files):
+    total = 0
+    for f in files:
+        if not f.lower().endswith(ASSET_EXTS):
+            continue
+        total += os.path.getsize(f)
+    if total > MAX_ASSET_BYTES:
+        problems.append(
+            f"miniprogram 图片/音频合计 {total / 1024:.1f}KB 超过 200KB；"
+            f"请把大图迁到 cloud-assets/ 并执行 scripts/upload-cloud-assets.sh"
+        )
+
+
+def check_mock_not_in_client():
+    """mock.js 只能被 utils/api.js 引用。
+
+    mock 是 121KB 的景点/规则镜像，只服务于单测和 USE_MOCK 离线联调。
+    一旦有页面绕过 api.js 直接 require 它，整份镜像就会被打进主包——
+    V0.3 期间主包超限留不出余量，根因就是 add-trip / spots / profile-edit
+    三处 `require('../../utils/mock.js')` 的兜底分支。
+    """
+    mock_basename = "mock.js"
+    for f in walk(ROOT):
+        if not f.endswith(".js") or f.endswith(mock_basename):
+            continue
+        src = open(f, encoding="utf-8").read()
+        for m in re.finditer(r"require\(['\"]([^'\"]*mock\.js)['\"]\)", src):
+            rel = m.group(1)
+            target = os.path.normpath(os.path.join(os.path.dirname(f), rel))
+            if target != os.path.normpath(os.path.join(ROOT, "utils", "mock.js")):
+                continue
+            if os.path.normpath(f) != os.path.normpath(os.path.join(ROOT, "utils", "api.js")):
+                problems.append(
+                    f"{f}: 直接引用了 mock.js。mock 只允许被 utils/api.js 引用，"
+                    f"否则 121KB 的镜像会被打进主包（请改走 api.* 调用）"
+                )
 
 
 def main():
     files = list(walk(ROOT))
+    asset_files = list(walk_all(ROOT))
     check_icons(files)
     check_components(files)
+    check_wxs(files)
     check_pages()
     check_handlers(files)
     check_css_vars(files)
     check_package_size()
+    check_asset_size(asset_files)
+    check_mock_not_in_client()
     if problems:
         print(f"发现 {len(problems)} 个问题：")
         for p in problems:

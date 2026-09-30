@@ -46,13 +46,13 @@
     </view>
     <view class="quota-line">
       <text>本次 {{quotaNeeded}} 条提醒 · 已授权 {{subscribeQuota}} 次</text>
-      <view wx:if="{{shortfall > 0 && systemOk}}" class="fill-quota-btn" bindtap="onFillQuota">一键补全授权次数</view>
+      <view wx:if="{{shortfall > 0 && systemOk}}" class="fill-quota-btn" bindtap="onFillQuota">点击补授权次数</view>
     </view>
 
     <view wx:if="{{shortfall > 0 && systemOk}}" class="auth-note">
       <text>1、微信通知提醒需要主动授权，1次授权可发送1条提醒</text>
-      <text>2、提醒较多时，可“一键补齐授权次数”</text>
-      <text>3、如果已勾选“总是保持以上选择”，可以连续补齐;否则微信每次只允许完成1次，页面会实时更新剩余次数。</text>
+      <text>2、微信一次性订阅每次点击最多增加 1 次授权，需要几次请重复点击</text>
+      <text>3、“总是保持以上选择”只会免去后续弹窗，不会让一次点击增加多次授权</text>
       <text>4、该能力当前限时免费，后续正式版可能付费。</text>
     </view>
 
@@ -102,30 +102,4 @@
   <text wx:if="{{gateText}}" class="gate-hint">{{gateText}}</text>
 </view>
 
-<view wx:if="{{showSampleSheet}}" class="sample-mask" bindtap="onCloseSample">
-  <view class="sample-sheet" catchtap="noop">
-    <view class="sample-head">
-      <text class="sample-title">提醒样式示例</text>
-      <view class="sample-close" bindtap="onCloseSample"><svg-icon name="close" size="16px" /></view>
-    </view>
-    <text class="sample-note">示意图，实际样式以手机系统和微信版本为准。</text>
-    <scroll-view scroll-x class="sample-scroll">
-      <view class="sample-list">
-        <view class="sample-item" wx:for="{{sampleShots}}" wx:key="key">
-          <text class="sample-label">{{item.label}}</text>
-          <image
-            wx:if="{{item.src}}"
-            class="sample-img"
-            src="{{item.src}}"
-            mode="widthFix"
-            bindtap="onPreviewSample"
-            data-src="{{item.src}}"
-          />
-          <view wx:else class="sample-placeholder">
-            <text>示例图待补充</text>
-          </view>
-        </view>
-      </view>
-    </scroll-view>
-  </view>
-</view>
+<reminder-sample-sheet show="{{showSampleSheet}}" bind:close="onCloseSample" />

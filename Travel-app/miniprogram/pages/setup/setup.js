@@ -23,25 +23,15 @@ Page({
     gateText: '正在检查提醒权限',
     submitting: false,
     showSampleSheet: false,
-    sampleOnly: false,
-    sampleShots: [
-      { key: 'style-1', label: '通知中心 / 锁屏通知', src: '/images/reminder-samples/style-1.jpg', pending: false },
-      { key: 'style-2', label: '提醒卡片详情', src: '/images/reminder-samples/style-2.jpg', pending: false },
-      { key: 'style-3', label: '微信内的提醒样式', src: '/images/reminder-samples/style-3.jpg', pending: false },
-    ],
   },
 
-  onLoad(options) {
+  onLoad() {
     const g = app.globalData;
     /* 2026-09-20 纯预览化后不再有 tripId 可传：清单是「提交前的暂存区」，
-       行程要到 cart.commit 那一刻才创建/合并。这里只管提前量与通道。
-       从使用攻略进入时只展示样式示例，关闭后直接返回攻略。 */
-    const sampleOnly = !!(options && options.showSample === '1');
+       行程要到 cart.commit 那一刻才创建/合并。这里只管提前量与通道。 */
     this.setData({
       statusBarHeight: g.statusBarHeight,
       navBarHeight: g.navBarHeight,
-      showSampleSheet: sampleOnly,
-      sampleOnly,
     });
   },
 
@@ -116,7 +106,9 @@ Page({
       return;
     }
     wx.showLoading({ title: '正在申请授权...' });
-    return notify.requestSubscribeBurst(shortfall).then(res => {
+    /* 微信一次性订阅：一次点击最多完成一次授权调用，也就是最多 +1 条。
+       “总是保持”只免去后续弹窗，不会让一次点击批量增加同模板额度。 */
+    return notify.requestSubscribeBurst(1).then(res => {
       wx.hideLoading();
       return this.refreshAccessState(this.data.quotaNeeded).then(() => {
         if (res.ok) {
@@ -125,7 +117,7 @@ Page({
             title: left > 0 ? ('已补齐 ' + res.added + ' 次，还差 ' + left + ' 次') : '授权已补齐',
             icon: 'none',
           });
-          if (!res.silent) notify.hintKeepAlwaysChoice();
+          if (!res.silent && !res.remembered) notify.hintKeepAlwaysChoice();
           return;
         }
         if (res.reason === 'master-switch-off' || res.reason === 'subscription-disabled') {
@@ -145,16 +137,7 @@ Page({
   },
 
   onOpenSample() { this.setData({ showSampleSheet: true }); },
-  onCloseSample() {
-    this.setData({ showSampleSheet: false });
-    if (this.data.sampleOnly) wx.navigateBack();
-  },
-  onPreviewSample(e) {
-    const src = e.currentTarget.dataset.src;
-    if (!src) return;
-    wx.previewImage({ current: src, urls: [src] });
-  },
-  noop() {},
+  onCloseSample() { this.setData({ showSampleSheet: false }); },
 
   onSubmit() {
     const { channels, offsets } = this.data;
@@ -189,19 +172,7 @@ Page({
     api.reminder.cart.commit(payload).then(res => {
       wx.hideLoading();
       this.setData({ submitting: false });
-      if (res.needsOaAuth) {
-        wx.showModal({
-          title: '公众号提醒',
-          content: '关注公众号以接收提醒消息，也可以稍后在设置中开启。',
-          confirmText: '去关注',
-          cancelText: '跳过',
-          success: modalRes => {
-            if (modalRes.confirm) {
-              wx.showToast({ title: '请在设置中开启公众号提醒', icon: 'none' });
-            }
-          },
-        });
-      }
+      /* needsOaAuth 继续由接口保留；公众号渠道尚未打通，当前不展示关注引导。 */
       let toast;
       if (disableReminders) {
         toast = '已加入行程，未设置提醒';

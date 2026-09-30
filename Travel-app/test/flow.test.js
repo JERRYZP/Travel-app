@@ -303,10 +303,14 @@ function freshDb() {
   await mkTask(cTripA.tripId, 'gugong', pastDay);     // A 已过期
   await mkTask(cTripB.tripId, 'tiantan', pastDay);    // B 已过期
 
-  // 模拟 index.js 分发：task.clear 后对 affectedTripIds 执行级联（主动删除口径 → purgeIfNoTask）
+  // 模拟 index.js 分发：task.clear 后对 affectedTripIds 执行级联。
   const clearAll = async (params) => {
     const r = await task.clear(db, USER, params);
-    for (const tid of (r.affectedTripIds || [])) await trip.purgeIfNoTask(db, USER, tid);
+    const removedTripIds = [];
+    for (const tid of (r.affectedTripIds || [])) {
+      if (await trip.purgeIfNoItem(db, USER, tid)) removedTripIds.push(tid);
+    }
+    if (removedTripIds.length > 0) await cart.clearPendingIfNoItems(db, USER);
     return r;
   };
 
@@ -362,7 +366,10 @@ function freshDb() {
   await db.collection(COLLECTIONS.REMINDER_CART).add({
     data: { userId: USER, tripId: shell.tripId, spotId: 'tiantan', visitDate: time.todayStr(), releaseAt: futureDay },
   });
-  eq(db._size(COLLECTIONS.REMINDER_CART), 1, '行程挂着 1 条未提交清单');
+  await db.collection(COLLECTIONS.REMINDER_CART).add({
+    data: { userId: USER, tripId: '__pending__', spotId: 'guobo', visitDate: time.todayStr(), releaseAt: futureDay },
+  });
+  eq(db._size(COLLECTIONS.REMINDER_CART), 2, '行程遗留清单与暂存草稿各 1 条');
 
   const shellClear = await clearAll({ filter: 'active', tripId: shell.tripId });
   eq(shellClear.cleared, 1, '清空进行中 1 条');

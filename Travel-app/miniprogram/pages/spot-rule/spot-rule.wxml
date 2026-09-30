@@ -1,3 +1,4 @@
+<wxs module="asset" src="../../utils/cloud-assets.wxs"></wxs>
 <!-- 自定义导航栏 -->
 <view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
   <view style="height: {{statusBarHeight}}px;"></view>
@@ -18,7 +19,7 @@
   <view class="page-body">
     <!-- 顶部头图 -->
     <view class="hero">
-      <image class="hero-img" src="/images/spots/{{spot.spotId}}.jpg" mode="aspectFill" />
+      <image class="hero-img" src="{{asset.spot(spot.spotId)}}" mode="aspectFill" />
       <view class="hero-shade"></view>
       <view class="hero-info">
         <view class="hero-status-row">

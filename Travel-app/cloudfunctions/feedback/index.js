@@ -5,6 +5,7 @@
  *   wx.cloud.callFunction({ name: 'feedback', data: { action: 'feedback.submit', ... } })
  *
  * action：feedback.submit（公开提交）/ feedback.list（本人历史）
+ *        / feedback.adminStatus（管理员入口校验）
  *        / feedback.adminList / feedback.adminUpdateStatus（管理员，反馈管理页）
  * 完整契约见 Travel-app/API-契约.md。
  */
@@ -28,6 +29,8 @@ exports.main = async (event) => {
         return await feedback.submit(db, userId, event);
       case 'feedback.list':
         return await feedback.list(db, userId);
+      case 'feedback.adminStatus':
+        return feedback.adminStatus(userId);
       case 'feedback.adminList':
         return await feedback.adminList(db, userId, event);
       case 'feedback.adminUpdateStatus':

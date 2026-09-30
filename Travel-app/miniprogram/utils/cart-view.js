@@ -61,11 +61,15 @@ function normalizeCartGroups(res, today = util.beijingTodayStr()) {
     return Object.assign({}, group, {
       isPast: daysPast > 0,
       daysPast,
-      items: (group.items || []).map(item => Object.assign({}, item, {
-        subline: item.reservationRequired === false
-          ? '无需预约，随到随玩'
-          : (item.releaseLabel || legacyReleaseLabelOf(item)),
-      })),
+      items: (group.items || []).map(item => {
+        const releasePassed = item.remindLocked === true;
+        return Object.assign({}, item, {
+          releasePassed,
+          subline: item.reservationRequired === false
+            ? '无需预约，随到随玩'
+            : (releasePassed ? '已放票' : (item.releaseLabel || legacyReleaseLabelOf(item))),
+        });
+      }),
     });
   });
 }
