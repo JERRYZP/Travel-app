@@ -350,9 +350,24 @@ async function updateRange(db, userId, tripId, startDate, endDate) {
 
 /**
  * TRIP-RULE-004 级联删除：行程下任务、行程项与清单均空 → 行程自动删除
+ *
+ * @param {object} [prefetched] 可选的 `{ items, tasks, carts }` 全量数组。
+ *   给了就用内存判定，不再逐趟发 3 次 count —— 首页 bootstrap 走这条路
+ *   （见 `list()` 的注释）。三张表的查询都以 `userId` 打头，按 userId 全量读
+ *   是按 tripId 筛的**超集**，所以内存判定与 count 判定结果等价。
+ *   不传则维持原来的逐趟 count（`trip.list` 独立 action 走这条，行为不变）。
  * @returns {boolean} 是否发生了删除
  */
-async function removeIfEmpty(db, userId, tripId) {
+async function removeIfEmpty(db, userId, tripId, prefetched) {
+  if (prefetched) {
+    const hit = (arr, key) => (arr || []).some(r => r[key] === tripId);
+    if (hit(prefetched.tasks, 'tripId')) return false;
+    if (hit(prefetched.items, 'tripId')) return false;
+    if (hit(prefetched.carts, 'tripId')) return false;
+    await db.collection(COLLECTIONS.TRIPS).doc(tripId).remove();
+    return true;
+  }
+
   const taskCount = await db.collection(COLLECTIONS.REMINDER_TASKS)
     .where({ userId, tripId }).count();
   if (taskCount.total > 0) return false;
@@ -479,29 +494,45 @@ async function remove(db, userId, tripId) {
  * 列出行程，附带 TRIP-RULE-005 排序所需的 nextReminderAt 与 TRIP-RULE-006 分组信息。
  * 读取时兜底清理孤儿行程：任务与清单均空的行程（如生成了时间线但从未提交提醒）
  * 自动删除（TRIP-RULE-004），保证返回的行程都有内容，避免空行程 tab 残留。
+ *
+ * ⚠️ **这个函数曾经是首页最慢的一段**（2026-09-30 优化）：两个 `for` 循环里各有一个
+ * `await`，每趟行程 = 2 次串行 DB 往返，N 趟就是 2N 次，且它们挂在 bootstrap 的
+ * `Promise.all` 里，于是整组的耗时由这条线性链决定。现在：
+ *   - `nextReminderAt` 的 N 次查询并发发出（见下）；
+ *   - `removeIfEmpty` 的 3N 次 count 由调用方预取的 `prefetched` 改成内存判定。
+ *
+ * @param {object} [prefetched] 可选的 `{ items, tasks, carts }`。首页 bootstrap 已把
+ *   `items` / `tasks` 读齐，只需再补一个 `carts`（一次查询）就能消掉 3N 次 count。
+ *   不传则维持原行为（`trip.list` 独立 action 走这条）。
  */
-async function list(db, userId) {
+async function list(db, userId, prefetched) {
   const res = await db.collection(COLLECTIONS.TRIPS)
     .where({ userId })
     .get();
   const kept = [];
   for (const t of (res.data || [])) {
-    const removed = await removeIfEmpty(db, userId, t._id);
+    const removed = await removeIfEmpty(db, userId, t._id, prefetched);
     if (!removed) kept.push(t);
   }
   const trips = kept;
 
   const { ReminderBackendStatus } = require('./schema');
-  for (const t of trips) {
-    // 老数据只有 spotIds → 统一补出 spots 段（按行程整段），前端/时间线可放心依赖
-    t.spots = normalizeSpots(t);
-    const waiting = await db.collection(COLLECTIONS.REMINDER_TASKS)
+  /* 并发取每趟的最近一个 WAITING 任务。这些查询彼此无依赖，串行发就是白等。
+     ⚠️ 刻意不加 catch：`nextReminderAt` 是 TRIP-RULE-005 的排序键，读失败时静默
+     降级成 null 会让行程顺序悄悄变错。保持与原实现一致 —— 失败就整个失败。 */
+  const waitingList = await Promise.all(trips.map(t =>
+    db.collection(COLLECTIONS.REMINDER_TASKS)
       .where({ userId, tripId: t._id, backendStatus: ReminderBackendStatus.WAITING })
       .orderBy('releaseAt', 'asc')
       .limit(1)
-      .get();
+      .get()
+  ));
+  trips.forEach((t, i) => {
+    // 老数据只有 spotIds → 统一补出 spots 段（按行程整段），前端/时间线可放心依赖
+    t.spots = normalizeSpots(t);
+    const waiting = waitingList[i] || { data: [] };
     t.nextReminderAt = (waiting.data || []).length ? waiting.data[0].releaseAt : null;
-  }
+  });
 
   const sorted = sortTrips(trips);
   return ok({

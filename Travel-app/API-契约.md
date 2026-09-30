@@ -241,7 +241,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   filter: 'active',                 // 任务筛选：active | expired
   activeTripTab: 'abc123' | '',     // 当前选中的行程 Tab；为空则只返回全量分组
   tripId: 'abc123' | '',            // 内联时间线的清单 tripId（keepInline 时传，用于返回 cart）
-  includeSpots: true                // 是否返回热门景点（内部调 spots 云函数；false 时 hotSpots=[]）
+  includeSpots: false               // 是否返回热门景点；默认 false。true 时内部调 spots 云函数
+                                    // （多一次冷启动），否则 hotSpots 恒为 []
 }
 
 返回（success=true，字段均为扁平顶层）：
@@ -256,11 +257,11 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   trips: [...],                  // 行程列表
   showGroupTabs: boolean,
   cart: { summary, groups, items } | null, // tripId 非空时返回内联清单
-  hotSpots: [...]                // 热门景点卡（来自 spots.list）
+  hotSpots: [...]                // 热门景点卡（来自 spots.list；includeSpots 为 true 时才有内容）
 }
 
-错误码：1500（服务异常）。热路径依赖组合索引 reminder_tasks{backendStatus, releaseAt}，
-      且内部调用 spots 云函数（失败时 hotSpots=[]，前端回退 spots.list）。
+错误码：1500（服务异常）。热路径依赖组合索引 reminder_tasks{backendStatus, releaseAt}。
+      `includeSpots: true` 时内部调用 spots 云函数（失败时 hotSpots=[]，前端回退 spots.list）。
 ```
 
 ### 2.1 行程域（trip.*）
@@ -1188,7 +1189,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 ```javascript
 调用：{
   action: 'home.bootstrap',
-  includeSpots: true
+  includeSpots: false            // 可选，默认 false
 }
 
 返回：{
@@ -1217,9 +1218,17 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
     nearestRemindAt, text
   } | null,
   recoverableIds: ['item_2'],     // 2026-09-24：这些行程项「没抢到」但还有可换的日期
-  hotSpots: [/* spots.list */]
+  hotSpots: [/* spots.list；includeSpots 为 true 时才有内容，否则为 [] */]
 }
 ```
+
+- **`includeSpots` 默认 `false`**（2026-09-30 改，此前默认 `true`）。理由是性能：
+  取热门景点要**在本次请求里再调一次 `spots` 云函数**，等于一次用户请求串两个云函数的
+  冷启动，而 `hotSpots` 的唯一消费方是首页空态的三行预览 —— 已有行程的用户（绝大多数）
+  从来不会渲染它。现在改由前端在**首屏渲染之后**、且**已知是空态**时单独调 `spots.list`
+  （见 `pages/home/home.js` 的 `loadHotSpots`），让两次冷启动从「相加」变成「取最大」。
+  首屏期间空态预览由包内本地切片兜住（`miniprogram/utils/empty-preview.js`）。
+  ⚠️ 调用方若确实需要 `hotSpots`，必须显式传 `includeSpots: true`。
 
 - `trips` 只包含未结束行程，按 `startDate` 升序。
 - `history` 只包含 `endDate` 次日起的历史行程，按 `startDate` 降序。

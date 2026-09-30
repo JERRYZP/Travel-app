@@ -138,6 +138,77 @@
     </view>
   </block>
 
+  <!-- ===== 骨架层（2026-09-30）=====
+       只在「没有本地缓存 + 正在等云端」时出现：没有它，冷启动的那几秒
+       就是一片白底加一个转圈。这里画的是**对所有人成立**的内容 ——
+       案例展示来自包内本地切片、近期热门景点同理，不谎称「你没有行程」
+       （那要等云端确认，见上面空态块的 !loading）。
+       ⚠️ 必须是 `wx:elif` —— 它是空态块与下面行程墙 `wx:else` 的同一条链。
+       改回 `wx:if` 会让 wx:else 改绑到这一块，空态和行程墙同时渲染。 -->
+  <block wx:elif="{{loading && !previewNewUser}}">
+    <view class="home-skeleton">
+      <view class="empty-proof-card">
+        <view class="ep-head">
+          <text class="ep-head-title">案例展示</text>
+          <text class="ep-head-tag">景点真实规则展示</text>
+        </view>
+        <view class="ep-journey">
+          <view class="ep-stop">
+            <view class="ep-stop-label-row">
+              <svg-icon name="plan-gold" size="14px" />
+              <text class="ep-stop-label">出行计划</text>
+            </view>
+            <text class="ep-stop-value">{{emptyReleaseSample.visitText}}</text>
+          </view>
+          <view class="ep-stop">
+            <view class="ep-stop-label-row">
+              <svg-icon name="clock-gold" size="14px" />
+              <text class="ep-stop-label">开抢时间</text>
+            </view>
+            <text class="ep-stop-value">{{emptyReleaseSample.releaseText}}</text>
+          </view>
+          <view class="ep-stop">
+            <view class="ep-stop-label-row">
+              <svg-icon name="chat-linear" size="14px" />
+              <text class="ep-stop-label">提前提醒</text>
+            </view>
+            <text class="ep-stop-value">{{emptyReleaseSample.remindText}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{emptyReleaseRows.length}}" class="empty-hot">
+        <view class="empty-hot-head">
+          <view class="empty-hot-head-copy">
+            <text class="empty-hot-title">近期热门景点放票</text>
+            <text class="empty-hot-note">按规则推算 · 不代表官方库存</text>
+          </view>
+        </view>
+        <view class="empty-hot-list">
+          <view
+            wx:for="{{emptyReleaseRows}}"
+            wx:key="spotId"
+            class="empty-hot-row"
+            bindtap="onEmptySpotTap"
+            data-id="{{item.spotId}}"
+          >
+            <image class="empty-hot-img" src="{{asset.spot(item.spotId)}}" mode="aspectFill" lazy-load="{{true}}" />
+            <view class="empty-hot-main">
+              <text class="empty-hot-name">{{item.name}}</text>
+              <text class="empty-hot-status {{item._releaseTone}}">{{item._releaseStatusText}}</text>
+            </view>
+            <text wx:if="{{item._difficultyText}}" class="empty-hot-diff diff-{{item._difficultyKey}}">{{item._difficultyText}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="skel-loading">
+        <van-loading size="32rpx" color="#B8904A" />
+        <text class="skel-loading-text">正在读取你的行程…</text>
+      </view>
+    </view>
+  </block>
+
   <block wx:else>
     <!-- 全局摘要卡：只给最近的一趟，其他行程在各自的分段标题上显示紧凑进度。
          卡底部的「即将提醒」胶囊来自 stickyBanner.pills（服务端拼文案）。 -->
@@ -203,8 +274,10 @@
      ⚠️ 只在**已有行程**时出现：空态本身已经有一个居中的「+ 新增提醒」，
      再叠一个就是同屏两个一模一样的入口。
      也带上 !loading —— 加载期间 isBlank 还没算出来（仍是初值 false），
-     不加的话新用户一进页面会先看到悬浮按钮闪一下再消失。 -->
-<view wx:if="{{!loading && !isBlank}}" class="fab-btn" bindtap="onAddTrip">
+     不加的话新用户一进页面会先看到悬浮按钮闪一下再消失。
+     ⚠️ 再加 !previewNewUser：开发预览是空态，`isBlank` 虽是 true，
+     但这里保留它只是为了让「预览态」与「真空态」未来分叉时不至于漏改。 -->
+<view wx:if="{{!loading && !isBlank && !previewNewUser}}" class="fab-btn" bindtap="onAddTrip">
   <svg-icon name="plus-white" size="18px" />
   <text>新增提醒</text>
 </view>

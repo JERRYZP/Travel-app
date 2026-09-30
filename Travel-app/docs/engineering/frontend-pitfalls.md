@@ -38,5 +38,15 @@
 
 ## Mock 镜像
 
-- `miniprogram/utils/mock.js` 是云函数行为的镜像，不是业务规则真身。
+- `miniprogram/utils/mock-data.js` 存 `SPOTS` / `RULES` 数据镜像，`mock.js` 存行为镜像；两者都不是业务规则真身。2026-09-30 从 `mock.js` 拆出数据（原文件 122KB，首页冷启动要同步解析它）。
+- ⚠️ **`mock.js` 的惰性化（把 122KB 移出主包）尚未完成**：`utils/api.js:5` 顶层 `require('./mock.js')`，而微信打包器是**静态依赖收集** —— 把 require 挪进 `if (USE_MOCK)` 分支不一定能减包，需要开发者工具的「代码依赖分析」实测确认。没实测之前不要动，也不要为减包破坏 `USE_MOCK=true` 的离线联调（`scripts/check-miniprogram.py` 的 `check_mock_not_in_client()` 专门保护这条链路）。
 - 修改云端的行程合并、时间线、状态推导或接口返回体时，必须同步 mock，并跑 `test/mock-mirror.test.js`。
+
+## 首页首屏（2026-09-30 三层渲染）
+
+- 首页先出内容再原地替换：**缓存层**（`utils/home-cache.js` 回放上次的 bootstrap 返回体）→ **骨架层**（`utils/empty-preview.js` 的本地切片）→ **实况层**（云端返回）。
+- ⚠️ 骨架层必须用 `wx:elif` 接在空态块之后，**不能是独立的 `wx:if`**：WXML 的 `wx:else` 绑的是紧邻的上一个 `wx:if/wx:elif`，中间插一个独立 `wx:if` 会让下面的行程墙 `wx:else` 改绑到骨架块上，结果空态和行程墙同时渲染且不报错。
+- 骨架层期间 `loading` 必须保持 `true`，**不能渲染空态块**：否则返回用户会先看到「你还没有行程」再跳变成状态墙，比白屏更糟。
+- 缓存只做首屏填充，**不参与任何业务判定**；缓存与实况必须共用同一个 `buildHomeData()` 纯函数，再逐键比对后只写变化的字段（`applyHomeData`）——这是「不跳变」的结构性保证。
+- `empty-preview.js` 的本地切片是 `data/spots.json` 的只读投影，漂移由 `test/home-optimistic.test.js` 钉死（含一条自动推导「哪些字段影响渲染」的探针）。
+- 首页热门景点预览改为**首屏渲染之后**单独拉（`loadHotSpots`）：它要付一次 `spots` 云函数冷启动，塞进 bootstrap 会让用户等两次冷启动。云端结果仍走 `applyHomeData`，内容一致时零 setData。

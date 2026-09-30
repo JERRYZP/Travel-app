@@ -64,8 +64,13 @@ console.log('=== 1. 空态只在「一个行程项都没有」时出现 ===');
     '步骤标题采用设计稿金棕文字色');
   eq(/\.ep-stop-value \{[^}]*font-size:\s*24rpx/.test(HOME_WXSS), true,
     '步骤内容采用设计稿正文尺寸');
-  eq(/buildHomeReleasePreview\(res\.hotSpots \|\| \[\], serverNow, 3\)/.test(JS), true,
-    '预览复用 home.bootstrap 已返回的 hotSpots，不额外请求接口');
+  /* 2026-09-30 三层渲染：预览行的数据源变成「云端 hotSpots 优先、否则包内本地切片」，
+     两者共用同一处 buildHomeReleasePreview 调用。断言随之挪到 buildEmptyPreview ——
+     它仍然保证「有云端数据就用云端数据，不额外请求接口」。 */
+  eq(/function buildEmptyPreview\(res, now\)[\s\S]{0,400}?const source = hot\.length \? hot : emptyPreview\.LOCAL_SLICE;/.test(JS), true,
+    '预览优先用 home.bootstrap 已返回的 hotSpots，缺失时才回退包内本地切片');
+  eq(/buildHomeReleasePreview\(source, now, 3\)/.test(JS), true,
+    '预览统一走 buildHomeReleasePreview，不额外请求接口');
   eq(/emptyReleaseRows: releasePreview\.rows/.test(JS), true, '页面消费近期热门景点放票预览行');
   eq(/emptyReleaseSample: releasePreview\.sample/.test(JS), true, '页面消费动态提醒示例');
   eq(/onEmptySpotTap\(e\)[\s\S]*openSpotPopup\(spotId\)/.test(JS), true,
@@ -123,8 +128,10 @@ console.log('=== 1.1 首页规则预览只展示高热度景点，并给出真�
 
 console.log('=== 2. 悬浮按钮只在已有行程时出现 ===');
 {
-  eq(/<view wx:if="\{\{!loading && !isBlank\}\}" class="fab-btn"/.test(WXML), true,
-    '悬浮按钮带 !loading && !isBlank');
+  /* 2026-09-30：`loading` 在缓存命中时会立刻变 false，光靠 `!loading` 不足以
+     挡住骨架期 —— 补 `!previewNewUser`，让「确认为空态」与「尚未确认」继续分叉。 */
+  eq(/<view wx:if="\{\{!loading && !isBlank && !previewNewUser\}\}" class="fab-btn"/.test(WXML), true,
+    '悬浮按钮带 !loading && !isBlank && !previewNewUser');
   /* 没有 wx:if 就是无条件渲染 —— 那正是「同屏两个入口」的原因 */
   eq(/<view class="fab-btn"/.test(WXML), false, '悬浮按钮不是无条件渲染');
   eq(/isBlank: trips\.length === 0 && \(res\.history \|\| \[\]\)\.length === 0/.test(JS), true,
@@ -363,7 +370,9 @@ console.log('=== 6. 行程分段标题：摘要卡那趟不渲染，未来行程
 
   /* 谁 weak：只看「是不是摘要卡那趟」。判断放页面（_weak），不在模板里数 index——
      模板内置计数器一加 wx:if 就会静默错位。 */
-  eq(/_weak: !!isPrimary/.test(JS), true, '_weak 按「是不是 trips[0]」算');
+  /* 2026-09-30 抽出 buildHomeData() 后，`_weak` 改在 map 里内联算：
+     仍是「是不是 trips[0]」，只是不再单独立一个方法。 */
+  eq(/_weak: i === 0/.test(JS), true, '_weak 按「是不是 trips[0]」算');
   eq(/weak="\{\{trip\._weak\}\}"/.test(WXML), true, '页面把 _weak 传给分段');
   eq(/weak="\{\{trips\.length === 1\}\}"/.test(WXML), false,
     '不再按「行程总数」判 weak——那会把未来行程的标题一起弱化掉');

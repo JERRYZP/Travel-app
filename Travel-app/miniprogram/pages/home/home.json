@@ -4,7 +4,6 @@
     "svg-icon": "/components/svg-icon/svg-icon",
     "spot-popup": "/components/spot-popup/spot-popup",
     "reminder-sample-sheet": "/components/reminder-sample-sheet/reminder-sample-sheet",
-    "date-range-picker": "/components/date-range-picker/index",
     "release-banner": "/components/release-banner/release-banner",
     "trip-summary-card": "/components/trip-summary-card/trip-summary-card",
     "trip-section": "/components/trip-section/trip-section",

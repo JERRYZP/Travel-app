@@ -38,11 +38,31 @@
 
 ## 当前需要部署的范围
 
-- `reminder`：当前未提交的 `lib/task.js` 额度预警文案改动需要重新部署。
+- `reminder`：**2026-09-30 首页冷启动优化有多处改动，必须重新部署**（`index.js` 的
+  `homeBootstrap` 并行化 + `includeSpots` 默认值翻转、`lib/trip.js` 的 `list`/`removeIfEmpty`
+  并行化、`lib/task.js` 的 `sweepOverdue` 并发写）。另有未提交的额度预警文案改动。
+  ⚠️ **`includeSpots` 默认值由 `true` 改为 `false` 是契约变更**（`API-契约.md` 8.2）：
+  未部署时前端拿不到 `hotSpots`，但前端已有本地切片兜底，不会白屏。
 - `spots`：当前未提交的景点卡新增 `shortName` 透传需要部署；首页空态示例有全名回退，但未部署时拿不到简称。
 - `feedback`：当前未提交的管理员 openid 白名单与 `feedback.adminStatus` 入口校验需要部署；帮助与反馈、我的反馈页面依赖现有 `feedback.list` 契约。
 - `notifier`：其代码版本和云端触发器、环境变量、索引、测试发送仍未完成闭环核对；按 2026-09-28 复核报告处理。
 - 小程序端：提交后重新编译；仅部署云函数不能替代小程序端发布。
+
+## 数据库索引待补（控制台操作，非部署）
+
+2026-09-30 新增三条「必须」索引，缺了会让首页冷启动退化：
+
+- `reminder_tasks` 单字段 `userId`（此前误归在「建议」）—— `home.bootstrap` 每次按
+  `userId` 全量取任务，无 limit。
+- `reminder_tasks` 的 `userId + tripId + backendStatus + releaseAt`（此前误归在「建议」）——
+  `trip.list` 每趟取最近一个 WAITING 任务算 `nextReminderAt`；文档原先写的
+  「新版首页由 trip_items 聚合」在 V2 首页改调 `trip.list` 之后已经过时。
+- `reminder_cart` 单字段 `userId` —— bootstrap 为 `trip.list` 的 `removeIfEmpty`
+  预取全量清单（一次读换掉原本每趟行程 3 次 count）。
+
+⚠️ **复查方式**：把 `cloudfunctions/**` 里所有 `.where({...})` 组合列出来，与本文档
+两张表逐条对照，而不是只信文档自己的描述 —— 上面两条「建议」项的描述就是这么过期的。
+详见 `数据库索引.md` 第二节。
 
 ## 待验证
 

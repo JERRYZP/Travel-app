@@ -6,6 +6,9 @@ const tripCalendar = require('../../utils/trip-calendar.js');
 const shareEntry = require('../../utils/share-entry.js');
 const analytics = require('../../utils/analytics.js');
 const release = require('../../utils/release-context.js');
+const homeTiming = require('../../utils/home-timing.js');
+const homeCache = require('../../utils/home-cache.js');
+const emptyPreview = require('../../utils/empty-preview.js');
 
 /* 导航块高度（rpx）= `.navbar-content` 的 height，两处必须一致。 */
 const NAV_BAR_RPX = 88;
@@ -18,6 +21,90 @@ const PAGE_GAP_RPX = 0;
 const NAV_FADE_PX = 50;
 const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
 const EMPTY_RELEASE_FALLBACK = release.buildHomeReleasePreview([], new Date()).sample;
+
+/**
+ * 把 `home.bootstrap` 的返回体加工成页面 data 补丁（纯函数）。
+ *
+ * ⚠️ **缓存层和实况层必须共用这一个函数**：只有这样，同一份返回体无论来自
+ * 本地缓存还是云端，产出的补丁才逐字段相同 —— 这是「先画缓存、再原地替换」
+ * 不产生跳变的结构性保证。不要为缓存另写一条加工路径。
+ *
+ * @param {object} res  bootstrap 返回体（原始形状）
+ * @param {Date}   now  用于推算放票状态的「现在」，见 resolveNow()
+ */
+function buildHomeData(res, now, opts) {
+  const silent = !!(opts && opts.silent);
+  const trips = (res.trips || []).map((t, i) =>
+    /* `_weak` 决定行程分段标题渲不渲染，**这个判断放在这里、不放模板**：
+       模板里做不了「只有第一趟」。 */
+    Object.assign({}, t, { _weak: i === 0 }));
+  const primary = trips.length ? trips[0] : null;
+  const releasePreview = buildEmptyPreview(res, now);
+  const serverNow = res.serverNow ? new Date(res.serverNow) : now;
+  const quotaWarningDayKey = release.toDateStr(serverNow);
+  const reminderQuotaWarning = res.reminderQuotaWarning || null;
+  let dismissedOn = '';
+  try { dismissedOn = wx.getStorageSync(QUOTA_WARNING_DISMISS_KEY) || ''; } catch (e) {}
+
+  /* 含未定义键：调用方要用「键是否存在」判断取存量还是清空。 */
+  return {
+    trips,
+    primaryTrip: primary,
+    /* 被划掉的气泡在重新加载后清空：新的一次会话可以再问一次，
+       但同一次会话里不重复追问（「忽略」的语义 = 提前进入中性态）。
+       `undefined` = 保留现有值 —— 静默刷新和缓存绘制都不能抹掉它。 */
+    dismissed: silent ? undefined : [],
+    history: res.history || [],
+    loading: false,
+    /* 空态判定：没有任何进行中行程、也没有历史行程 */
+    isBlank: trips.length === 0 && (res.history || []).length === 0,
+    previewNewUser: false,
+    /* ⚠️ 胶囊是**顶层独立字段**，不挂在 stickyBanner 下——横幅只覆盖眼下一小时，
+       而胶囊要回答「后面还有哪几场」。别在这里自己从 trips 里挑放票时刻：
+       那是第二套口径，必然与云端漂。 */
+    bannerPills: res.releasePills || [],
+    banner: res.stickyBanner || null,
+    emptyReleaseRows: releasePreview.rows,
+    emptyReleaseSample: releasePreview.sample,
+    reminderQuotaWarning: res.reminderQuotaWarning || null,
+    quotaWarningDayKey,
+    /* 用户当天点过「关闭」就不再打扰。读 storage 放在这里而不是调用方，
+       是为了让缓存层和实况层算出同一个值 —— 否则切层时会闪一下横幅。 */
+    showReminderQuotaWarning: !!reminderQuotaWarning && dismissedOn !== quotaWarningDayKey,
+    /* 「还有别的日期可约」的候选集合随 bootstrap 一起回来（服务端 lib/recovery.js）。
+       ⚠️ **别再在页面侧另发一次请求去算**（2026-09-24 踩过）：那样这条响应
+       与候选之间没有顺序保证，返回体已经带着 `result = FAILED` 而候选还在路上，
+       卡片就按「FAILED 但不可挽回」渲染 —— 症状是**挽回线永远不出现**，
+       菜单里也只剩「删除这天」，而两边的单测全绿（各自都没问题，是时序问题）。 */
+    recoverableIds: res.recoverableIds || [],
+    /* 同上：`''` 会关掉正在打开的菜单，缓存绘制和静默刷新都不该动它。 */
+    menuId: silent ? undefined : '',
+    menuDate: silent ? undefined : '',
+  };
+}
+
+/**
+ * 空态预览行：云端带了 hotSpots 就用云端的，否则用包内本地切片。
+ *
+ * 冷启动时 `home.bootstrap` 要等云函数，先用本地切片把「近期热门景点放票」
+ * 和案例展示画出来；云端返回后如果内容一致（绝大多数情况），
+ * 补丁比对后不会产生任何 setData，画面不动。
+ */
+function buildEmptyPreview(res, now) {
+  const hot = (res && res.hotSpots) || [];
+  const source = hot.length ? hot : emptyPreview.LOCAL_SLICE;
+  return release.buildHomeReleasePreview(source, now, 3);
+}
+
+/**
+ * 推算用的「现在」：服务端时钟偏移收敛后，本地画出来的放票状态
+ * 与云端算的才可能逐字节相同（这是不跳变的前提之一）。
+ * 首次启动没有偏移记录时退化成设备时钟，误差在秒级，不足以翻状态。
+ */
+function resolveNow() {
+  const skew = app.globalData && app.globalData.serverSkewMs;
+  return new Date(Date.now() + (typeof skew === 'number' ? skew : 0));
+}
 
 /**
  * 首页 · 行程状态墙（2026-09-20 首页行程化改版 P3）
@@ -108,7 +195,6 @@ Page({
        标记入口**不在浮窗里**——等用户回到首页才在行程卡片上看到（决策文档 4.1）。 */
     const spotId = options && options.spotId;
     if (spotId) this.openSpotPopup(decodeURIComponent(spotId));
-    this._lastLoad = Date.now();
   },
 
   onShow() {
@@ -159,7 +245,27 @@ Page({
 
   loadHome(opts) {
     const silent = opts && opts.silent;
-    if (!silent) this.setData({ loading: true });
+    /* 耗时分段（2026-09-30）：`cache` = 用本地缓存画出第一帧的耗时；
+       `net` = 请求往返（含云函数冷启动，最大头）；`setdata` = 返回到首屏画完。
+
+       用户可见的等待 = `net + setdata`（有缓存时首帧在 `cache` 就出来了）。
+       之前想同时测「onShow → loadHome 之间」的页面初始化与 require 解析耗时，
+       但页面 JS 在 onLoad 之前就已求值，onShow 打点测不到 —— 不伪造这个数字。 */
+    const trace = homeTiming.createTrace(silent ? 'silent' : 'foreground');
+    /* ⚠️ **不要在这里无条件 `setData({loading:true})`**：那会在缓存命中之前
+       多写一次 loading，多出一帧「骨架 → 缓存内容」的切换。loading 由下面
+       两条路径各自负责设置（缓存帧走 buildHomeData 置 false；无缓存置 true）。
+
+       三层渲染：
+       ① 缓存命中 → 立刻画出上次的状态墙（loading:false，走 wx:else 分支）；
+       ② 没有缓存 → 保持 loading:true，让骨架层先画案例展示 + 近期热门景点，
+          不再是一屏白底转圈；
+       ③ 云端返回 → 用同一份 buildHomeData() 产出补丁，**逐键比对**，
+          只写真正变化的字段，所以从 ①/② 切到 ③ 时画面不跳。
+
+       `_loadSeq` 是竞态守卫：onShow 无条件调 loadHome，另有 8 处操作后
+       静默重载，没有它会出现旧响应覆盖新状态。 */
+    const seq = (this._loadSeq = (this._loadSeq || 0) + 1);
 
     const g = app.globalData;
     if (g.envVersion === 'develop' && g.previewNewUser) {
@@ -181,7 +287,7 @@ Page({
         recoverableIds: [],
         menuId: '',
         menuDate: '',
-      });
+      }, () => trace.end({ branch: 'develop-preview' }));
       /* 开发预览没有走 bootstrap 的 hotSpots；单独取一次公开景点卡，
          让设计/真机验收可以看到完整的“近期热门景点放票”模块。失败时保留兜底示例。 */
       api.spots.list().then(res => {
@@ -191,51 +297,128 @@ Page({
       return;
     }
 
-    api.reminder.home.bootstrap({}).then(res => {
-      const trips = (res.trips || []).map((t, i) => this.decorateTrip(t, i === 0));
-      const primary = trips.length ? trips[0] : null;
-      const serverNow = res.serverNow ? new Date(res.serverNow) : new Date();
-      const releasePreview = release.buildHomeReleasePreview(res.hotSpots || [], serverNow, 3);
-      const quotaWarningDayKey = release.toDateStr(serverNow);
-      let dismissedOn = '';
-      try { dismissedOn = wx.getStorageSync(QUOTA_WARNING_DISMISS_KEY) || ''; } catch (e) {}
-      const reminderQuotaWarning = res.reminderQuotaWarning || null;
-      this.setData(Object.assign({
-        loading: false,
-        trips,
-        history: res.history || [],
-        /* 空态判定：没有任何进行中行程、也没有历史行程 */
-        isBlank: trips.length === 0 && (res.history || []).length === 0,
-        previewNewUser: false,
-        primaryTrip: primary,
-        /* ⚠️ 胶囊是**顶层独立字段**，不挂在 stickyBanner 下——横幅只覆盖眼下一小时，
-           而胶囊要回答「后面还有哪几场」。别在这里自己从 trips 里挑放票时刻：
-           那是第二套口径，必然与云端漂。 */
-        bannerPills: res.releasePills || [],
-        banner: res.stickyBanner || null,
-        emptyReleaseRows: releasePreview.rows,
-        emptyReleaseSample: releasePreview.sample,
-        reminderQuotaWarning,
-        quotaWarningDayKey,
-        showReminderQuotaWarning: !!reminderQuotaWarning && dismissedOn !== quotaWarningDayKey,
-        /* 「还有别的日期可约」的候选集合随 bootstrap 一起回来（服务端 lib/recovery.js）。
-           ⚠️ **别再在页面侧另发一次请求去算**（2026-09-24 踩过）：那样这条响应
-           与候选之间没有顺序保证，返回体已经带着 `result = FAILED` 而候选还在路上，
-           卡片就按「FAILED 但不可挽回」渲染 —— 症状是**挽回线永远不出现**，
-           菜单里也只剩「删除这天」，而两边的单测全绿（各自都没问题，是时序问题）。 */
-        recoverableIds: res.recoverableIds || [],
-        menuId: '',
-        menuDate: '',
-        /* 被划掉的气泡在重新加载后清空：新的一次会话可以再问一次，
-           但同一次会话里不重复追问（「忽略」的语义 = 提前进入中性态） */
-        dismissed: silent ? this.data.dismissed : [],
-      }), () => {
-        /* 进首页自动滚到最近该标记的一条（优先可抢 —— 还来得及救） */
-        if (!silent && res.scrollTargetId) this.scrollToItem(res.scrollTargetId);
+    if (!silent) {
+      const cached = homeCache.read();
+      if (cached) {
+        this.applyHomeData(buildHomeData(cached, resolveNow(), { silent: true }));
+        trace.mark('cache');
+      } else {
+        /* 无缓存：画本地 slice 推出的**真实**日期（不是通用占位文案），
+           这样云端返回后内容逐字节相同，补丁比对不会产生 setData。
+           不能让 loading 变 false —— 那是「确认为空态」，返回用户会先看到
+           「你还没有行程」再跳变成状态墙，比白屏更糟。 */
+        const boot = release.buildHomeReleasePreview(emptyPreview.LOCAL_SLICE, resolveNow(), 3);
+        this.setData({
+          loading: true,
+          emptyReleaseSample: boot.sample,
+          emptyReleaseRows: boot.rows,
+        });
+      }
+    }
+
+    /* 到这里的耗时 = 首帧准备的收尾（无缓存分支的 setData 已在上面发出）。
+       有缓存时 `cache` 分段已经记过，这次 mark 记的是「缓存绘制之后到发请求」。 */
+    trace.mark('paint');
+    api.reminder.home.bootstrap(this.bootstrapParams()).then(res => {
+      if (seq !== this._loadSeq) return;
+      trace.mark('net');
+      /* 记录服务端时钟偏移：本地兜底绘制用它换算「现在」，
+         才能和云端算出的放票状态一致。 */
+      const serverMs = parseTimeMs(res.serverNow);
+      if (serverMs) app.globalData.serverSkewMs = serverMs - Date.now();
+      homeCache.write(res);
+      this.applyHomeData(buildHomeData(res, resolveNow(), { silent }));
+      trace.mark('setdata');
+      trace.end({
+        branch: silent ? 'live-silent' : 'live',
+        trips: (res.trips || []).length,
+        history: (res.history || []).length,
+        hotSpots: (res.hotSpots || []).length,
       });
+      /* 进首页自动滚到最近该标记的一条（优先可抢 —— 还来得及救） */
+      if (!silent && res.scrollTargetId) this.scrollToItem(res.scrollTargetId);
+      /* 热门景点预览：**首屏画完之后**才发，且只在空态、且云端没带过来时。
+         放在这里而不是 bootstrap 的参数里，是为了不把 `spots` 的冷启动
+         塞进用户等待的那一段 —— 云端没有它时用的是包内本地切片，
+         用户已经看到内容了，这次请求只是把结果换成云端权威版。
+         ⚠️ 每个页面实例只发一次：本地切片与云端输出的等价性由
+         `test/home-optimistic.test.js` 证明（逐字节相同），所以这次请求的唯一
+         价值是感知服务端规则变更，不必每次 onShow 都发。 */
+      if (!silent && !this._hotSpotsLoaded
+        && res.homeMode === 1 && !(res.hotSpots || []).length) {
+        this.loadHotSpots(seq);
+      }
     }).catch(() => {
+      if (seq !== this._loadSeq) return;
+      trace.end({ branch: 'failed' });
+      /* 失败时**不清空已有内容**：缓存画出来的状态墙、或骨架层的案例展示
+         都比一片空白好；只把 loading 收掉，避免永久转圈。 */
       this.setData({ loading: false });
     });
+  },
+
+  /**
+   * 取热门景点预览（空态专用，首屏之后才发）。
+   *
+   * ⚠️ **不要把它挪回 `home.bootstrap` 的参数里**：那会让 `reminder` 云函数
+   * 内部再冷启动一次 `spots`，而这次冷启动整个落在用户等首屏的那几秒里。
+   * 首屏已经有包内本地切片兜着，这里只是把内容换成云端权威版。
+   */
+  loadHotSpots(seq) {
+    this._hotSpotsLoaded = true;
+    const trace = homeTiming.createTrace('hotspots');
+    api.spots.list().then(res => {
+      if (seq !== this._loadSeq) return;
+      const preview = release.buildHomeReleasePreview(res.data || [], resolveNow(), 3);
+      trace.end({ branch: 'live', spots: (res.data || []).length });
+      /* 走 applyHomeData 而不是直接 setData：与本地切片算出的内容通常
+         逐字节相同，比对后不写 —— 画面不动。 */
+      this.applyHomeData({
+        emptyReleaseRows: preview.rows,
+        emptyReleaseSample: preview.sample,
+      });
+    }).catch(() => {
+      /* 失败就把本地切片留在页面上，空态预览不是关键路径。 */
+      trace.end({ branch: 'failed' });
+    });
+  },
+
+  /**
+   * 写入首页 data 补丁。
+   *
+   * 两道处理让它成为「可重复调用而画面不跳」：
+   *  ① **键存在性**：`undefined` 表示「本次保留原值」。`buildHomeData` 里只有
+   *     一次会话性的字段（`dismissed` / `menuId` / `menuDate`）会省略，避免
+   *     一次后台刷新就把用户正在看的菜单和已忽略的气泡抹掉。
+   *  ② **值比对**：与当前 data 逐键 `JSON.stringify` 比对，只 setData 真正
+   *     变化的键 —— 缓存层切到实况层时，两处算出的内容通常逐字节相同，
+   *     于是实际载荷接近空，节点不重绘、入场动画不重播。
+   */
+  applyHomeData(patch) {
+    const next = {};
+    Object.keys(patch || {}).forEach(k => {
+      if (patch[k] === undefined) return;
+      let same = false;
+      try {
+        same = JSON.stringify(this.data[k]) === JSON.stringify(patch[k]);
+      } catch (e) {
+        same = false;
+      }
+      if (!same) next[k] = patch[k];
+    });
+    if (Object.keys(next).length) this.setData(next);
+  },
+
+  /**
+   * bootstrap 的请求参数。
+   *
+   * **刻意不传 `includeSpots`**：云函数默认就不取热门景点（见
+   * `cloudfunctions/reminder/index.js` 的 homeBootstrap）。那份额外数据要付
+   * 一整次 `spots` 云函数冷启动，而它只有空态会渲染 —— 已有行程的用户
+   * （绝大多数）永远用不上。空态需要时走 `loadHotSpots()`，在首屏之后单独拉。
+   */
+  bootstrapParams() {
+    return {};
   },
 
   onQuotaWarningOpen() {
@@ -248,24 +431,6 @@ Page({
       try { wx.setStorageSync(QUOTA_WARNING_DISMISS_KEY, dayKey); } catch (e) {}
     }
     this.setData({ showReminderQuotaWarning: false });
-  },
-
-  /**
-   * 给行程附加视图层字段。
-   *
-   * `_weak` 决定行程分段标题渲不渲染，**这个判断放在这里、不放模板**：
-   * `trips` 里的对象在 loadHome 里是同一个引用，`trips[0] === primaryTrip` 成立，
-   * 所以数组序就是唯一事实。模板里写 `wx:for-index === 0` 把「第一段」这个语义
-   * 编码进模板内部计数器，加一个 `wx:if` 都会静默错位；这里 `isPrimary` 是明说。
-   *
-   * ⚠️ 顶部摘要卡只展示最近即将发生或正在发生的那一趟（= `trips[0]`）：
-   *   - `trips[0]`：与摘要卡重复 → 标题行不渲染；
-   *   - 其余（后面还没发生的行程）：摘要卡没覆盖，**必须保留标题行**，
-   *     否则那一段会塌成一堆裸日期，读不出「这是独立的一段、到哪结束」。
-   * 单趟行程是最常见形态，`isPrimary` 让首页就是一堵干净的墙。
-   */
-  decorateTrip(t, isPrimary) {
-    return Object.assign({}, t, { _weak: !!isPrimary });
   },
 
   /* ===== 分段吸顶测量 =====
@@ -780,4 +945,12 @@ function pageTopOf(statusBarHeight) {
      不是整个标题高度 —— 前者是 21.5rpx，后者是 45rpx，差一倍。 */
   const titleInset = (NAV_BAR_RPX - NAV_TITLE_RPX) / 2;
   return (statusBarHeight || 20) * 2 + NAV_BAR_RPX + PAGE_GAP_RPX - titleInset;
+}
+
+/** 解析服务端时间戳（毫秒数或 ISO 字符串）；拿不到就返回 0。 */
+function parseTimeMs(v) {
+  if (!v) return 0;
+  if (typeof v === 'number') return v;
+  const t = new Date(v).getTime();
+  return Number.isFinite(t) ? t : 0;
 }

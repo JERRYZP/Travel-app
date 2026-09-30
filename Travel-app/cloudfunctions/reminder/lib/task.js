@@ -340,21 +340,35 @@ async function sweepOverdue(db, tasks, nowTs = time.now(), userId, resolveReleas
   });
 
   const healCandidates = new Set();
-  for (const t of overdue) {
-    const patch = {
+  /* 并发写（2026-09-30）：原来是 `for` 里逐条 await，M 条过期任务 = M 次串行写往返，
+     全部串在首页响应链上。这些写彼此无依赖，可以一起发。
+
+     ⚠️ 两次遍历的顺序不能合并：
+       ① 先并发写库（带 catch，单条失败不影响其余 —— 与原 try/catch 语义一致）；
+       ② 再统一 `Object.assign` 收敛内存态。
+     契约要的是「响应发出前内存里的状态必须已收敛」（见 index.js 的
+     REMINDER-RULE-004 注释），`Object.assign` 才是契约本身，库写只是持久化。
+     所以 assign 必须在 Promise.all **之后**，`healCandidates` 的判定更要在这之后
+     （它读的是 assign 后的 lastSendError）。 */
+  const patches = overdue.map(t => ({
+    t,
+    patch: {
       backendStatus: ReminderBackendStatus.MISSED,
       missedReason: t.missedReason || t.lastSendError || '超过放票时间点未触发成功',
       cleanAt: new Date(nowTs.getTime() + V1.CLEAN_AFTER_DAYS * 86400000),
-    };
-    try {
-      await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).update({ data: patch });
-    } catch (e) {
-      console.error('[reminder] sweepOverdue 写库失败', t._id, e.message);
-    }
+    },
+  }));
+
+  await Promise.all(patches.map(({ t, patch }) =>
+    db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).update({ data: patch })
+      .catch(e => console.error('[reminder] sweepOverdue 写库失败', t._id, e.message))
+  ));
+
+  patches.forEach(({ t, patch }) => {
     Object.assign(t, patch);
     /* 台账自愈候选：确实发过（lastSendError 非空）且失败原因不是本地配置/链路问题 */
     if (t.userId && shouldHealQuota(t.lastSendError)) healCandidates.add(t.userId);
-  }
+  });
 
   const owner = userId || (overdue[0] && overdue[0].userId);
   if (owner && healCandidates.has(owner)) {

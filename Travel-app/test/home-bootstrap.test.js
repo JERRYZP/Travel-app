@@ -49,6 +49,10 @@ const SPOT_CARDS = [{
 }];
 
 const origLoad = Module._load;
+/* 数一数 bootstrap 到底调了几次 spots 云函数。
+   2026-09-30 起默认不再调用（那次调用 = 一次额外冷启动，全落在用户等首屏的时间里），
+   只有显式 includeSpots:true 才走。 */
+let spotsCallCount = 0;
 Module._load = function (request, parent, isMain) {
   if (request === 'wx-server-sdk') {
     return {
@@ -58,6 +62,7 @@ Module._load = function (request, parent, isMain) {
       getWXContext() { return { OPENID: USER }; },
       callFunction({ name }) {
         if (name !== 'spots') return Promise.reject(new Error('unexpected fn ' + name));
+        spotsCallCount += 1;
         return Promise.resolve({ result: { success: true, data: SPOT_CARDS } });
       },
     };
@@ -90,8 +95,18 @@ const seedSpot = async () => {
 };
 
 (async () => {
-  /* ===== 场景 1：新用户（无行程项） → homeMode=1 走创建引导 + hotSpots ===== */
+  /* ===== 场景 0：默认不拉热门景点（2026-09-30）=====
+     热门景点只有首页空态渲染，而它要付一整次 spots 云函数冷启动。
+     默认不拉 = 已有行程的用户（绝大多数）不再等第二次冷启动；
+     空态要它时由前端在首屏之后显式请求。 */
   let res = await reminder.main({ action: 'home.bootstrap' });
+  eq(res.success, true, '默认 bootstrap 成功');
+  eq(spotsCallCount, 0, '默认不调用 spots 云函数（省掉一次冷启动）');
+  eq(res.hotSpots.length, 0, '默认 hotSpots 为空数组（字段保留，契约不破）');
+  eq(res.homeMode, 1, '默认仍按行程数给出 homeMode');
+
+  /* ===== 场景 1：新用户（无行程项） → homeMode=1 走创建引导 + hotSpots ===== */
+  res = await reminder.main({ action: 'home.bootstrap', includeSpots: true });
   eq(res.success, true, 'bootstrap success');
   eq(res.homeMode, 1, '新用户 homeMode=1（创建引导）');
   eq(res.trips.length, 0, '无行程 trips 空');
@@ -99,6 +114,7 @@ const seedSpot = async () => {
   eq(res.primaryTripId, '', '无行程 primaryTripId 为空');
   eq(res.stickyBanner, null, '无可抢项 stickyBanner=null');
   eq(res.scrollTargetId, null, '无可标记项 scrollTargetId=null');
+  eq(spotsCallCount, 1, '显式 includeSpots:true 时才调用 spots 云函数');
   eq(res.hotSpots.length, 1, 'hotSpots 来自 spots 云函数');
   eq(res.hotSpots[0].name, '故宫博物院', 'hotSpots 内容正确');
   eq(Boolean(res.serverNow), true, '返回 serverNow 供前端算倒计时');

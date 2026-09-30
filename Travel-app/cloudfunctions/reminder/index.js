@@ -28,6 +28,11 @@ const {
   totalSubscribeQuota,
 } = require('./lib/quota');
 
+/* home.bootstrap 分段计时用（见 homeBootstrap）：
+   标记「本实例是否还没处理过任何请求」。这个模块在云函数冷启动时求值一次，
+   所以第一次调用打 true 就是新实例的首个请求。 */
+let moduleFirstCall = true;
+
 exports.main = async (event) => {
   const { action } = event || {};
   const { OPENID } = cloud.getWXContext();
@@ -197,18 +202,54 @@ exports.main = async (event) => {
  * @returns 8.2 的返回体 + 一个版本兼容期的 homeMode
  */
 async function homeBootstrap(db, userId, event = {}) {
-  const includeSpots = event.includeSpots !== false;
+  /* ⚠️ 默认 **不** 取热门景点（2026-09-30 改）。
+     理由：`hotSpots` 的唯一消费方是首页空态的三行预览，而它是靠
+     `cloud.callFunction({name:'spots'})` 拿到的 —— 等于一次用户请求要串两个
+     云函数的冷启动。对已有行程的用户（绝大多数）这份数据从来不会被渲染。
+     现在改由前端在**已知是空态**时显式传 `includeSpots: true`，并且只在首屏
+     渲染之后发，让两次冷启动从「相加」变成「取最大」。
+     契约同步见 API-契约.md 8.2。 */
+  const includeSpots = event.includeSpots === true;
   const nowTs = time.now();
   const today = time.todayStr();
+  /* 分段计时（2026-09-30）：首页 5 秒排查用。
+     ⚠️ 只打各段毫秒与各表行数，**不打 openid** —— 行数为 0 就说明是新用户，
+     足以区分新老路径，不需要把用户标识写进日志。
+     `firstCallInInstance` 只能说明「是本实例的第一次调用」，不是「冷启动」；
+     连续观察它为 true 那批的耗时分布，就是冷启动分布。 */
+  const t0 = Date.now();
+  const timing = { firstCallInInstance: moduleFirstCall, includeSpots: !!includeSpots };
+  moduleFirstCall = false;
+  const tParallel = Date.now();
 
-  const [tripsRes, items, spotsCall, userRes] = await Promise.all([
-    trip.list(db, userId),
+  /* 第一波并行：五路互不依赖的读。
+     ⚠️ `reminder_tasks` 也在这里（2026-09-30 从串行段提前）：它没有任何前置依赖，
+     此前却排在 Promise.all 之后单独 await，白等一个 RTT。
+     这里**刻意不加 `.catch(() => [])`**：读失败静默降级成空数组，等于让过期任务
+     永远显示成「待提醒」—— 正是下面那段注释要防的 2026-09-14 那个坑。
+     读失败就让整个 bootstrap 失败，前端至少会保留缓存/骨架，不会给出错的结论。 */
+  const [items, carts, spotsCall, userRes, taskRes] = await Promise.all([
     item.listItemsByUser(db, userId),
+    /* 清单只为 `trip.list` 的 removeIfEmpty 内存判定而读：
+       一次全量读换掉它原本的 3N 次逐趟 count。
+       ⚠️ `reminder_cart` 需要单字段 `userId` 索引（见 数据库索引.md 第二节）。 */
+    db.collection(COLLECTIONS.REMINDER_CART)
+      .where({ userId }).get()
+      .then(r => r.data || [])
+      .catch(() => []),
     includeSpots
       ? cloud.callFunction({ name: 'spots', data: { action: 'list' } }).catch(() => null)
       : Promise.resolve(null),
     db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
+    db.collection(COLLECTIONS.REMINDER_TASKS).where({ userId }).get(),
   ]);
+  const allTasks = taskRes.data || [];
+
+  /* 第二波：行程。它要用第一波读到的 items / carts / tasks 做 removeIfEmpty 的
+     内存判定，所以只能等第一波 —— 但换来的是消掉 3N 次 count 和 N 次串行查询。
+     它与紧随其后的 `loadSpotContext` 互不依赖，中间没有额外等待。 */
+  const tripsRes = await trip.list(db, userId, { items, tasks: allTasks, carts });
+  timing.parallelMs = Date.now() - tParallel;
 
   const trips = (tripsRes && tripsRes.trips) || [];
 
@@ -217,13 +258,23 @@ async function homeBootstrap(db, userId, event = {}) {
      少了这一步，一旦 notifier 的定时链路出问题（缺索引 / 缺环境变量 / 触发器停用），
      过期任务会静默显示成「待提醒」且毫无提示 —— 正是 2026-09-14 踩过的坑。
      幂等，写库失败也不影响本次响应。 */
-  const taskRes = await db.collection(COLLECTIONS.REMINDER_TASKS).where({ userId }).get();
-  const allTasks = taskRes.data || [];
+  const tSpotCtx = Date.now();
   const { spotMap, ruleMap } = await item.loadSpotContext(db, items.map(i => i.spotId));
+  timing.spotCtxMs = Date.now() - tSpotCtx;
+
+  const tSweep = Date.now();
   await task.sweepOverdue(db, allTasks, nowTs, userId, (t) => {
     const spot = spotMap[t.spotId];
     return spot ? item.deriveReleaseAt(spot, ruleMap[t.spotId], t.visitDate) : null;
   });
+  timing.sweepMs = Date.now() - tSweep;
+
+  timing.trips = trips.length;
+  timing.items = items.length;
+  timing.tasks = allTasks.length;
+  timing.totalMs = Date.now() - t0;
+  console.log('[bootstrap-timing]', JSON.stringify(timing));
+
   const user = (userRes.data || [])[0] || {};
   const quotaHealth = task.reminderHealthOf(
     allTasks,
