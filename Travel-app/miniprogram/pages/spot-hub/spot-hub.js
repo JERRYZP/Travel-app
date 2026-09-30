@@ -373,9 +373,11 @@ Page({
     const spot = e && e.detail && e.detail.spot;
     if (!spot) return;
     this.setData({ popupSpotMeta: spot });
-    if (spot.name) {
+    // SEO-9.2 标题规则：长名称优先使用 shortName，标题不超过 20 字
+    const displayName = spot.shortName || spot.name;
+    if (displayName) {
       const suffix = spot.reservationRequired === false ? '免预约·门票信息' : '门票预约·放票时间';
-      wx.setNavigationBarTitle({ title: spot.name + '·' + suffix });
+      wx.setNavigationBarTitle({ title: displayName + '·' + suffix });
     }
   },
 

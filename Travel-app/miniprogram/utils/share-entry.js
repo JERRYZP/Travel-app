@@ -8,6 +8,10 @@
  */
 
 const SOURCES = ['share', 'timeline', 'home_share', 'search', 'direct'];
+const SHARE_IMAGES = {
+  homeToday: '/images/share/home-today.jpg',
+  spotList: '/images/share/spot-hub.jpg',
+};
 
 function safeDecode(v) {
   const s = v === undefined || v === null ? '' : String(v);
@@ -83,26 +87,38 @@ function releaseTimeText(value) {
 
 function buildSpotSharePayload(spot, fallbackSpotId) {
   const spotId = (spot && spot.spotId) || fallbackSpotId || '';
-  const name = (spot && spot.name) || '这个景点';
+  // SEO-9.2 标题规则：长名称优先使用 shortName，免预约用「需要预约吗」分流
+  const displayName = (spot && (spot.shortName || spot.name)) || '这个景点';
   const times = releaseTimeText(spot && spot.releaseTime);
   let title = '景点放票信息，先设提醒';
-  if (spot && spot.remindable && spot.advanceDays && times) {
-    title = `${name}提前${spot.advanceDays}天，${times}放票，先设提醒`;
+  if (spot && spot.reservationRequired === false) {
+    title = `${displayName}需要预约吗`;
+  } else if (spot && spot.remindable && spot.advanceDays && times) {
+    title = `${displayName}提前${spot.advanceDays}天，${times}放票，先设提醒`;
   } else if (spot && spot.name) {
-    title = `${name}门票预约与开放规则`;
+    title = `${displayName}门票预约与购票规则`;
   }
   return {
     title,
     path: buildSpotHubPath(spotId, 'share'),
-    imageUrl: spotId ? '/images/spots/' + spotId + '.jpg' : '/images/banner_bg.png',
+    /* 分享封面必须留在代码包内；景点详情与景点列表复用同一张本地封面。 */
+    imageUrl: SHARE_IMAGES.spotList,
+  };
+}
+
+function buildHomeSharePayload() {
+  return {
+    title: '北京热门景点今日放票，一张表看完',
+    path: buildScenePath('today', 'home_share'),
+    imageUrl: SHARE_IMAGES.homeToday,
   };
 }
 
 function buildSpotListPayload() {
   return {
-    title: '北京热门景点放票时间，一张表看完',
+    title: '北京景点信息，一处查全，预约直达',
     path: buildSpotHubPath('', 'share'),
-    imageUrl: '/images/banner_bg.png',
+    imageUrl: SHARE_IMAGES.spotList,
   };
 }
 
@@ -125,6 +141,7 @@ function buildSceneQuery(sceneId, source) {
 
 module.exports = {
   SOURCES,
+  SHARE_IMAGES,
   parseEntryOptions,
   hasEntry,
   rememberPending,
@@ -134,6 +151,7 @@ module.exports = {
   entryTypeOf,
   entryIdOf,
   buildSpotHubPath,
+  buildHomeSharePayload,
   buildSpotSharePayload,
   buildSpotListPayload,
   buildScenePath,

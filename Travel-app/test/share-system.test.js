@@ -3,6 +3,7 @@
  * 运行：node test/share-system.test.js
  */
 const path = require('path');
+const fs = require('fs');
 const Module = require('module');
 const ROOT = path.join(__dirname, '..');
 
@@ -36,17 +37,17 @@ eq(shareEntry.buildSceneQuery('national-day-2026', 'timeline'), 'sceneId=nationa
 console.log('\n=== 2. 北京时间场景计算 ===');
 const now = new Date('2026-09-25T10:00:00Z'); // 北京时间 18:00
 const spotA = {
-  spotId: 'gugong', name: '故宫博物院', remindable: true,
+  spotId: 'gugong', name: '故宫博物院', shortName: '故宫', reservationRequired: true, remindable: true,
   advanceDays: 7, releaseTime: '20:00', earliestDate: '2026-10-02',
   popularityScore: 5, closedDays: ['monday'], openDays: [],
 };
 const spotB = {
-  spotId: 'guobo', name: '中国国家博物馆', remindable: true,
+  spotId: 'guobo', name: '中国国家博物馆', shortName: '国博', reservationRequired: true, remindable: true,
   advanceDays: 7, releaseTime: '17:00', earliestDate: '2026-10-02',
   popularityScore: 5, closedDays: ['monday'], openDays: [],
 };
 const spotClosed = {
-  spotId: 'closed', name: '今日闭馆', remindable: true,
+  spotId: 'closed', name: '今日闭馆', shortName: '今日闭馆', reservationRequired: true, remindable: true,
   advanceDays: 7, releaseTime: '09:00', earliestDate: '2026-10-02',
   popularityScore: 5, closedDays: ['friday'], openDays: [],
 };
@@ -59,6 +60,27 @@ eq(todayRows[1]._sceneEarliestText, '按规则推算，最早可约 10月2日', 
 eq(scenes.getScene('unknown').id, 'today', '未知场景回退今日');
 eq(scenes.isSceneActive(scenes.getScene('national-day-2026'), new Date('2026-10-09T04:00:00Z')), false, '国庆页过期');
 eq(scenes.buildSceneTitle(scenes.getScene('today'), 3), '今天北京有3个热门景点放票，时间都在这里', '今日分享标题含数量');
+eq(scenes.getScene('today').navTitle, '北京今日放票', 'today 场景导航标题含地域词');
+eq(scenes.getScene('national-day-2026').navTitle, '北京国庆抢票清单', '国庆场景导航标题含地域词');
+
+console.log('\n=== 2.5 分享标题三分支（P1-3） ===');
+const spotTiantan = {
+  spotId: 'tiantan', name: '天坛公园', shortName: '天坛',
+  reservationRequired: false, remindable: false, advanceDays: 7, releaseTime: '21:00',
+};
+const spotHuanqiu = {
+  spotId: 'huanqiu-yingcheng', name: '北京环球影城', shortName: '环球影城',
+  reservationRequired: true, remindable: false, advanceDays: 7,
+};
+const spotNoShortName = {
+  spotId: 'junbo', name: '中国人民革命军事博物馆',
+  reservationRequired: true, remindable: true, advanceDays: 7, releaseTime: ['08:00', '17:00', '20:00'],
+};
+eq(shareEntry.buildSpotSharePayload(spotTiantan).title, '天坛需要预约吗', '免预约景点分享标题');
+eq(shareEntry.buildSpotSharePayload(spotHuanqiu).title, '环球影城门票预约与购票规则', '无固定放票时刻分享标题');
+eq(shareEntry.buildSpotSharePayload(spotA).title, '故宫提前7天，20:00放票，先设提醒', '可提醒分享标题用短名');
+eq(shareEntry.buildSpotSharePayload(spotNoShortName).title, '中国人民革命军事博物馆提前7天，08:00、17:00、20:00放票，先设提醒', '无短名回退全名');
+eq(shareEntry.buildSpotSharePayload(null, 'gugong').title, '景点放票信息，先设提醒', '无景点数据兜底标题不变');
 
 console.log('\n=== 3. 埋点只记公开字段并去重首个动作 ===');
 const storage = {};
@@ -163,17 +185,40 @@ function instantiate(def) {
   await wait(10);
   eq(spotHub.data.showSpotPopup, true, 'spot-hub 深链拉起详情');
   eq(spotHub.data.popupSpotId, 'gugong', 'spot-hub spotId 正确');
-  spotHub.onSpotPopupLoaded({ detail: { spot: Object.assign({}, spotA, { reservationRequired: true }) } });
+  spotHub.onSpotPopupLoaded({ detail: { spot: spotA } });
+  eq(pageCalls.titles[pageCalls.titles.length - 1], '故宫·门票预约·放票时间', '详情动态标题用短名且≤20字');
   const spotShare = spotHub.onShareAppMessage();
   eq(spotShare.path, '/pages/spot-hub/spot-hub?spotId=gugong&source=share', '景点分享路径');
-  eq(/故宫博物院/.test(spotShare.title), true, '景点分享标题含名称');
+  eq(spotShare.title, '故宫提前7天，20:00放票，先设提醒', '景点分享标题用短名');
+  eq(spotShare.imageUrl, '/images/share/spot-hub.jpg', '景点详情分享封面');
+  eq(fs.existsSync(path.join(ROOT, 'miniprogram', spotShare.imageUrl)), true, '景点详情分享封面文件存在');
   eq(spotHub.onShareTimeline, undefined, '景点页不开放朋友圈单页');
+  spotHub.onSpotPopupClose();
+  const spotListShare = spotHub.onShareAppMessage();
+  eq(spotListShare.title, '北京景点信息，一处查全，预约直达', '景点 Tab 分享标题');
+  eq(spotListShare.imageUrl, '/images/share/spot-hub.jpg', '景点 Tab 分享封面');
+  eq(fs.existsSync(path.join(ROOT, 'miniprogram', spotListShare.imageUrl)), true, '景点 Tab 分享封面文件存在');
+
+  const homePage = instantiate(loadPage('miniprogram/pages/home/home.js'));
+  homePage.openSpotPopup('gugong');
+  homePage.onSpotPopupLoaded({ detail: { spot: spotA } });
+  const homeSpotShare = homePage.onShareAppMessage({ from: 'button' });
+  eq(homeSpotShare.path, '/pages/spot-hub/spot-hub?spotId=gugong&source=share', '首页详情浮窗分享景点深链');
+  eq(homeSpotShare.title, '故宫提前7天，20:00放票，先设提醒', '首页详情浮窗分享标题用短名');
+  homePage.onSpotPopupClose();
+  const homeShare = homePage.onShareAppMessage({ from: 'menu' });
+  eq(homeShare.path,
+    '/pages/share-scene/share-scene?sceneId=today&source=home_share', '首页菜单仍分享今日场景');
+  eq(homeShare.title, '北京热门景点今日放票，一张表看完', '首页分享标题');
+  eq(homeShare.imageUrl, '/images/share/home-today.jpg', '首页分享封面');
+  eq(fs.existsSync(path.join(ROOT, 'miniprogram', homeShare.imageUrl)), true, '首页分享封面文件存在');
 
   const scenePage = instantiate(loadPage('miniprogram/pages/share-scene/share-scene.js'));
   scenePage.onLoad({ sceneId: 'today', source: 'share' });
   await wait(10);
   eq(scenePage.data.sceneId, 'today', '场景页识别 today');
   eq(scenePage.data.rows.length, 2, '今日场景渲染两条');
+  eq(pageCalls.titles[pageCalls.titles.length - 1], '北京今日放票', '场景页导航标题生效');
   const sceneShare = scenePage.onShareAppMessage();
   const timelineShare = scenePage.onShareTimeline();
   eq(sceneShare.path, '/pages/share-scene/share-scene?sceneId=today&source=share', '场景页会话分享路径');
@@ -181,10 +226,10 @@ function instantiate(def) {
   eq(/今天北京有2个热门景点放票/.test(timelineShare.title), true, '场景分享标题动态含数量');
 
   console.log('\n=== 5. 模板契约 ===');
-  const fs = require('fs');
   const popupWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/components/spot-popup/spot-popup.wxml'), 'utf8');
   const popupWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/components/spot-popup/spot-popup.wxss'), 'utf8');
   const hubWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-hub/spot-hub.wxml'), 'utf8');
+  const homeWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxml'), 'utf8');
   const hubJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-hub/spot-hub.js'), 'utf8');
   const sceneJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/share-scene/share-scene.js'), 'utf8');
   eq(/open-type="share"/.test(popupWxml), true, '详情浮窗有可见转发按钮');
@@ -192,11 +237,16 @@ function instantiate(def) {
   eq(/\.popup-share-btn\s*\{[^}]*width:\s*68rpx[^}]*height:\s*68rpx[^}]*border-radius:\s*50%/.test(popupWxss), true,
     '分享按钮为放大的圆形图标按钮');
   eq(/landingMode/.test(popupWxml), true, '详情浮窗有首屏落地摘要');
+  eq(/show-share="\{\{true\}\}"/.test(homeWxml), true, '首页详情浮窗开放分享按钮');
   eq(/bindtap="onCityTap"/.test(hubWxml), true, '景点页城市入口可点击');
   eq(/onCityTap\(\)[\s\S]*更多城市敬请期待/.test(hubJs), true, '城市入口提示更多城市敬请期待');
   eq(/onShareAppMessage/.test(hubJs), true, 'spot-hub 有会话分享处理');
   eq(/onShareTimeline/.test(hubJs), false, 'spot-hub 不开放朋友圈单页');
   eq(/onShareTimeline/.test(sceneJs), true, '场景页开放朋友圈单页');
+  const spotsJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spots/spots.json'), 'utf8'));
+  const hubJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-hub/spot-hub.json'), 'utf8'));
+  eq(spotsJson.navigationBarTitleText, '北京景点门票预约·放票时间', 'spots 列表页静态标题');
+  eq(hubJson.navigationBarTitleText, '北京景点预约·放票时间表', 'spot-hub 兜底静态标题保留');
 
   if (fail) {
     console.log(`\n${fail} FAILED`);

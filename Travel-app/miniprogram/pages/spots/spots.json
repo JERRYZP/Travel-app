@@ -6,5 +6,6 @@
     "van-loading": "@vant/weapp/loading/index",
     "van-dialog": "@vant/weapp/dialog/index"
   },
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "navigationBarTitleText": "北京景点门票预约·放票时间"
 }

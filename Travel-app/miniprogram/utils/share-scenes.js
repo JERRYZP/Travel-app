@@ -24,7 +24,7 @@ const SCENES = {
   today: {
     id: 'today',
     kind: 'today',
-    navTitle: '今日放票',
+    navTitle: '北京今日放票',
     title: '北京今日放票',
     subtitle: '按北京时间实时计算 · 库存以官方为准',
     shareTitle: '今天北京热门景点放票时间，整理好了',
@@ -33,7 +33,7 @@ const SCENES = {
   'national-day-2026': {
     id: 'national-day-2026',
     kind: 'national',
-    navTitle: '国庆抢票清单',
+    navTitle: '北京国庆抢票清单',
     title: '2026 国庆北京抢票清单',
     subtitle: '故宫、国博、城楼等 10 个热门景点',
     shareTitle: '2026国庆北京热门景点放票清单',

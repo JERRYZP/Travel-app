@@ -8,5 +8,5 @@
     "van-loading": "@vant/weapp/loading/index"
   },
   "navigationStyle": "custom",
-  "navigationBarTitleText": "北京景点预约规则"
+  "navigationBarTitleText": "北京景点预约·放票时间表"
 }
