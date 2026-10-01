@@ -49,9 +49,14 @@
   <block wx:if="{{!loading && trips.length === 0 && history.length === 0}}">
     <view class="empty-onboard">
       <view class="empty-hero-card">
-        <image class="empty-hero-bg" src="{{asset.home('empty-hero-bg.png')}}" mode="aspectFill" />
+        <!-- ⚠️ 空态头图走**包内小图**，不走云存储：这是新用户落地的第一屏，
+             押在一次网络请求上就等于把「第一眼」交给弱网。
+             ⚠️ 也**不能**写成 `{{asset.home('empty-hero-bg.png')}}`：`cloud-assets.wxs`
+             的 home() 只吃运行时变量，编译期还会按字面量参数额外解析一次本地路径
+             `/images/...`，本地没这个文件就是 `Error: ENOENT`（2026-09-30 踩过）。 -->
+        <image class="empty-hero-bg" src="/images/home/empty-hero-bg.jpg" mode="aspectFill" />
         <view class="empty-hero-content">
-          <image class="empty-hero-logo" src="{{asset.home('empty-hero-logo.png')}}" mode="aspectFit" />
+          <image class="empty-hero-logo" src="/images/home/empty-hero-logo.png" mode="aspectFit" />
           <view class="empty-hero-copy">
             <text class="empty-hero-title">把每张票的放票时间盯住</text>
             <text class="empty-hero-sub">选好出行日和想去景点，直接算清哪天几点抢</text>

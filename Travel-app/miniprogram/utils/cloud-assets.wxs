@@ -1,19 +1,18 @@
+/* 景点图 / 二维码 / 提醒示例图走云存储 `static/v0.3/images/`：微信「代码质量」
+   会把整个代码包内所有图片字节数相加，阈值只有 200KB，大图必须出包。
+   源文件备份在仓库根目录 `cloud-assets/`，用 scripts/upload-cloud-assets.sh 上传。
+
+   ⚠️ 这里只放**吃运行时变量**的函数。参数写成字面量（`asset.spot('gugong')`）
+   编译期会额外按本地路径 `/images/spots/gugong.jpg` 解析一次，本地没这个文件就是
+   `Error: ENOENT` —— 2026-09-30 add-trip 与首页空态头图都因为这个炸过。
+   包内小图（图标、头像、分享封面、空态头图）一律在 WXML 里写死本地字面量路径。
+   护栏见 scripts/check-miniprogram.py 的 check_wxs_asset_literals()。 */
 var CLOUD_ROOT = 'cloud://cloud1-d9g9f4hja396d6e92.636c-cloud1-d9g9f4hja396d6e92-1487385918/static/v0.3/images/';
 
 function spot(spotId) {
   return CLOUD_ROOT + 'spots/' + spotId + '.jpg';
 }
 
-function city(name) {
-  return CLOUD_ROOT + 'cities/' + name;
-}
-
-function home(name) {
-  return CLOUD_ROOT + 'home/' + name;
-}
-
 module.exports = {
-  spot: spot,
-  city: city,
-  home: home
+  spot: spot
 };

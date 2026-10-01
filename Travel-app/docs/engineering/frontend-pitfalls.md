@@ -31,9 +31,19 @@
 
 - `svg-icon` 读取 `images/icons/*.svg`；图标是预填色，不能靠 CSS `color` 改色。
 - 删除页面或图标前必须反查模板、组件、测试和路由。
-- 本地 `<image>` 不支持 webp；景点图保持 jpg/png。
 - 微信代码质量线要求主包小于 1.5MB，且**整个代码包的图片/音频合计不超过 200KB**（按字节求和，不是单文件限制）。
 - 大图源文件放仓库根目录 `cloud-assets/images/`，通过 `scripts/upload-cloud-assets.sh` 上传到 `static/v0.3/images/`；小程序内用 `utils/cloud-assets.wxs` 或 `utils/assets.js` 生成云文件 ID。
+- ⚠️ **`utils/cloud-assets.wxs` 的函数只吃运行时变量，不给字面量参数**（2026-09-30 事故）：`asset.city('beijing.png')` 这类写法除了产出云文件 ID，开发者工具预览编译还会按字面量**额外解析一次本地路径** `/images/cities/beijing.png`，本地没这个文件就是 `Error: ENOENT: no such file or directory`。同一个 commit 里 `asset.spot(item.spotId)` 没事，是因为动态值不走向量路径解析。
+  - 包内小图（图标、头像、分享封面、空态头图）：WXML 里直接写 `src="/images/..."` 字面量，不走 WXS。
+  - 云图：必须传运行时变量（`asset.spot(item.spotId)`、`item.qrCode`）。
+  - 护栏：`scripts/check-miniprogram.py` 的 `check_wxs_cloud_literal()`，扫到字面量参数即失败。
+- ⚠️ **200KB 额度只剩 2.4KB**（2026-09-30）。`banner_bg.png` 65.9KB + `share/` 两张 41KB 已占掉一半，新增任何包内图片前先算总账。
+- **包内小图怎么压**（2026-09-30 三张图共 44.9KB → 17.0KB 的做法）：
+  - 先判 alpha 是不是**恒定值**。`beijing.png` 全图 alpha 恒为 128（均匀 50%），没有任何透明度信息——垫上页面底色 `#F8F3EA` 压平成 RGB 后**渲染结果像素级一致**，再转 JPEG（44.9KB → 3.9KB）。恒定 alpha 是纯浪费，且它会把图锁死在 PNG。
+  - 线稿/插画类（`empty-hero-bg`）PNG 调色板几乎无收益（30KB），JPEG 才是对的（11.2KB）。
+  - 带**真**透明的（`empty-hero-logo` 有 68.6% 全透明）必须留 PNG，走 `quantize(colors=…, method=FASTOCTREE, dither=FLOYDSTEINBERG)`；记得先核对调色板档位，24 色与 40 色在 78rpx 上屏看没有差别。
+  - **按实际上屏尺寸导出**，不要留超采样：卡片 690rpx 宽 → 2x 屏就是 690 物理像素，按 690×224 导出后 `aspectFill` 缩放正好 1.000（零重采样），比原图 740×240 更清晰。
+- 本地 `<image>` 不支持 webp；景点图保持 jpg/png。
 - `miniprogram/images/` 只保留图标、默认头像、分享封面等小资源；新增或替换资源后必须运行 `npm run check`。
 
 ## Mock 镜像

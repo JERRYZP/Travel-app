@@ -11,6 +11,7 @@
   5. WXSS 引用的 CSS 变量是否在 app.wxss 里定义（未定义 = 静默失效成默认色）
   6. 主包体积（代码质量线 1.5MB）与图片/音频资源总量（代码质量线 200KB）
   7. mock.js 只被 utils/api.js 引用（否则 121KB 镜像被打进主包）
+  8. 云资源 WXS 函数（cloud-assets.wxs）不得用字面量参数（预览会 ENOENT）
 
 用法：python3 scripts/check-miniprogram.py   （退出码非 0 表示有问题）
 
@@ -84,6 +85,43 @@ def check_wxs(files):
                 else os.path.join(os.path.dirname(f), path)
             if not os.path.exists(base):
                 problems.append(f"{f}: WXS {path} 找不到")
+
+
+def check_wxs_cloud_literal(files):
+    """云资源 WXS 函数不得用字面量参数。
+
+    返回 `cloud://` 的 WXS 函数（`cloud-assets.wxs` 的 spot/city/home），在开发者
+    工具预览编译时会按**字面量参数**额外解析一次本地路径 `/images/...`；本地没有
+    同名文件就抛 `Error: ENOENT: no such file or directory`。
+    2026-09-30 踩过：add-trip 的 `asset.city('beijing.png')` 与首页空态的
+    `asset.home('empty-hero-bg.png')`，图在云上完好，预览直接炸。
+
+    传运行时变量（`asset.spot(item.spotId)`）不受影响。
+    包内小图请在 WXML 里直接写 `src="/images/..."` 字面量。
+    """
+    for f in files:
+        if not f.endswith(".wxml"):
+            continue
+        raw = open(f, encoding="utf-8").read()
+        # 注释里会引用这些写法做反面教材，扫之前先把 `<!-- -->` 抹成等长空白，
+        # 这样行号不变，又不会把注释当成调用。
+        src = re.sub(r"<!--.*?-->", lambda m: " " * len(m.group(0)), raw, flags=re.S)
+        cloud_modules = []
+        for m in re.finditer(r'<wxs[^>]*module="([^"]+)"[^>]*src="([^"]+)"', src):
+            module, wxs_src = m.group(1), m.group(2)
+            path = os.path.join(ROOT, wxs_src.lstrip("/")) if wxs_src.startswith("/") \
+                else os.path.join(os.path.dirname(f), wxs_src)
+            if os.path.exists(path) and "cloud://" in open(path, encoding="utf-8").read():
+                cloud_modules.append(module)
+        for module in cloud_modules:
+            for m in re.finditer(
+                    r"\b%s\.(\w+)\(\s*['\"]([^'\"]*)['\"]" % re.escape(module), src):
+                line = src[:m.start()].count("\n") + 1
+                problems.append(
+                    f'{f}:{line}: {module}.{m.group(1)}("{m.group(2)}") 用了字面量参数，'
+                    f"预览会因本地路径缺文件报 ENOENT；包内小图请直接写 src=\"/images/...\"，"
+                    f"云图必须传运行时变量"
+                )
 
 
 def check_pages():
@@ -190,6 +228,7 @@ def main():
     check_icons(files)
     check_components(files)
     check_wxs(files)
+    check_wxs_cloud_literal(files)
     check_pages()
     check_handlers(files)
     check_css_vars(files)

@@ -24,7 +24,12 @@
         删了不报错、不警告，页面一切正常，只是 `navOpacity` 永远是 0。 -->
 <scroll-view id="page-scroll" scroll-y class="page-scroll" style="height: 100vh;" scroll-top="{{pageScrollTop}}" scroll-with-animation bindscroll="onScroll">
   <view class="page-body" style="padding-top: {{statusBarHeight + navBarHeight + 8}}px;">
-    <image class="city-bg" src="{{asset.city('beijing.png')}}" mode="aspectFit" />
+    <!-- ⚠️ 城市插画是**包内小图**，不是云图：它要付首屏网络往返，而在等云端的那几帧
+         正好是 `navOpacity` 从 0 淡入的时候，背景会闪一下。
+         ⚠️ 也**不能**写成 `{{asset.city('beijing.png')}}`：`cloud-assets.wxs` 里的
+         city()/home() 只吃运行时变量，编译期还会按字面量参数额外解析一次本地路径
+         `/images/...`，本地没这个文件就是 `Error: ENOENT`（2026-09-30 踩过）。 -->
+    <image class="city-bg" src="/images/cities/beijing.jpg" mode="aspectFit" />
 
     <!-- 行程模块：城市 + 日期段 -->
     <view class="form-section form-section-first">
