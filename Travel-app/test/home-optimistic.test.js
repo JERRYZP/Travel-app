@@ -161,7 +161,9 @@ console.log('=== 3. 兜底路径与实况路径共用同一个加工函数 ===')
 
   /* 这是「不跳变」的结构性保证：两条路走同一个 buildHomeData，
      同一份返回体必然产出同一个补丁。为缓存另写一条加工路径 = 必然漂。 */
-  eq(/buildHomeData\(cached, resolveNow\(\), \{ silent: true \}\)/.test(JS), true,
+  eq(/const cachedServerMs = parseTimeMs\(cached\.serverNow\)/.test(JS), true,
+    '缓存路径优先使用缓存返回体的 serverNow');
+  eq(/buildHomeData\(cached, cachedNow, \{ silent: true \}\)/.test(JS), true,
     '缓存路径走 buildHomeData（静默态，不抹掉菜单与已忽略气泡）');
   eq(/buildHomeData\(res, resolveNow\(\), \{ silent \}\)/.test(JS), true,
     '实况路径走同一个 buildHomeData');

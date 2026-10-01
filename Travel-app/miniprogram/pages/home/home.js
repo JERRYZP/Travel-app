@@ -300,7 +300,12 @@ Page({
     if (!silent) {
       const cached = homeCache.read();
       if (cached) {
-        this.applyHomeData(buildHomeData(cached, resolveNow(), { silent: true }));
+        /* 缓存帧必须用缓存返回体自带的 serverNow 计算，不能先用设备时间。
+           否则跨零点、设备时钟偏快/偏慢时，缓存与紧随其后的实况会把同一份
+           数据解释成不同日期，逐键比对反而制造一次无意义 setData。 */
+        const cachedServerMs = parseTimeMs(cached.serverNow);
+        const cachedNow = cachedServerMs ? new Date(cachedServerMs) : resolveNow();
+        this.applyHomeData(buildHomeData(cached, cachedNow, { silent: true }));
         trace.mark('cache');
       } else {
         /* 无缓存：画本地 slice 推出的**真实**日期（不是通用占位文案），
