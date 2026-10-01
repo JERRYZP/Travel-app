@@ -16,7 +16,7 @@
 - V0.3 主流程已实现：四步流程、日期锚点、清单策略、PAGE-008 授权硬闸门。
 - 新用户首页空态已重构：动态结果预览、提醒样式入口、高热度 S 级景点「近期热门景点放票」。
 - 分享、深链、今日/国庆场景页、提醒额度健康度与 48 小时预警均已实现。
-- 当前状态是 **部分云函数已部署并冒烟、整体未上线**：`reminder` 已于 2026-09-28 部署并通过只读 `home.bootstrap` 冒烟；工作区仍有未提交的小程序/云函数改动，真机 live verify 与微信后台隐私指引未完成。测试通过不能写成“已上线”。
+- 当前状态是 **部分云函数已部署并冒烟、整体未上线**：`reminder` 已于 2026-09-28 部署并通过只读 `home.bootstrap` 冒烟；2026-10-01 的预约模板/双模板兼容与景点页改动仍在未提交工作区，真机 live verify 与微信后台隐私指引未完成。测试通过不能写成“已上线”。
 - 完整状态、待部署范围和待验证项见 `docs/engineering/current-state.md`。
 
 ## 权威来源
@@ -27,7 +27,7 @@
 | API、请求/响应、错误码 | `API-契约.md` |
 | 数据库集合与索引 | `数据库索引.md` |
 | 视觉 token、尺寸与组件规范 | `figma_design.md` |
-| 提醒发送故障与排障 | `提醒推送排障清单.md` |
+| 提醒发送故障与排障 | `docs/engineering/reminder-troubleshooting.md` |
 | 工程结构、数据流、当前状态 | `docs/engineering/` |
 | 规则迁移和无丢失索引 | `docs/engineering/rule-index.md` |
 
@@ -42,7 +42,7 @@
 | 景点/规则数据、mock、seed | `.claude/rules/data-contracts.md` |
 | `cloudfunctions/**`、appid/cloudEnv | `.claude/rules/deployment.md`、`docs/engineering/current-state.md` |
 | API 域与数据模型 | `API-契约.md`、`docs/engineering/architecture.md` |
-| 提醒发送和 MISSED | `提醒推送排障清单.md`、`docs/engineering/domain-rules.md` |
+| 提醒发送和 MISSED | `docs/engineering/reminder-troubleshooting.md`、`docs/engineering/domain-rules.md` |
 
 路径规则由 Claude Code 按匹配文件自动加载；根文件不复制完整机制。
 
@@ -80,7 +80,7 @@ npm run check
 ```
 
 - 若从父目录 `my/` 进入，先执行 `cd Travel-app`。
-- `npm test`：当前 25 套回归测试。
+- `npm test`：当前 27 套回归测试。
 - `npm run check`：校验 WXML 方法绑定、图标资源、组件路径、CSS 变量和页面三件套。
 - 微信开发者工具：打开 `Travel-app/`；Vant 首次使用前执行“工具 -> 构建 npm”。
 

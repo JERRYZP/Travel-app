@@ -278,7 +278,7 @@ const sysInfo = wx.getWindowInfo();   // 基础库 2.20.1+
    ```
    不影响发送逻辑，因此「9-26 之后未部署 `notifier`」**不构成功能故障**，只是用户收到的推送正文仍是旧措辞（前端 4 处已统一为「备好游客信息」）。建议随下次部署一并更新，非阻塞。
 
-   ⚠️ **但 `notifier` 的云端配置必须单独核对**（控制台操作，代码修不了）。`提醒推送排障清单.md` 记录过它的定时触发器曾被清空，导致**不推送、也不判 MISSED，任务永久停在 WAITING**。上线前请确认：
+   ⚠️ **但 `notifier` 的云端配置必须单独核对**（控制台操作，代码修不了）。`docs/engineering/reminder-troubleshooting.md` 记录过它的定时触发器曾被清空，导致**不推送、也不判 MISSED，任务永久停在 WAITING**。上线前请确认：
    - [ ] 定时触发器 `notifierEveryMinute`，7 段式 cron `0 * * * * * *`
    - [ ] 环境变量 `WX_APPID` / `WX_APPSECRET` / `SUBSCRIBE_TEMPLATE_ID`
    - [ ] 超时时间 60 秒（默认 3 秒会掐断 30 秒错峰窗口）

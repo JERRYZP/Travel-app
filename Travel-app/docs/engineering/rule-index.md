@@ -41,7 +41,7 @@
 | `RULE-WXML-001` | `CLAUDE.md` 121 | WXML 选中态与 setData 引用 | `.claude/rules/frontend.md`、`docs/engineering/frontend-pitfalls.md` | `extracted` |
 | `RULE-REMINDERCFG-001` | `CLAUDE.md` 122-127 | 系统权限、订阅额度、PAGE-008 硬闸门 | `docs/engineering/domain-rules.md`、`.claude/rules/frontend.md` | `extracted` |
 | `RULE-REMINDERCFG-002` | `产品文档.md` 3.5 / PAGE-002 | 轻量提醒入口订阅授权补充后继续原动线 | `产品文档.md` `REMINDER-RULE-009`、`docs/engineering/domain-rules.md` | `delegated` |
-| `RULE-NOTIFYOPS-001` | `CLAUDE.md` 128-137 | 状态收敛、台账自愈、发送链路 | `提醒推送排障清单.md`、`.claude/rules/deployment.md` | `delegated` |
+| `RULE-NOTIFYOPS-001` | `CLAUDE.md` 128-137 | 状态收敛、台账自愈、发送链路 | `docs/engineering/reminder-troubleshooting.md`、`.claude/rules/deployment.md` | `delegated` |
 | `RULE-AUTH-001` | `CLAUDE.md` 138-139 | 无感登录、资料编辑与反馈管理 | `docs/engineering/architecture.md` | `extracted` |
 | `RULE-DIFF-001` | `CLAUDE.md` 140-143 | 难度真身、mock/seed 与数据确认 | `.claude/rules/data-contracts.md` | `extracted` |
 | `RULE-SILENT-001` | `CLAUDE.md` 144 | 首页静默刷新 | `docs/engineering/frontend-pitfalls.md` | `extracted` |
@@ -58,7 +58,7 @@
 3. `delegated` 条目必须指向仍存在的权威文档。
 4. `history` 内容不得作为当前约束重新写回根规则。
 5. 重写根规则后搜索旧字段、旧路由和退役状态词，确认没有非历史引用。
-6. `npm test` 25 套、`npm run check`、`git diff --check` 均通过。
+6. 迁移验收当时 `npm test` 25 套、`npm run check`、`git diff --check` 均通过；当前工作区状态以 `docs/engineering/current-state.md` 为准。
 7. 根文件中的本地路径引用全部存在；路径规则 frontmatter 可解析。
 
 ## 尚未完成的最终验收
