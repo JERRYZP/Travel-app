@@ -95,13 +95,13 @@
     <text>{{searchMode ? '没有找到相关景点，换个词试试' : '该分类下暂无景点'}}</text>
   </view>
 
-  <!-- 两列宫格（卡片无选择按钮，点击进详情浮窗） -->
+  <!-- 两列宫格（卡片无行程选择按钮；可提醒景点直接设提醒，其余区域进详情浮窗） -->
   <view wx:else class="spot-grid">
     <block wx:if="{{searchMode}}">
-      <spot-card wx:for="{{searchResults}}" wx:key="spotId" spot="{{item}}" bind:cardtap="onCardTap" />
+      <spot-card wx:for="{{searchResults}}" wx:key="spotId" spot="{{item}}" bind:cardtap="onCardTap" bind:remind="onCardRemind" />
     </block>
     <block wx:else>
-      <spot-card wx:for="{{spots}}" wx:key="spotId" spot="{{item}}" bind:cardtap="onCardTap" />
+      <spot-card wx:for="{{spots}}" wx:key="spotId" spot="{{item}}" bind:cardtap="onCardTap" bind:remind="onCardRemind" />
     </block>
   </view>
 </view>

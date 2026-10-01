@@ -1,12 +1,20 @@
 <wxs module="asset" src="../../utils/cloud-assets.wxs"></wxs>
 <wxs module="fmt" src="../../utils/format.wxs"></wxs>
-<!-- 卡片样式与首页「北京热门景点推荐」（home.wxml spot-card）一模一样，仅不渲染选择按钮（聚合页行动收敛到详情浮窗） -->
+<!-- 卡片难度贴图片右上角，提醒入口直接放在景点名右侧，减少只设单个景点提醒时的二次跳转。 -->
 <view class="spot-card" bindtap="onTap">
-  <image class="spot-card-img" src="{{asset.spot(spot.spotId)}}" mode="aspectFill" lazy-load="{{true}}" />
+  <view class="spot-card-img-wrap">
+    <image class="spot-card-img" src="{{asset.spot(spot.spotId)}}" mode="aspectFill" lazy-load="{{true}}" />
+    <view wx:if="{{spot.reservationRequired && spot.difficultyLabel}}" class="spot-card-diff diff-{{spot.difficultyLabel.key}}">{{spot.difficultyLabel.text}}</view>
+    <view wx:elif="{{!spot.reservationRequired}}" class="spot-card-nobook">无需预约</view>
+    <view wx:elif="{{!spot.remindable}}" class="spot-card-nobook">随买随用</view>
+  </view>
   <view class="spot-card-body">
     <view class="spot-card-title">
       <text class="spot-card-name">{{spot.name}}</text>
-      <view wx:if="{{spot.reservationRequired && spot.difficultyLabel}}" class="spot-card-diff diff-{{spot.difficultyLabel.key}}">{{spot.difficultyLabel.text}}</view>
+      <view wx:if="{{spot.remindable}}" class="spot-card-remind" catchtap="onRemind">
+        <text>设提醒</text>
+        <view class="spot-card-remind-arrow"></view>
+      </view>
     </view>
     <view class="spot-card-tags">
       <block wx:if="{{spot.remindable}}">
@@ -16,7 +24,4 @@
       <text wx:else class="spot-card-tag card-desc">{{spot.cardDesc}}</text>
     </view>
   </view>
-  <!-- 选择按钮位（home 同位置）：免预约/无固定放票时刻显示信息 tag，其余留空 -->
-  <view wx:if="{{!spot.reservationRequired}}" class="spot-card-nobook">无需预约</view>
-  <view wx:elif="{{!spot.remindable}}" class="spot-card-nobook">随买随用</view>
 </view>

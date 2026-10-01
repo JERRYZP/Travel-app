@@ -86,6 +86,20 @@
         <text>{{spot.specialNotice}}</text>
       </view>
 
+      <!-- 规则推算的最早可约日：只解释预约窗口，不判断官方库存。 -->
+      <view wx:if="{{spot.reservationRequired && !landingMode}}" class="popup-bookable-window">
+        <view class="popup-bookable-icon">
+          <svg-icon name="calendar" size="18px" />
+        </view>
+        <view class="popup-bookable-copy">
+          <view class="popup-bookable-head">
+            <text class="popup-bookable-label">今日最早可约</text>
+            <text class="popup-bookable-note">根据预约规则推算，最终以官方为准</text>
+          </view>
+          <text class="popup-bookable-value">{{earliestDateLabel}}</text>
+        </view>
+      </view>
+
       <!-- 预约方式（B 层免预约 → 购票 / 入园方式） -->
       <view class="popup-section-title">{{spot.reservationRequired ? '预约方式' : '购票 / 入园方式'}}</view>
       <view wx:if="{{spot.reservationRequired && spot.entries.length}}" class="popup-channel-tip">

@@ -184,6 +184,48 @@
   margin-bottom: 16rpx;
 }
 
+/* 今日最早可约：规则推算结果，放在预约方式前作为预约窗口提示。 */
+.popup-bookable-window {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin: 0 0 28rpx;
+  padding: 20rpx 22rpx;
+  background: #FBF5E6;
+  border: 1rpx solid #EAD9B7;
+  border-radius: 16rpx;
+}
+.popup-bookable-icon {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  background: #F2E4C0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.popup-bookable-copy { flex: 1; min-width: 0; }
+.popup-bookable-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+}
+.popup-bookable-label { font-size: 24rpx; color: #936F5B; flex-shrink: 0; }
+.popup-bookable-value {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.popup-bookable-note {
+  margin-left: auto;
+  font-size: 20rpx;
+  color: #B09878;
+  flex-shrink: 0;
+}
+
 .popup-entries {
   margin-bottom: 32rpx;
 }

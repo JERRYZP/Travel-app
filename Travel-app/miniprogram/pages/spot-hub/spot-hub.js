@@ -364,6 +364,18 @@ Page({
     this.openDetail(e.detail.spotId);
   },
 
+  /* 卡片上的「设提醒」直接进入现有日期选择与授权链路，不再必须先打开详情。 */
+  onCardRemind(e) {
+    const d = (e && e.detail) || {};
+    if (!d.spotId) return;
+    reminderFlow.openDateSheet(this, {
+      spotId: d.spotId,
+      spotName: d.spotName,
+      title: '设置提醒',
+      remindOn: true,
+    });
+  },
+
   openDetail(spotId) {
     if (!spotId) return;
     this.setData({ showSpotPopup: true, popupSpotId: spotId, popupSpotMeta: null });
