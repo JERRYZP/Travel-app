@@ -432,7 +432,10 @@ function crossCheck() {
   eq(/auth-icon-warm"><svg-icon name="bell-fill4"/.test(settingsWxml), true,
     '放票提醒使用暖色新铃铛图标');
   eq(/本地记账|微信侧余额不可查/.test(settingsWxml), false, '不再出现「本地记账 / 微信侧余额不可查」等技术侧词汇');
-  eq(/总是保持以上选择/.test(settingsWxml), true, 'tips 里给出勾选引导');
+  eq(/1、微信通知提醒需要主动授权，1次授权可发送1条提醒；/.test(settingsWxml)
+    && /2、微信一次性订阅每次点“补授权”只增加1次授权次数；/.test(settingsWxml)
+    && /3、该能力限时免费，后续因服务器压力可能需付费。/.test(settingsWxml),
+  true, 'tips 固定展示新版三条说明');
 }
 
 /* ============================================================

@@ -11,8 +11,14 @@
  * 由 `test/quota-heal.test.js` 对同一组输入交叉断言（两边结果不一致即失败）。
  */
 
-/** 订阅消息模板 ID（与 miniprogram/utils/notify.js、cloudfunctions/notifier 兜底常量对齐；2026-09-13 随换 appid 更新） */
-const DEFAULT_SUBSCRIBE_TEMPLATE_ID = 'V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q';
+/** 订阅消息模板 ID（与 miniprogram/utils/notify.js、cloudfunctions/notifier 兜底常量对齐；2026-10-01 切换为「预约开始提醒」） */
+const LEGACY_SUBSCRIBE_TEMPLATE_ID = 'V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q';
+const DEFAULT_SUBSCRIBE_TEMPLATE_ID = '_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA';
+
+/** 旧任务没有 templateId，按旧模板记账；新任务由 task.submit 写入新模板。 */
+function taskTemplateIdOf(task) {
+  return (task && task.templateId) || LEGACY_SUBSCRIBE_TEMPLATE_ID;
+}
 
 /**
  * 读取某个模板的本地额度。
@@ -24,7 +30,7 @@ function subscribeQuotaOf(user, templateId) {
   if (Object.prototype.hasOwnProperty.call(quotas, tpl)) {
     return Number(quotas[tpl]) || 0;
   }
-  const legacyTemplateId = user.subscribeTemplateId || DEFAULT_SUBSCRIBE_TEMPLATE_ID;
+  const legacyTemplateId = user.subscribeTemplateId || LEGACY_SUBSCRIBE_TEMPLATE_ID;
   if (legacyTemplateId === tpl) return Number(user.subscribeQuota) || 0;
   return 0;
 }
@@ -114,7 +120,9 @@ async function healSubscribeQuota(db, openid, templateId) {
 }
 
 module.exports = {
+  LEGACY_SUBSCRIBE_TEMPLATE_ID,
   DEFAULT_SUBSCRIBE_TEMPLATE_ID,
+  taskTemplateIdOf,
   subscribeQuotaOf,
   totalSubscribeQuota,
   shouldHealQuota,

@@ -46,9 +46,12 @@ const SCAN_PAGE_SIZE = 100;          // 分页取数，避免 limit(500) 漏扫
 const SCAN_MAX_ROWS = 800;           // 单次巡检安全上限（时间窗只有约 6 分钟，超出的靠下分钟重扫补齐）
 const SEND_CONCURRENCY = 5;          // 同一时刻在途的微信请求数，错峰窗口内并发
 
-/** 订阅消息模板 ID（微信公众平台「活动开始通知」公共模板；2026-09-13 换 appid 到 wx05c160a589b97d76 后重新申请）。
- *  环境变量优先；控制台未配 env 时用兜底常量，保证重新部署不丢配置。与 miniprogram/utils/notify.js 对齐。 */
-const TEMPLATE_ID = process.env.SUBSCRIBE_TEMPLATE_ID || 'V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q';
+/** 订阅消息模板 ID。
+ *  旧任务没有 templateId 字段，继续按旧模板发送；新任务由 reminder 写入新模板 ID。
+ *  环境变量只作为 testSend 的默认值，不再覆盖任务自身的模板。 */
+const LEGACY_TEMPLATE_ID = 'V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q';
+const DEFAULT_TEMPLATE_ID = '_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA';
+const TEMPLATE_ID = process.env.SUBSCRIBE_TEMPLATE_ID || DEFAULT_TEMPLATE_ID;
 
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
 
@@ -65,10 +68,39 @@ function beijingMonthDay(dateStr) {
 }
 
 function beijingDateTime(dateStr) {
-  // date5 字段是 date 类型，要求「年月日 + 时刻」，如 2019-10-20 07:00（北京时区）
+  // time2 字段要求「年月日 + 时刻」，如 2019-10-20 07:00（北京时区）
   const d = new Date(new Date(dateStr).getTime() + BEIJING_OFFSET_MS);
   const s = d.toISOString();
   return `${s.slice(0, 4)}-${s.slice(5, 7)}-${s.slice(8, 10)} ${s.slice(11, 13)}:${s.slice(14, 16)}`;
+}
+
+function beijingDateCn(dateStr) {
+  // time5 字段展示预约日期，使用完整的年月日。
+  const d = new Date(new Date(dateStr).getTime() + BEIJING_OFFSET_MS);
+  const s = d.toISOString();
+  return `${Number(s.slice(0, 4))}年${Number(s.slice(5, 7))}月${Number(s.slice(8, 10))}日`;
+}
+
+/** 任务模板选择：旧任务没有 templateId，必须回退旧模板，不能跟着默认模板漂移。 */
+function templateIdOfTask(task) {
+  return (task && task.templateId) || LEGACY_TEMPLATE_ID;
+}
+
+/** 按模板生成数据体；旧模板与新模板字段不同，不能混用。 */
+function buildSubscribeData({ templateId, spotName, releaseAt, visitDate, offset }) {
+  if (templateId === LEGACY_TEMPLATE_ID) {
+    return {
+      thing4: { value: String(spotName || '景点') },
+      date5: { value: beijingDateTime(releaseAt) },
+      thing7: { value: `${offset}分钟后放票，记得备好游客信息` },
+    };
+  }
+  return {
+    thing1: { value: String(spotName || '景点') },
+    time2: { value: beijingDateTime(releaseAt) },
+    thing3: { value: `预约即将在${offset}分钟后开启` },
+    time5: { value: beijingDateCn(visitDate || releaseAt) },
+  };
 }
 
 /**
@@ -174,7 +206,7 @@ function subscribeQuotaOf(user, templateId) {
   if (Object.prototype.hasOwnProperty.call(quotas, templateId)) {
     return Number(quotas[templateId]) || 0;
   }
-  const legacyTemplateId = user.subscribeTemplateId || TEMPLATE_ID;
+  const legacyTemplateId = user.subscribeTemplateId || LEGACY_TEMPLATE_ID;
   if (legacyTemplateId === templateId) return Number(user.subscribeQuota) || 0;
   return 0;
 }
@@ -262,20 +294,22 @@ async function sendOne(task, spot, offset) {
   }
 
   const spotName = spot ? spot.name : '景点';
+  const templateId = templateIdOfTask(task);
   const payload = {
     touser: task.userId,
-    template_id: TEMPLATE_ID,
+    template_id: templateId,
     // 落首页并自动弹出该景点的详情浮窗（全站统一浮窗形态）。
     // 微信只支持「页面路径 + ?查询串」，浮窗是页面内状态、无法直接寻址，靠 spotId 让页面自己弹。
     page: spotLandingPage(task.spotId),
     miniprogram_state: 'formal',
     lang: 'zh_CN',
-    data: {
-      // 模板「活动开始通知」字段：thing4=活动名称 / date5=活动时间 / thing7=温馨提示（2026-08-21 对照公众平台修正）
-      thing4: { value: spotName },
-      date5: { value: beijingDateTime(task.releaseAt) },
-      thing7: { value: `${offset}分钟后放票，记得备好游客信息` },
-    },
+    data: buildSubscribeData({
+      templateId,
+      spotName,
+      releaseAt: task.releaseAt,
+      visitDate: task.visitDate,
+      offset,
+    }),
   };
 
   try {
@@ -288,14 +322,14 @@ async function sendOne(task, spot, offset) {
     // HTTP 接口成功时 errcode=0；微信侧错误统一为非 0 errcode
     if (res && Number(res.errcode) === 0) {
       // 发送成功 → 扣减一次性订阅额度（best-effort）
-      await consumeSubscribeQuota(task.userId, TEMPLATE_ID);
+      await consumeSubscribeQuota(task.userId, templateId);
       return { ok: true, res };
     }
 
     const errCode = res ? res.errcode : null;
     const errMsg = res ? res.errmsg : 'empty response';
     if (Number(errCode) === 43101) {
-      await invalidateSubscribeQuota(task.userId, TEMPLATE_ID, errCode, errMsg);
+      await invalidateSubscribeQuota(task.userId, templateId, errCode, errMsg);
     }
     console.error('[notifier] send-error-full', JSON.stringify({
       taskId: task._id, spotId: task.spotId, offset,
@@ -544,7 +578,7 @@ async function sweepMissed() {
   });
 
   let marked = 0;
-  const healCandidates = new Set();
+  const healCandidates = new Map();
   for (const t of tasks) {
     await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).update({
       data: {
@@ -557,14 +591,17 @@ async function sweepMissed() {
     });
     marked += 1;
     // 台账自愈候选：确实发过（lastSendError 非空）且失败原因不是本地配置/链路问题
-    if (t.userId && shouldHealQuota(t.lastSendError)) healCandidates.add(t.userId);
+    if (t.userId && shouldHealQuota(t.lastSendError)) {
+      const templateId = templateIdOfTask(t);
+      healCandidates.set(`${t.userId}|${templateId}`, { openid: t.userId, templateId });
+    }
   }
 
   // 台账自愈（见 shouldHealQuota）：把「本地记着有额度、任务却 MISSED」的假额度清零，
   // 否则页面一直写「已授权 N 次」，用户以为覆盖到了，实际条条收不到
   let zeroed = 0;
-  for (const openid of healCandidates) {
-    if (await healSubscribeQuota(openid, TEMPLATE_ID)) zeroed += 1;
+  for (const candidate of healCandidates.values()) {
+    if (await healSubscribeQuota(candidate.openid, candidate.templateId)) zeroed += 1;
   }
   return { marked, zeroed };
 }
@@ -647,18 +684,21 @@ exports.main = async (event) => {
         const { touser, miniprogramState = 'formal', lang = 'zh_CN', data, templateId, spotId } = event || {};
         if (!touser) return { success: false, error: 'testSend 需要 touser（已授权订阅的 openid）' };
         if (!WX_APPID || !WX_APPSECRET) return { success: false, error: 'WX_APPID/WX_APPSECRET 未配置' };
+        const tpl = templateId || TEMPLATE_ID;
         const payload = {
           touser,
-          template_id: templateId || TEMPLATE_ID,
+          template_id: tpl,
           // 传 spotId 可顺带验证「落地首页自动弹详情浮窗」，不传则落裸首页
           page: spotLandingPage(spotId),
           miniprogram_state: miniprogramState,
           lang,
-          data: data || {
-            thing4: { value: '测试提醒' },
-            date5: { value: '2026-08-21 18:30' },
-            thing7: { value: '订阅消息通道验证（活动开始通知）' },
-          },
+          data: data || buildSubscribeData({
+            templateId: tpl,
+            spotName: '测试提醒',
+            releaseAt: new Date('2026-08-21T18:30:00+08:00'),
+            visitDate: '2026-08-21',
+            offset: 5,
+          }),
         };
         try {
           const res = await sendSubscribeMessageHttp(payload);
@@ -690,4 +730,4 @@ exports.main = async (event) => {
   }
 };
 
-exports._internal = { collectDue, staggerDelays, beijingHm, beijingMonthDay, beijingDateTime, getAccessToken, sendSubscribeMessageHttp, httpJson, shouldHealQuota, healSubscribeQuota, spotLandingPage, WX_APPID, WX_APPSECRET, TEMPLATE_ID };
+exports._internal = { collectDue, staggerDelays, beijingHm, beijingMonthDay, beijingDateTime, beijingDateCn, buildSubscribeData, templateIdOfTask, getAccessToken, sendSubscribeMessageHttp, httpJson, shouldHealQuota, healSubscribeQuota, spotLandingPage, WX_APPID, WX_APPSECRET, LEGACY_TEMPLATE_ID, DEFAULT_TEMPLATE_ID, TEMPLATE_ID };

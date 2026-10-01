@@ -10,6 +10,7 @@ const { createDb } = require('./mock-db');
 const { COLLECTIONS, PENDING_CART_TRIP_ID } = require('../cloudfunctions/reminder/lib/schema');
 const trip = require('../cloudfunctions/reminder/lib/trip');
 const cart = require('../cloudfunctions/reminder/lib/cart');
+const { DEFAULT_SUBSCRIBE_TEMPLATE_ID } = require('../cloudfunctions/reminder/lib/quota');
 const task = require('../cloudfunctions/reminder/lib/task');
 const actions = require('../cloudfunctions/reminder/lib/trip-item-actions');
 const tripItem = require('../cloudfunctions/reminder/lib/trip-item');
@@ -321,6 +322,20 @@ const FUTURE_VISIT = time.addDays(TODAY, 30); // releaseAt = TODAY + 23 → 还�
       item: await fetchItem(free), spot: spotsSeed.find(s => s.spotId === 'tiantan'), rule: null, task: null, nowTs: time.now(),
     });
     eq(dF.canSetReminder, false, '免预约项没有提醒可言');
+  }
+
+  console.log('=== 14.3 updateReminder：重建任务写入当前模板 ID ===');
+  {
+    const db = freshDb();
+    await seedTrip(db, 'T1', ['gugong'], time.addDays(TODAY, -1), time.addDays(TODAY, 40));
+    const id = await seedItem(db, { tripId: 'T1', spotId: 'gugong', visitDate: FUTURE_VISIT });
+    const res = await actions.updateReminder(db, USER, {
+      itemId: id, remindOn: true, channels: ['OFFICIAL_ACCOUNT'], offsets: [5],
+    });
+    eq(res.success, true, '开启提醒成功');
+    const tasks = db._dump(COLLECTIONS.REMINDER_TASKS);
+    eq(tasks.length, 1, '重建 1 条提醒任务');
+    eq(tasks[0].templateId, DEFAULT_SUBSCRIBE_TEMPLATE_ID, '重建任务写入当前订阅模板 ID');
   }
 
   console.log('=== 15. remove：删单条连带任务；行程清空则行程消失 ===');

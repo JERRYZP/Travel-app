@@ -20,6 +20,7 @@ const trip = require('../cloudfunctions/reminder/lib/trip');
 const timeline = require('../cloudfunctions/reminder/lib/timeline');
 const cart = require('../cloudfunctions/reminder/lib/cart');
 const task = require('../cloudfunctions/reminder/lib/task');
+const { DEFAULT_SUBSCRIBE_TEMPLATE_ID } = require('../cloudfunctions/reminder/lib/quota');
 
 const spotsSeed = require('../data/spots.json').spots;
 const rulesSeed = require('../data/rules.json').rules;
@@ -153,6 +154,7 @@ function freshDb() {
   const tasks = db._dump(COLLECTIONS.REMINDER_TASKS);
   eq(tasks.length, 1, '数据库中仅 1 条任务');
   eq(Boolean(tasks[0].itemId), true, '提醒任务已挂 itemId');
+  eq(tasks[0].templateId, DEFAULT_SUBSCRIBE_TEMPLATE_ID, '新任务写入当前订阅模板 ID');
   const items = db._dump(COLLECTIONS.TRIP_ITEMS);
   const taskItem = items.find(i => i._id === tasks[0].itemId);
   eq(taskItem.spotId, 'gugong', '任务关联到正确行程项');

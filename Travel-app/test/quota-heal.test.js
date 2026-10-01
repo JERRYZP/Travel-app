@@ -55,6 +55,7 @@ const FUTURE = new Date(Date.now() + 3600 * 1000);
 function overdueTask(id, lastSendError) {
   const t = {
     _id: id, userId: USER, spotId: 'gugong', visitDate: '2026-10-01',
+    templateId: TPL,
     releaseAt: PAST, offsets: [5], channels: ['OFFICIAL_ACCOUNT'],
     backendStatus: 'WAITING', sentOffsets: [],
   };

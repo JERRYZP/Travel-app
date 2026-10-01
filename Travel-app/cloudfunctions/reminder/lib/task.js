@@ -13,7 +13,7 @@ const tripItem = require('./trip-item');
 const cart = require('./cart');
 const trip = require('./trip');
 const {
-  shouldHealQuota, healSubscribeQuota, DEFAULT_SUBSCRIBE_TEMPLATE_ID,
+  shouldHealQuota, healSubscribeQuota, taskTemplateIdOf, DEFAULT_SUBSCRIBE_TEMPLATE_ID,
 } = require('./quota');
 
 /* ============ 纯函数区 ============ */
@@ -36,7 +36,7 @@ const QUOTA_WARNING_WINDOW_HOURS = 48;
  * 微信一次性订阅按“发送一次消息”消耗 1 次授权；一条任务配置多个 offset 时，
  * 每个尚未发送的 offset 都占 1 次需求。因此这里统计的是 offset，不是任务数。
  */
-function reminderHealthOf(tasks, remainingQuota, nowTs = time.now()) {
+function reminderHealthOf(tasks, remainingQuota, nowTs = time.now(), templateId = '') {
   const nowMs = new Date(nowTs).getTime();
   const quota = Math.max(0, Number(remainingQuota) || 0);
   let pendingMessageCount = 0;
@@ -44,6 +44,7 @@ function reminderHealthOf(tasks, remainingQuota, nowTs = time.now()) {
 
   (tasks || []).forEach(t => {
     if (!t || t.backendStatus !== ReminderBackendStatus.WAITING) return;
+    if (templateId && taskTemplateIdOf(t) !== templateId) return;
     const releaseMs = new Date(t.releaseAt).getTime();
     if (!Number.isFinite(releaseMs) || releaseMs <= nowMs) return;
     const sent = new Set(t.sentOffsets || []);
@@ -339,7 +340,7 @@ async function sweepOverdue(db, tasks, nowTs = time.now(), userId, resolveReleas
     return new Date(releaseAt).getTime() <= nowTs.getTime();
   });
 
-  const healCandidates = new Set();
+  const healCandidates = new Map();
   /* 并发写（2026-09-30）：原来是 `for` 里逐条 await，M 条过期任务 = M 次串行写往返，
      全部串在首页响应链上。这些写彼此无依赖，可以一起发。
 
@@ -367,12 +368,19 @@ async function sweepOverdue(db, tasks, nowTs = time.now(), userId, resolveReleas
   patches.forEach(({ t, patch }) => {
     Object.assign(t, patch);
     /* 台账自愈候选：确实发过（lastSendError 非空）且失败原因不是本地配置/链路问题 */
-    if (t.userId && shouldHealQuota(t.lastSendError)) healCandidates.add(t.userId);
+    if (t.userId && shouldHealQuota(t.lastSendError)) {
+      const templateId = taskTemplateIdOf(t);
+      healCandidates.set(`${t.userId}|${templateId}`, { openid: t.userId, templateId });
+    }
   });
 
   const owner = userId || (overdue[0] && overdue[0].userId);
-  if (owner && healCandidates.has(owner)) {
-    await healSubscribeQuota(db, owner, DEFAULT_SUBSCRIBE_TEMPLATE_ID);
+  if (owner && healCandidates.size > 0) {
+    for (const candidate of healCandidates.values()) {
+      if (candidate.openid === owner || !userId) {
+        await healSubscribeQuota(db, candidate.openid, candidate.templateId);
+      }
+    }
   }
   return overdue.length;
 }
@@ -477,6 +485,7 @@ async function submit(db, userId, event) {
       if (remindOn) {
         const taskData = {
           userId,
+          templateId: DEFAULT_SUBSCRIBE_TEMPLATE_ID,
           itemId,
           tripId: targetTripId,
           spotId: cartItem.spotId,

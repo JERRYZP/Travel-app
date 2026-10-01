@@ -59,8 +59,8 @@
   <!-- 说明 -->
   <view class="tips-card">
     <text class="tips-title">提醒机制说明</text>
-    <text class="tips-item">· 微信订阅消息为「一次性订阅」：每次授权对应可发送 1 条放票提醒；可多次点击“补授权次数+1”积累，若微信侧拒收或耗尽会自动归零。</text>
-    <text class="tips-item">· 补授权时微信会弹一次确认窗，这是微信一次性订阅的固定规则，小程序无法跳过。弹窗里勾上「总是保持以上选择，不再询问」再点允许，以后补授权就都不弹窗了（勾选状态永久有效，想改只能去微信设置里改）。</text>
-    <text class="tips-item">· 短信提醒将在下个迭代上线，敬请期待。</text>
+    <text class="tips-item">1、微信通知提醒需要主动授权，1次授权可发送1条提醒；</text>
+    <text class="tips-item">2、微信一次性订阅每次点“补授权”只增加1次授权次数；</text>
+    <text class="tips-item">3、该能力限时免费，后续因服务器压力可能需付费。</text>
   </view>
 </view>

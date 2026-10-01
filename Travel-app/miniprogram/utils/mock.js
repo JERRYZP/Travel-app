@@ -1417,6 +1417,7 @@ const handlers = {
         const taskId = 'mock-task-' + (++taskSeq);
         db.tasks[taskId] = {
           _id: taskId,
+          templateId: 'mock-template',
           itemId: item._id,
           tripId: targetTripId,
           spotId: c.spotId,
@@ -1623,7 +1624,7 @@ const handlers = {
         activeKeys.forEach(k => { delete db.tasks[k]; });
         const taskId = 'mock-task-' + (++taskSeq);
         db.tasks[taskId] = {
-          _id: taskId, itemId: item._id, tripId: item.tripId, spotId: item.spotId,
+          _id: taskId, templateId: 'mock-template', itemId: item._id, tripId: item.tripId, spotId: item.spotId,
           visitDate: item.visitDate, releaseAt, offsets, channels,
           backendStatus: 'WAITING', sentOffsets: [],
         };

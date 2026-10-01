@@ -9,8 +9,8 @@ Page({
     subscribeOk: false,
     templateReady: false,
     templateId: '',
-    templateName: '放票提醒',
-    templateDesc: '放票前通知你',
+    templateName: '预约开始提醒',
+    templateDesc: '预约开启前通知你',
     subscribeQuota: 0,
     quotaLabel: '未生效',
     quotaTone: 'off',
@@ -30,8 +30,8 @@ Page({
       navBarHeight: g.navBarHeight,
       templateReady: !!template.templateId,
       templateId: template.templateId || '',
-      templateName: template.name || '放票提醒',
-      templateDesc: template.description || '放票前通知你',
+      templateName: template.name || '预约开始提醒',
+      templateDesc: template.description || '预约开启前通知你',
     });
   },
 

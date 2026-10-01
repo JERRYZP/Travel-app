@@ -16,6 +16,7 @@ const time = require('./time');
 const item = require('./item');
 const tripItem = require('./trip-item');
 const cart = require('./cart');
+const { DEFAULT_SUBSCRIBE_TEMPLATE_ID } = require('./quota');
 
 /* ============ 内部工具 ============ */
 
@@ -294,6 +295,7 @@ async function updateReminder(db, userId, { itemId, remindOn, channels, offsets 
       await db.collection(COLLECTIONS.REMINDER_TASKS).add({
         data: {
           userId,
+          templateId: DEFAULT_SUBSCRIBE_TEMPLATE_ID,
           itemId,
           tripId: it.tripId,
           spotId: it.spotId,

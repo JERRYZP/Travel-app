@@ -127,6 +127,7 @@ Page({
         } else if (res.reason === 'banned') {
           wx.showToast({ title: '该模板已被微信限制，暂无法补齐', icon: 'none' });
         } else {
+          console.warn('[setup] fill quota failed', res);
           wx.showToast({ title: '授权未完成，请重试', icon: 'none' });
         }
       });

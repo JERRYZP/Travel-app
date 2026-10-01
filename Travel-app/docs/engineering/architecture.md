@@ -65,7 +65,7 @@ reminder_cart 是提交前的暂存区，不属于正式行程。
 ```
 
 - `trip_items`：行程 + 景点 + 出行日的最小执行单元。
-- `reminder_tasks`：由明确开启提醒的行程项派生，挂 `itemId`。
+- `reminder_tasks`：由明确开启提醒的行程项派生，挂 `itemId`；新任务写入 `templateId`，旧任务缺字段时发送侧回退旧订阅模板。
 - `reminder_cart`：提交前清单；提交成功后才创建/合并正式行程并清空。
 
 ## 数据真身与镜像

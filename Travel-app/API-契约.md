@@ -848,9 +848,10 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 #### `subscribe.add` / `subscribe.get` — 一次性订阅消息额度
 
-`wx.requestSubscribeMessage` 每次授权 = 可发 1 条订阅消息。额度按模板存入 `users.subscribeQuotas[templateId]`，同时维护旧字段 `users.subscribeQuota` 作为总数；授权成功 +1、notifier 发送成功 -1、微信返回 `43101` 时对应模板清零。当前业务只有「放票提醒」一个模板，但协议按 templateId 设计，后续可直接扩展多模板。
+`wx.requestSubscribeMessage` 每次授权 = 可发 1 条订阅消息。额度按模板存入 `users.subscribeQuotas[templateId]`，同时维护旧字段 `users.subscribeQuota` 作为总数；授权成功 +1、notifier 发送成功 -1、微信返回 `43101` 时对应模板清零。发送侧兼容旧「活动开始通知」与新「预约开始提醒」两个模板：任务有 `templateId` 时按其发送，旧任务没有该字段时回退旧模板；额度也按任务实际模板核销。后续可直接扩展更多模板。
 
 > ⚠️ 微信限制：一次用户点击只能触发一次同模板授权申请，最多增加 1 条额度。“总是保持以上选择”只免去后续弹窗，不允许在一次点击后的异步链里连续申请 N 条；客户端必须按“一次点击 → 最多 +1”展示和上报缺口。
+> ⚠️ 客户端 `wx.requestSubscribeMessage` 返回 `20001`（`No template data return, verify the template id exist`）时，表示当前 AppID 查不到该模板：优先核对模板 ID 逐字符一致，以及模板是否创建在当前小程序 AppID 下。该错误发生在 `subscribe.add` 之前，不要误判为双模板发送分流或额度台账问题。
 
 **`subscribe.add`**（用户授权后前端调用，云端按当前 openid 记 +1）：
 
@@ -861,7 +862,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 **返回：**
 
 ```javascript
-{ success: true, quota: 3, totalQuota: 3, quotas: { "V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q": 3 }, templateId: "V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q" }
+{ success: true, quota: 3, totalQuota: 3, quotas: { "_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA": 3 }, templateId: "_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA" }
 ```
 
 **`subscribe.get`**（查询剩余额度与提醒健康度，提醒设置页展示）：
@@ -877,8 +878,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   success: true,
   quota: 3,
   totalQuota: 3,
-  quotas: { "V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q": 3 },
-  templateId: "V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q",
+  quotas: { "_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA": 3 },
+  templateId: "_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA",
   pendingMessageCount: 4,      // 未来 WAITING 任务中尚未发送的 offset 总数
   nearestRemindAt: "2026-09-27T...",
   level: "short",              // idle | ready | low | short | exhausted
@@ -896,7 +897,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 **云函数名：`notifier`**
 **说明：** 定时触发器（每分钟一次），前端不直接调用。走**微信服务端 HTTP 接口**发送订阅消息（不依赖小程序端触发，定时触发可用）。
 
-**环境变量（云函数配置）**：`WX_APPID`（小程序 AppID，缺省回退 `wx05c160a589b97d76`）、`WX_APPSECRET`（必填，小程序密钥）、`SUBSCRIBE_TEMPLATE_ID`（订阅模板 ID，缺省回退内置常量）。三者由 `sendOne` 读取，未配置时该任务记 `failed`（不会误标为 MISSED）。
+**环境变量（云函数配置）**：`WX_APPID`（小程序 AppID，缺省回退 `wx05c160a589b97d76`）、`WX_APPSECRET`（必填，小程序密钥）、`SUBSCRIBE_TEMPLATE_ID`（仅作为 `testSend` 的默认订阅模板 ID，缺省回退内置常量 `_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA`）。正常定时发送不从环境变量取模板：`reminder_tasks.templateId` 优先，旧任务缺省回退 `V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q`。
 
 ### `notifier.testSend` — 发送测试订阅消息（排查/验证通道）
 
@@ -909,7 +910,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | touser | String | 是 | 已授权订阅该模板的 openid |
 | miniprogramState | String | 否 | 默认 `formal`（正式版） |
 | lang | String | 否 | 默认 `zh_CN` |
-| data | Object | 否 | 不传用内置测试数据（thing4/date5/thing7，对应「活动开始通知」模板：活动名称/活动时间/温馨提示） |
+| data | Object | 否 | 不传用内置测试数据（thing1/time2/thing3/time5，对应「预约开始提醒」模板：预约门票/开始时间/温馨提示/预约日期） |
 | templateId | String | 否 | 默认用 `TEMPLATE_ID` |
 
 **返回：**

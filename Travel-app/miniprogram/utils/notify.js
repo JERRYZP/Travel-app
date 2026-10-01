@@ -9,13 +9,13 @@ const api = require('./api.js');
  */
 
 // 订阅消息模板注册表：与 cloudfunctions/notifier 的兜底常量保持一致。
-// 目前业务只用「放票提醒」一个模板，但底层按 templateId 记账，后续加模板不需要改协议。
+// 目前业务只用「预约开始提醒」一个模板，但底层按 templateId 记账，后续加模板不需要改协议。
 const SUBSCRIBE_TEMPLATES = Object.freeze([
   {
     key: 'spot-release',
-    name: '放票提醒',
-    description: '放票前通知你，提醒你及时去官方渠道抢票',
-    templateId: 'V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q',
+    name: '预约开始提醒',
+    description: '预约开启前通知你，提醒你及时去官方渠道预约',
+    templateId: '_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA',
   },
 ]);
 const PRIMARY_SUBSCRIBE_TEMPLATE = SUBSCRIBE_TEMPLATES[0];
@@ -139,12 +139,22 @@ function requestSubscribe(templateId) {
              会读到旧余额，用户明明刚授权却看到“还差 1 次”，被迫再点一遍。 */
           api.reminder.subscribe.add(tpl)
             .then(() => resolve({ ok: true, value }))
-            .catch(error => resolve({ ok: false, reason: 'account-failed', value, error }));
+            .catch(error => {
+              console.error('[subscribe] subscribe.add failed', { templateId: tpl, error });
+              resolve({ ok: false, reason: 'account-failed', value, error });
+            });
           return;
         }
-        resolve({ ok: false, reason: reasonOfValue(value), value });
+        const reason = reasonOfValue(value);
+        console.warn('[subscribe] requestSubscribeMessage non-accept', { templateId: tpl, value, reason });
+        resolve({ ok: false, reason, value });
       },
       fail: err => {
+        console.error('[subscribe] requestSubscribeMessage fail', {
+          templateId: tpl,
+          errCode: err && err.errCode,
+          errMsg: err && (err.errMsg || err.message),
+        });
         // 20004 = 用户关闭了订阅消息总开关（微信设置-订阅消息），弹不出授权框，需引导去设置页开启
         if (err && err.errCode === 20004) {
           resolve({ ok: false, reason: 'master-switch-off', errCode: err.errCode, errMsg: err.errMsg });

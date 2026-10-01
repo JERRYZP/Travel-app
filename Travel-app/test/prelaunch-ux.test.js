@@ -213,8 +213,12 @@ function resetWx(patch = {}) {
   eq(/\.service-row \{[^}]*border-bottom: 1rpx solid var\(--color-border\)/.test(helpWxss), true,
     '在线客服与意见反馈之间有分隔线');
   const notifierSrc = fs.readFileSync(path.join(ROOT, 'cloudfunctions/notifier/index.js'), 'utf8');
-  eq(/thing7: \{ value: `\$\{offset\}分钟后放票，记得备好游客信息` \}/.test(notifierSrc), true,
-    '订阅消息保留倒计时并提示游客信息');
+  eq(/thing1: \{ value: String\(spotName \|\| '景点'\) \}/.test(notifierSrc), true,
+    '订阅消息预约门票显示景点名称');
+  eq(/thing3: \{ value: `预约即将在\$\{offset\}分钟后开启` \}/.test(notifierSrc), true,
+    '订阅消息温馨提示保留开启倒计时');
+  eq(/请注意查看/.test(notifierSrc), false,
+    '订阅消息温馨提示不包含“请注意查看”');
 
   console.log('\n=== 4.1 开发环境新用户预览 ===');
   const appSrc = fs.readFileSync(path.join(ROOT, 'miniprogram/app.js'), 'utf8');
