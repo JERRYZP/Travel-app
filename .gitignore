@@ -62,16 +62,15 @@ Travel-app/临时资料/
 .claude/settings.local.json
 skills-lock.json
 
-# Non-Travel projects — kept on disk, excluded from this repo
-.agents/
-bead-curtain-text/
-clap-dashboard/
-coin-flip/
-dashboard-review/
-repayment-h5/
-rwa-financial/
-rwa-ops/
-6wa/
-jump/
-ruxue/
-zhunqian/
+# ===== 根目录白名单：本仓库只跟踪 Travel-app 这一个项目 =====
+# 仓库根（my/）下还住着别的项目与本机素材：6wa/、jump/、ruxue/、zhunqian/、
+# clap-dashboard/、rwa-financial/、.agents/、.claude/、node_modules/ … 它们都只是
+# 「碰巧放在同一个目录」，不属于本仓库，也不该被 Travel-app 的发版流程带进去。
+#
+# ⚠️ 用白名单而不是逐个列黑名单：以前这里是 `.agents/`、`clap-dashboard/` 那样的穷举，
+# 每多一个目录就得记得补一条，漏一次就是一次误提交。现在根目录下**除以下三项外全部忽略**，
+# 新增任何目录/文件都不必再改这个文件（要跟踪就显式加一条 `!/xxx`）。
+/*
+!/.gitignore
+!/Claude.md
+!/Travel-app/
