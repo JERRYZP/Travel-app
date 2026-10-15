@@ -77,11 +77,17 @@ Page({
         },
       });
     } else if (entry.type === 'WEB' && entry.url) {
-      wx.navigateTo({
-        url: '/pages/webview/webview?url=' + encodeURIComponent(entry.url) + '&title=' + encodeURIComponent(entry.label || '景区官网'),
+      /* 与 spot-popup 同口径：官网统一「复制链接」，不进 web-view。
+       * 微信 web-view 只认公众平台「业务域名」白名单，而官网都是第三方域名
+       * （故宫 / 天安门 / 清华…），无法加入，进去只会是打不开的白页。
+       * 且 wx.navigateTo 本身会成功，「跳转失败再复制」的兜底永远不触发。别再改回 web-view。 */
+      wx.setClipboardData({
+        data: entry.url,
+        success: () => {
+          wx.showToast({ title: '链接已复制，请在手机浏览器打开', icon: 'none', duration: 2500 });
+        },
         fail: () => {
-          wx.setClipboardData({ data: entry.url });
-          wx.showToast({ title: '打开失败，已复制链接', icon: 'none' });
+          wx.showToast({ title: '复制失败，请稍后重试', icon: 'none' });
         },
       });
     } else if (entry.type === 'OFFICIAL_ACCOUNT') {
@@ -90,14 +96,6 @@ Page({
       } else {
         wx.showToast({ title: '请关注公众号「' + entry.value + '」', icon: 'none' });
       }
-    }
-  },
-
-  onCopyEntry(e) {
-    const entry = e.currentTarget.dataset.entry;
-    if (entry && entry.url) {
-      wx.setClipboardData({ data: entry.url });
-      wx.showToast({ title: '官网链接已复制', icon: 'none' });
     }
   },
 

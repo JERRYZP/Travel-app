@@ -20,6 +20,9 @@ const PAGE_GAP_RPX = 0;
 /* 滚多少像素把导航栏底色从全透明推到不透明 */
 const NAV_FADE_PX = 50;
 const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
+/* 首页 onShow 的复用窗口（2026-10-13 调用量优化）：距上次成功 bootstrap 不足这个时长，
+   又有本地缓存时，切回首页不再重复发一次网络。详见 onShow / loadHome 的注释。 */
+const HOME_BOOTSTRAP_TTL_MS = 30 * 1000;
 const EMPTY_RELEASE_FALLBACK = release.buildHomeReleasePreview([], new Date()).sample;
 
 /**
@@ -39,6 +42,18 @@ function buildHomeData(res, now, opts) {
        模板里做不了「只有第一趟」。 */
     Object.assign({}, t, { _weak: i === 0 }));
   const primary = trips.length ? trips[0] : null;
+  const history = res.history || [];
+  /* 摘要卡展示的那一趟（2026-10-15 用户口径）：优先最近未结束行程；
+     全都结束了就退化成**最近的一段过往行程**，卡片副标题显示「已结束」。
+     起因：所有行程都结束之后首页只剩一条「过往行程」折叠条，一屏空白。
+
+     ⚠️ **它只服务摘要卡的渲染**，别拿它当「还能继续加提醒的那一趟」：
+        `onAddTrip` 的预填只认 `primaryTrip`（用过往行程的日期段预填 PAGE-005，
+        会直接生成一个已经过去的时间范围）。
+     ⚠️ 这里**不重新判定哪趟结束了**：`trips` / `history` 的拆分是服务端算的
+        （`endDate >= today` 留在主墙，次日归历史），数组序也是服务端给的
+        （history 按 `startDate` 降序），页面只沿同一个顺序回退一层。 */
+  const summaryTrip = primary || history[0] || null;
   const releasePreview = buildEmptyPreview(res, now);
   const serverNow = res.serverNow ? new Date(res.serverNow) : now;
   const quotaWarningDayKey = release.toDateStr(serverNow);
@@ -50,14 +65,15 @@ function buildHomeData(res, now, opts) {
   return {
     trips,
     primaryTrip: primary,
+    summaryTrip,
     /* 被划掉的气泡在重新加载后清空：新的一次会话可以再问一次，
        但同一次会话里不重复追问（「忽略」的语义 = 提前进入中性态）。
        `undefined` = 保留现有值 —— 静默刷新和缓存绘制都不能抹掉它。 */
     dismissed: silent ? undefined : [],
-    history: res.history || [],
+    history,
     loading: false,
     /* 空态判定：没有任何进行中行程、也没有历史行程 */
-    isBlank: trips.length === 0 && (res.history || []).length === 0,
+    isBlank: trips.length === 0 && history.length === 0,
     previewNewUser: false,
     /* ⚠️ 胶囊是**顶层独立字段**，不挂在 stickyBanner 下——横幅只覆盖眼下一小时，
        而胶囊要回答「后面还有哪几场」。别在这里自己从 trips 里挑放票时刻：
@@ -132,6 +148,10 @@ Page({
 
     trips: [],
     history: [],
+    /* 顶部摘要卡渲染的那一趟：= 最近未结束行程，全都结束时退化成最近一段过往行程
+       （副标题显示「已结束」）。⚠️ 与 `primaryTrip` 分开：后者是「还能继续加提醒的
+       那一趟」，只有 `onAddTrip` 的预填读它。 */
+    summaryTrip: null,
     primaryTrip: null,
     /* 摘要卡底部的「即将提醒」胶囊：接下来的放票时刻（服务端拼好文案）。
        来源是 stickyBanner.pills —— 不放独立字段，避免两处口径漂。 */
@@ -198,7 +218,11 @@ Page({
   },
 
   onShow() {
-    this.loadHome();
+    /* ⚠️ 只有**带缓存**时才可能跳过网络（判定在 loadHome 的 cached 分支里）：
+       没有缓存的首次进入必须走网络，否则会永远停在骨架层。
+       写入后的刷新一律走 `loadHome({ silent: true })`，不经过这条路径 —— 它们是刷新后
+       新状态的唯一来源，永远要发请求。这里省掉的只是「用户什么都没干、切出去又切回来」。 */
+    this.loadHome({ allowTtlReuse: true });
   },
 
   onShareAppMessage(options) {
@@ -245,6 +269,11 @@ Page({
 
   loadHome(opts) {
     const silent = opts && opts.silent;
+    /* 30 秒复用窗口：只有调用方**显式允许**（目前仅 onShow）且距上次成功 bootstrap
+       不足 TTL 时才可能命中。`onExitNewUserPreview` 等路径不传这个标记，保持每次必拉。 */
+    const ttlFresh = Boolean(opts && opts.allowTtlReuse)
+      && this._lastBootOkAt > 0
+      && (Date.now() - this._lastBootOkAt) < HOME_BOOTSTRAP_TTL_MS;
     /* 耗时分段（2026-09-30）：`cache` = 用本地缓存画出第一帧的耗时；
        `net` = 请求往返（含云函数冷启动，最大头）；`setdata` = 返回到首屏画完。
 
@@ -273,6 +302,7 @@ Page({
         loading: false,
         trips: [],
         history: [],
+        summaryTrip: null,
         primaryTrip: null,
         bannerPills: [],
         banner: null,
@@ -307,6 +337,14 @@ Page({
         const cachedNow = cachedServerMs ? new Date(cachedServerMs) : resolveNow();
         this.applyHomeData(buildHomeData(cached, cachedNow, { silent: true }));
         trace.mark('cache');
+        /* 复用窗口内：缓存就是 30 秒内的服务端返回体，直接收工，不再发一次网络。
+           ⚠️ 回放的是服务端返回体的逐字节副本（与 live 路径同一个 buildHomeData），
+           不是页面重新推导状态 —— 不触犯「首页状态不得由页面重新推导」这条硬门禁。
+           最坏效果只是状态晚 ≤ HOME_BOOTSTRAP_TTL_MS 可见。 */
+        if (ttlFresh) {
+          trace.end({ branch: 'ttl-reuse' });
+          return;
+        }
       } else {
         /* 无缓存：画本地 slice 推出的**真实**日期（不是通用占位文案），
            这样云端返回后内容逐字节相同，补丁比对不会产生 setData。
@@ -332,6 +370,9 @@ Page({
       const serverMs = parseTimeMs(res.serverNow);
       if (serverMs) app.globalData.serverSkewMs = serverMs - Date.now();
       homeCache.write(res);
+      /* 记下这次成功的时刻，作为 onShow 复用窗口的起点。
+         只读时钟，不参与任何业务判定。 */
+      this._lastBootOkAt = Date.now();
       this.applyHomeData(buildHomeData(res, resolveNow(), { silent }));
       trace.mark('setdata');
       trace.end({
@@ -438,10 +479,13 @@ Page({
     this.setData({ showReminderQuotaWarning: false });
   },
 
-  /* ===== 分段吸顶测量 =====
-     不用 position: sticky —— skyline 下表现不稳。沿用既有做法：
-     onPageScroll 里测每个分段标题在文档中的位置，越过阈值就切成固定态，
-     并撑一个等高的 spacer 防止内容跳动。 */
+  /* ===== 分段吸顶 =====
+     ⚠️ 这里原来有一段「onPageScroll 里测分段标题、越过阈值切成固定态 + 撑 spacer」的
+        手工吸顶，2026-09-21 随行程分段标题的吸顶一起删掉了（那个标题与摘要卡重复）。
+        2026-10-12 起，吸顶的是**日期分段标题**，走 `trip-section` 内的
+        `position: sticky`（页面是 WebView 渲染，`skylineRenderEnable: false`），
+        偏移量由本页下发 `day-sticky-top`。别再往 onPageScroll 里加测位逻辑：
+        每帧一轮 `boundingClientRect` 比渲染层自己算贵得多。 */
 
   /**
    * 滚到某条行程项（进首页自动定位）。
@@ -471,6 +515,10 @@ Page({
    * 和已经选过的景点重新输一遍是纯浪费。预填的是 `primaryTrip`（trips[0]，进行中
    * 行程按开始日期升序的第一个，与首页置顶那趟是同一趟），不是别的：
    * 空态时 primaryTrip 为 null，参数自然为空，页面维持从零填。
+   *
+   * ⚠️ **不是 `summaryTrip`**（2026-10-15）：摘要卡在「所有行程都结束」时会退化展示
+   * 最近的一段**过往行程**，那是渲染层的兜底；拿它的日期段预填 PAGE-005 会直接
+   * 生成一个已经过去的时间范围（提交时被判 1016「行程项所在日期已结束」）。
    *
    * 传 tripId 只影响两件事——预填 + 预览里把**这一趟**已有的项标成「已加入行程」；
    * 生成时间线依旧只按「当前所选日期段 × 景点」即时算，不会因此读别趟行程的状态。

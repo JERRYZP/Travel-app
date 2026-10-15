@@ -1,6 +1,10 @@
 const app = getApp();
 const api = require('../../utils/api.js');
 const notify = require('../../utils/notify.js');
+const oa = require('../../utils/official-account.js');
+
+/** 成功卡片自动返回首页的秒数；倒计时文案同步走弱化提示 */
+const AUTO_BACK_SECONDS = 4;
 
 Page({
   data: {
@@ -23,6 +27,12 @@ Page({
     gateText: '正在检查提醒权限',
     submitting: false,
     showSampleSheet: false,
+    /* 成功态：轻量卡片替代原来的 toast，卡片里只留一行公众号入口 */
+    showSuccess: false,
+    successTitle: '',
+    oaEntryText: oa.SETUP_ENTRY,
+    successCountdown: AUTO_BACK_SECONDS,
+    showOaSheet: false,
   },
 
   onLoad() {
@@ -173,25 +183,41 @@ Page({
     api.reminder.cart.commit(payload).then(res => {
       wx.hideLoading();
       this.setData({ submitting: false });
-      /* needsOaAuth 继续由接口保留；公众号渠道尚未打通，当前不展示关注引导。 */
-      let toast;
+      /* ⚠️ `needsOaAuth` 是**景点官方公众号**渠道的字段，与本页的自有公众号入口无关：
+         前者尚未打通、继续由接口保留，本页不展示关注引导；后者是自己账号的攻略入口，
+         只借成功态留一行，不做关注拦截。 */
+      let title;
       if (disableReminders) {
-        toast = '已加入行程，未设置提醒';
+        title = '已加入行程，未设置提醒';
       } else if ((res.expiredReminder || 0) > 0) {
         /* 勾了提醒、但放票时刻在提交前已经过去 —— 服务端这类项照常落行程项、
            不再建任务（见 lib/task.js）。文案由前端生成，服务端那句同义的 toast
            在 PAGE-008 这条路径上没有出口。
            ⚠️ 必须排在 createdTasks > 0 之前判断：过期项同时计入 noReminder，
               排在后面会掉进「提醒已设置」分支，等于告诉用户提醒设上了，而实际没设。 */
-        toast = `已加入行程 · ${res.expiredReminder} 项已过放票时间，提醒无法设置`;
+        title = `已加入行程 · ${res.expiredReminder} 项已过放票时间，提醒无法设置`;
       } else if (res.createdTasks > 0 && notify.consumeFirstReminderSuccessTip()) {
-        toast = '提醒已设置，先备好游客信息';
+        title = '提醒已设置，先备好游客信息';
       } else {
-        toast = res.createdTasks > 0
+        title = res.createdTasks > 0
           ? '提醒已设置，放票前见'
           : '行程已添加，未设置提醒';
       }
-      wx.showToast({ title: toast, icon: 'none', duration: 2000 });
+      /* 成功反馈改成卡片（原来是 toast）：卡片里那一行公众号入口需要能被点到，
+         toast 上放不了可点元素。默认停 4 秒，角上有主动关闭，底部给弱化的倒计时提示。
+         ⚠️ 自动返回与倒计时要在用户点开二维码时一起取消（见 onSuccessOa），
+            否则读二维码读到一半会被弹走。 */
+      this.setData({ showSuccess: true, successTitle: title, successCountdown: AUTO_BACK_SECONDS });
+      this._backTimer = setTimeout(() => this.goHome(), AUTO_BACK_SECONDS * 1000);
+      this._countdownTimer = setInterval(() => {
+        const left = this.data.successCountdown - 1;
+        /* 归零这一拍就交给 _backTimer，别再 setData 出「0 秒后返回」 */
+        if (left <= 0) {
+          this.clearAutoBack();
+          return;
+        }
+        this.setData({ successCountdown: left });
+      }, 1000);
       /* 提交是唯一创建行程的时机，tripId 这一刻才有 —— 写给首页定位用。
          纯预览化后「生成时间线」不再建行程，所以不能更早写。
          ⚠️ 这里**必须无条件写**（只要拿到 tripId）。原先假设「从添加提醒进来的
@@ -200,13 +226,6 @@ Page({
             （当前 `currentTripId` 全项目无人读取，所以此前没暴露成用户可见问题。） */
       if (res.tripId) app.globalData.currentTripId = res.tripId;
       app.globalData.reminderSubmitted = true;
-      setTimeout(() => {
-        /* 回到首页：兼容 首页→设置（内联生成）与 首页→添加提醒→设置 两种栈深 */
-        const pages = getCurrentPages();
-        const homeIdx = pages.findIndex(p => p.route === 'pages/home/home');
-        const delta = homeIdx >= 0 ? pages.length - 1 - homeIdx : 1;
-        wx.navigateBack({ delta });
-      }, 1500);
     }).catch(err => {
       wx.hideLoading();
       this.setData({ submitting: false });
@@ -214,7 +233,53 @@ Page({
     });
   },
 
+  /** 回首页：兼容 首页→设置（内联生成）与 首页→添加提醒→设置 两种栈深 */
+  goHome() {
+    this.clearAutoBack();
+    const pages = getCurrentPages();
+    const homeIdx = pages.findIndex(p => p.route === 'pages/home/home');
+    const delta = homeIdx >= 0 ? pages.length - 1 - homeIdx : 1;
+    wx.navigateBack({ delta });
+  },
+
+  /** 取消自动返回与倒计时：主动关闭、打开二维码、离开页面时都要清 */
+  clearAutoBack() {
+    if (this._backTimer) {
+      clearTimeout(this._backTimer);
+      this._backTimer = null;
+    }
+    if (this._countdownTimer) {
+      clearInterval(this._countdownTimer);
+      this._countdownTimer = null;
+    }
+  },
+
+  /** 点卡片外任意处 = 立刻回首页，不等自动跳转 */
+  onSuccessSkip() {
+    this.goHome();
+  },
+
+  /** 成功态里的公众号入口：留入口但不拦路 —— 只在这里打开二维码 */
+  onSuccessOa() {
+    this.clearAutoBack();
+    this.setData({ showOaSheet: true });
+  },
+
+  onCloseOaSheet() {
+    this.setData({ showOaSheet: false });
+    /* 看完二维码直接回首页，不用再点一次 */
+    this.goHome();
+  },
+
   onBack() {
+    this.clearAutoBack();
     wx.navigateBack();
+  },
+
+  /* 成功卡片的空处理：拦掉冒泡与背景滚动 */
+  noop() {},
+
+  onUnload() {
+    this.clearAutoBack();
   },
 });

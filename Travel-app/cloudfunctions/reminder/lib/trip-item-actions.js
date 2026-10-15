@@ -13,6 +13,7 @@ const {
   COLLECTIONS, ERRORS, ReminderBackendStatus, V1, ok, fail,
 } = require('./schema');
 const time = require('./time');
+const events = require('./events');
 const item = require('./item');
 const tripItem = require('./trip-item');
 const cart = require('./cart');
@@ -48,10 +49,16 @@ async function contextOf(db, userId, it) {
 async function removeTasksOf(db, userId, itemId) {
   const res = await db.collection(COLLECTIONS.REMINDER_TASKS)
     .where({ userId, itemId }).get();
-  for (const t of (res.data || [])) {
+  const tasks = res.data || [];
+  await events.recordEvents(db, tasks.map(t =>
+    events.taskEvent(events.EVENT_TYPES.TASK_CANCELED, t, time.now(), {
+      source: 'reminder.tripItem.remove',
+    })
+  ));
+  for (const t of tasks) {
     await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).remove();
   }
-  return (res.data || []).length;
+  return tasks.length;
 }
 
 /**
@@ -266,6 +273,11 @@ async function updateReminder(db, userId, { itemId, remindOn, channels, offsets 
 
   if (!nextRemindOn) {
     // ⚠️ 只删未触发的。已触发的是历史记录，且微信额度不退。
+    await events.recordEvents(db, activeTasks.map(t =>
+      events.taskEvent(events.EVENT_TYPES.TASK_CANCELED, t, nowTs, {
+        source: 'reminder.tripItem.updateReminder.off',
+      })
+    ));
     for (const t of activeTasks) {
       await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).remove();
     }
@@ -289,28 +301,38 @@ async function updateReminder(db, userId, { itemId, remindOn, channels, offsets 
       /* 提前量变了 / 旧任务已终态 → 重建（不退还额度）。
          ⚠️ 只删**未触发**的：终态任务留着当历史，别为了重建静默丢掉
          「上次没送达」这条记录——那和上面取消分支要避免的是同一个错误。 */
+      await events.recordEvents(db, activeTasks.map(t =>
+        events.taskEvent(events.EVENT_TYPES.TASK_CANCELED, t, nowTs, {
+          source: 'reminder.tripItem.updateReminder.rebuild',
+        })
+      ));
       for (const t of activeTasks) {
         await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).remove();
       }
-      await db.collection(COLLECTIONS.REMINDER_TASKS).add({
-        data: {
-          userId,
-          templateId: DEFAULT_SUBSCRIBE_TEMPLATE_ID,
-          itemId,
-          tripId: it.tripId,
-          spotId: it.spotId,
-          visitDate: it.visitDate,
-          releaseAt,
-          offsets: [...nextOffsets].sort((a, b) => b - a),
-          channels: nextChannels,
-          backendStatus: ReminderBackendStatus.WAITING,
-          triggeredAt: null,
-          missedReason: null,
-          cleanAt: null,
-          sentOffsets: [],
-          createdAt: nowTs,
-        },
-      });
+      const rebuiltTask = {
+        userId,
+        templateId: DEFAULT_SUBSCRIBE_TEMPLATE_ID,
+        itemId,
+        tripId: it.tripId,
+        spotId: it.spotId,
+        visitDate: it.visitDate,
+        releaseAt,
+        offsets: [...nextOffsets].sort((a, b) => b - a),
+        channels: nextChannels,
+        backendStatus: ReminderBackendStatus.WAITING,
+        triggeredAt: null,
+        missedReason: null,
+        cleanAt: null,
+        sentOffsets: [],
+        createdAt: nowTs,
+      };
+      const rebuilt = await db.collection(COLLECTIONS.REMINDER_TASKS).add({ data: rebuiltTask });
+      await events.recordEvent(db, events.taskEvent(
+        events.EVENT_TYPES.TASK_REBUILT,
+        { _id: rebuilt._id, ...rebuiltTask },
+        nowTs,
+        { source: 'reminder.tripItem.updateReminder.rebuild' }
+      ));
     }
   }
 

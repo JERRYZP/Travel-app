@@ -159,7 +159,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 }
 ```
 
-> 前端交互（PAGE-002）：MINIPROGRAM → `wx.navigateToMiniProgram` 直跳，失败兜底复制 `url`（官网链接）并 Toast「跳转失败，已复制官网链接」；WEB → `web-view` 打开（真机需在微信公众平台「开发管理 → 开发设置 → 业务域名」配置对应官网域名，否则打不开），弹窗内提供「复制链接」兜底；OFFICIAL_ACCOUNT → 有 `qrCode` 则弹二维码弹层（长按识别），无 `qrCode` 则 Toast 提示关注。`qrCode` 字段保留 `/images/qrcodes/...` 逻辑路径，源图放 `cloud-assets/images/qrcodes/` 并上传到 `static/v0.3/images/qrcodes/`；前端通过 `utils/assets.js` 转成云文件 ID，不把二维码打进代码包。
+> 前端交互（PAGE-002，2026-10-12 修订）：MINIPROGRAM → `wx.navigateToMiniProgram` 直跳，失败兜底复制 `url`（官网链接）并 Toast「跳转失败，已复制官网链接」；**WEB → 直接复制链接**：`wx.setClipboardData({ data: entry.url })` + Toast「链接已复制，请在手机浏览器打开」。**不进 `web-view`** —— 微信 `web-view` 只认公众平台「业务域名」白名单，而官网都是第三方域名（故宫 / 天安门 / 清华…），配置白名单要把校验文件放到对方域名根目录，做不到；且 `wx.navigateTo` 本身会成功，「跳转失败再复制」的兜底永远不触发，用户只会看到打不开的白页。承载页 `pages/webview/webview` 已随本次改动删除，不要再新增第二套官网跳转实现；OFFICIAL_ACCOUNT → 有 `qrCode` 则弹二维码弹层（长按识别），无 `qrCode` 则 Toast 提示关注。二维码弹层必须渲染在 `scroll-view` 与 `.popup-sheet`（`overflow:hidden`）之外：真机上 `position:fixed` 一旦落进滚动容器，包含块会退化成滚动容器、再被 sheet 裁掉，折叠态下二维码只露上半截（回归断言见 `test/cart-popup.test.js` §9）。`qrCode` 字段保留 `/images/qrcodes/...` 逻辑路径，源图放 `cloud-assets/images/qrcodes/` 并上传到 `static/v0.3/images/qrcodes/`；前端通过 `utils/assets.js` 转成云文件 ID，不把二维码打进代码包。
 
 ### 1.3 `batch` — 批量取景点卡
 
@@ -1235,6 +1235,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 - `history` 只包含 `endDate` 次日起的历史行程，按 `startDate` 降序。
 - 一个行程结束后仍在 `endDate` 当天保留在主墙；次日按北京时间读取时归入历史，不依赖定时任务。
 - 首页结构：一张 `primaryTripId` 全局摘要卡 + 纵向分段墙；其他行程只显示紧凑分段标题，不用横向 Tab。
+- ⚠️ `primaryTripId` 的语义**只是「最近未结束行程」**（没有则为空串）：全部行程都结束时，客户端摘要卡会退化展示 `history[0]`（最近一段过往行程，副标题「已结束」），**不**把 `primaryTripId` 指到历史行程上——那个字段同时被「新增提醒」预填当成「还能继续加项的行程」（见 `PAGE-005-RULE-001`），指错了会把过去的时间范围预填进 PAGE-005。退化只发生在渲染层，本文契约字段不变（`HOME-RULE-008`）。
 - 顶部吸顶 Banner 跨全部当前/未来行程取全局最近 1–2 个放票项。
 - ⚠️ **`recoverableIds` 必须随这一次响应给**（决策文档 4.3 的三层规则，真身 `lib/recovery.js` 的
   `recoverableMapOf`）。前端据此渲染「还有其他日期可约」气泡与菜单里的「约其他日」；
@@ -1478,3 +1479,69 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 
 6. **行程合并时同步任务的 `releaseAt` 与 `tripId`**：放票时刻由 `visitDate` 推导，
    合并后行程段变了就会过期；`itemId` 保持不动，它是 tasks join items 的键。
+
+---
+
+## 9. admin（只读 Web 管理后台，2026-10-06 新增）
+
+**云函数名：`admin`**
+
+> Web 端通过 CloudBase Web SDK 登录匿名身份后调用本函数；管理员业务会话由 `admin.login` 单独签发。
+> 除 `admin.login` 和定时器 `internal.rollupDaily` 外，所有 action 都必须携带 `token`。
+> CloudBase 云函数安全规则必须单独放行 `admin` 的匿名调用，但不能开放整个环境；`internal.rollupDaily` 只接受定时触发器调用。
+
+### 9.1 `admin.login`
+
+```javascript
+调用：{ action: 'admin.login', username, password }
+返回（success=true）：
+{
+  success: true,
+  token: '<8 小时 HS256 会话 token>',
+  expiresIn: 28800,
+  admin: { id, username, role }
+}
+```
+
+- 密码使用 `scrypt` + 随机盐保存在 `admins` 集合。
+- 首次登录时，若 `admins` 为空且传入账号匹配 `ADMIN_BOOTSTRAP_*` 环境变量，则创建首个 `SUPER_ADMIN`。
+- 连续 5 次密码错误锁定 15 分钟；成功登录清零失败计数并写审计日志。
+
+### 9.2 只读查询 actions
+
+```text
+admin.overview
+admin.users.list
+admin.user.detail
+admin.tasks.list
+admin.task.detail
+admin.spots.stats
+```
+
+统一调用：`{ action, token, ...params }`
+
+- `admin.overview`：`{ days: 7|30|90 }`，返回用户总数、新增用户、创建任务、到期任务、已触发、未送达、处理率、Top 10 景点和趋势。
+- `admin.users.list`：`{ page, pageSize, keyword? }`，默认每页 20，列表只返回脱敏字段。
+- `admin.user.detail`：`{ id }`，返回用户、行程、行程项、任务摘要和最近任务。
+- `admin.tasks.list`：`{ page, pageSize, status?, spotId?, userId?, releaseFrom?, releaseTo?, createdFrom?, createdTo? }`。
+- `admin.task.detail`：`{ id }`，返回任务、行程项和最近 100 条事件时间线。
+- `admin.spots.stats`：`{ days: 7|30|90 }`，按 `TASK_CREATED` 统计景点任务频率，并返回处理率和发送成功率。
+
+### 9.3 敏感字段查看
+
+```javascript
+调用：{ action: 'admin.audit.viewSensitive', token, id, field }
+field: 'openId' | 'phone' | 'nickname'
+返回：{ success: true, field, value }
+```
+
+- 仅 `SUPER_ADMIN` 可调用。
+- 每次成功查看都会向 `admin_audit_logs` 写入审计日志。
+- 列表接口永远返回脱敏值，只有这个 action 能返回完整值。
+
+### 9.4 `internal.rollupDaily`
+
+- 由 `admin` 云函数每天北京时间 01:00 的定时触发器执行；无 action 调用也默认进入此动作。
+- 重算最近 7 天事件，写入永久 `reminder_daily_stats`。
+- 对最近 7 天缺少的 `TASK_CREATED` / 终态事件做幂等补录。
+- 分批删除超过 180 天的 `reminder_events` 和 `admin_audit_logs`。

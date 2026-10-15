@@ -114,7 +114,14 @@ Component({
           this.triggerEvent('loaded', { spot });
         });
       }).catch(() => {
-        this.setData({ loading: false, loadFailed: true, spot: null }, () => {
+        this.setData({
+          loading: false,
+          loadFailed: true,
+          spot: null,
+          /* 二维码弹层已移到 sheet 之外，不再由 spot 的存在性间接门控，这里要显式收掉 */
+          showQr: false,
+          qrSpot: null,
+        }, () => {
           this.scheduleFitSheet();
         });
         wx.showToast({ title: '景点详情加载失败', icon: 'none' });
@@ -154,11 +161,18 @@ Component({
           },
         });
       } else if (entry.type === 'WEB' && entry.url) {
-        wx.navigateTo({
-          url: '/pages/webview/webview?url=' + encodeURIComponent(entry.url) + '&title=' + encodeURIComponent(entry.label || '景区官网'),
+        /* 官网统一走「复制链接」，不再进 web-view。
+         * 微信 web-view 只认公众平台「业务域名」白名单，而官网都是第三方域名
+         * （故宫 / 天安门 / 清华…），配置白名单要把校验文件放到对方域名根目录，做不到。
+         * 更坑的是 wx.navigateTo 本身会成功，所以「跳转失败再复制」的兜底永远不会触发，
+         * 用户进去只会看到打不开的白页。别再改回 web-view。 */
+        wx.setClipboardData({
+          data: entry.url,
+          success: () => {
+            wx.showToast({ title: '链接已复制，请在手机浏览器打开', icon: 'none', duration: 2500 });
+          },
           fail: () => {
-            wx.setClipboardData({ data: entry.url });
-            wx.showToast({ title: '打开失败，已复制链接', icon: 'none' });
+            wx.showToast({ title: '复制失败，请稍后重试', icon: 'none' });
           },
         });
       } else if (entry.type === 'OFFICIAL_ACCOUNT') {
@@ -170,14 +184,6 @@ Component({
         } else {
           wx.showToast({ title: '请关注公众号「' + entry.value + '」', icon: 'none' });
         }
-      }
-    },
-
-    onCopyEntry(e) {
-      const entry = e.currentTarget.dataset.entry;
-      if (entry && entry.url) {
-        wx.setClipboardData({ data: entry.url });
-        wx.showToast({ title: '官网链接已复制', icon: 'none' });
       }
     },
 

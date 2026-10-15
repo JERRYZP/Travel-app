@@ -12,11 +12,12 @@
 
 ## 当前状态
 
-- 当前分支：`codex/v0.3-main-flow-ux`。
+- 当前分支：`codex/ux1012`；此前 V0.3 主流程与只读 Web 管理后台代码已在仓库中。
 - V0.3 主流程已实现：四步流程、日期锚点、清单策略、PAGE-008 授权硬闸门。
 - 新用户首页空态已重构：动态结果预览、提醒样式入口、高热度 S 级景点「近期热门景点放票」。
 - 分享、深链、今日/国庆场景页、提醒额度健康度与 48 小时预警均已实现。
-- 当前状态是 **部分云函数已部署并冒烟、整体未上线**：`reminder` 已于 2026-09-28 部署并通过只读 `home.bootstrap` 冒烟；2026-10-01 的预约模板/双模板兼容与景点页改动仍在未提交工作区，真机 live verify 与微信后台隐私指引未完成。测试通过不能写成“已上线”。
+- 当前状态是 **部分云函数已部署并冒烟、整体未上线**：`reminder` 与 `notifier` 已于 2026-10-13 重新部署（含当日腾讯云调用量优化，见 `docs/engineering/current-state.md`）；`2026-10-01` 的预约模板/双模板兼容与景点页改动仍未提交。真机 live verify 与微信后台隐私指引未完成。测试通过不能写成“已上线”。
+- 只读 Web 管理后台（`admin-web/` + `cloudfunctions/admin/`）：代码、测试与构建已完成；`admin` 云函数**已在云端运行**（2026-10-13 复核），但**没有配置定时触发器**，`admin-web` 静态托管未上传。它在白天的调用来自后台页面自身，不是产品流量。
 - 完整状态、待部署范围和待验证项见 `docs/engineering/current-state.md`。
 
 ## 权威来源
@@ -43,6 +44,7 @@
 | `cloudfunctions/**`、appid/cloudEnv | `.claude/rules/deployment.md`、`docs/engineering/current-state.md` |
 | API 域与数据模型 | `API-契约.md`、`docs/engineering/architecture.md` |
 | 提醒发送和 MISSED | `docs/engineering/reminder-troubleshooting.md`、`docs/engineering/domain-rules.md` |
+| `admin-web/**` | `docs/engineering/admin-console.md`、`API-契约.md` |
 
 路径规则由 Claude Code 按匹配文件自动加载；根文件不复制完整机制。
 
@@ -80,7 +82,8 @@ npm run check
 ```
 
 - 若从父目录 `my/` 进入，先执行 `cd Travel-app`。
-- `npm test`：当前 27 套回归测试。
+- `npm test`：跑全部回归测试。**套数不写死在这里** —— 权威是 `package.json` 的 `test` 脚本；
+  写死过两次（27 → 32 → 34），每次都过期。
 - `npm run check`：校验 WXML 方法绑定、图标资源、组件路径、CSS 变量和页面三件套。
 - 微信开发者工具：打开 `Travel-app/`；Vant 首次使用前执行“工具 -> 构建 npm”。
 

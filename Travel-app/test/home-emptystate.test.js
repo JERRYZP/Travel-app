@@ -134,7 +134,11 @@ console.log('=== 2. 悬浮按钮只在已有行程时出现 ===');
     '悬浮按钮带 !loading && !isBlank && !previewNewUser');
   /* 没有 wx:if 就是无条件渲染 —— 那正是「同屏两个入口」的原因 */
   eq(/<view class="fab-btn"/.test(WXML), false, '悬浮按钮不是无条件渲染');
-  eq(/isBlank: trips\.length === 0 && \(res\.history \|\| \[\]\)\.length === 0/.test(JS), true,
+  /* 2026-10-15：`history` 提到了局部变量（摘要卡回退与 isBlank 共用同一份），
+     判据本身没变 —— 仍是「没有进行中行程、也没有历史行程」。 */
+  eq(/const history = res\.history \|\| \[\];/.test(JS), true,
+    'history 走同一个局部变量（不与摘要卡回退各取一份）');
+  eq(/isBlank: trips\.length === 0 && history\.length === 0/.test(JS), true,
     'isBlank 的算法与空态判据一致');
   eq(/isBlank: false,/.test(JS), true, 'isBlank 有初值（且初值为 false，配合 !loading 使用）');
 }
@@ -608,6 +612,8 @@ console.log('=== 9. 行程级倒计时文案（进行中第N天）===');
   eq(util.tripCountdownTextOf(D(-2), D(1)), '进行中第3天', '第N天按自然日推');
   eq(util.tripCountdownTextOf(D(-3), D(0)), '进行中第4天',
     '⚠️ 最后一天仍属进行中（与服务端 activeTrips 的 endDate >= today 同口径）');
+  /* 2026-10-15：这一档从「全部行程结束后首页仍留摘要卡」起真正露到界面上
+     （此前没有任何可见路径，见 `HOME-RULE-008`）。 */
   eq(util.tripCountdownTextOf(D(-5), D(-1)), '已结束', '结束日次日才结束');
   eq(util.tripCountdownTextOf(D(0), D(0)), '进行中第1天', '单日行程当天 = 第1天');
 

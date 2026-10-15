@@ -83,6 +83,7 @@ function createDb() {
           return dir === 'desc' ? (y > x ? 1 : -1) : (x > y ? 1 : -1);
         });
       }
+      if (opts.skip != null) rows = rows.slice(opts.skip);
       if (opts.limit != null) rows = rows.slice(0, opts.limit);
       return rows.map(d => ({ ...d }));
     };
@@ -91,6 +92,7 @@ function createDb() {
       get: async () => ({ data: run() }),
       count: async () => ({ total: run().length }),
       orderBy: (field, dir) => makeQuery(name, where, { ...opts, orderBy: { field, dir } }),
+      skip: (n) => makeQuery(name, where, { ...opts, skip: n }),
       limit: (n) => makeQuery(name, where, { ...opts, limit: n }),
       update: async ({ data }) => {
         const rows = run();

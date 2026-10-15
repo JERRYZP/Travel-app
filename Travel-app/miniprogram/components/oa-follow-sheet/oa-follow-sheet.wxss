@@ -1,0 +1,83 @@
+.oa-mask {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 240;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.oa-card {
+  width: 560rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40rpx 32rpx 24rpx;
+  border-radius: 24rpx;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.oa-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.oa-subtitle {
+  margin-top: 14rpx;
+  text-align: center;
+  font-size: 23rpx;
+  line-height: 1.6;
+  color: var(--color-text);
+}
+
+.oa-qr {
+  width: 360rpx;
+  height: 360rpx;
+  margin-top: 24rpx;
+  background: #FFFFFF;
+}
+
+/* 云图缺失/加载失败时的降级：不留空白图框，直接给可执行的关注路径 */
+.oa-qr-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  height: 240rpx;
+  padding: 0 20rpx;
+  border: 1rpx dashed var(--color-border);
+  border-radius: 16rpx;
+  background: var(--color-page);
+}
+
+.oa-qr-name {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.oa-qr-hint {
+  text-align: center;
+  font-size: 22rpx;
+  line-height: 1.6;
+  color: var(--color-text);
+}
+
+.oa-foot {
+  margin-top: 16rpx;
+  font-size: 22rpx;
+  color: var(--text-faint);
+}
+
+.oa-close {
+  margin-top: 20rpx;
+  padding: 18rpx 0 6rpx;
+  width: 100%;
+  text-align: center;
+  font-size: 26rpx;
+  color: var(--color-muted);
+}

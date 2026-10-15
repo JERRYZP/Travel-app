@@ -28,8 +28,9 @@
 
   <block wx:for="{{days}}" wx:key="key" wx:for-index="dayIndex" wx:for-item="day">
   <view wx:if="{{history || dayIndex >= pastCount || pastOpen}}" class="ts-day">
-    <!-- 日期分段标题：带「删除当天行程」菜单（删除动线第二层） -->
-    <view class="ts-day-head">
+    <!-- 日期分段标题：带「删除当天行程」菜单（删除动线第二层）。
+         滚动时吸顶在导航栏下沿，偏移量由页面下发；没量到偏移就不吸顶。 -->
+    <view class="ts-day-head {{dayStickyTop > 0 ? 'is-pinned' : ''}}" style="top: {{dayStickyTop}}px;">
       <text class="ts-day-title">{{day.title}}</text>
       <view class="ts-day-badge">{{day.badge}}</view>
       <text wx:if="{{day.daysPast > 0}}" class="ts-day-past-note">已过去{{day.daysPast}}天</text>

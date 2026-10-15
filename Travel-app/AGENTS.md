@@ -17,6 +17,7 @@
 | `cloudfunctions/**`、`miniprogram/app.js`、`project.config.json` | `.claude/rules/deployment.md`、`docs/engineering/current-state.md` |
 | API、数据模型、首页聚合 | `API-契约.md`、`docs/engineering/architecture.md` |
 | 产品交互、页面文案、状态 | `产品文档.md` 对应当页、`docs/engineering/domain-rules.md` |
+| `admin-web/**` | `docs/engineering/admin-console.md`、`API-契约.md` |
 | Agent 规则或文档结构 | `docs/engineering/rule-index.md` |
 
 ## 共享硬门禁

@@ -517,21 +517,61 @@ async function list(db, userId, prefetched) {
   const trips = kept;
 
   const { ReminderBackendStatus } = require('./schema');
-  /* 并发取每趟的最近一个 WAITING 任务。这些查询彼此无依赖，串行发就是白等。
-     ⚠️ 刻意不加 catch：`nextReminderAt` 是 TRIP-RULE-005 的排序键，读失败时静默
-     降级成 null 会让行程顺序悄悄变错。保持与原实现一致 —— 失败就整个失败。 */
-  const waitingList = await Promise.all(trips.map(t =>
-    db.collection(COLLECTIONS.REMINDER_TASKS)
-      .where({ userId, tripId: t._id, backendStatus: ReminderBackendStatus.WAITING })
-      .orderBy('releaseAt', 'asc')
-      .limit(1)
-      .get()
-  ));
+  /* `nextReminderAt` = 该行程最早的 WAITING 任务的 releaseAt（TRIP-RULE-005 的排序键）。
+     两种取法，结果必须逐字段一致：
+       ① 首页 bootstrap 已把该用户全部任务读回来（prefetched.tasks）→ 内存分组取最小值，
+          零额外查询。以前这里对每趟行程各发一次查询，N 趟就是 N 次多余的读
+          （2026-10-13 调用量优化）。
+       ② 未传 prefetched，或预取数据已触及读取上限 → 保持原来的逐趟查询。
+
+     ⚠️ **为什么要有「触及上限」这道守卫**：云函数端 `.get()` 默认只返回前 100 条，
+     prefetched.tasks 一旦被截断，内存里就可能缺掉某趟行程最早的那条 WAITING 任务，
+     算出来的 `nextReminderAt` 会偏晚甚至为 null，行程顺序跟着悄悄变错。宁可多查几次，
+     也不让排序键拿到一份不完整的数据。
+
+     ⚠️ 两条路径都**刻意不加 catch**：读失败时静默降级成 null 同样会让顺序变错 ——
+     失败就整个失败。两条路径的等价性由 `test/trip-list-parallel.test.js` 逐字段断言钉住。 */
+  const PREFETCH_TRUST_LIMIT = 100; // 云函数端 .get() 的默认返回上限
+  const usePrefetchedTasks = Boolean(prefetched)
+    && Array.isArray(prefetched.tasks)
+    && prefetched.tasks.length < PREFETCH_TRUST_LIMIT;
+
+  const msOf = (v) => (v instanceof Date ? v.getTime() : new Date(v).getTime());
+
+  let earliestByTrip = null;
+  if (usePrefetchedTasks) {
+    earliestByTrip = new Map();
+    for (const task of prefetched.tasks) {
+      if (task.backendStatus !== ReminderBackendStatus.WAITING) continue;
+      if (!task.releaseAt) continue;
+      const prev = earliestByTrip.get(task.tripId);
+      if (prev === undefined || msOf(task.releaseAt) < msOf(prev)) {
+        earliestByTrip.set(task.tripId, task.releaseAt);
+      }
+    }
+  }
+
+  let waitingList = null;
+  if (!usePrefetchedTasks) {
+    waitingList = await Promise.all(trips.map(t =>
+      db.collection(COLLECTIONS.REMINDER_TASKS)
+        .where({ userId, tripId: t._id, backendStatus: ReminderBackendStatus.WAITING })
+        .orderBy('releaseAt', 'asc')
+        .limit(1)
+        .get()
+    ));
+  }
+
   trips.forEach((t, i) => {
     // 老数据只有 spotIds → 统一补出 spots 段（按行程整段），前端/时间线可放心依赖
     t.spots = normalizeSpots(t);
-    const waiting = waitingList[i] || { data: [] };
-    t.nextReminderAt = (waiting.data || []).length ? waiting.data[0].releaseAt : null;
+    if (usePrefetchedTasks) {
+      const at = earliestByTrip.get(t._id);
+      t.nextReminderAt = at === undefined ? null : at;
+    } else {
+      const waiting = waitingList[i] || { data: [] };
+      t.nextReminderAt = (waiting.data || []).length ? waiting.data[0].releaseAt : null;
+    }
   });
 
   const sorted = sortTrips(trips);

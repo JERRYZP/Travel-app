@@ -126,7 +126,13 @@
           id="timeline-day-{{day.key}}"
           class="timeline-day"
         >
-          <view id="timeline-day-head-{{day.key}}" class="timeline-day-head">
+          <!-- 日期标题吸顶：滚动当天内容时一直看得见。偏移量（导航栏 + 吸顶面板高度）
+               由 `measureTimelineHeadTop` 量出来后内联下发；没量到就不吸顶。 -->
+          <view
+            id="timeline-day-head-{{day.key}}"
+            class="timeline-day-head {{timelineHeadTop > 0 ? 'is-pinned' : ''}}"
+            style="top: {{timelineHeadTop}}px;"
+          >
             <text class="timeline-day-date">{{day.label}}</text>
             <text wx:if="{{day.dayLabel}}" class="timeline-day-chip">{{day.dayLabel}}</text>
             <text wx:if="{{day.daysPast > 0}}" class="timeline-past-note">已过去{{day.daysPast}}天</text>

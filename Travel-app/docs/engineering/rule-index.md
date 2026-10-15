@@ -50,6 +50,7 @@
 | `RULE-VISUAL-001` | `CLAUDE.md` 147 | 402px 视觉基准 | `figma_design.md` | `delegated` |
 | `RULE-COMMAND-001` | `CLAUDE.md` 150-155 | 安装、构建、运行、测试和静态检查 | 根 `CLAUDE.md` | `root-current` |
 | `RULE-DEPLOY-001` | `CLAUDE.md` 157-174 | 部署依赖、顺序和未验证状态 | `.claude/rules/deployment.md`、`docs/engineering/current-state.md` | `extracted` |
+| `RULE-ADMIN-001` | 2026-10-06 新增 | 只读 Web 管理后台、事件账本与统计口径 | `docs/engineering/admin-console.md`、`API-契约.md`、`数据库索引.md` | `extracted` |
 
 ## Phase 3 验收结果
 

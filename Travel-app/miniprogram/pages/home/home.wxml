@@ -216,8 +216,13 @@
 
   <block wx:else>
     <!-- 全局摘要卡：只给最近的一趟，其他行程在各自的分段标题上显示紧凑进度。
-         卡底部的「即将提醒」胶囊来自 stickyBanner.pills（服务端拼文案）。 -->
-    <trip-summary-card trip="{{primaryTrip}}" pills="{{bannerPills}}" bind:pill="onBannerPillTap" />
+         卡底部的「即将提醒」胶囊来自 stickyBanner.pills（服务端拼文案）。
+         ⚠️ 绑的是 `summaryTrip` 而**不是** `primaryTrip`（2026-10-15）：所有行程都
+            结束之后，摘要卡不退场，改成展示最近一段过往行程，副标题由
+            `util.tripCountdownTextOf` 给出「已结束」；此时 `primaryTrip` 为 null
+            （它是「还能继续加提醒的那趟」，只给 onAddTrip 预填用）。
+            两者混用会出现「拿已结束行程的日期段预填新增提醒」这类错配。 -->
+    <trip-summary-card trip="{{summaryTrip}}" pills="{{bannerPills}}" bind:pill="onBannerPillTap" />
 
     <!-- 分段墙：未结束行程按开始日期升序纵向排列，不做横向 Tab -->
     <view wx:for="{{trips}}" wx:key="_id" wx:for-item="trip">
@@ -233,6 +238,7 @@
         dismissed="{{dismissed}}"
         recoverable-ids="{{recoverableIds}}"
         weak="{{trip._weak}}"
+        day-sticky-top="{{statusBarHeight + navBarHeight}}"
         bind:menutoggle="onCardMenuToggle"
         bind:missedreason="onMissedReason"
         bind:datemenu="onDateMenu"
@@ -258,7 +264,7 @@
       </view>
       <block wx:if="{{historyOpen}}">
         <view wx:for="{{history}}" wx:key="_id" wx:for-item="trip">
-          <trip-section trip="{{trip}}" history="{{true}}" />
+          <trip-section trip="{{trip}}" history="{{true}}" day-sticky-top="{{statusBarHeight + navBarHeight}}" />
         </view>
       </block>
     </view>

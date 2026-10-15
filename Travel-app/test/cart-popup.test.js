@@ -192,5 +192,41 @@ console.log('=== 8. 景点详情长内容在真机可滚动到底 ===');
     '适配时扣除底部操作栏高度');
 }
 
+console.log('=== 9. 公众号二维码弹层在滚动容器外，官网入口不再走 web-view ===');
+{
+  // 2026-10-12 事故：.qr-mask 原本嵌在 <scroll-view class="popup-scroll"> 内，
+  // 真机上 fixed 包含块退化成滚动容器、再被 .popup-sheet 的 overflow:hidden 裁掉，
+  // 折叠态下二维码只露上半截，识别不了。与 §1 的下拉层同一条约定。
+  eq(SPOT_WXML.indexOf('</scroll-view>') < SPOT_WXML.indexOf('qr-mask'), true,
+    '二维码弹层排在 scroll-view 之后（不被滚动容器裁切）');
+  eq(/\.qr-mask\s*\{[^}]*position:\s*fixed/.test(SPOT_WXSS), true,
+    '二维码弹层 fixed 定位');
+
+  const APP_JSON = fs.readFileSync(path.join(ROOT, 'miniprogram/app.json'), 'utf8');
+  const SPOT_RULE_JS = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-rule/spot-rule.js'), 'utf8');
+  const SPOT_RULE_WXML = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-rule/spot-rule.wxml'), 'utf8');
+  const SPOT_RULE_WXSS = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-rule/spot-rule.wxss'), 'utf8');
+
+  // 官网是第三方域名，无法加入微信「业务域名」白名单，web-view 必然打不开；
+  // 而 wx.navigateTo 本身会成功，fail 兜底永远不触发 → 进去只有白页。
+  eq(/pages\/webview\/webview/.test(SPOT_JS), false, '景点浮窗不再跳 web-view 承载页');
+  eq(/pages\/webview\/webview/.test(SPOT_RULE_JS), false, '景点内页不再跳 web-view 承载页');
+  eq(/"pages\/webview\/webview"/.test(APP_JSON), false, 'app.json 不再注册 web-view 承载页');
+  eq(fs.existsSync(path.join(ROOT, 'miniprogram/pages/webview')), false, 'web-view 承载页已删除');
+
+  eq(/setClipboardData/.test(SPOT_JS), true, '官网入口改为复制链接');
+  eq(/setClipboardData/.test(SPOT_RULE_JS), true, '内页官网入口改为复制链接');
+  eq(/onCopyEntry/.test(SPOT_JS + SPOT_RULE_JS + SPOT_WXML + SPOT_RULE_WXML), false,
+    '不再保留重复的小字「复制链接」入口');
+  // 分支里的注释本身会写「不准用 wx.navigateTo」，检查前先剥掉注释
+  const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const webBranch = stripComments((SPOT_JS.match(/entry\.type === 'WEB'[\s\S]*?(?=\} else if)/) || [''])[0]);
+  eq(/setClipboardData/.test(webBranch), true, '浮窗 WEB 分支直接复制链接');
+  eq(/navigateTo/.test(webBranch), false, '浮窗 WEB 分支不做任何页面跳转');
+  const ruleWebBranch = stripComments((SPOT_RULE_JS.match(/entry\.type === 'WEB'[\s\S]*?(?=\} else if)/) || [''])[0]);
+  eq(/setClipboardData/.test(ruleWebBranch), true, '内页 WEB 分支直接复制链接');
+  eq(/navigateTo/.test(ruleWebBranch), false, '内页 WEB 分支不做任何页面跳转');
+}
+
 console.log('\n' + (fail === 0 ? 'ALL PASS' : ('FAIL ' + fail)));
 process.exit(fail === 0 ? 0 : 1);

@@ -23,8 +23,28 @@ function call(name, data) {
 }
 
 /* ===== spots ===== */
+
+/* `spots.list` 是只读静态数据（真身 data/spots.json），无参数、无用户态，而
+   景点库 / 添加行程 / 分享场景页 / 首页空态各自的 onLoad 都会拉一次同一份全量数据。
+   加一层短 TTL 内存缓存，连续进这几个页面时只发一次（2026-10-13 调用量优化）。
+   ⚠️ TTL 保持分钟级：首页空态那次请求的价值之一就是「感知服务端规则变更」（见
+   pages/home/home.js 的 loadHotSpots），缓存太久会让人迟迟看不到规则更新。 */
+const SPOTS_LIST_TTL_MS = 3 * 60 * 1000;
+let spotsListCache = { at: 0, res: null };
+
 const spots = {
-  list: () => call('spots', { action: 'list' }),
+  list: () => {
+    const hit = spotsListCache.res;
+    if (hit && (Date.now() - spotsListCache.at) < SPOTS_LIST_TTL_MS) {
+      /* 每次给一个新的 data 数组：调用方对自己的副本排序/裁剪时不会污染缓存。
+         元素对象本身是只读的业务数据，共享引用即可。 */
+      return Promise.resolve({ ...hit, data: Array.isArray(hit.data) ? hit.data.slice() : hit.data });
+    }
+    return call('spots', { action: 'list' }).then(res => {
+      spotsListCache = { at: Date.now(), res };
+      return res;
+    });
+  },
   detail: (spotId) => call('spots', { action: 'detail', spotId }),
   batch: (spotIds) => call('spots', { action: 'batch', spotIds }),
   search: (keyword) => call('spots', { action: 'search', keyword }),

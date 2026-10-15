@@ -103,6 +103,9 @@ Page({
     timelineEmpty: false,
     timelineEmptyReason: '',
     timelineLoading: false,
+    /* 日期标题的吸顶偏移（px）= 导航栏下沿 + 吸顶面板高度，量出来再赋值。
+       0 表示还没量到 → 模板不给 `.is-pinned`，不吸顶（见 measureTimelineHeadTop）。 */
+    timelineHeadTop: 0,
     submitting: false,
 
     showCartPopup: false,
@@ -229,6 +232,30 @@ Page({
     this._timelineSpyTimer = setTimeout(() => this.refreshActiveTimelineDay(), 80);
   },
 
+  /**
+   * 量出日期标题的吸顶偏移 = 导航栏下沿 + 吸顶面板高度。
+   *
+   * ⚠️ 只给导航栏高度是不够的：`.timeline-panel`（第二步标题 + 出游日 Tab）自己也在吸顶，
+   *    日期标题跟它同一个偏移量就会叠在面板上。面板高度随「出游日 Tab 行」在不在而变，
+   *    wxss 里写不出常量，只能量。
+   * ⚠️ 量不到就不吸顶（模板按 `timelineHeadTop > 0` 决定加不加 `.is-pinned`）：
+   *    没有偏移量时写死 `top: 0` 会让日期标题吸到屏幕最顶上、被导航栏压住。
+   */
+  measureTimelineHeadTop() {
+    const query = this.createSelectorQuery ? this.createSelectorQuery() : (wx.createSelectorQuery && wx.createSelectorQuery());
+    if (!query || !query.select || !query.exec) return;
+    query.select('#timeline-header').boundingClientRect();
+    query.exec(rects => {
+      const panel = (rects || [])[0];
+      if (!panel || !Number.isFinite(panel.height)) return;
+      /* ⚠️ 向下取整而不是四舍五入（2026-10-12）：floor 保证日期标题的顶边落在面板
+         底边**上方或正好贴合**，最多重叠不到 1px；round 会向上取到半像素，在面板与
+         日期标题之间留出一条缝——用户看到的「镂空」。 */
+      const top = Math.floor(this.data.statusBarHeight + this.data.navBarHeight + panel.height);
+      if (top !== this.data.timelineHeadTop) this.setData({ timelineHeadTop: top });
+    });
+  },
+
   /** 以吸顶日期锚点下方为判定线，取最后一个已经越线的日期分组。 */
   refreshActiveTimelineDay() {
     if (!this.data.showTimeline || !this.data.timelineDays.length) return;
@@ -271,6 +298,10 @@ Page({
    * 不能再用 `scroll-into-view`：它按**分组容器**顶部对齐滚动区顶部，
    * 吸顶的日期导航会把标题盖住。这里查询标题与吸顶面板的真实高度，
    * 用 scroll-top 精确落到面板底边。
+   *
+   * ⚠️ 日期标题现在自己也吸顶（`.timeline-day-head.is-pinned`），量到的 `title.top`
+   *    仍是正确的：标题吸住时它的位置就等于「面板底边」，算式两边正好抵消；
+   *    没吸住时它就在文档流里，量到的是自然位置。两种情况都不用改这段算法。
    */
   scrollTimelineDayIntoView(key) {
     if (!key) return;
@@ -489,7 +520,11 @@ Page({
         timelineEmpty: res.empty,
         timelineEmptyReason: res.emptyReason,
       }, () => {
-        setTimeout(() => this.onDateAnchorTap({ currentTarget: { dataset: { key: activeTab } } }), 30);
+        setTimeout(() => {
+          /* 面板与日期标题都渲染完再量吸顶偏移，否则量到 0 高 */
+          this.measureTimelineHeadTop();
+          this.onDateAnchorTap({ currentTarget: { dataset: { key: activeTab } } });
+        }, 30);
       });
       this.loadCart();
     }).catch(err => {
@@ -638,7 +673,12 @@ Page({
         timelineEvents: this.decorateEvents(activeTab ? (tabs.find(t => t.key === activeTab) || {}).events || [] : []),
         timelineEmpty: res.empty,
         timelineEmptyReason: res.emptyReason,
-      }, () => this.revealTimelineTab(activeTab));
+      }, () => {
+        /* 面板高度只跟「出游日 Tab 行」在不在有关，这里顺手复量一次，避免生成后
+           下拉一次、Tab 行出现/消失导致日期标题吸在面板腰上。 */
+        this.measureTimelineHeadTop();
+        this.revealTimelineTab(activeTab);
+      });
       this.loadCart();
     }).catch(() => { this.loadCart(); });
   },

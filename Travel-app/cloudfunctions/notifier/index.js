@@ -14,6 +14,7 @@ const https = require('https');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const _ = db.command;
+const events = require('./lib/events');
 
 const COLLECTIONS = {
   REMINDER_TASKS: 'reminder_tasks',
@@ -43,7 +44,10 @@ const SCAN_WINDOW_MS = 60 * 1000;    // 每分钟扫描一次
 // 保证 releaseAt 落在窗口内的任务都能被 collectDue 命中，而不是全表拉前 500 条。
 const MAX_ADVANCE_MS = 5 * 60 * 1000;
 const SCAN_PAGE_SIZE = 100;          // 分页取数，避免 limit(500) 漏扫
-const SCAN_MAX_ROWS = 800;           // 单次巡检安全上限（时间窗只有约 6 分钟，超出的靠下分钟重扫补齐）
+/* 单次巡检安全上限。原来是 800，只服务「待发段」；2026-10-13 起「待发段 + 过期段」
+   合用一个上限（见 fetchWaitingUpTo），提到 1000 给过期段留出余量。
+   超出的靠下分钟重扫补齐，命中上限时 fetchTasksPaged 会打 scan-truncated 日志。 */
+const SCAN_MAX_ROWS = 1000;
 const SEND_CONCURRENCY = 5;          // 同一时刻在途的微信请求数，错峰窗口内并发
 
 /** 订阅消息模板 ID。
@@ -335,7 +339,7 @@ async function sendOne(task, spot, offset) {
       taskId: task._id, spotId: task.spotId, offset,
       errCode, errMsg, detail: res,
     }));
-    return { ok: false, skipped: false, reason: errCode != null ? `errCode=${errCode} ${errMsg}` : errMsg };
+    return { ok: false, skipped: false, errCode, reason: errCode != null ? `errCode=${errCode} ${errMsg}` : errMsg };
   } catch (err) {
     // 只存 errCode 会丢掉微信返回的完整错误信息（errMsg 往往直接点名原因），这里全量打日志
     const errMsg = (err && (err.errMsg || err.message)) || String(err);
@@ -344,7 +348,7 @@ async function sendOne(task, spot, offset) {
       errCode: err && err.errCode, errMsg,
       detail: err && err.detail,
     }));
-    return { ok: false, skipped: false, reason: err && err.errCode ? `errCode=${err.errCode} ${errMsg}` : errMsg };
+    return { ok: false, skipped: false, errCode: err && err.errCode, reason: err && err.errCode ? `errCode=${err.errCode} ${errMsg}` : errMsg };
   }
 }
 
@@ -372,7 +376,8 @@ async function markResult(task, offset, sendResult, nowTs, state = {}) {
   const sent = (!failed && !base.includes(offset)) ? [...base, offset] : base;
   const allSent = (task.offsets || []).every(o => sent.includes(o));
   const data = { sentOffsets: sent };
-  let backendStatus = state.backendStatus || task.backendStatus || ReminderBackendStatus.WAITING;
+  const previousStatus = state.backendStatus || task.backendStatus || ReminderBackendStatus.WAITING;
+  let backendStatus = previousStatus;
 
   if (sendResult.ok) {
     // 实际发送成功 → TRIGGERED
@@ -405,6 +410,22 @@ async function markResult(task, offset, sendResult, nowTs, state = {}) {
   }
 
   await db.collection(COLLECTIONS.REMINDER_TASKS).doc(task._id).update({ data });
+
+  const eventDocs = [events.sendEvent(task, offset, sendResult, nowTs)];
+  if (backendStatus !== previousStatus && backendStatus === ReminderBackendStatus.TRIGGERED) {
+    eventDocs.push(events.taskEvent(events.EVENT_TYPES.TASK_TRIGGERED, task, nowTs, {
+      source: 'notifier.markResult',
+      offset: Number(offset),
+    }));
+  }
+  if (backendStatus !== previousStatus && backendStatus === ReminderBackendStatus.MISSED) {
+    eventDocs.push(events.taskEvent(events.EVENT_TYPES.TASK_MISSED, task, nowTs, {
+      source: 'notifier.markResult',
+      offset: Number(offset),
+      errorMessage: sendResult.reason || null,
+    }));
+  }
+  await events.recordEvents(db, eventDocs);
   return { sentOffsets: sent, backendStatus };
 }
 
@@ -467,16 +488,54 @@ async function healSubscribeQuota(openid, templateId = TEMPLATE_ID) {
 }
 
 /**
- * FLOW-002 主流程：扫描 → 错峰 → 发送 → 写状态
+ * 一次查询取回「过期段 + 待发段」的全部 WAITING 任务。
+ *
+ * 原来 tick 每分钟要发**两次**查询：`scanAndSend` 查 `releaseAt > now`（待发段），
+ * `sweepMissed` 查 `releaseAt <= now`（过期段）。这两个区间互不重叠，拼起来正好是
+ * 「releaseAt <= now + 窗口 + 最大提前量」这一整段 —— 合成一次查询、在内存里切分，
+ * 结果完全等价，但每分钟少一次数据库读（见 `splitWaiting`）。
+ *
+ * ⚠️ 两段现在共用一个 `SCAN_MAX_ROWS` 上限。极端积压（过期任务超过上限）时待发段可能被
+ * 挤掉，靠下一分钟重扫补齐；这是与原「两个独立上限」唯一的差异，`fetchTasksPaged`
+ * 命中上限时会打 scan-truncated 日志，便于发现。
  */
-async function scanAndSend() {
-  const nowTs = Date.now();
-  const scanWhere = {
+async function fetchWaitingUpTo(nowTs) {
+  return fetchTasksPaged({
+    backendStatus: ReminderBackendStatus.WAITING,
+    releaseAt: _.lte(new Date(nowTs + SCAN_WINDOW_MS + MAX_ADVANCE_MS)),
+  });
+}
+
+/**
+ * 按 releaseAt 相对 nowTs 的位置，把合并查询结果切成两段：
+ *   - `overdue`  （releaseAt <= now）→ 交给 `sweepMissed` 判 MISSED
+ *   - `upcoming` （releaseAt >  now）→ 交给 `scanAndSend` 判是否该发
+ * 切分点在内存里做，与原来两个 `where` 的边界（`_.lte` / `_.gt`）逐字对应。
+ */
+function splitWaiting(tasks, nowTs) {
+  const overdue = [];
+  const upcoming = [];
+  for (const t of tasks) {
+    if (new Date(t.releaseAt).getTime() <= nowTs) overdue.push(t);
+    else upcoming.push(t);
+  }
+  return { overdue, upcoming };
+}
+
+/**
+ * FLOW-002 主流程：扫描 → 错峰 → 发送 → 写状态
+ *
+ * @param {object[]} [prefetchedTasks] tick 合并查询后传入的**待发段**（releaseAt > now）。
+ *   不传则自行查询 —— `action:'sendNow'` 手动分支走这条。
+ * @param {number} [nowTsArg] 与预取任务同一时刻的 now；两处各取一次时间会留出缝隙。
+ */
+async function scanAndSend(prefetchedTasks, nowTsArg) {
+  const nowTs = nowTsArg || Date.now();
+  const tasks = prefetchedTasks || await fetchTasksPaged({
     backendStatus: ReminderBackendStatus.WAITING,
     releaseAt: _.gt(new Date(nowTs))
       .and(_.lte(new Date(nowTs + SCAN_WINDOW_MS + MAX_ADVANCE_MS))),
-  };
-  const tasks = await fetchTasksPaged(scanWhere);
+  });
 
   const due = collectDue(tasks, nowTs);
   if (due.length === 0) {
@@ -551,6 +610,12 @@ async function fetchTasksPaged(where, { pageSize = SCAN_PAGE_SIZE, maxRows = SCA
     if (batch.length < pageSize) break;
     skip += pageSize;
   }
+  /* 命中硬上限：说明这一分钟的任务量超出了单次巡检的容量，剩余靠下一分钟重扫补齐。
+     2026-10-13 起待发段与过期段共用一个上限，这里打日志是为了别让「待发段被过期段挤掉」
+     变成静默行为。 */
+  if (rows.length >= maxRows) {
+    console.warn('[notifier] scan-truncated', JSON.stringify({ maxRows, scanned: rows.length }));
+  }
   return rows;
 }
 
@@ -569,26 +634,36 @@ async function loadSpotMap(due) {
 /**
  * 把已过放票时刻却仍是 WAITING 的任务判为 MISSED（REMINDER-RULE-004）
  * 覆盖云函数中途失败、超时等情况。
+ *
+ * @param {object[]} [prefetchedTasks] tick 合并查询后传入的**过期段**（releaseAt <= now）。
+ *   不传则自行查询 —— `action:'sweepMissed'` 手动分支走这条。
+ * @param {number} [nowTsArg] 与预取任务同一时刻的 now。
  */
-async function sweepMissed() {
-  const nowTs = Date.now();
-  const tasks = await fetchTasksPaged({
+async function sweepMissed(prefetchedTasks, nowTsArg) {
+  const nowTs = nowTsArg || Date.now();
+  const tasks = prefetchedTasks || await fetchTasksPaged({
     backendStatus: ReminderBackendStatus.WAITING,
     releaseAt: _.lte(new Date(nowTs)),
   });
 
   let marked = 0;
   const healCandidates = new Map();
+  const missedEvents = [];
   for (const t of tasks) {
+    const missedReason = t.lastSendError || '超过放票时间点未触发成功';
     await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).update({
       data: {
         backendStatus: ReminderBackendStatus.MISSED,
         // 优先用 markResult 记下的真实发送失败原因（如「WX_APPID/WX_APPSECRET 未配置」），
         // 没有发送记录时才退回笼统文案
-        missedReason: t.lastSendError || '超过放票时间点未触发成功',
+        missedReason,
         cleanAt: new Date(nowTs + CLEAN_AFTER_DAYS * 86400000),
       },
     });
+    missedEvents.push(events.taskEvent(events.EVENT_TYPES.TASK_MISSED, t, nowTs, {
+      source: 'notifier.sweepMissed',
+      errorMessage: missedReason,
+    }));
     marked += 1;
     // 台账自愈候选：确实发过（lastSendError 非空）且失败原因不是本地配置/链路问题
     if (t.userId && shouldHealQuota(t.lastSendError)) {
@@ -596,6 +671,7 @@ async function sweepMissed() {
       healCandidates.set(`${t.userId}|${templateId}`, { openid: t.userId, templateId });
     }
   }
+  await events.recordEvents(db, missedEvents);
 
   // 台账自愈（见 shouldHealQuota）：把「本地记着有额度、任务却 MISSED」的假额度清零，
   // 否则页面一直写「已授权 N 次」，用户以为覆盖到了，实际条条收不到
@@ -653,6 +729,59 @@ async function cleanup() {
   return { tasksRemoved: affected.length, tripsRemoved };
 }
 
+/**
+ * 定时巡检主流程（tick）。
+ *
+ * 三步彼此隔离：任何一步抛错（典型是缺 backendStatus+releaseAt 复合索引，`where + orderBy`
+ * 直接报错）都不能拖垮其余两步。以前三步串行，scanAndSend 一失败 sweepMissed 就永远不执行，
+ * 结果「推送没发出」和「任务没被标 MISSED」同时发生，用户侧表现为任务永久卡在「待提醒」，
+ * 且没有任何失败提示（2026-09-14 实际踩过）。
+ *
+ * ⚠️ 抽成独立函数、并把 `nowTs` 作为参数，是为了让「cleanup 只在整点跑」这条断言能确定性
+ * 测试 —— 函数内部直接读 `Date.now()` 的话，测试结果会随运行时那一分钟时好时坏。
+ * `nowTs` 只决定「查询窗口 + cleanup 门禁」；单条发送结果的落库时间仍用真实 `Date.now()`
+ * （记的是「什么时候真的发了」，不是「这一轮从什么时候开始」），不要把它一并改成 nowTs。
+ */
+async function runTick(nowTs = Date.now()) {
+  const out = { send: null, missed: null, cleaned: null, errors: [] };
+
+  /* 一次查询取回「待发段 + 过期段」，两段共用同一个 nowTs —— 各取一次时间会在两次查询之间
+     留出缝隙，让刚好跨过 releaseAt 的任务既没被发、也没被判 MISSED。
+     查询失败不阻断 cleanup：它与这批任务无关，照常跑。 */
+  let waiting = null;
+  try {
+    waiting = await fetchWaitingUpTo(nowTs);
+  } catch (e) {
+    out.errors.push(`scan: ${e.message}`);
+    console.error('[notifier] tick scan failed', e);
+  }
+
+  const steps = [];
+  if (waiting) {
+    const { overdue, upcoming } = splitWaiting(waiting, nowTs);
+    steps.push(['send', () => scanAndSend(upcoming, nowTs)]);
+    steps.push(['missed', () => sweepMissed(overdue, nowTs)]);
+  }
+  /* 清理按小时跑：CLEAN_AFTER_DAYS = 14，晚一小时对业务毫无影响，而每分钟跑等于白读一次库
+     （空转分钟的唯一固定开销就在这）。
+     ⚠️ **不要降到每天** —— cleanup 单次 `.limit(500)` 有上限，每天一次会积压滚雪球。
+     运维随时可用 `action:'cleanup'` 手动强制跑。 */
+  if (new Date(nowTs).getMinutes() === 0) {
+    steps.push(['cleaned', cleanup]);
+  }
+
+  for (const [key, fn] of steps) {
+    try {
+      out[key] = await fn();
+    } catch (e) {
+      out.errors.push(`${key}: ${e.message}`);
+      console.error(`[notifier] tick step ${key} failed`, e);
+    }
+  }
+  console.log('[notifier] tick', JSON.stringify(out));
+  return out;
+}
+
 exports.main = async (event) => {
   // 定时触发器不带 action，默认执行完整巡检
   const action = (event && event.action) || 'tick';
@@ -660,22 +789,7 @@ exports.main = async (event) => {
   try {
     switch (action) {
       case 'tick': {
-        /* 三步彼此隔离：任何一步抛错（典型是缺 backendStatus+releaseAt 复合索引，
-           `where + orderBy` 直接报错）都不能拖垮其余两步。
-           以前三步串行，scanAndSend 一失败 sweepMissed 就永远不执行，
-           结果「推送没发出」和「任务没被标 MISSED」同时发生，
-           用户侧表现为任务永久卡在「待提醒」，且没有任何失败提示（2026-09-14 实际踩过）。 */
-        const out = { send: null, missed: null, cleaned: null, errors: [] };
-        const steps = [['send', scanAndSend], ['missed', sweepMissed], ['cleaned', cleanup]];
-        for (const [key, fn] of steps) {
-          try {
-            out[key] = await fn();
-          } catch (e) {
-            out.errors.push(`${key}: ${e.message}`);
-            console.error(`[notifier] tick step ${key} failed`, e);
-          }
-        }
-        console.log('[notifier] tick', JSON.stringify(out));
+        const out = await runTick();
         return { success: out.errors.length === 0, ...out, templateConfigured: Boolean(TEMPLATE_ID) };
       }
       case 'sendNow':
@@ -730,4 +844,4 @@ exports.main = async (event) => {
   }
 };
 
-exports._internal = { collectDue, staggerDelays, beijingHm, beijingMonthDay, beijingDateTime, beijingDateCn, buildSubscribeData, templateIdOfTask, getAccessToken, sendSubscribeMessageHttp, httpJson, shouldHealQuota, healSubscribeQuota, spotLandingPage, WX_APPID, WX_APPSECRET, LEGACY_TEMPLATE_ID, DEFAULT_TEMPLATE_ID, TEMPLATE_ID };
+exports._internal = { collectDue, staggerDelays, beijingHm, beijingMonthDay, beijingDateTime, beijingDateCn, buildSubscribeData, templateIdOfTask, getAccessToken, sendSubscribeMessageHttp, httpJson, shouldHealQuota, healSubscribeQuota, spotLandingPage, markResult, WX_APPID, WX_APPSECRET, LEGACY_TEMPLATE_ID, DEFAULT_TEMPLATE_ID, TEMPLATE_ID, fetchWaitingUpTo, splitWaiting, fetchTasksPaged, scanAndSend, sweepMissed, cleanup, runTick, SCAN_WINDOW_MS, MAX_ADVANCE_MS, SCAN_MAX_ROWS };

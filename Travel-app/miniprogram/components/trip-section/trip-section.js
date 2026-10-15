@@ -18,6 +18,11 @@ const util = require('../../utils/util.js');
  * 已废止且不要再加回来的：行程分段标题的**吸顶**（模板 spacer、sticky/stickyTop/
  * headHeight 三个属性、页面滚动测位）；右侧「行程管理」入口（进入的是无上下文的
  * add-trip）。`menuDate` 的键也从 `tripId|visitDate` 简化为纯 `visitDate`。
+ *
+ * ⚠️ 上面废止的是**行程分段标题**（`.ts-head`：城市 + 日期范围）——它与顶部摘要卡
+ * 同屏重复，所以不吸顶。**日期分段标题**（`.ts-day-head`：`10月2日 · 周五` + `第1天`）
+ * 的吸顶是另一回事：2026-10-12 按用户口径加上（滚当天内容时标题一直看得见），
+ * 偏移量由页面用 `dayStickyTop` 下发。别把两者混为一谈再删一次。
  */
 Component({
   properties: {
@@ -42,6 +47,10 @@ Component({
        连标题行一起弱化不渲染。单行程是最常见形态，这一条撑住了「首页是一堵干净的墙」
        的观感；两趟以上时每段都得靠标题行表明自己是哪一趟。 */
     weak: { type: Boolean, value: false },
+    /* 日期分段标题的吸顶偏移（px）= 状态栏 + 导航栏高度，由页面内联下发。
+       ⚠️ 必须由页面给：导航栏高度跟状态栏走、各机型不同，wxss 里写不出常量；
+       写死 `top: 0` 会让标题吸到屏幕最顶上、被导航栏压住。0 表示不吸顶。 */
+    dayStickyTop: { type: Number, value: 0 },
   },
 
   data: {

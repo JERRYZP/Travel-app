@@ -9,6 +9,7 @@ const {
   COLLECTIONS, ReminderBackendStatus, ChannelType, V1, ERRORS, PENDING_CART_TRIP_ID, ok, fail,
 } = require('./schema');
 const time = require('./time');
+const events = require('./events');
 const tripItem = require('./trip-item');
 const cart = require('./cart');
 const trip = require('./trip');
@@ -374,6 +375,14 @@ async function sweepOverdue(db, tasks, nowTs = time.now(), userId, resolveReleas
     }
   });
 
+  /* 读取时兜底收敛也必须留下终态事件，否则 notifier 未跑时后台会漏记 MISSED。 */
+  await events.recordEvents(db, patches.map(({ t, patch }) =>
+    events.taskEvent(events.EVENT_TYPES.TASK_MISSED, t, nowTs, {
+      source: 'reminder.sweepOverdue',
+      errorMessage: patch.missedReason || null,
+    })
+  ));
+
   const owner = userId || (overdue[0] && overdue[0].userId);
   if (owner && healCandidates.size > 0) {
     for (const candidate of healCandidates.values()) {
@@ -511,6 +520,10 @@ async function submit(db, userId, event) {
     await transaction.rollback();
     return fail({ code: 1011, message: `提交失败：${err.message}` });
   }
+
+  await events.recordEvents(db, createdTasks.map(t =>
+    events.taskEvent(events.EVENT_TYPES.TASK_CREATED, t, nowTs, { source: 'reminder.cart.commit' })
+  ));
 
   const noReminder = disableReminders ? cartItems.length : cartItems.length - reminderItems.length;
   /* 勾了提醒、但因为放票时刻已过而没建任务的那些（见上）。前端据此换一句文案——
@@ -670,6 +683,9 @@ async function remove(db, userId, taskId) {
     return fail({ code: 1012, message: '已提醒的任务不可单条删除，可在「清空任务」中批量清理' });
   }
 
+  await events.recordEvent(db, events.taskEvent(
+    events.EVENT_TYPES.TASK_CANCELED, task, time.now(), { source: 'reminder.task.remove' }
+  ));
   await db.collection(COLLECTIONS.REMINDER_TASKS).doc(taskId).remove();
   return ok({ taskId, tripId: task.tripId });
 }
@@ -697,6 +713,9 @@ async function clear(db, userId, { filter = null, tripId = null } = {}) {
   }
 
   const affectedTripIds = [...new Set(targets.map(t => t.tripId).filter(Boolean))];
+  await events.recordEvents(db, targets.map(t =>
+    events.taskEvent(events.EVENT_TYPES.TASK_CANCELED, t, time.now(), { source: 'reminder.task.clear' })
+  ));
   for (const t of targets) {
     await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).remove();
   }

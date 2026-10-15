@@ -632,18 +632,20 @@
      sticky 在滚动容器内生效、以它为上界。
    ⚠️ 吸顶块**整体不透明**：它是白底 `--color-surface`，但行程标题、日期卡没有背景，
      直接从下面透过来会把标题糊掉。底色 + 底部阴影都落在自身。
+   ⚠️ **没有 `border-bottom`**（2026-10-12 用户口径）：原来那 1rpx 分隔线夹在
+      「吸顶面板（白底）」与「吸顶的日期标题（同为白底）」之间，看着像一条镂空的缝
+      （面板在文档流里时它是分割线，面板吸住后它就是裂缝）。分隔改由底部阴影承担。
    z-index 85 在导航栏（90）之下：滑到底时被导航栏盖住是预期行为。 */
 .timeline-panel {
   position: sticky;
   z-index: 85;
   /* padding-bottom 8→16rpx（2026-09-24 用户口径 +4px）：拉大「一键加入清单」
-     到模块底边（那条细线）的距离。⚠️ 是**内边距**不是外边距——
+     到模块底边的距离。⚠️ 是**内边距**不是外边距——
      外边距推的是模块底边往下到第一张卡的距离，改错了位置用户一眼看得出来。 */
   padding: 0 0 16rpx;
   margin-bottom: 16rpx;
   background: var(--color-surface);
   border-radius: 32rpx 32rpx 0 0;
-  border-bottom: 1rpx solid var(--color-border);
   box-shadow: 0 4rpx 12rpx rgba(100,60,20,0.08);
   box-sizing: border-box;
 }
@@ -747,6 +749,23 @@
   gap: 12rpx;
   min-height: 64rpx;
   margin-bottom: 12rpx;
+}
+/* ===== 日期标题吸顶（2026-10-12 用户口径）=====
+   滚进某一天的内容里时，这一天的日期标题一直留在视口顶部。
+
+   ⚠️ `top` 只在模板内联里给（= 导航栏下沿 + `.timeline-panel` 的高度），wxss 不写：
+      面板自己也在吸顶，日期标题跟它同偏移量就会叠在一起；而面板高度随「出游日 Tab 行」
+      在不在而变，写不出常量。量不到时模板不加 `.is-pinned`，宁可不吸顶也不要吸错位置。
+   ⚠️ 底色必须**不透明**（`--color-surface`，即时间线模块的白底）：`.timeline-day` 有
+      30rpx 内边距，卡片与标题同宽，卡片滑上来时靠这块底色挡住。
+   ⚠️ z-index 30 在吸顶面板（85）之下、卡片内容之上：面板要一直压着日期标题，
+      否则滑到底时标题会浮到「第二步」标题上面。
+   ⚠️ 这里**没有上外边距**，所以不需要补位块。将来若给日期标题加上外边距，
+      要照 `trip-section` 的 `.ts-day-head.is-pinned::before` 补一块同色底。 */
+.timeline-day-head.is-pinned {
+  position: sticky;
+  z-index: 30;
+  background: var(--color-surface);
 }
 .timeline-day-date {
   font-size: 28rpx;
