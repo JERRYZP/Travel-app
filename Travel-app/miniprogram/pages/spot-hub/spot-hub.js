@@ -1,5 +1,6 @@
 const app = getApp();
 const api = require('../../utils/api.js');
+const spotsCache = require('../../utils/spots-cache.js');
 const notify = require('../../utils/notify.js');
 const shareEntry = require('../../utils/share-entry.js');
 const analytics = require('../../utils/analytics.js');
@@ -226,9 +227,16 @@ Page({
     wx.showToast({ title: '更多城市敬请期待', icon: 'none' });
   },
 
+  /* Banner 只展示今日放票摘要；“查看更多”进入完整今日放票场景页。 */
+  onReleaseMoreTap() {
+    wx.navigateTo({
+      url: shareEntry.buildScenePath('today', 'direct'),
+    });
+  },
+
   loadSpots() {
     this.setData({ loading: true });
-    api.spots.list().then(res => {
+    spotsCache.list(() => api.spots.list()).then(res => {
       /* 卡片展示字段（难度标签/放票标签/cardDesc）由云函数 buildCard 一次给全，前端不再加工 */
       const allSpots = res.data || [];
       this.setData({ allSpots, loading: false, loadFailed: false }, () => {

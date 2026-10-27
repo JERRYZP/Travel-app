@@ -1,6 +1,11 @@
 <view class="navbar" style="height: {{navTop}}px;">
   <view style="height: {{statusBarHeight}}px;"></view>
   <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <!-- 从景点页 Banner「查看更多」进来时栈里有上一页才显示返回；
+         分享卡片直达时栈里只有本页，不给一个点了没反应的假返回。 -->
+    <view wx:if="{{canGoBack}}" class="navbar-back" bindtap="onBack">
+      <svg-icon name="back" size="18px" />
+    </view>
     <text class="navbar-title">{{scene ? scene.navTitle : '放票清单'}}</text>
   </view>
 </view>

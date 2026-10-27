@@ -102,4 +102,20 @@
   <text wx:if="{{gateText}}" class="gate-hint">{{gateText}}</text>
 </view>
 
+<!-- 提交成功：轻量成功卡片（默认 4 秒自动返回，底部弱化倒计时提示）。
+     公众号入口只占一行，点开才出二维码；点卡片外或右上角关闭都立即回首页，不拦路。 -->
+<view wx:if="{{showSuccess}}" class="success-mask" bindtap="onSuccessSkip" catchtouchmove="noop">
+  <view class="success-card" catchtap="noop">
+    <view class="success-close" bindtap="onSuccessSkip"><svg-icon name="close" size="14px" /></view>
+    <view class="success-icon"><svg-icon name="check" size="18px" /></view>
+    <text class="success-title">{{successTitle}}</text>
+    <view class="success-oa" bindtap="onSuccessOa">
+      <text class="success-oa-text">{{oaEntryText}}</text>
+      <svg-icon name="chevron-right" size="12px" />
+    </view>
+    <text class="success-countdown">{{successCountdown}} 秒后自动返回首页</text>
+  </view>
+</view>
+
 <reminder-sample-sheet show="{{showSampleSheet}}" bind:close="onCloseSample" />
+<oa-follow-sheet show="{{showOaSheet}}" bind:close="onCloseOaSheet" />

@@ -13,7 +13,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const _ = db.command;
 
-const { COLLECTIONS, V1, ERRORS, ChannelType, PENDING_CART_TRIP_ID, ok, fail } = require('./lib/schema');
+const { COLLECTIONS, V1, ERRORS, ChannelType, PENDING_CART_TRIP_ID, ReminderBackendStatus, ok, fail } = require('./lib/schema');
 const time = require('./lib/time');
 const trip = require('./lib/trip');
 const timeline = require('./lib/timeline');
@@ -478,14 +478,33 @@ async function addSubscribe(userId, templateId) {
 /** subscribe.get —— 查询当前用户某个模板的本地额度 */
 async function getSubscribe(userId, templateId) {
   const tpl = templateId || DEFAULT_SUBSCRIBE_TEMPLATE_ID;
+  const nowTs = time.now();
+  const nowMs = new Date(nowTs).getTime();
+  /* 2026-10-27 降本：只取真正会进统计的任务，不再把该用户全部历史任务拉回来。
+     `task.reminderHealthOf` 的三条过滤是 —— ①只认 WAITING；②releaseAt 非有限值或
+     已到期的不算；③模板不匹配的不算（templateId 为空时不过滤模板）。
+     ⚠️ 收窄条件必须与之一一对应，漏一条就会让「待发送 n 条 / 还差 n 次授权」算错：
+        · backendStatus / releaseAt 两个条件与 ①② 等价，可以下推到 where；
+        · `new Date(releaseAt).getTime()` 非有限值的数据在 where 侧无法表达，
+          所以在内存里再兜一次（与 reminderHealthOf 同一个判断）。
+     ⚠️ 不加 limit：待发送数要精确，截断会让额度提示少算。 */
   const [res, taskRes] = await Promise.all([
     db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
-    db.collection(COLLECTIONS.REMINDER_TASKS).where({ userId }).get(),
+    db.collection(COLLECTIONS.REMINDER_TASKS)
+      .where({
+        userId,
+        backendStatus: ReminderBackendStatus.WAITING,
+        releaseAt: _.gt(new Date(nowMs)),
+      })
+      .get(),
   ]);
   const u = (res.data || [])[0] || {};
   const quotas = u.subscribeQuotas || {};
   const quota = subscribeQuotaOf(u, tpl);
-  const health = task.reminderHealthOf(taskRes.data || [], quota, time.now());
+  const liveTasks = (taskRes.data || []).filter(t => t
+    && t.backendStatus === ReminderBackendStatus.WAITING
+    && Number.isFinite(new Date(t.releaseAt).getTime()));
+  const health = task.reminderHealthOf(liveTasks, quota, nowTs);
   return ok({
     quota,
     totalQuota: totalSubscribeQuota(quotas, u.subscribeQuota),

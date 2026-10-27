@@ -231,14 +231,33 @@ function matchSpot(spot, keyword) {
   return candidates.some(c => c.includes(kw) || c.startsWith(kw));
 }
 
+/**
+ * 景点与规则整表读取（2026-10-27 降本）。
+ *
+ * 两张表是静态运营数据（只由 admin.seed 写入），但 `list` / `search` / `batch`
+ * 每次调用都要重读 26+26 条。云函数实例是温的，模块作用域变量可跨请求复用，
+ * 所以加 60 秒 TTL 的整表缓存 —— 与 `notifier/index.js` 的 `accessTokenCache`
+ * 同一个机制。代价是多实例之间最长 60 秒的数据陈旧，对一天改几次的景点规则可接受。
+ *
+ * ⚠️ 空表不写缓存：初始化前的空结果若被缓存 60 秒，会让首批用户看到空的景点列表。
+ */
+const TABLE_CACHE_TTL_MS = 60 * 1000;
+let tableCache = null; // { at:number, spots:Array, ruleMap:object }
+
 async function loadAll() {
+  if (tableCache && (Date.now() - tableCache.at) < TABLE_CACHE_TTL_MS) {
+    return tableCache;
+  }
   const [spotsRes, rulesRes] = await Promise.all([
     db.collection(COLLECTIONS.SPOTS).limit(200).get(),
     db.collection(COLLECTIONS.RELEASE_RULES).limit(200).get(),
   ]);
   const ruleMap = {};
   (rulesRes.data || []).forEach(r => { ruleMap[r.spotId] = r; });
-  return { spots: spotsRes.data || [], ruleMap };
+  const spots = spotsRes.data || [];
+  const result = { at: Date.now(), spots, ruleMap };
+  if (spots.length > 0) tableCache = result;
+  return result;
 }
 
 exports.main = async (event) => {

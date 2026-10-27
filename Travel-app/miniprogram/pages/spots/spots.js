@@ -1,5 +1,6 @@
 const app = getApp();
 const api = require('../../utils/api.js');
+const spotsCache = require('../../utils/spots-cache.js');
 const util = require('../../utils/util.js');
 
 Page({
@@ -55,7 +56,7 @@ Page({
 
   /* 热门推荐：只混搭 S+A 级，S 优先占满、其余用 A 补足到 10 个，避免全是极难约（见 mixBatch） */
   loadHotSpots() {
-    api.spots.list().then(res => {
+    spotsCache.list(() => api.spots.list()).then(res => {
       this.applyHotPool(res.data || []);
     }).catch(() => { this.applyHotPool([]); });
   },

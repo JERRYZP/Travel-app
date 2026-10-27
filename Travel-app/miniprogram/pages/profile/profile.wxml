@@ -62,6 +62,19 @@
     </view>
   </view>
 
+  <!-- 公众号：单独一张卡放最下面，与其他设置项隔开；只留入口，点开才是二维码 -->
+  <view class="setting-card">
+    <view class="setting-row" bindtap="onFollowOa">
+      <text class="setting-row-label">{{oaRowLabel}}</text>
+      <view class="setting-row-right">
+        <text class="setting-row-hint">{{oaRowHint}}</text>
+        <svg-icon name="chevron-down" size="14px" rotate="270" />
+      </view>
+    </view>
+  </view>
+
 </view>
+
+<oa-follow-sheet show="{{showOaSheet}}" bind:close="onCloseOaSheet" />
 
 <tabbar active="profile" />

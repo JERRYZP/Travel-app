@@ -607,6 +607,41 @@ async function sweepMissed() {
 }
 
 /**
+ * 判空查询：等价于 `count().total > 0`，但读操作上限是 1 条而不是整表计数。
+ * 云开发按读操作计费，`count()` 在集合变大后等于「白读一遍」。
+ * 2026-10-27 降本，用在 cleanup 的级联判空上。
+ */
+async function hasAny(db, collection, where) {
+  const res = await db.collection(collection).where(where).field({ _id: 1 }).limit(1).get();
+  return (res.data || []).length > 0;
+}
+
+/**
+ * cleanup 的执行节流（2026-10-27 降本）。
+ *
+ * 触发器仍是每分钟一次（`config.json`，一个函数只能挂 1 个 timer trigger），
+ * 但 cleanup 清的是 14 天前已发送的任务，跟提醒准时性毫无关系 —— 每分钟全表扫一遍
+ * 等于每天 1440 次固定成本。改成每小时跑一次。
+ *
+ * ⚠️ 用模块级时间戳而不是「分钟数 == 0」来判断：整点那一拍如果正好赶上一批发送
+ *    或者冷启动，cleanup 会被顺延到下一个整点。用「距上次清理满一小时」则没有这个
+ *    空档 —— 任何一次 tick 只要够久没清就会补上。
+ * ⚠️ 云函数是多实例的，每个实例各自计时，所以实际频率会略高于每小时一次
+ *    （实例数 × 每小时）。这仍然远低于每分钟一次，且 cleanup 是幂等的，重复执行无害。
+ *    不追求绝对精确，只追求「别每分钟都扫」。
+ */
+const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+let lastCleanupAt = 0;
+
+function shouldRunCleanup(nowMs) {
+  if (nowMs - lastCleanupAt < CLEANUP_INTERVAL_MS) return false;
+  /* 先写时间戳再执行：cleanup 抛错时不至于每分钟重试一次把成本打回去，
+     下一次 tick 会在满一小时后自然重试。 */
+  lastCleanupAt = nowMs;
+  return true;
+}
+
+/**
  * REMINDER-RULE-006 自动清理 + TRIP-RULE-004 级联删除空行程
  */
 async function cleanup() {
@@ -633,18 +668,14 @@ async function cleanup() {
     if (seen.has(key)) continue;
     seen.add(key);
 
-    const taskCount = await db.collection(COLLECTIONS.REMINDER_TASKS)
-      .where({ userId: a.userId, tripId: a.tripId }).count();
-    if (taskCount.total > 0) continue;
+    /* 判空用 hasAny 而不是 count()：只需要知道「有没有」，count 却要把整表数一遍。
+       2026-10-27 降本，最坏路径原本是每个受影响行程 3 次全量 count。 */
+    if (await hasAny(db, COLLECTIONS.REMINDER_TASKS, { userId: a.userId, tripId: a.tripId })) continue;
     /* ⚠️ 行程项是 V2 判断「行程是否为空」的唯一依据（API-契约 8.1）。
        少这一条会把「只有免预约景点、没设提醒」的行程当成空壳删掉——
        而这类行程恰恰是本次改版要补齐的那部分内容。 */
-    const itemCount = await db.collection(COLLECTIONS.TRIP_ITEMS)
-      .where({ userId: a.userId, tripId: a.tripId }).count();
-    if (itemCount.total > 0) continue;
-    const cartCount = await db.collection(COLLECTIONS.REMINDER_CART)
-      .where({ userId: a.userId, tripId: a.tripId }).count();
-    if (cartCount.total > 0) continue;
+    if (await hasAny(db, COLLECTIONS.TRIP_ITEMS, { userId: a.userId, tripId: a.tripId })) continue;
+    if (await hasAny(db, COLLECTIONS.REMINDER_CART, { userId: a.userId, tripId: a.tripId })) continue;
 
     await db.collection(COLLECTIONS.TRIPS).doc(a.tripId).remove();
     tripsRemoved += 1;
@@ -666,7 +697,15 @@ exports.main = async (event) => {
            结果「推送没发出」和「任务没被标 MISSED」同时发生，
            用户侧表现为任务永久卡在「待提醒」，且没有任何失败提示（2026-09-14 实际踩过）。 */
         const out = { send: null, missed: null, cleaned: null, errors: [] };
-        const steps = [['send', scanAndSend], ['missed', sweepMissed], ['cleaned', cleanup]];
+        /* `send` / `missed` 必须每分钟跑（提醒准时性、MISSED 判定都靠它们）。
+           `cleanup` 被节流到每小时一次 —— 它清的是 14 天前已发送的任务，
+           跟准时性无关，每分钟全表扫一遍纯属固定成本。见 shouldRunCleanup 的注释。 */
+        const steps = [['send', scanAndSend], ['missed', sweepMissed]];
+        if (shouldRunCleanup(Date.now())) {
+          steps.push(['cleaned', cleanup]);
+        } else {
+          out.cleaned = 'skipped';
+        }
         for (const [key, fn] of steps) {
           try {
             out[key] = await fn();

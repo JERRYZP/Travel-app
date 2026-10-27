@@ -1,5 +1,6 @@
 const app = getApp();
 const api = require('../../utils/api.js');
+const spotsCache = require('../../utils/spots-cache.js');
 const verify = require('../../utils/verify.js');
 const release = require('../../utils/release-context.js');
 const scenes = require('../../utils/share-scenes.js');
@@ -27,6 +28,7 @@ Page({
     statusBarHeight: 20,
     navBarHeight: 44,
     navTop: 64,
+    canGoBack: false,
     loading: true,
     loadFailed: false,
     expired: false,
@@ -55,12 +57,17 @@ Page({
       statusBarHeight,
       navBarHeight,
       navTop: statusBarHeight + navBarHeight,
+      canGoBack: this.canGoBack(),
     });
     this.applyEntry(shareEntry.consumeEntry(app, options));
     this.loadScene();
   },
 
   onShow() {
+    /* 页面栈可能在别处被改写（reLaunch/redirectTo 之后回到本页），
+       每回复显时重算一次返回按钮可见性，不靠 onLoad 那一帧的结论。 */
+    const canGoBack = this.canGoBack();
+    if (canGoBack !== this.data.canGoBack) this.setData({ canGoBack });
     const pending = shareEntry.peekPending(app);
     if (pending && pending.sceneId && !pending.spotId) {
       shareEntry.clearPending(app);
@@ -100,7 +107,7 @@ Page({
     }
 
     const request = scene.kind === 'today'
-      ? api.spots.list()
+      ? spotsCache.list(() => api.spots.list())
       : api.spots.batch(scene.spotIds);
 
     return request.then(res => {
@@ -175,6 +182,19 @@ Page({
 
   onDateClose() {
     reminderFlow.onDateClose(this);
+  },
+
+  /* 左上角返回：只有栈里真有上一页才显示（景点页 Banner「查看更多」进栈）。
+     分享卡片直达时栈深度是 1，不出现点不动的返回；那种场景底部已有「返回主页」。 */
+  canGoBack() {
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : null;
+    return !!(pages && pages.length > 1);
+  },
+
+  onBack() {
+    /* 按钮只在栈深 >1 时出现；真出栈失败（栈被外部改写）就直接回首页，
+       不再套一层 goHome，免得失败后重试同一个必然失败的 navigateBack。 */
+    wx.navigateBack({ fail: () => wx.reLaunch({ url: '/pages/home/home' }) });
   },
 
   goToday() {

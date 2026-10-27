@@ -57,6 +57,8 @@ Travel-app/产品分析/
 Travel-app/产品运营/
 Travel-app/公司资料/
 Travel-app/临时资料/
+# 参赛材料含身份证人像面等身份件，一旦进 git 历史很难彻底清除 —— 永不入库
+Travel-app/参赛材料/
 # Claude Code CLI local data (skills installed via `claude` shouldn't pollute the repo)
 .claude/skills/
 .claude/settings.local.json

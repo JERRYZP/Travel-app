@@ -55,6 +55,46 @@ def check_icons(files):
                 problems.append(f'{f}: svg-icon "{m.group(1)}" 在 images/icons 下不存在')
 
 
+def check_bundled_images_exist(files):
+    """WXML 里写死本地图的 src，文件却不在包内 —— 只在真机/预览时才炸，构建不报错。
+
+    只查 `/images/...` 这种包内字面量；云文件 ID 和 WXS 返回值不在这里管。
+    2026-10-26 踩过：banner_bg.png 压平成 jpg 后删了 PNG，spot-hub.wxml 还写着 .png。
+    """
+    for f in files:
+        if not f.endswith(".wxml"):
+            continue
+        src = open(f, encoding="utf-8").read()
+        for m in re.finditer(r'<image[^>]*\ssrc="/images/([^"]+)"', src):
+            # 带 {{}} 的路径由运行期拼出来（如 svg-icon 的 /images/icons/{{name}}.svg），
+            # 不在本检查范围内 —— 图标名另有 check_icons() 兜底。
+            if "{{" in m.group(1) or "}}" in m.group(1):
+                continue
+            if not os.path.exists(os.path.join(ROOT, "images", m.group(1))):
+                problems.append(
+                    f'{f}: 包内图片 /images/{m.group(1)} 不存在（真机与预览会显示空白）'
+                )
+
+
+def check_js_bundled_images(files):
+    """JS 里写死的分享封面路径，文件却不在包内 —— WXML 扫描覆盖不到的那一半。
+
+    只认 `imageUrl: '/images/...'` 这种分享封面字面量。刻意不泛扫所有 `/images/`
+    字符串：`official-account.js` 的二维码路径与 `mock.js` 的头像都走云存储，
+    本来就允许包内没有对应文件，泛扫会把它们误判成错误。
+    2026-10-26 踩过：包内 images/spots/ 下云后，国庆场景封面还指着 gugong.jpg。
+    """
+    for f in files:
+        if not f.endswith(".js"):
+            continue
+        src = open(f, encoding="utf-8").read()
+        for m in re.finditer(r"""imageUrl:\s*['"]/images/([^'"]+)['"]""", src):
+            if not os.path.exists(os.path.join(ROOT, "images", m.group(1))):
+                problems.append(
+                    f'{f}: 分享封面 /images/{m.group(1)} 不存在（真机分享出去是白图）'
+                )
+
+
 def check_components(files):
     for f in files:
         if not f.endswith(".json"):
@@ -226,6 +266,8 @@ def main():
     files = list(walk(ROOT))
     asset_files = list(walk_all(ROOT))
     check_icons(files)
+    check_bundled_images_exist(files)
+    check_js_bundled_images(files)
     check_components(files)
     check_wxs(files)
     check_wxs_cloud_literal(files)

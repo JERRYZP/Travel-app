@@ -108,8 +108,11 @@ function buildSpotSharePayload(spot, fallbackSpotId) {
 
 function buildHomeSharePayload() {
   return {
-    title: '北京热门景点今日放票，一张表看完',
-    path: buildScenePath('today', 'home_share'),
+    /* 标题与分享封面上的主视觉文案对齐（封面写「北京景点抢票 / 微信提醒你」），
+       卡片里图和字说同一件事；不带具体日期，避免卡片挂久了显得过期。 */
+    title: '北京热门景点放票，微信提醒你',
+    /* 首页直接作为分享落地页，避免用户先落在今日放票列表再二次进入首页。 */
+    path: '/pages/home/home?source=home_share',
     imageUrl: SHARE_IMAGES.homeToday,
   };
 }

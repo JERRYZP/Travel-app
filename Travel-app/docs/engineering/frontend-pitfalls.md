@@ -37,7 +37,13 @@
   - 包内小图（图标、头像、分享封面、空态头图）：WXML 里直接写 `src="/images/..."` 字面量，不走 WXS。
   - 云图：必须传运行时变量（`asset.spot(item.spotId)`、`item.qrCode`）。
   - 护栏：`scripts/check-miniprogram.py` 的 `check_wxs_cloud_literal()`，扫到字面量参数即失败。
-- ⚠️ **200KB 额度只剩 2.4KB**（2026-09-30）。`banner_bg.png` 65.9KB + `share/` 两张 41KB 已占掉一半，新增任何包内图片前先算总账。
+  - 反向护栏：`check_bundled_images_exist()` 扫 WXML 里写死的 `/images/...`，文件不在包内即失败（带 `{{}}` 的运行期路径跳过，图标名另有 `check_icons()` 兜底）。2026-10-26 就是 banner 换成 jpg 而 wxml 还指着 png。
+  - 同一把锁的另一半：`check_js_bundled_images()` 扫 JS 里 `imageUrl: '/images/...'` 的分享封面字面量。WXML 扫描管不到 JS，2026-10-26 包内 `images/spots/` 下云后国庆场景封面仍指着 `gugong.jpg`，三道检查全没报警——因为过期期间分享回退 `today` 把问题藏住了。刻意**不泛扫**所有 `/images/` 字符串：`official-account.js` 的二维码和 `mock.js` 的头像走云存储，本来就允许包内没有文件。
+- 分享封面 **700×560 / q65 / 4:4:4（`subsampling=0`）** 是 200KB 硬线下的上限（2026-10-26 复核）。两张共 108.4KB，全包图片/音频 191.3KB，只剩约 8.7KB。
+  - 再往上（700px q68 = 197.2KB、720px q65 = 196.7KB）就是贴着线走，加任何一张图都会超。
+  - 卡住的是分辨率不是质量：分享卡在微信里只显示约 240×192，但用户点开是满屏看文案，所以优先保 **4:4:4 色度**——红字、金字的边缘发糊主要是默认 4:2:0 色度抽样造成的，降质量参数反而没那么明显。
+  - 想再提清晰度只能从结构上省：`spots.svg`/`spots-active.svg` 各 4.0KB 和 30 多个小图标合计约 60KB，合并成单文件 symbol 版后能省出 20–30KB 给封面。这是独立改动，未做。
+  - 源图（1402×1122 JPEG）留在 `产品运营/0X…分享落地页.jpeg`，重导时按上面参数压。
 - **包内小图怎么压**（2026-09-30 三张图共 44.9KB → 17.0KB 的做法）：
   - 先判 alpha 是不是**恒定值**。`beijing.png` 全图 alpha 恒为 128（均匀 50%），没有任何透明度信息——垫上页面底色 `#F8F3EA` 压平成 RGB 后**渲染结果像素级一致**，再转 JPEG（44.9KB → 3.9KB）。恒定 alpha 是纯浪费，且它会把图锁死在 PNG。
   - 线稿/插画类（`empty-hero-bg`）PNG 调色板几乎无收益（30KB），JPEG 才是对的（11.2KB）。

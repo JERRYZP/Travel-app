@@ -332,21 +332,52 @@ async function listItemsByTrip(db, userId, tripId) {
 }
 
 /**
- * 批量取景点与规则（状态推导的两份输入）。
- * 返回普通对象映射，避免调用方各自再查一遍导致口径分叉。
+ * 景点与规则的实例内缓存（2026-10-27 降本）。
+ *
+ * 两张表是**静态运营数据**，只由 `admin.seed` 写入，一天改不了几次；
+ * 而 `loadSpotContext` 在 `home.bootstrap` 主路径上每调必查。
+ * 云函数实例是温的，模块作用域变量可跨请求复用 —— 与 `notifier/index.js` 的
+ * `accessTokenCache`、`reminder/index.js` 的 `moduleFirstCall` 同一个机制。
+ *
+ * 缓存的是**整表**（各 26 条，与 `spots/index.js` 的 `loadAll` 同一个上限），
+ * 不是「这次查到的 id」—— 后者会让换个 spotId 就永远不命中，命中率取决于
+ * 谁先来，行为不稳定。整表缓存后任意 id 组合都命中，逻辑也简单。
+ *
+ * ⚠️ 只缓存**完整文档**，不做投影：`spotMap` / `ruleMap` 的消费方分散在装饰、
+ *    状态推导、时间线、备选收束等多处，投影漏字段会是隐性脏数据。
+ * ⚠️ 代价是多实例之间最长 `SPOT_CACHE_TTL_MS` 的数据陈旧，对一天改几次的
+ *    景点规则可接受。
  */
+const SPOT_CACHE_TTL_MS = 60 * 1000;
+let spotTableCache = null; // { at:number, spots:Array, rules:Array }
+
+async function loadSpotTables(db) {
+  if (spotTableCache && (Date.now() - spotTableCache.at) < SPOT_CACHE_TTL_MS) {
+    return spotTableCache;
+  }
+  const [spotsRes, rulesRes] = await Promise.all([
+    db.collection(COLLECTIONS.SPOTS).limit(200).get(),
+    db.collection(COLLECTIONS.RELEASE_RULES).limit(200).get(),
+  ]);
+  /* 空表不写缓存：初始化前的空结果若被缓存 60 秒，会让首个用户的首页认不出任何景点。 */
+  const spots = spotsRes.data || [];
+  const rules = rulesRes.data || [];
+  if (spots.length > 0 || rules.length > 0) {
+    spotTableCache = { at: Date.now(), spots, rules };
+  }
+  return { at: Date.now(), spots, rules };
+}
+
 async function loadSpotContext(db, spotIds) {
   const ids = [...new Set((spotIds || []).filter(Boolean))];
   const spotMap = {};
   const ruleMap = {};
   if (ids.length === 0) return { spotMap, ruleMap };
 
-  const [spotsRes, rulesRes] = await Promise.all([
-    db.collection(COLLECTIONS.SPOTS).where({ spotId: db.command.in(ids) }).get(),
-    db.collection(COLLECTIONS.RELEASE_RULES).where({ spotId: db.command.in(ids) }).get(),
-  ]);
-  (spotsRes.data || []).forEach(s => { spotMap[s.spotId] = s; });
-  (rulesRes.data || []).forEach(r => { ruleMap[r.spotId] = r; });
+  const { spots, rules } = await loadSpotTables(db);
+  const want = new Set(ids);
+  spots.forEach(s => { if (want.has(s.spotId)) spotMap[s.spotId] = s; });
+  rules.forEach(r => { if (want.has(r.spotId)) ruleMap[r.spotId] = r; });
   return { spotMap, ruleMap };
 }
 

@@ -1,0 +1,22 @@
+<view wx:if="{{show}}" class="oa-mask" bindtap="onClose" catchtouchmove="noop">
+  <view class="oa-card" catchtap="noop">
+    <text class="oa-title">{{title}}</text>
+    <text class="oa-subtitle">{{subtitle}}</text>
+
+    <image
+      wx:if="{{qr && !qrFailed}}"
+      class="oa-qr"
+      src="{{qr}}"
+      mode="aspectFit"
+      show-menu-by-longpress
+      binderror="onQrError"
+    />
+    <view wx:else class="oa-qr oa-qr-fallback">
+      <text class="oa-qr-name">{{name}}</text>
+      <text class="oa-qr-hint">{{fallbackHint}}</text>
+    </view>
+
+    <text wx:if="{{qr && !qrFailed}}" class="oa-foot">{{foot}}</text>
+    <view class="oa-close" bindtap="onClose">{{closeText}}</view>
+  </view>
+</view>

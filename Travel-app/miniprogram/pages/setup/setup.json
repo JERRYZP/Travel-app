@@ -1,7 +1,8 @@
 {
   "usingComponents": {
     "svg-icon": "/components/svg-icon/svg-icon",
-    "reminder-sample-sheet": "/components/reminder-sample-sheet/reminder-sample-sheet"
+    "reminder-sample-sheet": "/components/reminder-sample-sheet/reminder-sample-sheet",
+    "oa-follow-sheet": "/components/oa-follow-sheet/oa-follow-sheet"
   },
   "navigationStyle": "custom"
 }

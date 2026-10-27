@@ -1,5 +1,6 @@
 const app = getApp();
 const api = require('../../utils/api.js');
+const spotsCache = require('../../utils/spots-cache.js');
 const util = require('../../utils/util.js');
 const notify = require('../../utils/notify.js');
 const tripCalendar = require('../../utils/trip-calendar.js');
@@ -20,6 +21,10 @@ const PAGE_GAP_RPX = 0;
 /* 滚多少像素把导航栏底色从全透明推到不透明 */
 const NAV_FADE_PX = 50;
 const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
+/* 首页 onShow 的复用窗口（2026-10-13 调用量优化，2026-10-27 回收）：
+   距上次成功 bootstrap 不足这个时长、又有本地缓存时，切回首页不再重复发一次网络。
+   详见 onShow / loadHome 的注释。 */
+const HOME_BOOTSTRAP_TTL_MS = 30 * 1000;
 const EMPTY_RELEASE_FALLBACK = release.buildHomeReleasePreview([], new Date()).sample;
 
 /**
@@ -198,7 +203,11 @@ Page({
   },
 
   onShow() {
-    this.loadHome();
+    /* ⚠️ 只有**带缓存**时才可能跳过网络（判定在 loadHome 的 cached 分支里）：
+       没有缓存的首次进入必须走网络，否则会永远停在骨架层。
+       写入后的刷新一律走 `loadHome({ silent: true })`，不经过这条路径 —— 它们是刷新后
+       新状态的唯一来源，永远要发请求。这里省掉的只是「用户什么都没干、切出去又切回来」。 */
+    this.loadHome({ allowTtlReuse: true });
   },
 
   onShareAppMessage(options) {
@@ -245,6 +254,11 @@ Page({
 
   loadHome(opts) {
     const silent = opts && opts.silent;
+    /* 30 秒复用窗口：只有调用方**显式允许**（目前仅 onShow）且距上次成功 bootstrap
+       不足 TTL 时才可能命中。`onExitNewUserPreview` 等路径不传这个标记，保持每次必拉。 */
+    const ttlFresh = Boolean(opts && opts.allowTtlReuse)
+      && this._lastBootOkAt > 0
+      && (Date.now() - this._lastBootOkAt) < HOME_BOOTSTRAP_TTL_MS;
     /* 耗时分段（2026-09-30）：`cache` = 用本地缓存画出第一帧的耗时；
        `net` = 请求往返（含云函数冷启动，最大头）；`setdata` = 返回到首屏画完。
 
@@ -290,7 +304,7 @@ Page({
       }, () => trace.end({ branch: 'develop-preview' }));
       /* 开发预览没有走 bootstrap 的 hotSpots；单独取一次公开景点卡，
          让设计/真机验收可以看到完整的“近期热门景点放票”模块。失败时保留兜底示例。 */
-      api.spots.list().then(res => {
+      spotsCache.list(() => api.spots.list()).then(res => {
         const preview = release.buildHomeReleasePreview(res.data || [], new Date(), 3);
         this.setData({ emptyReleaseRows: preview.rows, emptyReleaseSample: preview.sample });
       }).catch(() => {});
@@ -307,6 +321,14 @@ Page({
         const cachedNow = cachedServerMs ? new Date(cachedServerMs) : resolveNow();
         this.applyHomeData(buildHomeData(cached, cachedNow, { silent: true }));
         trace.mark('cache');
+        /* 复用窗口内：缓存就是 30 秒内的服务端返回体，直接收工，不再发一次网络。
+           ⚠️ 回放的是服务端返回体的逐字节副本（与 live 路径同一个 buildHomeData），
+           不是页面重新推导状态 —— 不触犯「首页状态不得由页面重新推导」这条硬门禁。
+           最坏效果只是状态晚 ≤ HOME_BOOTSTRAP_TTL_MS 可见。 */
+        if (ttlFresh) {
+          trace.end({ branch: 'ttl-reuse' });
+          return;
+        }
       } else {
         /* 无缓存：画本地 slice 推出的**真实**日期（不是通用占位文案），
            这样云端返回后内容逐字节相同，补丁比对不会产生 setData。
@@ -332,6 +354,9 @@ Page({
       const serverMs = parseTimeMs(res.serverNow);
       if (serverMs) app.globalData.serverSkewMs = serverMs - Date.now();
       homeCache.write(res);
+      /* 记下这次成功的时刻，作为 onShow 复用窗口的起点。
+         只读时钟，不参与任何业务判定；失败路径不写，所以失败不会刷新窗口。 */
+      this._lastBootOkAt = Date.now();
       this.applyHomeData(buildHomeData(res, resolveNow(), { silent }));
       trace.mark('setdata');
       trace.end({
@@ -372,7 +397,7 @@ Page({
   loadHotSpots(seq) {
     this._hotSpotsLoaded = true;
     const trace = homeTiming.createTrace('hotspots');
-    api.spots.list().then(res => {
+    spotsCache.list(() => api.spots.list()).then(res => {
       if (seq !== this._loadSeq) return;
       const preview = release.buildHomeReleasePreview(res.data || [], resolveNow(), 3);
       trace.end({ branch: 'live', spots: (res.data || []).length });

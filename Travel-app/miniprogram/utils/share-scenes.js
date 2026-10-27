@@ -28,7 +28,8 @@ const SCENES = {
     title: '北京今日放票',
     subtitle: '按北京时间实时计算 · 库存以官方为准',
     shareTitle: '今天北京热门景点放票时间，整理好了',
-    imageUrl: '/images/banner_bg.png',
+    /* 分享封面用压平后的 jpg：原 banner_bg.png 带 100 多级 alpha，包内体积是它的 7 倍 */
+    imageUrl: '/images/banner_bg.jpg',
   },
   'national-day-2026': {
     id: 'national-day-2026',
@@ -37,7 +38,10 @@ const SCENES = {
     title: '2026 国庆北京抢票清单',
     subtitle: '故宫、国博、城楼等 10 个热门景点',
     shareTitle: '2026国庆北京热门景点放票清单',
-    imageUrl: '/images/spots/gugong.jpg',
+    /* 封面必须是包内现存图：原先指向 /images/spots/gugong.jpg，2026-10-26 包内
+       images/spots/ 整体下云后被删，路径悬空。过期期间不会暴露（分享会回退 today），
+       但只要重新启用节日场景就是白图，所以钉到现存封面。 */
+    imageUrl: '/images/share/spot-hub.jpg',
     activeFrom: '2026-09-25',
     activeTo: '2026-10-08',
     spotIds: NATIONAL_SPOT_IDS,

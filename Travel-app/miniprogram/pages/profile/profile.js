@@ -1,6 +1,7 @@
 const app = getApp();
 const api = require('../../utils/api.js');
 const notify = require('../../utils/notify.js');
+const oa = require('../../utils/official-account.js');
 
 function reminderHintOf(health) {
   if (health.permissionState === 'none') return { text: '未开启', state: 'none' };
@@ -21,6 +22,10 @@ Page({
     user: null,
     notifyHint: '未开启',
     notifyState: 'none',
+    /* 公众号入口文案取自 utils/official-account.js，页面不写死名称 */
+    oaRowLabel: oa.ROW_LABEL,
+    oaRowHint: oa.ROW_HINT,
+    showOaSheet: false,
   },
 
   onLoad() {
@@ -66,6 +71,15 @@ Page({
 
   onGuide() {
     wx.navigateTo({ url: '/pages/guide/guide' });
+  },
+
+  /* 关注公众号：只在用户主动点击时打开二维码弹层，不在 onShow 自动弹 */
+  onFollowOa() {
+    this.setData({ showOaSheet: true });
+  },
+
+  onCloseOaSheet() {
+    this.setData({ showOaSheet: false });
   },
 
   onHelpFeedback() {

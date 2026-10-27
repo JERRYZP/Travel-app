@@ -517,21 +517,47 @@ async function list(db, userId, prefetched) {
   const trips = kept;
 
   const { ReminderBackendStatus } = require('./schema');
-  /* 并发取每趟的最近一个 WAITING 任务。这些查询彼此无依赖，串行发就是白等。
-     ⚠️ 刻意不加 catch：`nextReminderAt` 是 TRIP-RULE-005 的排序键，读失败时静默
-     降级成 null 会让行程顺序悄悄变错。保持与原实现一致 —— 失败就整个失败。 */
-  const waitingList = await Promise.all(trips.map(t =>
-    db.collection(COLLECTIONS.REMINDER_TASKS)
-      .where({ userId, tripId: t._id, backendStatus: ReminderBackendStatus.WAITING })
-      .orderBy('releaseAt', 'asc')
-      .limit(1)
-      .get()
-  ));
+  /* nextReminderAt = 该行程下最早那个 WAITING 任务的 releaseAt（TRIP-RULE-005 的排序键）。
+     ⚠️ 这里**刻意不加 catch**：读失败时静默降级成 null 会让行程顺序悄悄变错，
+     所以是「失败就整个失败」。
+
+     2026-10-27 降本：调用方传了 `prefetched.tasks`（首页 bootstrap 已按 userId 全量读齐）
+     时直接在内存里归并，不再为每趟行程各发一次查询 —— 原先 N 趟就是 N 次往返，
+     而数据早就在手上了。内存路径没有 I/O，也就没有上面那个「读失败降级」的坑。
+     不传 prefetched 时（`trip.list` 独立 action）仍走原查询，行为逐字不变。 */
+  const waitingOf = prefetched && prefetched.tasks
+    ? (tripId) => {
+      let picked = null;
+      let pickedMs = Infinity;
+      (prefetched.tasks || []).forEach(t => {
+        if (!t || t.tripId !== tripId) return;
+        if (t.backendStatus !== ReminderBackendStatus.WAITING) return;
+        const ms = new Date(t.releaseAt).getTime();
+        if (!Number.isFinite(ms) || ms >= pickedMs) return;
+        pickedMs = ms;
+        picked = t.releaseAt;
+      });
+      return picked;
+    }
+    : null;
+
+  const waitingList = waitingOf
+    ? trips.map(t => waitingOf(t._id))
+    : (await Promise.all(trips.map(t =>
+      db.collection(COLLECTIONS.REMINDER_TASKS)
+        .where({ userId, tripId: t._id, backendStatus: ReminderBackendStatus.WAITING })
+        .orderBy('releaseAt', 'asc')
+        .limit(1)
+        .get()
+    ))).map(r => {
+      const rows = (r && r.data) || [];
+      return rows.length ? rows[0].releaseAt : null;
+    });
+
   trips.forEach((t, i) => {
     // 老数据只有 spotIds → 统一补出 spots 段（按行程整段），前端/时间线可放心依赖
     t.spots = normalizeSpots(t);
-    const waiting = waitingList[i] || { data: [] };
-    t.nextReminderAt = (waiting.data || []).length ? waiting.data[0].releaseAt : null;
+    t.nextReminderAt = waitingList[i] === undefined ? null : waitingList[i];
   });
 
   const sorted = sortTrips(trips);

@@ -19,7 +19,11 @@
 - “我的”页已增加隐私政策与用户服务协议入口；应用内协议由 `docs/legal/` 生成，等待微信后台隐私指引填报与真机授权验证。
 - “我的”页的反馈与纠错入口已收口为“帮助与反馈”，并新增“我的反馈”本人记录页（当前工作区已实现，未提交）。
 - 首页进行中行程内的已结束日期组已默认折叠，入口位于该趟内容顶部、今天/未来日期之前（当前工作区已实现，未提交）。
-- 代码质量包体积已收口：约 1.03MB 的景点图、二维码、提醒示例图与大背景已上传到 `cloud1-d9g9f4hja396d6e92/static/v0.3/images/`，代码包内只保留图标、默认头像与分享封面；当前 `miniprogram` 约 0.973MiB，本地图片/音频合计约 197.6KiB，距离微信 200KiB 硬线仅约 2.4KiB（2026-10-01 复核）。
+- 自有公众号「智序准点游」有两处入口：「我的」页底部独立一张「关注公众号」卡，以及 PAGE-008 提交成功卡片底部一行攻略入口；两者共用 `components/oa-follow-sheet` 浮层，文案与二维码统一取自 `utils/official-account.js`。
+  - 这两处入口最初在分支 `codex/ux1012` 的 `5834cbb`（2026-10-15）实现，但该分支一直没合入 main；2026-10-22 工作区从该分支切回 main 后，入口从界面上消失。2026-10-27 从该分支精准移植回来（只取公众号相关文件；该分支上的首页摘要卡、日期吸顶、管理后台与删除 webview 页仍未跟进）。
+  - PAGE-008 的成功反馈随之由 Toast 改为轻量成功卡片（4 秒自动返回、可主动关闭）——Toast 上放不了可点的公众号入口。
+  - 二维码走云存储 `static/v0.3/images/qrcodes/zhundianyou-oa.jpg`，源文件在 `cloud-assets/images/qrcodes/`；**该图是否已上传到当前云环境需真机确认**，未上传时浮层降级为「搜一搜」文案，入口仍可用。
+- 代码质量包体积已收口：约 1.03MB 的景点图、二维码、提醒示例图与大背景已上传到 `cloud1-d9g9f4hja396d6e92/static/v0.3/images/`，代码包内只保留图标、默认头像与分享封面；当前 `miniprogram` 约 0.969MiB，本地图片/音频合计约 191.3KiB，距离微信 200KiB 硬线还有约 8.7KiB（2026-10-26 复核）。
 - 2026-10-01 工作区已实现：景点详情「今日最早可约」规则行、景点 Tab 难度角标与直接「设提醒」、订阅模板双轨兼容（旧任务旧模板、新任务新模板）、提醒设置页新版机制说明；均未提交、未部署、未真机完整验收。
 
 ## 当前配置
@@ -65,6 +69,50 @@
 ⚠️ **复查方式**：把 `cloudfunctions/**` 里所有 `.where({...})` 组合列出来，与本文档
 两张表逐条对照，而不是只信文档自己的描述 —— 上面两条「建议」项的描述就是这么过期的。
 详见 `数据库索引.md` 第二节。
+
+### 2026-10-27 新增待建（访问量暴涨后的降本复核）
+
+- `users` 单字段 `openId` —— **优先级最高**。`home.bootstrap` / `user.profile` /
+  `subscribe.get` / notifier 扣额度全走它，`users` 是全项目唯一「行数 = 用户数」的集合，
+  无索引时成本随用户数平方级上涨。原先误归在「建议」节。
+- `spots` 单字段 `spotId`、`release_rules` 单字段 `spotId` —— 文档此前完全没有这两条。
+- `reminder_tasks` 的 `backendStatus + cleanAt` —— notifier cleanup 每轮都扫。
+  在补建之前，cleanup 已先从每分钟降到每小时一次（见下）。
+
+## 2026-10-27 调用量降本
+
+背景：小程序访问量从每天 20–30 涨到半天 1200+，云函数调用次数与数据库读操作同步暴涨。
+
+**云端（改完需部署才生效）**
+
+- `trip.js` 的 `nextReminderAt`：传了 `prefetched.tasks` 时改用内存归并，消掉「每趟行程一次查询」的 N+1。不传时仍走原查询，`trip.list` 独立 action 行为不变。
+- `spots/index.js` 的 `loadAll` 与 `reminder/lib/item.js` 的 `loadSpotContext`：加 60 秒实例内整表缓存（空表不缓存）。
+- `subscribe.get`：查询从「该用户全部历史任务」收窄为 `WAITING + releaseAt > now`，并在内存里兜一次非有限时间戳。
+- `notifier`：`cleanup` 从每分钟降到每小时（`shouldRunCleanup`），`scanAndSend` / `sweepMissed` 仍是每分钟；cleanup 的三次 `count()` 改成 `hasAny()` 判空查询。
+
+**客户端（需随下次小程序发版）**
+
+- 首页 `onShow` 加 30 秒复用窗口（`HOME_BOOTSTRAP_TTL_MS`，原先只写在 `codex/ux1012` 分支上，本次回收），配 `test/home-bootstrap-ttl.test.js`。
+- 新增 `utils/spots-cache.js`：`spots.list` 的 10 分钟跨页内存缓存，6 个调用方共用。
+- `add-trip`：`onShow` 首次跳过 `loadCart`，消除与 `onLoad` 的重复 `cart.list`。
+
+## 部署与生效状态
+
+| 项 | 状态 | 说明 |
+| --- | --- | --- |
+| 云函数 `reminder` / `spots` / `notifier` | **已部署**（2026-10-27，用户操作） | 尚未真机验证；见下方复查项 |
+| 索引 `spots.spotId` / `release_rules.spotId` / `reminder_tasks.userId+itemId` | **已建**（2026-10-27，用户操作） | 控制台操作，即时生效 |
+| 客户端改动（TTL 复用、spots 缓存、add-trip 去重） | **未发版** | 需随下一次小程序版本发布 |
+
+⚠️ **测试通过、已部署、真机已验证是三个不同状态，不能互相替代。** 以上部署项仍为 `pending` 真机验证。
+
+**部署后要盯的三件事：**
+
+1. `notifier` 的 `tick` 日志里 `cleaned` 应大部分时间是 `"skipped"`（每小时才真正执行一次）。若仍每分钟返回清理结果，说明节流失效。
+2. `reminder_tasks` 的 `status_release_idx` 命中次数增速 —— notifier 是**固定成本**（每分钟一次，与用户量无关），按 146,892 次 / 约 51 天倒推约 2,880 次/天，符合预期。若部署后仍快速上涨，说明有别的查询也在用它。
+3. `spots` / `release_rules` 的 `spotId` 索引命中应从 0 开始增长 —— 增长即说明查询已走索引。
+
+**尚未处理（下一轮）**：`notifier` 的 `scanAndSend` / `sweepMissed` 仍每分钟各扫一次（约 2,880 次索引命中/天，固定成本）。降频需单独评估，因为 `sweepMissed` 漏跑会让任务卡在「待提醒」。
 
 ## 待验证
 
