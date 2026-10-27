@@ -38,7 +38,7 @@
 - 代码：本地 HEAD `e321a5e`；`origin/codex/v0.3-main-flow-ux` 停在 `6324517`，本地领先 3 个提交。工作区仍有 30+ 个未提交改动，尚未进入远端。最近一轮云端状态记录见 `docs/engineering/archive/launch-test-report-v0.3-20260928-review.md` §九。
 - 构建：2026-10-01 当前工作区 `npm test`（27 套）、`npm run check`、`git diff --check` 均通过。首页缓存/实况重复 `setData` 已修复：缓存帧改用缓存返回体自带的 `serverNow` 计算，避免设备时间与云端时间被解释成不同日期。
 - 云函数：`reminder` 已于 2026-09-28 部署，并通过真实云环境只读 `home.bootstrap` 冒烟；当前未提交的 `reminder`、`spots`、`feedback`、`notifier` 改动尚未部署。
-- 小程序：未发布；新订阅模板真机已出现 `20001 No template data return`，当前正在按精确模板 ID 和控制台日志复核；`cart.commit` 写路径、完整真机交互和多机型视觉仍未 live verified。
+- 小程序：**2026-10-27 已发布**（用户上传工作区代码并提交发布，含当日三项客户端降本改动）。发布前的待办仍未闭环：新订阅模板真机曾出现 `20001 No template data return`；`cart.commit` 写路径、完整真机交互和多机型视觉仍未 live verified。**当前线上客户端与 git 任何提交都不严格对应**（发布源是未提交工作区），需要尽快补一个 tag 对齐。
 - 因此不得把“测试通过”“部分云函数已部署”写成“整体已上线”或“用户已看到新版本”。
 
 ## 当前需要部署的范围
@@ -90,11 +90,21 @@
 - `subscribe.get`：查询从「该用户全部历史任务」收窄为 `WAITING + releaseAt > now`，并在内存里兜一次非有限时间戳。
 - `notifier`：`cleanup` 从每分钟降到每小时（`shouldRunCleanup`），`scanAndSend` / `sweepMissed` 仍是每分钟；cleanup 的三次 `count()` 改成 `hasAny()` 判空查询。
 
-**客户端（需随下次小程序发版）**
+**客户端（第一批已发版；第二、三批待发版）**
 
-- 首页 `onShow` 加 30 秒复用窗口（`HOME_BOOTSTRAP_TTL_MS`，原先只写在 `codex/ux1012` 分支上，本次回收），配 `test/home-bootstrap-ttl.test.js`。
-- 新增 `utils/spots-cache.js`：`spots.list` 的 10 分钟跨页内存缓存，6 个调用方共用。
-- `add-trip`：`onShow` 首次跳过 `loadCart`，消除与 `onLoad` 的重复 `cart.list`。
+- 首页 `onShow` 加 30 秒复用窗口（`HOME_BOOTSTRAP_TTL_MS`，原先只写在 `codex/ux1012` 分支上，本次回收），配 `test/home-bootstrap-ttl.test.js`。**2026-10-27 已发版。**
+- 新增 `utils/spots-cache.js`：`spots.list` 的 10 分钟跨页内存缓存，6 个调用方共用。**2026-10-27 已发版。**
+- `add-trip`：`onShow` 首次跳过 `loadCart`，消除与 `onLoad` 的重复 `cart.list`。**2026-10-27 已发版。**
+
+**2026-10-27 第二批（未发版）：首页窗口改自适应**
+
+背景：第一批发版后调用量仍在涨。用 `test/mock-db.js` 实测（探针不入库），`spots.list` 在云端 60 秒缓存命中后是 **0 次数据库请求**，静态化已经拿不回东西；真正的大头是 `home.bootstrap`——每次执行固定 **5 次数据库请求**（行程 / 行程项 / 提醒任务 / 清单 / 用户），带回的**文档条数随用户自己的数据量涨**（新用户 3 项 9 条、老用户 23 项 55 条）。而固定 30 秒窗口意味着「切出去超过半分钟回来」就是一次完整重读，成本挂在亮屏次数上。
+
+- 新增 `utils/home-refresh-window.js`：按「最近一场放票离现在多远」定窗口——放票窗口内（前 60 分钟～后 10 分钟）30 秒，今天稍晚还有票 60 秒，其余 180 秒；无放票时刻按 180 秒，形状意外兜底 30 秒。
+- `home.js`：`_bootTtlMs` 在 bootstrap 成功回调里由 `buildHomeData` 的产物算一次，`loadHome` 只做减法。只读服务端已算好的 `banner.releaseAt` / `bannerPills[].releaseAt`，页面不重新推导业务状态。写后刷新、无缓存首次进入、不传 `allowTtlReuse` 的调用一律即时，行为不变。
+- 发版后从 `home_load_timing` 的 `branch` 区分 `reuse-30` / `reuse-60` / `reuse-180`，可直接看出省掉的请求量。
+- 配 `test/home-refresh-window.test.js`（边界）+ 更新 `test/home-bootstrap-ttl.test.js`（结构钉子）。
+- **未做**：首页没有下拉刷新（`home.json` 未开 `enablePullDownRefresh`），将来加时其 handler 不得传 `allowTtlReuse`。
 
 ## 部署与生效状态
 
@@ -102,7 +112,8 @@
 | --- | --- | --- |
 | 云函数 `reminder` / `spots` / `notifier` | **已部署**（2026-10-27，用户操作） | 尚未真机验证；见下方复查项 |
 | 索引 `spots.spotId` / `release_rules.spotId` / `reminder_tasks.userId+itemId` | **已建**（2026-10-27，用户操作） | 控制台操作，即时生效 |
-| 客户端改动（TTL 复用、spots 缓存、add-trip 去重） | **未发版** | 需随下一次小程序版本发布 |
+| 客户端第一批（固定 30s TTL、spots 缓存、add-trip 去重） | **已发版**（2026-10-27，用户操作） | 发布源为未提交工作区，与 git 无对应提交；需补 tag 对齐 |
+| 客户端第二批（首页自适应窗口 `home-refresh-window.js`） | **未发版**（本地工作区） | 纯客户端改动，不涉及云函数部署 |
 
 ⚠️ **测试通过、已部署、真机已验证是三个不同状态，不能互相替代。** 以上部署项仍为 `pending` 真机验证。
 

@@ -7,6 +7,7 @@ const tripCalendar = require('../../utils/trip-calendar.js');
 const shareEntry = require('../../utils/share-entry.js');
 const analytics = require('../../utils/analytics.js');
 const release = require('../../utils/release-context.js');
+const refreshWindow = require('../../utils/home-refresh-window.js');
 const homeTiming = require('../../utils/home-timing.js');
 const homeCache = require('../../utils/home-cache.js');
 const emptyPreview = require('../../utils/empty-preview.js');
@@ -21,10 +22,11 @@ const PAGE_GAP_RPX = 0;
 /* 滚多少像素把导航栏底色从全透明推到不透明 */
 const NAV_FADE_PX = 50;
 const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
-/* 首页 onShow 的复用窗口（2026-10-13 调用量优化，2026-10-27 回收）：
-   距上次成功 bootstrap 不足这个时长、又有本地缓存时，切回首页不再重复发一次网络。
-   详见 onShow / loadHome 的注释。 */
-const HOME_BOOTSTRAP_TTL_MS = 30 * 1000;
+/* 首页 onShow 的复用窗口（2026-10-13 调用量优化，2026-10-27 改成自适应）。
+   距上次成功 bootstrap 不足**本次数据算出的窗口**、又有本地缓存时，切回首页
+   不再重复发一次网络。窗口长度由放票紧迫度决定（30s / 60s / 180s），
+   见 utils/home-refresh-window.js。常量本身只在「拿不到放票时刻」时兜底。 */
+const HOME_BOOTSTRAP_TTL_MS = refreshWindow.DEFAULT_TTL_MS;
 const EMPTY_RELEASE_FALLBACK = release.buildHomeReleasePreview([], new Date()).sample;
 
 /**
@@ -254,11 +256,15 @@ Page({
 
   loadHome(opts) {
     const silent = opts && opts.silent;
-    /* 30 秒复用窗口：只有调用方**显式允许**（目前仅 onShow）且距上次成功 bootstrap
-       不足 TTL 时才可能命中。`onExitNewUserPreview` 等路径不传这个标记，保持每次必拉。 */
+    /* 自适应复用窗口：只有调用方**显式允许**（目前仅 onShow）且距上次成功 bootstrap
+       不足**上次数据算出的窗口**时才可能命中。`onExitNewUserPreview` 等路径不传这个
+       标记，保持每次必拉。
+       窗口在数据到达时算一次并存进 `_bootTtlMs`（见 bootstrap 成功回调），
+       这里只做减法 —— 中途重算会让同一次驻留期间的判定摇摆。 */
+    const ttl = this._bootTtlMs > 0 ? this._bootTtlMs : HOME_BOOTSTRAP_TTL_MS;
     const ttlFresh = Boolean(opts && opts.allowTtlReuse)
       && this._lastBootOkAt > 0
-      && (Date.now() - this._lastBootOkAt) < HOME_BOOTSTRAP_TTL_MS;
+      && (Date.now() - this._lastBootOkAt) < ttl;
     /* 耗时分段（2026-09-30）：`cache` = 用本地缓存画出第一帧的耗时；
        `net` = 请求往返（含云函数冷启动，最大头）；`setdata` = 返回到首屏画完。
 
@@ -324,9 +330,9 @@ Page({
         /* 复用窗口内：缓存就是 30 秒内的服务端返回体，直接收工，不再发一次网络。
            ⚠️ 回放的是服务端返回体的逐字节副本（与 live 路径同一个 buildHomeData），
            不是页面重新推导状态 —— 不触犯「首页状态不得由页面重新推导」这条硬门禁。
-           最坏效果只是状态晚 ≤ HOME_BOOTSTRAP_TTL_MS 可见。 */
+           最坏效果只是状态晚 ≤ 本次窗口（30/60/180 秒）可见。 */
         if (ttlFresh) {
-          trace.end({ branch: 'ttl-reuse' });
+          trace.end({ branch: 'ttl-reuse', ttl: Math.round(ttl / 1000) });
           return;
         }
       } else {
@@ -354,13 +360,20 @@ Page({
       const serverMs = parseTimeMs(res.serverNow);
       if (serverMs) app.globalData.serverSkewMs = serverMs - Date.now();
       homeCache.write(res);
+      const patch = buildHomeData(res, resolveNow(), { silent });
       /* 记下这次成功的时刻，作为 onShow 复用窗口的起点。
          只读时钟，不参与任何业务判定；失败路径不写，所以失败不会刷新窗口。 */
       this._lastBootOkAt = Date.now();
-      this.applyHomeData(buildHomeData(res, resolveNow(), { silent }));
+      /* 复用窗口跟着「本次数据里最近一场放票离现在多远」走，而不是固定 30 秒：
+         放票窗口内 30 秒一问，今天还有票要放 60 秒，其余 180 秒。
+         读的是同一个 patch 里服务端已经算好的时刻，页面不重新推导业务状态。
+         打点分支用 `reuse-<秒>` 前缀，发版前后从 `home_load_timing` 里
+         直接看得出省掉了多少请求。 */
+      this._bootTtlMs = refreshWindow.ttlOf(patch, this._lastBootOkAt);
+      this.applyHomeData(patch);
       trace.mark('setdata');
       trace.end({
-        branch: silent ? 'live-silent' : 'live',
+        branch: silent ? 'live-silent' : `reuse-${Math.round(this._bootTtlMs / 1000)}`,
         trips: (res.trips || []).length,
         history: (res.history || []).length,
         hotSpots: (res.hotSpots || []).length,

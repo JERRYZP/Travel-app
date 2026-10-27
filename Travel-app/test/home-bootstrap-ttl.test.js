@@ -33,24 +33,41 @@ const eq = (a, b, m) => {
 };
 
 console.log('=== 1. 复用窗口只由 onShow 显式开启 ===');
-eq(/const HOME_BOOTSTRAP_TTL_MS = 30 \* 1000;/.test(code), true, '复用窗口 = 30 秒');
+eq(/const HOME_BOOTSTRAP_TTL_MS = refreshWindow\.DEFAULT_TTL_MS;/.test(code), true,
+  '兜底窗口取自 refreshWindow（不再写死 30 秒）');
+eq(/require\('\.\.\/\.\.\/utils\/home-refresh-window\.js'\)/.test(code), true,
+  'home.js 确实 require 了 refreshWindow');
 eq(/onShow\(\) \{\s*this\.loadHome\(\{ allowTtlReuse: true \}\);/.test(code), true,
   'onShow 显式传 allowTtlReuse');
 eq(/loadHome\(opts\) \{\s*const silent = opts && opts\.silent;/.test(code), true,
   'loadHome 仍以 silent 开头（未改调用契约）');
 
-console.log('=== 2. 三个前置条件缺一不可 ===');
-eq(/const ttlFresh = Boolean\(opts && opts\.allowTtlReuse\)\s*&& this\._lastBootOkAt > 0\s*&& \(Date\.now\(\) - this\._lastBootOkAt\) < HOME_BOOTSTRAP_TTL_MS;/.test(code),
-  true, 'ttlFresh = 显式允许 && 曾经成功过 && 未超时');
+console.log('=== 2. 前置条件缺一不可，窗口按上次数据算出的长度 ===');
+eq(/const ttl = this\._bootTtlMs > 0 \? this\._bootTtlMs : HOME_BOOTSTRAP_TTL_MS;/.test(code), true,
+  '窗口 = 上次数据算出的 _bootTtlMs，缺失时兜底');
+eq(/const ttlFresh = Boolean\(opts && opts\.allowTtlReuse\)\s*&& this\._lastBootOkAt > 0\s*&& \(Date\.now\(\) - this\._lastBootOkAt\) < ttl;/.test(code),
+  true, 'ttlFresh = 显式允许 && 曾经成功过 && 未超出自适应窗口');
 eq(/loadHome\(\(\{ allowTtlReuse/.test(code) || /allowTtlReuse: true/.test(code), true,
   'allowTtlReuse 只有 onShow 一处传（其余调用不带）');
 eq((code.match(/allowTtlReuse/g) || []).length, 2, 'allowTtlReuse 只出现在声明与 onShow 两处');
+
+console.log('=== 2b. 窗口由数据算出来、且只在成功回调里写 ===');
+eq((code.match(/_bootTtlMs = refreshWindow\.ttlOf\(/g) || []).length, 1, '只算一次窗口');
+{
+  /* 顺序：_lastBootOkAt 必须先写，ttlOf 的 nowMs 才能用它 */
+  const iOk = code.indexOf('this._lastBootOkAt = Date.now()');
+  const iTtl = code.indexOf('_bootTtlMs = refreshWindow.ttlOf(');
+  eq(iTtl > code.indexOf('api.reminder.home.bootstrap('), true, '算窗口写在 bootstrap 的成功回调内（失败不刷新窗口）');
+  eq(iOk > 0 && iTtl > iOk, true, '_lastBootOkAt 先于 _bootTtlMs 赋值');
+}
+eq(/refreshWindow\.ttlOf\(patch, this\._lastBootOkAt\)/.test(code), true,
+  '算窗口读的是本次 buildHomeData 的产物，页面不另外推导');
 
 console.log('=== 3. ⚠️ 早退必须在「非 silent 且有缓存」的分支内 ===');
 {
   /* 结构：if (!silent) { const cached = homeCache.read(); if (cached) { ... if (ttlFresh) { return; } } else { ... } }
      这条断言就是「没有缓存时永远不会跳过网络」—— 页面不会停在骨架层。 */
-  const guard = /if \(!silent\) \{\s*const cached = homeCache\.read\(\);\s*if \(cached\) \{[\s\S]*?if \(ttlFresh\) \{\s*trace\.end\(\{ branch: 'ttl-reuse' \}\);\s*return;\s*\}[\s\S]*?\} else \{/;
+  const guard = /if \(!silent\) \{\s*const cached = homeCache\.read\(\);\s*if \(cached\) \{[\s\S]*?if \(ttlFresh\) \{\s*trace\.end\(\{ branch: 'ttl-reuse'[^}]*\}\);\s*return;\s*\}[\s\S]*?\} else \{/;
   eq(guard.test(code), true, '复用早退嵌在 cached 分支之后、else（无缓存）分支之前');
 }
 
