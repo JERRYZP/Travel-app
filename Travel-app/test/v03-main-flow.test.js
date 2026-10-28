@@ -159,7 +159,17 @@ console.log('\n=== 3. 想去景点即时生效 ===');
   eq(/完成并返回/.test(SPOTS_WXML), true, '底部按钮使用即时生效语义');
   eq(/确认选择并返回/.test(SPOTS_WXML), false, '不再使用暂存确认语义');
   eq(/onDone\(\) \{ this\.onBack\(\); \}/.test(SPOTS_JS), true, '顶部返回和底部按钮共用返回逻辑');
-  eq(/已加入行程清单/.test(SPOTS_JS), true, '选择后有即时保存反馈');
+  eq(/已加入行程清单/.test(SPOTS_JS), false, '选择后不再只靠 Toast 反馈');
+  eq(/nextSpots = util\.markSpotsSelected\(spots\.concat\(spot\), nextIds\)/.test(SPOTS_JS), true,
+    '选择后直接把景点写入已选数据');
+  eq(/visibleSpots: this\.filterSpots\(allSpots, this\.data\.keyword\)/.test(SPOTS_JS), true,
+    '选择后同步刷新列表选中态');
+  const selectedAt = SPOTS_WXML.indexOf('selected-section');
+  const searchAt = SPOTS_WXML.indexOf('search-bar');
+  eq(selectedAt >= 0 && searchAt > selectedAt, true, '搜索框位于已选景点模块下方');
+  eq(/wx:for="\{\{visibleSpots\}\}"/.test(SPOTS_WXML), true, '列表渲染全量景点或搜索结果');
+  eq(/换一批|换一换/.test(SPOTS_WXML + SPOTS_JS), false, '移除换一批入口与逻辑');
+  eq(/searchMode/.test(SPOTS_WXML + SPOTS_JS), false, '不再渲染独立搜索态');
   eq(/清空已选景点？/.test(SPOTS_WXML), true, '清空已选需要二次确认');
 }
 

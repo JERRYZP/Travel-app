@@ -183,6 +183,7 @@ function buildCard(spot, rule, now) {
     spotId: spot.spotId,
     name: spot.name,
     shortName: spot.shortName || spot.name,
+    aliases: spot.aliases || [],
     category: spot.category,
     audienceTags: spot.audienceTags || [],
     district: spot.district,

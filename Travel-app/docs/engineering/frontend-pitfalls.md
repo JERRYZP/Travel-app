@@ -15,6 +15,7 @@
 - 轻量提醒入口不能先申请授权再写 `cart.add`：先让服务端决定 `remindOn`，才能避免放票已过时白弹授权。取消或异常时回滚 `cart.add` 必须返回 Promise 并等待完成，否则用户立即重试会看到“已在清单里”。
 - 首页行程项提醒开关必须先授权、再写接口；写操作未完成前保持锁。拒绝授权时不得调用 `tripItem.updateReminder`，关闭已有提醒不需要新增授权。
 - 景点选择状态只以 `spotId` 为键：云端 `spots.batch` 不保证按传入 ID 顺序返回，禁止用 `selectedSpotIds` 的下标去删 `selectedSpots`，否则会误删其他卡片并留下删不掉的项。
+- PAGE-003 的搜索框与景点列表在同一页：关键词只过滤同一份 `allSpots`，不能另起一套 `searchResults` 或隐藏已选模块；选择后必须同时刷新 `selectedSpots`、`allSpots`、`visibleSpots` 三处，否则会出现数据已选但按钮或已选卡片没更新。
 
 ## 时间与日期
 

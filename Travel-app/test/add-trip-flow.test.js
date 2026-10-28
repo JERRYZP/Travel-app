@@ -346,6 +346,40 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
       '返回后热门网格同步已选状态');
   }
 
+  console.log('=== 11. 景点页全量列表与输入即时过滤 ===');
+  {
+    const spotsPage = instantiate(spotsPageDef);
+    spotsPage.onLoad({});
+    await wait(200);
+    const total = mock.SPOTS.length;
+    eq(spotsPage.data.allSpots.length, total, '默认加载全部景点');
+    eq(spotsPage.data.visibleSpots.length, total, '无关键词时展示全部景点');
+    eq(spotsPage.data.spotsLoading, false, '景点列表加载结束');
+
+    spotsPage.onSearchInput({ detail: { value: '故宫' } });
+    eq(spotsPage.data.visibleSpots.map(s => s.spotId).join(','), 'gugong', '按名称即时过滤');
+
+    spotsPage.onSearchInput({ detail: { value: '升旗' } });
+    eq(spotsPage.data.visibleSpots.map(s => s.spotId).join(','), 'tiananmen-square',
+      '按别名即时过滤');
+
+    spotsPage.onSearchInput({ detail: { value: '军博' } });
+    eq(spotsPage.data.visibleSpots.map(s => s.spotId).join(','), 'junbo', '按简称即时过滤');
+
+    const target = Object.assign({}, spotsPage.data.visibleSpots[0]);
+    logs.length = 0;
+    spotsPage.onSpotToggle({ currentTarget: { dataset: { id: target.spotId, spot: target } } });
+    eq(spotsPage.data.selectedSpotIds.join(','), 'junbo', '选择后写入已选 ID');
+    eq(spotsPage.data.selectedSpots.map(s => s.spotId).join(','), 'junbo', '已选模块立即拿到数据');
+    eq((spotsPage.data.visibleSpots.find(s => s.spotId === 'junbo') || {}).selected, true,
+      '搜索结果按钮同步为已选');
+    eq(logs.some(line => line.indexOf('已加入行程清单') >= 0), false,
+      '不再用「已加入行程清单」Toast 代替已选模块');
+
+    spotsPage.onClearKeyword();
+    eq(spotsPage.data.visibleSpots.length, total, '清空关键词恢复全部景点');
+  }
+
   console.log('\n' + (fail === 0 ? 'ALL PASS' : ('FAIL ' + fail)));
   process.exit(fail === 0 ? 0 : 1);
 })().catch(e => { console.error('测试异常:', e); process.exit(1); });

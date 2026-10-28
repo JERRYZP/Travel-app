@@ -1,6 +1,7 @@
 # Travel-app 前端接口契约 V1.3
 
 > 面向：前端（微信小程序页面开发）
+> 2026-10-28 更新：`spots.list` / `detail` / `batch` 的景点卡新增 `aliases`，供 PAGE-003 在页面内做名称 / 简称 / 别名 / spotId 的本地模糊过滤。PAGE-003 与 PAGE-004 合并为单页，页面不再调用 `spots.search`、`spots.searchHistory`、`spots.clearSearchHistory`；这三个接口保留兼容。
 > 2026-10-28 更新：新增景点字段 `strongReminder`；弱提醒口径改为“需预约、难度 ≤2 且未显式提升”，强提醒（含 `strongReminder=true`）在时间线与清单默认开启提醒。无固定放票时刻的需预约景点（如环球影城）可加入行程和暂存清单，但不创建提醒任务；`timeline.preview` 增加 `NO_FIXED_RELEASE / 随买随用`，`cart.list` 增加 `noFixedRelease`。
 > 2026-10-28 更新：设置新提醒前必须使用可用授权 `quota - pendingMessageCount`；待发送数按任务实际模板统计，不同模板不能互相补缺口。授权页面需同时展示台账额度、待发送占用和当前可用额度。轻量入口先调 `cart.add`，服务端将放票已过项降级为 `remindOn=false` 后只提交行程，不再申请授权；授权取消或异常时客户端必须等待暂存项回滚完成。
 > 更新：2026-09-29 明确微信一次性订阅每次用户点击最多增加 1 条额度，禁止异步连发伪装批量授权。2026-09-25 `cart.commit` 新增 `cartId`（补录只提交本次项）与 `disableReminders`（仅加行程不提醒）；此前 2026-09-16 首页行程化 V2 契约定稿，新增 `trip_items`、`tripItem.*`、`cart.commit` 与新版 `home.bootstrap`；旧第 2.0 / 2.1 / 2.3 / 2.4 中面向“提醒任务列表 / 双 Tab 首页”的接口在 V2 实现时由第 8 节取代。此前 2026-08-26 spots `remindable` / `weak`、2026-08-19 feedback 管理端、2026-08-14 日历通道下线等变更继续有效。
@@ -106,6 +107,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     spotId: "gugong",
     name: "故宫博物院",
     shortName: "故宫",                  // 窄容器专用简称；无值时前端回退 name
+    aliases: ["军博", "军事博物馆"],     // 搜索别名；随卡下发，供 PAGE-003 本地过滤，前端不维护第二套数据
     category: "博物馆",
     district: "东城区",
     audienceTags: ["family", "elder"],  // 2026-09-06 景点聚合页：人群标签（family=亲子 / elder=带父母），无标注为 []
@@ -182,7 +184,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ### 1.4 `search` — 搜索景点
 
 ```
-用途：PAGE-004 搜索态
+用途：原 PAGE-004 搜索态；2026-10-28 起 PAGE-003 改用本地过滤，本接口保留兼容
 调用：{ action: 'search', keyword: '故宫' }
 匹配规则：名称 / 别名 / 拼音前缀本地模糊匹配
 ```
@@ -200,7 +202,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ### 1.5 `searchHistory` — 获取搜索历史
 
 ```
-用途：PAGE-003 搜索框下方历史 tag 行
+用途：历史搜索 tag 行；2026-10-28 起 PAGE-003 不再展示，接口保留兼容
 调用：{ action: 'searchHistory' }
 ```
 
@@ -1049,9 +1051,9 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-001** 首页·行程状态墙 | `home.bootstrap` V2；`tripItem.markResult` / `undoResult` / `updateReminder` / `remove` / `removeVisitDate` / `recoveryCandidates` |
 | **PAGE-009** 旧任务列表 | V2 已废弃。`task.*` 云函数保留为兼容代码，**首页与新流程均不再调用** |
 | **PAGE-002** 景点弹窗 | `spots.detail` |
-| **PAGE-003** 想去景点 | `spots.list`、`spots.batch`（已选行）、`spots.searchHistory`、`spots.clearSearchHistory`、`trip.updateSpots` |
-| **PAGE-004** 搜索态 | `spots.search` |
-| **PAGE-005** 新增提醒（独立页） | `timeline.preview`（纯预览，不建行程）、`cart.add`、`cart.addAll`、`cart.list`（暂存清单） |
+| **PAGE-003** 想去景点（含搜索） | `spots.list`、`spots.batch`（已选行）、`trip.updateSpots` |
+| **PAGE-004** 搜索态 | 2026-10-28 已合并回 PAGE-003，不再单独调用接口 |
+| **PAGE-005** 新增提醒（独立页） | `timeline.preview`（纯预览，不建行程）、`cart.pruneScope`（生成成功后收敛暂存清单）、`cart.add`、`cart.addAll`、`cart.list`（暂存清单） |
 | **PAGE-006** 景点视图 | 搁置中，不实现 |
 | **PAGE-007** 行程清单弹窗 | `cart.list`、`cart.remove`、`cart.clear`、`cart.updateRemindOn`、`cart.commit` |
 | **PAGE-008** 设置提醒 | V0.3 主流程：`cart.list`、`subscribe.get`（`cart.list` 算待设提醒条数，`subscribe.get` 算当前额度）、用户主动点击「点击补授权次数」（每次最多 +1）、`cart.commit`（额度或系统权限未满足时主按钮禁用；不提供仅加行程旁路） |
