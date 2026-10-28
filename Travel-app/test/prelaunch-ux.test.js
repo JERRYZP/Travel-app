@@ -207,6 +207,8 @@ function resetWx(patch = {}) {
     'setup 每次用户点击只申请 1 条授权');
   eq(/confirmReminderAccess/.test(setupSrc), false, 'setup 不再提供仅加行程旁路');
   eq(/confirmReminderAccess\(1\)/.test(homeSrc), true, '挽回路径只按本次 1 条提醒校验授权');
+  eq(/notify\.confirmReminderAccess\(1, undefined, \{ allowTripOnly: false \}\)/.test(homeSrc), true,
+    '首页开启提醒也走授权闸门（不提供仅加行程假分支）');
   eq(/disableReminders: true/.test(homeSrc), true, '挽回路径支持仅加行程');
   eq(/reminderFlow\.onDateConfirm/.test(hubSrc), true, '景点页使用共享提醒流程');
   eq(/confirmReminderAccess\(1\)/.test(reminderFlowSrc), true, '共享提醒流程统一处理授权闸门');
