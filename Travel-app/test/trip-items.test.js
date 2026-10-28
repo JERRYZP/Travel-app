@@ -160,6 +160,31 @@ function freshDb() {
   eq(taskItem.spotId, 'gugong', '任务关联到正确行程项');
   eq(items.find(i => i.spotId === 'badaling').remindOn, false, '弱提醒行程项未设提醒');
 
+  console.log('\n=== 2a. strongReminder 将指定弱提醒景点改为强提醒 ===');
+  {
+    db = freshDb();
+    const strongIds = [
+      'gongwangfu', 'tiananmen-square', 'junbo',
+      'ziran-bowuguan', 'kaogu-bowuguan', 'gongyi-meishuguan',
+    ];
+    eq(spotsSeed.filter(s => s.strongReminder === true).map(s => s.spotId).sort().join(','),
+      strongIds.slice().sort().join(','), '数据真身只把这 6 个景点显式提升为强提醒');
+
+    const start3 = time.addDays(time.todayStr(), 30);
+    const t3 = await trip.create(db, USER, {
+      startDate: start3,
+      endDate: time.addDays(start3, 2),
+      spotIds: strongIds,
+    });
+    const tl3 = await timeline.generate(db, USER, t3.tripId);
+    strongIds.forEach(spotId => {
+      const event = tl3.events.find(e => e.spotId === spotId);
+      eq(Boolean(event), true, spotId + ' 生成时间线事件');
+      eq(event.weak, false, spotId + ' 不再标记为弱提醒');
+      eq(event.remindOnDefault, true, spotId + ' 默认勾选提醒');
+    });
+  }
+
   console.log('\n=== 3. disableReminders：仅加行程，不创建提醒 ===');
   db = freshDb();
   const freeVisit = time.addDays(time.todayStr(), 30);

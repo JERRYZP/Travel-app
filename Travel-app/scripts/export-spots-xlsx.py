@@ -96,7 +96,8 @@ def remind_text(spot, rule):
         return "不进提醒"
     if not rule or not rule.get("releaseTime"):
         return "⚠️ 不可提醒（随买随用）"
-    return "🔶 强提醒" if spot.get("difficultyScore", 0) >= 3 else "🔵 弱提醒"
+    strong = spot.get("strongReminder") is True or spot.get("difficultyScore", 0) >= 3
+    return "🔶 强提醒" if strong else "🔵 弱提醒"
 
 
 def monday_closed(rule):
@@ -285,7 +286,7 @@ NOTES = [
     ("", None),
     ("难度标签：由 spots 云函数 computeDifficultyLabel 生成（TAG-RULE-001）——难分 ≥4 极难约；=3 较难约；≤2 容易约。B 层不渲染难度标签。", None),
     (f"分层：S = 需预约且难度 ≥4（{n_s} 个）；A = 需预约且难度 ≤3（{n_a} 个）；B = 免预约（{n_b} 个）。", None),
-    ("提醒属性：强提醒 = 需预约且难度 ≥3；弱提醒 = 需预约且难度 ≤2；"
+    ("提醒属性：强提醒 = 需预约且（难度 ≥3 或 strongReminder=true）；弱提醒 = 需预约、难度 ≤2 且未显式提升；"
      "不可提醒 = 需预约但无放票时刻（随买随用）；不进提醒 = B 层免预约。", None),
     ("可约日与 App 的 time.isOpenOn 同语义：openDays 非空时为白名单（仅这些星期可约），"
      "否则看 closedDays（这些星期不可约），缺省即全年开放。", None),

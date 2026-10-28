@@ -23,12 +23,12 @@
             <svg-icon name="{{tipsExpanded ? 'chevron-up' : 'chevron-down'}}" size="12px" />
           </view>
           <view wx:if="{{tipsExpanded}}" class="cart-tips-body">
-            <text>1、超难约的景点默认开启提醒</text>
-            <text>2、较容易约热门景点，默认不开启提醒，可手动选择开启</text>
-            <text>3、无需预约的景点，不开启提醒，仅加入行程中</text>
+            <text>1、强提醒景点默认开启提醒</text>
+            <text>2、弱提醒景点默认不开启提醒，可手动选择开启</text>
+            <text>3、无需预约或无固定放票时刻的景点，不开启提醒，仅加入行程中</text>
             <text>4、已过放票时间的景点不予提醒</text>
           </view>
-          <text wx:else class="cart-tips-folded">超难约开启 · 较易约关闭 ·免预约不提醒 · 已开票不提醒</text>
+          <text wx:else class="cart-tips-folded">强提醒开启 · 弱提醒关闭 · 免预约不提醒 · 已开票不提醒</text>
         </view>
         <block wx:if="{{loading}}">
           <view class="cart-loading"><van-loading size="40rpx" color="#B8904A" /></view>

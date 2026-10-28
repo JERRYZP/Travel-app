@@ -1,6 +1,7 @@
 # Travel-app 前端接口契约 V1.3
 
 > 面向：前端（微信小程序页面开发）
+> 2026-10-28 更新：新增景点字段 `strongReminder`；弱提醒口径改为“需预约、难度 ≤2 且未显式提升”，强提醒（含 `strongReminder=true`）在时间线与清单默认开启提醒。无固定放票时刻的需预约景点（如环球影城）可加入行程和暂存清单，但不创建提醒任务；`timeline.preview` 增加 `NO_FIXED_RELEASE / 随买随用`，`cart.list` 增加 `noFixedRelease`。
 > 2026-10-28 更新：设置新提醒前必须使用可用授权 `quota - pendingMessageCount`；待发送数按任务实际模板统计，不同模板不能互相补缺口。授权页面需同时展示台账额度、待发送占用和当前可用额度。轻量入口先调 `cart.add`，服务端将放票已过项降级为 `remindOn=false` 后只提交行程，不再申请授权；授权取消或异常时客户端必须等待暂存项回滚完成。
 > 更新：2026-09-29 明确微信一次性订阅每次用户点击最多增加 1 条额度，禁止异步连发伪装批量授权。2026-09-25 `cart.commit` 新增 `cartId`（补录只提交本次项）与 `disableReminders`（仅加行程不提醒）；此前 2026-09-16 首页行程化 V2 契约定稿，新增 `trip_items`、`tripItem.*`、`cart.commit` 与新版 `home.bootstrap`；旧第 2.0 / 2.1 / 2.3 / 2.4 中面向“提醒任务列表 / 双 Tab 首页”的接口在 V2 实现时由第 8 节取代。此前 2026-08-26 spots `remindable` / `weak`、2026-08-19 feedback 管理端、2026-08-14 日历通道下线等变更继续有效。
 > 调用方式：`wx.cloud.callFunction({ name: '<函数名>', data: { action: '<域>.<动作>', ...params } })`
@@ -90,10 +91,10 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 **云函数名：`spots`**
 
-### 1.1 `list` — 热门景点列表
+### 1.1 `list` — 景点列表
 
 ```
-用途：PAGE-001 热门景点网格、PAGE-003 热门景点列表
+用途：PAGE-001 热门景点网格、PAGE-003 全部景点列表
 调用：{ action: 'list' }
 ```
 
@@ -112,9 +113,10 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     difficultyLabel: { key: "EXTREME", text: "极难约" },
     popularityScore: 95,
     reservationRequired: true,          // 2026 分层：是否需预约（false = 免预约，不进提醒流程）
-    remindable: true,                   // 2026-08-26：需预约且有放票时刻 → 可进时间线/清单/任务
-    addable: true,                      // 2026-09-16：可加入行程（可提醒项或免预约项）
-    weak: false,                        // 需预约且 difficultyScore≤2 → 弱提醒，标签行显示「票量充足，无需卡点」
+    strongReminder: false,              // true = 显式把 difficultyScore≤2 的景点提升为强提醒；不改难度/放票规则
+    remindable: true,                   // 需预约且有放票时刻 → 可设提醒并创建提醒任务
+    addable: true,                      // 所有景点均可加入行程；remindable 只决定能否设提醒
+    weak: false,                        // 需预约、difficultyScore≤2 且 strongReminder!==true → 弱提醒
     cardDesc: "随到随买，当前旺季门票10元，联票20元",  // 免预约 B 层：「随到随买…」；弱提醒可提醒景点：「提前N天 HH:MM放票 · 票量充足，无需卡点」；需预约但无放票时刻：「无固定放票时刻，随买随用」
     tags: ["提前7天放票", "20:00放票"],
     advanceDays: 7,
@@ -128,7 +130,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     stale: true                        // scraper 未上线时为 true，前端可选「数据仅供参考」提示
   }]
 }
-// 排序：popularityScore 降序；前端按 addable 分流：可提醒项显示「选择」，免预约项显示「加入行程」；无固定放票时刻的需预约项显示「随买随用」且不可选
+// 排序：popularityScore 降序；前端按 addable 分流：可提醒项显示「选择」，免预约项显示「加入行程」；无固定放票时刻的需预约项显示「随买随用」，可加入行程但不可设提醒
 ```
 
 ### 1.2 `detail` — 景点详情弹窗
@@ -590,7 +592,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     spotId: "gugong",
     spotName: "故宫博物院",            // 已关联（PAGE-007 景点名为纯文本，不可点 UI-004 豁免）
     difficulty: { key: "EXTREME", text: "极难约" }, // V0.3 清单难度标签
-    weak: false,                       // 需预约且 difficultyScore≤2
+    weak: false,                       // 需预约、difficultyScore≤2 且 strongReminder!==true
+    noFixedRelease: false,              // true = 需预约但没有固定放票时刻，仅加入行程
     visitDate: "2026-06-01",
     releaseAt: "2026-05-25T12:00:00.000Z",
     releaseDateLabel: "05月25日",
@@ -1385,8 +1388,8 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   tripId,                       // 可省 = 当前暂存清单（8.7）
   spotId,
   visitDate,
-  releaseAt: Date | null,       // ⚠️ 2026-09-24 起**服务端忽略并自行推导**，免预约为 null
-  remindOn: Boolean             // 免预约必须 false
+  releaseAt: Date | null,       // ⚠️ 服务端忽略并自行推导；免预约/无固定放票时刻为 null
+  remindOn: Boolean             // 免预约或无固定放票时刻必须 false
 }
 ```
 
@@ -1394,7 +1397,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   行程项、时间线同一真身），调用方传什么都会被覆盖；**不传也合法**。
   「约其他日」这条动线只有用户选的 `visitDate`（`date-picker-sheet` 只回 visitDate），
   原先强制要求 `releaseAt` 会让它稳定回 1010 —— 挽回线点得开、走不通。
-  推不出放票时刻（无 `advanceDays` 的景点）仍然 `BAD_PARAM`。
+  推不出放票时刻（无固定放票规则的景点，如环球影城）仍可加入清单，服务端固定 `remindOn=false`；该清单项只会在 `cart.commit` 时落成行程项，不创建提醒任务。
 
 #### `cart.pruneScope`
 
@@ -1420,7 +1423,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 返回：{ success: true, cartId, remindOn }
 ```
 
-- 仅需预约项可切换；免预约项强制 `false`。
+- 仅需预约且有 `releaseAt` 的项可切换；免预约、无固定放票时刻项强制 `false`。
 
 #### `cart.commit`
 
@@ -1469,7 +1472,8 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 返回：{ success: true, events, byDeparture, bySpot, closedSpots, closedDaySkips, empty, emptyReason }
 ```
    - 按当前所选日期段与景点**独立计算**，不创建/改写任何行程。
-   - 每个 event 带 `releaseState / releaseStateLabel`：`NOT_RELEASED / 待开票`、`RELEASED / 已开票`、`NO_RESERVATION / 无需预约`；已开票只影响展示，status 仍为 `SELECTABLE`。
+   - 每个 event 带 `releaseState / releaseStateLabel`：`NOT_RELEASED / 待开票`、`RELEASED / 已开票`、`NO_RESERVATION / 无需预约`、`NO_FIXED_RELEASE / 随买随用`；已开票只影响展示，status 仍为 `SELECTABLE`。
+   - 无固定放票时刻的需预约景点按每个非闭馆出行日返回候选项：`releaseAt=null`、`releaseTimeStr='随买随用'`、按钮为「加入行程」；可加入清单和行程，但不创建提醒任务。
    - **读**当前用户的暂存清单（`reminder_cart` 的 `PENDING_CART_TRIP_ID` 那批）→ 清单里的项返回 `IN_CART`；
      清单是「用户正在这一页做的事」，不反映它按钮就像坏的。
    - `segments` 可选：`[{spotId, startDate, endDate}]`，不传则按 `spotIds × [startDate,endDate]`。

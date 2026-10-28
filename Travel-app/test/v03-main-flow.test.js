@@ -141,9 +141,9 @@ console.log('=== 1. 创建行程主流程 ===');
 
 console.log('\n=== 2. 行程清单 ===');
 {
-  eq(/超难约的景点默认开启提醒/.test(CART_WXML), true, '展开后的默认提醒策略可见');
+  eq(/强提醒景点默认开启提醒/.test(CART_WXML), true, '展开后的默认提醒策略可见');
   eq(/cart-tips-title">默认提醒策略</.test(CART_WXML), true, '温馨提示标题改为默认提醒策略');
-  eq(/cart-tips-folded">超难约开启 · 较易约关闭 ·免预约不提醒 · 已开票不提醒</.test(CART_WXML), true,
+  eq(/cart-tips-folded">强提醒开启 · 弱提醒关闭 · 免预约不提醒 · 已开票不提醒</.test(CART_WXML), true,
     '收起态正文去掉重复前缀');
   eq(/已过放票时间的景点不予提醒/.test(CART_WXML), true, '温馨提示包含已过放票时间不提醒规则');
   eq(/tipsExpanded/.test(CART_WXML + CART_JS), true, '温馨提示支持展开与折叠');

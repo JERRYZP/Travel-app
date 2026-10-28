@@ -470,12 +470,11 @@ async function submit(db, userId, event) {
   const nowTs = time.now();
   const pastRelease = i => !!i.releaseAt && new Date(i.releaseAt).getTime() <= nowTs.getTime();
   const wantedReminderItems = cartItems.filter(i =>
-    i.reservationRequired !== false && i.remindOn === true);
+    i.reservationRequired !== false && i.remindOn === true && !!i.releaseAt);
   /* 放票已过的项不参与提醒配置校验：用户可能在开票前加了清单、开票后才提交。
      这一步必须与 cart.list 的 remindLocked 同源，否则界面说“无需提醒”，提交却要通道。 */
   const remindable = wantedReminderItems.filter(i => !pastRelease(i));
   if (!disableReminders && remindable.length > 0 && !validateSubmit(channels, offsets)) return fail(ERRORS.BAD_PARAM);
-  if (!disableReminders && remindable.some(i => !i.releaseAt)) return fail(ERRORS.BAD_PARAM);
 
   /* ⚠️ **放票时刻已过的清单项不建任务**（2026-09-23 定规）。
      任务一生出来就会被 notifier/读取时兜底收敛成 MISSED「未送达」，
@@ -498,6 +497,7 @@ async function submit(db, userId, event) {
     for (const cartItem of cartItems) {
       const wantedRemindOn = !disableReminders
         && cartItem.reservationRequired !== false
+        && !!cartItem.releaseAt
         && cartItem.remindOn === true;
       /* ⚠️ 放票已过的项**落 false**：它不是「用户没勾提醒」，而是「此刻提醒已无意义」。
          两者在卡片上都显示「未设提醒」，但前者可再开启，后者不可（canSetReminder 为 false）——
@@ -527,7 +527,7 @@ async function submit(db, userId, event) {
         createdItems.push({ _id: itemId, ...itemData });
       }
 
-      // 免预约项只落行程项；仅需预约且勾选提醒的项生成任务。
+      // 免预约项、无固定放票时刻的项都只落行程项；仅可提醒且勾选提醒的项生成任务。
       if (remindOn) {
         const taskData = {
           userId,

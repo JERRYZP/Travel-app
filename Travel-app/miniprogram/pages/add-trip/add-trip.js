@@ -451,7 +451,7 @@ Page({
     const spotId = e.currentTarget.dataset.id;
     const spot = e.currentTarget.dataset.spot;
     if (!spotId || !spot) return;
-    /* 免预约景点可加入行程；仅「需预约但无固定放票时刻」的景点不可选 */
+    /* 所有景点都可加入行程；remindable 只影响能否设提醒 */
     const addable = spot.addable === true || spot.remindable || spot.reservationRequired === false;
     if (!addable) {
       wx.showToast({ title: '该景点无固定放票时刻，随买随用即可', icon: 'none' });
@@ -580,8 +580,11 @@ Page({
         }
       }
       let btnSub = '';
+      const tripOnly = ev.reservationRequired === false || ev.remindable === false;
       if (ev.reservationRequired === false) {
         releaseDateLabel = '随时可约';
+      } else if (ev.remindable === false) {
+        releaseDateLabel = '随买随用';
       } else if (ev.status === 'SELECTABLE' && ev.releaseAt) {
         const ms = new Date(ev.releaseAt).getTime() - Date.now();
         if (ms > 0 && ms <= 3 * 3600000) {
@@ -596,7 +599,10 @@ Page({
         .replace(/\s*[（(]周[一二三四五六日][）)]\s*$/, '');
       return Object.assign({}, ev, {
         releaseDateLabel,
-        railDateLabel: ev.reservationRequired === false ? freeRailDateLabel : releaseDateLabel,
+        railDateLabel: tripOnly ? freeRailDateLabel : releaseDateLabel,
+        railTimeLabel: ev.reservationRequired === false
+          ? '无需预约'
+          : (ev.remindable === false ? '随买随用' : ev.releaseTimeStr),
         btnSub,
         /* wx:key 用复合键：同一景点可以有多个备选日期 */
         eventKey: ev.spotId + '|' + ev.visitDate,
@@ -677,7 +683,7 @@ Page({
       wx.showToast({
         title: (res && res.success === false)
           ? '这一项已经在行程里了'
-          : (event.reservationRequired === false ? '已加入行程' : '已加清单'),
+          : ((event.reservationRequired === false || event.remindable === false) ? '已加入行程' : '已加清单'),
         icon: 'none',
       });
       this.setData({ submitting: false });

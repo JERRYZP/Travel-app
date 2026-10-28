@@ -22,13 +22,13 @@ user-invocable: true
 
 | 文件 | 提供字段 |
 |------|---------|
-| `data/spots.json` | spotId、name、difficultyScore（难度分）、reservationRequired（是否需预约）、category |
+| `data/spots.json` | spotId、name、difficultyScore（难度分）、reservationRequired（是否需预约）、strongReminder（显式强提醒标记）、category |
 | `data/rules.json` | advanceDays（提前放票天数）、releaseTime（开票时间）、closedDays（闭馆日数组）、bookingTips、lastCheckedDate、specialNotice |
 
 派生规则（与 `cloudfunctions/spots/index.js` 的 computeDifficultyLabel / TAG-RULE-001 保持一致）：
 - 难度分 ≥4 → 极难约；=3 → 较难约；≤2 → 容易约
 - 分层：S = 需预约且难度 ≥4；A = 需预约且难度 ≤3；B = 免预约（reservationRequired=false）
-- 提醒属性：强提醒 = 需预约且难度 ≥3；弱提醒 = 需预约且难度 ≤2；不可提醒 = 需预约但 releaseTime 为空（随买随用）；不进提醒 = B 层
+- 提醒属性：强提醒 = 需预约且（难度 ≥3 或 `strongReminder=true`）；弱提醒 = 需预约、难度 ≤2 且未显式提升；不可提醒 = 需预约但 releaseTime 为空（随买随用）；不进提醒 = B 层
 
 ## 硬性规则
 
@@ -58,7 +58,7 @@ user-invocable: true
 
 - **难度标签**：由 spots 云函数 `computeDifficultyLabel` 生成，规则 TAG-RULE-001：难度分 ≥4 → 极难约；=3 → 较难约；≤2 → 容易约。B 层不渲染难度标签。
 - **分层**：S = 需预约且难度 ≥4（{n1} 个：{列表}）；A = 需预约且难度 ≤3（{n2} 个）；B = 免预约（{n3} 个）。
-- **提醒属性**：强提醒 = 需预约且难度 ≥3（{n} 个：{列表}）；弱提醒 = 需预约且难度 ≤2（{n} 个）；不可提醒 = 需预约但无放票时刻、随买随用；不进提醒 = B 层免预约。
+- **提醒属性**：强提醒 = 需预约且（难度 ≥3 或 `strongReminder=true`）（{n} 个：{列表}）；弱提醒 = 需预约、难度 ≤2 且未显式提升（{n} 个）；不可提醒 = 需预约但无放票时刻、随买随用；不进提醒 = B 层免预约。
 - **B 层括号数据**：B 层括号里的天数 / 时刻是 rules.json 原始数据。因 `reservationRequired=false`，不参与提醒计算，UI 也不展示，只显示「随到随买」。
 - **周一是否闭馆**（来自 rules.json `closedDays`）：✅ = 周一闭馆；❌ = 周一正常开放。（按需加子条目：仅园中园、周二闭馆、特殊条目）
 

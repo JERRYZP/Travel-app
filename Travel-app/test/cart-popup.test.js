@@ -46,6 +46,8 @@ console.log('=== 2. 可选与不可选提醒共用同一控件形态 ===');
     'disabled 使用灰色箭头');
   eq(/if \(item\.remindLocked\) wx\.showToast\(\{ title: '放票时间已过', icon: 'none' \}\)/.test(JS), true,
     '点击已开票项的禁用下拉时说明「放票时间已过」');
+  eq(/if \(item\.noFixedRelease\) wx\.showToast\(\{ title: '随买随用，不设提醒', icon: 'none' \}\)/.test(JS), true,
+    '点击无固定放票时刻项的禁用下拉时说明「随买随用，不设提醒」');
   eq(/\.cart-drop\s*\{[^}]*width:\s*252rpx/.test(WXSS), true,
     '单选下拉宽度容纳完整文案和箭头');
   eq(/\.cart-drop-option\s*\{[^}]*font-size:\s*24rpx/.test(WXSS), true,
@@ -173,6 +175,17 @@ console.log('=== 7. 已过放票时间的副行与锁定态 ===');
   });
   eq(passed[0].items[0].releasePassed, true, '服务端锁定态映射为已过放票时间');
   eq(passed[0].items[0].subline, '已放票', '已过放票时间的副行改为「已放票」');
+
+  const noFixedItem = {
+    _id: 'd', spotId: 'huanqiu-yingcheng', spotName: '北京环球影城', visitDate: '2026-10-03',
+    releaseAt: null, reservationRequired: true, remindLocked: true, noFixedRelease: true,
+  };
+  const noFixed = cartView.normalizeCartGroups({
+    groups: [{ key: '2026-10-03', label: '10月3日 · 周六', dayLabel: '【第1天】', items: [noFixedItem] }],
+    items: [noFixedItem],
+  });
+  eq(noFixed[0].items[0].releasePassed, false, '无固定放票时刻不能误映射为已放票');
+  eq(noFixed[0].items[0].subline, '随买随用，不设提醒', '无固定放票时刻的副行说明不设提醒');
 }
 
 console.log('=== 8. 景点详情长内容在真机可滚动到底 ===');

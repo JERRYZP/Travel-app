@@ -12,6 +12,7 @@
  * 清单同时承载需预约项和免预约项：
  * - 需预约项：releaseAt 必有，remindOn 可勾选；
  * - 免预约项：releaseAt=null，remindOn 恒 false；
+ * - 需预约但无固定放票时刻（如环球影城）：releaseAt=null，remindOn 恒 false，仅进行程；
  * - 弱提醒景点默认不勾提醒，用户可在清单里手动改。
  */
 
@@ -120,14 +121,17 @@ async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn 
        「请检查输入」——挽回线点得开、走不通。别把这道校验改回去：
        用户要的是「换一天再抢」，页面不该为了凑一个参数去重算放票时刻。 */
     const derived = item.deriveReleaseAt(spot, rule, visitDate);
-    if (!derived) return fail(ERRORS.BAD_PARAM);
-    resolvedReleaseAt = derived;
-    /* 已过放票时刻的项只能“仅加行程”：此时提醒已经不可能送达，
-       不能再让用户在清单里切换成一个最终必然失败的开关。 */
-    const releasePassed = new Date(resolvedReleaseAt).getTime() <= nowTs.getTime();
-    resolvedRemindOn = releasePassed
-      ? false
-      : (typeof remindOn === 'boolean' ? remindOn : tripItem.defaultRemindOn(spot));
+    if (derived) {
+      resolvedReleaseAt = derived;
+      /* 已过放票时刻的项只能“仅加行程”：此时提醒已经不可能送达，
+         不能再让用户在清单里切换成一个最终必然失败的开关。 */
+      const releasePassed = new Date(resolvedReleaseAt).getTime() <= nowTs.getTime();
+      resolvedRemindOn = releasePassed
+        ? false
+        : (typeof remindOn === 'boolean' ? remindOn : tripItem.defaultRemindOn(spot));
+    }
+    /* derived=null = 需预约但没有固定放票时刻（如环球影城）。
+       这类景点仍可加入行程管理安排，只是永远不设提醒。 */
   }
 
   // 逻辑唯一约束 (userId, tripId, spotId, visitDate) —— 在暂存区里就是 (userId, spotId, visitDate)
@@ -188,7 +192,8 @@ async function updateRemindOn(db, userId, cartId, remindOn) {
     .where({ _id: cartId, userId }).get();
   const item = (res.data || [])[0];
   if (!item) return fail(ERRORS.BAD_PARAM);
-  if (item.reservationRequired === false && remindOn) return fail(ERRORS.BAD_PARAM);
+  const canRemind = item.reservationRequired !== false && !!item.releaseAt;
+  if (remindOn && !canRemind) return fail(ERRORS.BAD_PARAM);
   const releasePassed = item.reservationRequired !== false
     && item.releaseAt
     && new Date(item.releaseAt).getTime() <= time.now().getTime();
@@ -290,6 +295,7 @@ async function list(db, userId, tripId = null) {
   const enriched = items.map(i => {
     const spot = spotMap[i.spotId];
     const reservationRequired = i.reservationRequired !== false && (!spot || spot.reservationRequired !== false);
+    const noFixedRelease = reservationRequired && !i.releaseAt;
     const releasePassed = reservationRequired
       && i.releaseAt
       && new Date(i.releaseAt).getTime() <= nowTs.getTime();
@@ -299,11 +305,14 @@ async function list(db, userId, tripId = null) {
     return {
       ...i,
       reservationRequired,
-      remindOn: reservationRequired && !releasePassed && i.remindOn === true,
-      remindLocked: !!releasePassed,
+      remindOn: reservationRequired && !noFixedRelease && !releasePassed && i.remindOn === true,
+      remindLocked: !!(noFixedRelease || releasePassed),
+      noFixedRelease,
       spotName: spot ? spot.name : '未知景点',
       difficulty: spot ? difficultyOf(spot.difficultyScore) : null,
-      weak: reservationRequired && !!spot && (spot.difficultyScore || 0) <= 2,
+      weak: reservationRequired && !!spot
+        && spot.strongReminder !== true
+        && (spot.difficultyScore || 0) <= 2,
       releaseDateLabel: releaseAt
         ? formatReleaseDateLabel(releaseAt)
         : '',
@@ -311,10 +320,12 @@ async function list(db, userId, tripId = null) {
         ? `${formatReleaseDateLabel(releaseAt)} ${time.formatHourMinute(releaseAt)} 放票`
         : '',
       releaseTimeLabel: reservationRequired
-        ? (releaseAt ? time.formatHourMinute(releaseAt) : '')
+        ? (releaseAt ? time.formatHourMinute(releaseAt) : '随买随用')
         : '无需预约',
       visitDateLabel: reservationRequired
-        ? `约 ${time.formatMonthDayWeek(i.visitDate)} 门票`
+        ? (noFixedRelease
+          ? `${time.formatMonthDayWeek(i.visitDate)} · 随买随用`
+          : `约 ${time.formatMonthDayWeek(i.visitDate)} 门票`)
         : `${time.formatMonthDayWeek(i.visitDate)} · 随到随玩`,
       countdown: releaseAt
         ? {

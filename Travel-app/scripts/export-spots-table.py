@@ -73,7 +73,7 @@ def remind_text(spot, rule):
         return "不进提醒"
     if not rule or not rule.get("releaseTime"):
         return "⚠️ 不可提醒（随买随用）"
-    strong = spot.get("difficultyScore", 0) >= 3
+    strong = spot.get("strongReminder") is True or spot.get("difficultyScore", 0) >= 3
     return "🔶 强提醒" if strong else "🔵 弱提醒"
 
 
@@ -145,7 +145,7 @@ head += [
     "  - **仅周末**：清华、北大 —— 平时工作日（周一至周五）不可约，周末可约；寒暑假等假期会改为每天开放，以学校公告为准。",
     "  - **周一闭馆**：人大堂、故宫、国博等；法定节假日通常除外。",
     "- **分层**：S = 需预约且难度 ≥4；A = 需预约且难度 ≤3；B = 免预约（不进提醒流程）。",
-    "- **提醒属性**：强提醒 = 需预约且难度 ≥3；弱提醒 = 需预约且难度 ≤2；不可提醒 = 需预约但无放票时刻。",
+    "- **提醒属性**：强提醒 = 需预约且（难度 ≥3 或 `strongReminder=true`）；弱提醒 = 需预约、难度 ≤2 且未显式提升；不可提醒 = 需预约但无放票时刻。",
     "- **核验日期**：`lastCheckedDate`，为空表示尚未二次核实，App 内显示「尚未复核，以官方为准」；本表标 ⚠️。",
     f"  - 未核验（{len(unverified)} 个）：{'、'.join(unverified)}",
     "",

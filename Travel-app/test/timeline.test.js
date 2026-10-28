@@ -37,7 +37,7 @@ eq(
   'peking-university',
   '仅北大用 openDays 白名单（清华只有周一闭馆，2026-09-11 用户核实）'
 );
-eq(all.length, 71, '总事件 = 3 个全年开放×5 + 12 个周一闭馆×4 + 考古馆(周一+周二)×3 + 天文馆(仅周二)×4 + 北大(仅周末，5/31~6/4 只命中周日)×1 − 环球影城(无放票时刻不生成) = 71');
+eq(all.length, 76, '总事件 = 3 个全年开放×5 + 12 个周一闭馆×4 + 考古馆(周一+周二)×3 + 天文馆(仅周二)×4 + 北大(仅周末，5/31~6/4 只命中周日)×1 + 环球影城(无放票时刻，仍生成 5 个仅行程候选) = 76');
 
 console.log('\n--- 故宫：周一闭馆，5 天里 4 条 ---');
 const gg = TL.buildEvents(sm.gugong, rm.gugong, trip);
@@ -70,16 +70,21 @@ eq(time.isOpenOn(rm['renmin-dahuitang'], 'tuesday'), true, '人民大会堂周�
 console.log('\n--- 出发日视图：6/1 只剩部分景点（周一闭馆 + 白名单景点剔除）---');
 const byDep = TL.groupByDeparture(all);
 eq(byDep.length, 5, '5 个日期 Tab');
-eq(byDep.map(g => g.count).join(','), '18,4,15,17,17', '各 Tab 事件数（6/1 周一仅剩 4 个全年开放景点；6/2 周二考古馆闭馆）');
+eq(byDep.map(g => g.count).join(','), '19,5,16,18,18', '各 Tab 事件数（含环球影城每天的仅行程候选）');
 eq(byDep[1].key, '2026-06-01', '第 2 个 Tab 是 6/1');
 eq(byDep[1].label, '6月1日 (周一)', 'Tab 标签');
 console.log('   6/1 可约:', byDep[1].events.map(e => e.spotName).join('、'));
 eq(byDep[1].events.every(e => time.isOpenOn(rm[e.spotId], 'monday')), true, '6/1 无不可约景点（闭馆日与周末白名单都按 isOpenOn 判定）');
-eq(byDep[0].events.every((e, i, a) => i === 0 || a[i - 1].releaseAt <= e.releaseAt), true, '组内 releaseAt 升序');
+eq(
+  byDep[0].events.filter(e => e.releaseAt).every((e, i, a) => i === 0 || a[i - 1].releaseAt <= e.releaseAt),
+  true,
+  '组内有放票时刻的事件按 releaseAt 升序'
+);
+eq(byDep[0].events[byDep[0].events.length - 1].spotId, 'huanqiu-yingcheng', '无固定放票时刻的事件排在组内最后');
 
 console.log('\n--- 景点视图：故宫 Tab 显示 4 天 ---');
 const bySpot = TL.groupBySpot(all);
-eq(bySpot.length, 18, '18 个生成事件的需预约景点 Tab（孔庙转免预约、环球影城/无放票时刻不生成事件）');
+eq(bySpot.length, 19, '19 个生成事件的需预约景点 Tab（孔庙转免预约；环球影城也生成仅行程候选）');
 const ggTab = bySpot.find(g => g.key === 'gugong');
 eq(ggTab.count, 4, '故宫 Tab 4 条');
 eq(ggTab.label, '故宫博物院', 'Tab 标签用景点名');

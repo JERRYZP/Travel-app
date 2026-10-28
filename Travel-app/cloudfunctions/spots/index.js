@@ -171,9 +171,11 @@ function buildTags(rule) {
 /** 组装景点卡（PAGE-001 网格 / PAGE-003 列表共用） */
 function buildCard(spot, rule, now) {
   const status = computeReleaseStatus(rule, now);
-  // 可提醒 = 需预约 且有真实放票时刻（无放票时刻如环球影城购票型 → 不进时间线/清单/任务）
+  // 可提醒 = 需预约 且有真实放票时刻（无放票时刻如环球影城购票型 → 只进行程、不建任务）
   const remindable = spot.reservationRequired !== false && !!(rule && rule.advanceDays && (rule.releaseTimes || rule.releaseTime));
-  const weak = spot.reservationRequired !== false && (spot.difficultyScore || 0) <= 2;
+  const weak = spot.reservationRequired !== false
+    && spot.strongReminder !== true
+    && (spot.difficultyScore || 0) <= 2;
   let cardDesc = cardDescOf(rule, now);
   if (remindable && weak) cardDesc = weakLine(rule);
   else if (!remindable && spot.reservationRequired !== false) cardDesc = '无固定放票时刻，随买随用';
@@ -189,11 +191,11 @@ function buildCard(spot, rule, now) {
     popularityScore: spot.popularityScore,
     // 2026 分层：是否仍需实名预约（B 层免预约 → 不进提醒流程，卡片显示「无需预约」tag）
     reservationRequired: spot.reservationRequired !== false,
-    // 无放票时刻的需预约景点（如环球影城）也不可添加，按钮位显示「随买随用」tag
+    // 无放票时刻的需预约景点（如环球影城）不可设提醒，但仍可加入行程
     remindable,
-    // 可加入行程：可提醒的需预约景点，或免预约景点；无放票时刻的环球影城仍不可选。
-    addable: remindable || spot.reservationRequired === false,
-    // 弱提醒：需预约但非常好约（difficulty≤2），标签行给平和描述而非紧迫放票标签
+    // 所有景点都可加入行程；remindable 只决定能否设提醒。
+    addable: true,
+    // 弱提醒：需预约但非常好约（difficulty≤2），且未被 strongReminder 显式提升
     weak,
     cardDesc,
     // TAG-RULE-001 核心标签：只回答「什么时候抢、难不难抢」

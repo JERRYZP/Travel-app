@@ -72,6 +72,56 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
   eq(free.length, 3, '免预约景点按日期生成候选项');
   eq(free.every(e => e.releaseAt === null && e.button.text === '加入行程'), true, '免预约候选项无 releaseAt，按钮为「加入行程」');
 
+  /* ============ 3a. 无固定放票时刻的需预约景点（环球影城）仅加行程 ============ */
+  console.log('\n=== 3a. 环球影城可加入行程、不可设提醒（mock 镜像）===');
+  {
+    const m = freshMock();
+    const c = (n, d) => m.mockCall(n, d);
+    const hq = m.spotsListCards().find(s => s.spotId === 'huanqiu-yingcheng');
+    eq(hq.addable, true, '景点卡可加入行程');
+    eq(hq.remindable, false, '景点卡不可设提醒');
+
+    const pv = await c('timeline.preview', {
+      startDate: '2026-10-01', endDate: '2026-10-01', spotIds: ['huanqiu-yingcheng'],
+    });
+    eq(pv.events.length, 1, '时间线生成仅行程候选项');
+    eq(pv.events[0].releaseAt, null, '没有固定放票时刻');
+    eq(pv.events[0].releaseStateLabel, '随买随用', '顶部状态为随买随用');
+    eq(pv.events[0].button.text, '加入行程', '按钮为加入行程');
+
+    const added = await c('cart.add', {
+      spotId: 'huanqiu-yingcheng', visitDate: '2026-10-01', remindOn: true,
+    });
+    eq(added.remindOn, false, '服务端强制不提醒');
+    const listed = await c('cart.list', {});
+    eq(listed.items[0].noFixedRelease, true, '清单标记无固定放票时刻');
+    eq(listed.items[0].remindLocked, true, '清单提醒开关锁定');
+    const changed = await errOf(c('cart.updateRemindOn', { cartId: added.cartId, remindOn: true }));
+    eq(changed && changed.errorCode, 1010, '不能手动开启提醒');
+    const committed = await c('cart.commit', {});
+    eq(committed.createdItems, 1, '提交落成 1 个行程项');
+    eq(committed.createdTasks, 0, '不创建提醒任务');
+  }
+
+  /* ============ 3b. 指定弱提醒景点显式提升为强提醒 ============ */
+  console.log('\n=== 3b. strongReminder 覆盖默认弱提醒策略（mock 镜像）===');
+  {
+    const m = freshMock();
+    const strongIds = [
+      'gongwangfu', 'tiananmen-square', 'junbo',
+      'ziran-bowuguan', 'kaogu-bowuguan', 'gongyi-meishuguan',
+    ];
+    const cards = m.spotsListCards();
+    eq(strongIds.every(id => cards.find(s => s.spotId === id).weak === false), true,
+      '6 个指定景点在景点卡上不再标记为弱提醒');
+    const pv = await m.mockCall('timeline.preview', {
+      startDate: '2026-10-01', endDate: '2026-10-01', spotIds: strongIds,
+    });
+    eq(pv.events.length, 6, '6 个景点都生成时间线候选项');
+    eq(pv.events.every(e => e.remindOnDefault === true), true, '6 个景点默认勾选提醒');
+    eq(cards.find(s => s.spotId === 'badaling').weak, true, '未显式提升的弱提醒保持不变');
+  }
+
   /* 先清掉第 1 节那条「防止行程被孤儿清理」的守卫清单（2026-09-24）：
      同城即合并之后它是**同一个行程**的货，留着会一并进 cart.list / cart.commit。
      本节要的是一张只有免预约项的干净清单。 */
@@ -422,6 +472,31 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     eq(m2.__internals.PENDING_CART_TRIP_ID, schema.PENDING_CART_TRIP_ID, '暂存清单占位 tripId 一致');
   }
 
+  /* ============ 10.1 首页额度预警窗口：mock 必须与云端同口径 ============ */
+  console.log('\n=== 10.1 首页额度预警窗口镜像 ===');
+  {
+    const m = freshMock();
+    const cloudTask = require('../cloudfunctions/reminder/lib/task');
+    const now = new Date('2026-10-27T04:00:00.000Z');
+    const farRelease = new Date(now.getTime() + 72 * 3600000);
+    const task = { backendStatus: 'WAITING', releaseAt: farRelease, offsets: [5], sentOffsets: [] };
+
+    const mockExhausted = m.__internals.mockReminderHealthOf([task], 0, now);
+    const cloudExhausted = cloudTask.reminderHealthOf([task], 0, now);
+    const mockExhaustedWarning = m.__internals.mockReminderQuotaWarningOf(mockExhausted, now);
+    const cloudExhaustedWarning = cloudTask.buildReminderQuotaWarning(cloudExhausted, now);
+    eq(Boolean(mockExhaustedWarning), Boolean(cloudExhaustedWarning),
+      '真实缺口 72 小时后仍提示（mock 不再被 48 小时整体挡住）');
+    eq(mockExhaustedWarning && mockExhaustedWarning.level,
+      cloudExhaustedWarning && cloudExhaustedWarning.level, '真实缺口等级一致');
+
+    const mockLow = m.__internals.mockReminderHealthOf([task], 1, now);
+    const cloudLow = cloudTask.reminderHealthOf([task], 1, now);
+    eq(Boolean(m.__internals.mockReminderQuotaWarningOf(mockLow, now)),
+      Boolean(cloudTask.buildReminderQuotaWarning(cloudLow, now)),
+      '仅缺缓冲的 low 在 48 小时外一致地不提示');
+  }
+
 
   /* ============ 11. 数据一致性：mock 内嵌的 SPOTS/RULES 与实际数据文件 ============ */
   console.log('\n=== 11. mock 内嵌数据 vs data/ 真身 ===');
@@ -429,7 +504,7 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     const m = freshMock();
     const spotsSeed = require('../data/spots.json').spots;
     const rulesSeed = require('../data/rules.json').rules;
-    const SPOT_FIELDS = ['name', 'shortName', 'reservationRequired', 'difficultyScore', 'popularityScore'];
+    const SPOT_FIELDS = ['name', 'shortName', 'reservationRequired', 'difficultyScore', 'popularityScore', 'strongReminder'];
     const RULE_FIELDS = ['advanceDays', 'releaseTime', 'closedDays', 'openDays', 'closedDaysNote', 'specialNotice', 'specialNoticeUntil'];
 
     const spotMap = {};

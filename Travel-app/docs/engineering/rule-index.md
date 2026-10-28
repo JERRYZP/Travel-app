@@ -30,7 +30,7 @@
 | `RULE-SPOTDATA-001` | `CLAUDE.md` 65-72 | 开放日、公告过期、核验与景点详情 | `.claude/rules/data-contracts.md`、`docs/engineering/domain-rules.md` | `extracted` |
 | `RULE-SPOTDATA-002` | `CLAUDE.md` 73-76 | 闭馆跳过展示已删除，云函数字段保留 | `docs/engineering/domain-rules.md` | `extracted` |
 | `RULE-CLOUD-001` | `CLAUDE.md` 77-79 | 集合权限、spot-hub 加载误报 | `docs/engineering/frontend-pitfalls.md`、`docs/engineering/architecture.md` | `extracted` |
-| `RULE-TIER-001` | `CLAUDE.md` 80 | C/S/A 景点分层与可提醒条件 | `docs/engineering/domain-rules.md`、`.claude/rules/data-contracts.md` | `extracted` |
+| `RULE-TIER-001` | `CLAUDE.md` 80 | C/S/A 景点分层、可提醒条件与显式强提醒 | `docs/engineering/domain-rules.md`、`.claude/rules/data-contracts.md` | `extracted` |
 | `RULE-SOURCE-001` | `CLAUDE.md` 82 | 产品/视觉权威文档 | 根 `CLAUDE.md` 的权威来源表 | `root-current` |
 | `RULE-PAGE-001` | `CLAUDE.md` 83 | 页面职责与退役页 | `docs/engineering/architecture.md` | `extracted` |
 | `RULE-ENV-001` | `CLAUDE.md` 84, 148 | mock 开关、cloudEnv、appid 配对 | `.claude/rules/deployment.md` | `extracted` |

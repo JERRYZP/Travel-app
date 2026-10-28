@@ -252,8 +252,7 @@ const seedSpot = async () => {
     eq(Boolean(added), true, '新日期出现在首页行程墙上');
     eq(added.remindOn, true, '提醒已开启（不再是静默失败的空转）');
 
-    /* 反向锁：规则推不出放票时刻的项仍然拒绝（免预约走另一支，这里用无 advanceDays 的规则）。
-       放开校验 ≠ 什么都收——`deriveReleaseAt` 推不出来时依然 BAD_PARAM。 */
+    /* 无固定放票时刻的需预约景点（环球影城）：允许仅加入行程，但永远不设提醒。 */
     await CURRENT_DB.collection(COLLECTIONS.RELEASE_RULES).add({
       data: { spotId: 'huanqiu-yingcheng', releaseTime: '10:00', closedDays: [] },
     });
@@ -263,8 +262,12 @@ const seedSpot = async () => {
     const noRule = await reminder.main({
       action: 'cart.add', spotId: 'huanqiu-yingcheng', visitDate: visit, remindOn: true,
     });
-    eq(noRule.success, false, '无 advanceDays → 推不出放票时刻');
-    eq(noRule.errorCode, 1010, '仍然回 1010（放开 releaseAt 不等于什么都收）');
+    eq(noRule.success, true, '无 advanceDays 仍可加入清单');
+    eq(noRule.remindOn, false, '服务端强制不提醒');
+    const noRuleCommit = await reminder.main({ action: 'cart.commit', cartId: noRule.cartId });
+    eq(noRuleCommit.success, true, '可以提交为行程项');
+    eq(noRuleCommit.createdItems, 1, '落成 1 个行程项');
+    eq(noRuleCommit.createdTasks, 0, '不创建提醒任务');
   }
 
   console.log('\n' + (fail === 0 ? 'ALL PASS' : ('FAIL ' + fail)));
