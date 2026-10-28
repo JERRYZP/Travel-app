@@ -34,6 +34,7 @@
 | `RULE-SOURCE-001` | `CLAUDE.md` 82 | 产品/视觉权威文档 | 根 `CLAUDE.md` 的权威来源表 | `root-current` |
 | `RULE-PAGE-001` | `CLAUDE.md` 83 | 页面职责与退役页 | `docs/engineering/architecture.md` | `extracted` |
 | `RULE-ENV-001` | `CLAUDE.md` 84, 148 | mock 开关、cloudEnv、appid 配对 | `.claude/rules/deployment.md` | `extracted` |
+| `RULE-GIT-001` | `CLAUDE.md` Git 纪律 | `main` 集成、`codex/*` 开发、原子提交、状态分离与非规范操作提醒 | `CLAUDE.md`、`docs/engineering/current-state.md` | `root-current` |
 | `RULE-HOMEBOOT-001` | `CLAUDE.md` 86-90 | `home.bootstrap` V2、读取时拆分、状态兜底 | `docs/engineering/architecture.md`、`docs/engineering/domain-rules.md` | `extracted` |
 | `RULE-STACK-001` | `CLAUDE.md` 92-97 | 技术栈、云函数、抓取状态 | `docs/engineering/architecture.md` | `extracted` |
 | `RULE-DIR-001` | `CLAUDE.md` 98-118 | 目录结构、数据位置和脚本 | `docs/engineering/architecture.md`、`.claude/rules/data-contracts.md` | `extracted` |
