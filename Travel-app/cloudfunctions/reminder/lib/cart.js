@@ -225,6 +225,33 @@ async function clear(db, userId, tripId = null) {
 }
 
 /**
+ * CART-RULE-007 清单收敛到本次生成的时间线范围。
+ *
+ * 清单是跨页面/重启保留的暂存区，但用户每次重新生成时间线时，上一批已经不在
+ * 本次日期段或景点集合里的草稿不能继续带进清单——那会让用户以为这次生成
+ * 也包含了旧行程，并在提交时把旧项一起落库。
+ *
+ * 只清理暂存区；真实 tripId 下的清单是旧链路数据，不在这里处理。
+ */
+async function pruneScope(db, userId, { startDate, endDate, spotIds } = {}) {
+  if (!startDate || !endDate || startDate > endDate) return fail(ERRORS.TRIP_DATE_INVALID);
+  if (!Array.isArray(spotIds) || spotIds.length === 0) return fail(ERRORS.BAD_PARAM);
+
+  const keepSpots = new Set(spotIds.map(String));
+  const res = await db.collection(COLLECTIONS.REMINDER_CART)
+    .where({ userId, tripId: PENDING_CART_TRIP_ID }).get();
+  const stale = (res.data || []).filter(i => (
+    !keepSpots.has(String(i.spotId || ''))
+    || !i.visitDate
+    || i.visitDate < startDate
+    || i.visitDate > endDate
+  ));
+
+  await Promise.all(stale.map(i => db.collection(COLLECTIONS.REMINDER_CART).doc(i._id).remove()));
+  return ok({ removed: stale.length });
+}
+
+/**
  * 用户显式删掉最后一笔行程项后，清掉已经失去归属的暂存清单。
  *
  * 普通未提交清单必须跨退出/重启保留；这里只在「账号下已无任何 trip_items」
@@ -318,6 +345,7 @@ module.exports = {
   updateRemindOn,
   remove,
   clear,
+  pruneScope,
   clearPendingIfNoItems,
   list,
 };

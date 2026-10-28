@@ -107,6 +107,15 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   cards.forEach(c => page.onSpotSelectToggle({ currentTarget: { dataset: { id: c.spotId, spot: c } } }));
   eq(page.data.selectedSpotIds.length, cards.length, '全部选上');
 
+  /* 上一批清单草稿：日期不在本次生成范围内。生成新时间线后必须被收敛掉，
+     否则它会跟着本次清单一起出现在 BottomSheet 并被提交。 */
+  const OLD_DATE = iso(new Date(TODAY.getTime() + 80 * 86400000));
+  const stale = await mock.mockCall('reminder', {
+    action: 'cart.add', spotId: 'tiantan', visitDate: OLD_DATE, remindOn: false,
+  });
+  eq(stale.success, true, '构造上一批暂存草稿');
+  eq((await mock.mockCall('reminder', { action: 'cart.list' })).summary.count, 1, '生成前清单里仍有旧草稿');
+
   console.log('=== 2. 生成（纯预览，不建行程）===');
   logs.length = 0;
   page.onGenerateTimeline();
@@ -114,6 +123,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   eq(page.data.showTimeline, true, '时间线已展示');
   eq(page.data.timelineEvents.length > 0, true, '有事件');
   eq((await mock.mockCall('reminder', { action: 'trip.list' })).trips.length, 0, '⚠️ 纯预览不创建任何行程');
+  eq((await mock.mockCall('reminder', { action: 'cart.list' })).summary.count, 0,
+    '上一批范围外草稿已被清掉，不会带入本次清单');
+  eq(page.data.cartCount, 0, '页面清单条同步归零');
 
   const freeRail = page.decorateEvents([{
     spotId: 'tiantan',

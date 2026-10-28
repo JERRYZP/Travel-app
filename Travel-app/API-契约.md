@@ -1396,6 +1396,23 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   原先强制要求 `releaseAt` 会让它稳定回 1010 —— 挽回线点得开、走不通。
   推不出放票时刻（无 `advanceDays` 的景点）仍然 `BAD_PARAM`。
 
+#### `cart.pruneScope`
+
+```javascript
+调用：{
+  action: 'cart.pruneScope',
+  startDate: '2026-06-01',
+  endDate: '2026-06-05',
+  spotIds: ['gugong', 'guobo']
+}
+返回：{ success: true, removed: 2 }
+```
+
+- PAGE-005 在 `timeline.preview` 成功后调用，把暂存清单收敛到本次日期段 × 景点集合（CART-RULE-007）。
+- 只处理暂存区（`PENDING_CART_TRIP_ID`）；真实 `tripId` 下的旧链路清单不受影响。
+- 保留 `(spotId ∈ spotIds) && (visitDate ∈ [startDate, endDate])` 的项，其余移除。
+- 清理失败不得阻断预览展示；页面仍应刷新清单条。
+
 #### `cart.updateRemindOn`
 
 ```javascript

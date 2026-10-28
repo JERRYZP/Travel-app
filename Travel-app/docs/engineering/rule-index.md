@@ -25,6 +25,7 @@
 | `RULE-HOME-002` | `CLAUDE.md` 85 | 双 Tab/`homeMode` 已废弃，首页只保留单形态 | `docs/engineering/domain-rules.md` | `history` |
 | `RULE-TIMELINE-001` | `CLAUDE.md` 51-60 | 纯预览、按钮态、已开票锁定、清单分组 | `docs/engineering/domain-rules.md` | `extracted` |
 | `RULE-CART-001` | `CLAUDE.md` 61 | 清单是提交前暂存区 | `docs/engineering/domain-rules.md`、`docs/engineering/architecture.md` | `extracted` |
+| `RULE-CART-002` | `产品文档.md` CART-RULE-003 / 007 | 清单收敛到当前这次生成的时间线范围 | `产品文档.md`、`docs/engineering/domain-rules.md` | `delegated` |
 | `RULE-DOC-001` | `CLAUDE.md` 62 | 首页权威文档位置 | 根 `CLAUDE.md` 路由表 | `root-current` |
 | `RULE-SPOTDATA-001` | `CLAUDE.md` 65-72 | 开放日、公告过期、核验与景点详情 | `.claude/rules/data-contracts.md`、`docs/engineering/domain-rules.md` | `extracted` |
 | `RULE-SPOTDATA-002` | `CLAUDE.md` 73-76 | 闭馆跳过展示已删除，云函数字段保留 | `docs/engineering/domain-rules.md` | `extracted` |

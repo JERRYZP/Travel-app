@@ -1256,6 +1256,28 @@ const handlers = {
     Object.keys(db.carts).forEach(id => { if (db.carts[id].tripId === want) delete db.carts[id]; });
     return { success: true, removed: 0 };
   },
+  /* CART-RULE-007：只保留本次日期段 × 景点集合内的暂存项（镜像 cart.pruneScope） */
+  'cart.pruneScope': (data) => {
+    const { startDate, endDate, spotIds } = data || {};
+    if (!startDate || !endDate || startDate > endDate) {
+      return { success: false, error: '行程日期不合法', errorCode: 1006 };
+    }
+    if (!Array.isArray(spotIds) || spotIds.length === 0) {
+      return { success: false, error: '参数不合法', errorCode: 1010 };
+    }
+    const keepSpots = new Set(spotIds.map(String));
+    let removed = 0;
+    Object.keys(db.carts).forEach(id => {
+      const item = db.carts[id];
+      if (item.tripId !== PENDING_CART_TRIP_ID) return;
+      const stale = !keepSpots.has(String(item.spotId || ''))
+        || !item.visitDate
+        || item.visitDate < startDate
+        || item.visitDate > endDate;
+      if (stale) { delete db.carts[id]; removed += 1; }
+    });
+    return { success: true, removed };
+  },
   'cart.list': (data) => {
     /* 不传 tripId = 读暂存区（「添加提醒」页要的就是这个） */
     const want = cartTripIdOf(data && data.tripId);

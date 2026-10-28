@@ -94,6 +94,8 @@ const reminder = {
     commit: (p) => homeMutationCall('reminder', { action: 'cart.commit', ...p }),
     remove: (cartId) => call('reminder', { action: 'cart.remove', cartId }),
     clear: (tripId) => call('reminder', { action: 'cart.clear', tripId }),
+    /* 生成时间线后清理不在本次日期段/景点集合里的暂存草稿 */
+    pruneScope: (p) => call('reminder', { action: 'cart.pruneScope', ...p }),
     /* 不传 tripId = 读「当前暂存清单」（纯预览化后清单不再挂在行程上） */
     list: (tripId) => call('reminder', { action: 'cart.list', tripId }),
   },

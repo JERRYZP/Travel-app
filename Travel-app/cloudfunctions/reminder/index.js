@@ -104,6 +104,9 @@ exports.main = async (event) => {
         return await cart.remove(db, userId, event.cartId);
       case 'cart.clear':
         return await cart.clear(db, userId, event.tripId || null);
+      case 'cart.pruneScope':
+        // CART-RULE-007：生成时间线成功后，把暂存区收敛到本次日期段 × 景点集合
+        return await cart.pruneScope(db, userId, event);
       case 'cart.list':
         return await cart.list(db, userId, event.tripId || null);
       case 'cart.updateRemindOn':
