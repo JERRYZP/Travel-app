@@ -15,9 +15,12 @@ function backupGroupIdOf(tripId, spotId) {
   return `${tripId}:${spotId}`;
 }
 
-/** 弱提醒：需预约、可提醒且难度 ≤2；默认不勾提醒 */
+/** 弱提醒：需预约且难度 ≤2，且未被景点数据显式提升为强提醒；默认不勾提醒 */
 function isWeakSpot(spot) {
-  return !!spot && spot.reservationRequired !== false && (spot.difficultyScore || 0) <= 2;
+  return !!spot
+    && spot.reservationRequired !== false
+    && spot.strongReminder !== true
+    && (spot.difficultyScore || 0) <= 2;
 }
 
 /** 未显式传 remindOn 时的默认值：强提醒默认开，弱提醒默认关，免预约恒关 */

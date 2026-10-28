@@ -17,6 +17,7 @@ const db = {
   tasks: {},
   items: {},
   feedbacks: {},
+  orders: {},
   searchHistory: [],
 };
 /* 暂存清单的占位 tripId（镜像 schema.PENDING_CART_TRIP_ID，2026-09-20 清单改暂存区）：
@@ -33,6 +34,7 @@ let cartSeq = 0;
 let taskSeq = 0;
 let itemSeq = 0;
 let feedbackSeq = 0;
+let orderSeq = 0;
 let subscribeSeq = 0;
 const subscribeQuotas = {};
 
@@ -201,7 +203,9 @@ function buildCard(spot) {
   const rule = RULES.find(r => r.spotId === spot.spotId) || null;
   const status = computeReleaseStatus(rule, now);
   const remindable = spot.reservationRequired !== false && !!(rule && rule.advanceDays && (rule.releaseTimes || rule.releaseTime));
-  const weak = spot.reservationRequired !== false && (spot.difficultyScore || 0) <= 2;
+  const weak = spot.reservationRequired !== false
+    && spot.strongReminder !== true
+    && (spot.difficultyScore || 0) <= 2;
   let cardDesc = cardDescOf(rule, now);
   if (remindable && weak) cardDesc = weakLine(rule);
   else if (!remindable && spot.reservationRequired !== false) cardDesc = '无固定放票时刻，随买随用';
@@ -209,6 +213,7 @@ function buildCard(spot) {
     spotId: spot.spotId,
     name: spot.name,
     shortName: spot.shortName || spot.name,
+    aliases: spot.aliases || [],
     category: spot.category,
     audienceTags: spot.audienceTags || [],
     district: spot.district,
@@ -217,7 +222,7 @@ function buildCard(spot) {
     popularityScore: spot.popularityScore,
     reservationRequired: spot.reservationRequired !== false,
     remindable,
-    addable: remindable || spot.reservationRequired === false,
+    addable: true,
     weak,
     cardDesc,
     tags: rule ? buildTags(rule) : [],
@@ -516,12 +521,18 @@ function difficultyOf(score) {
   if (score === 3) return { key: 'NORMAL', text: '较难约' };
   return { key: 'EASY', text: '容易约' };
 }
+function hasReleaseSchedule(rule) {
+  return !!(rule && rule.advanceDays && (rule.releaseTime || (rule.releaseTimes || []).length));
+}
 function buildEvents(spot, rule, seg) {
   const base = {
     spotId: spot.spotId,
     spotName: spot.name,
     reservationRequired: spot.reservationRequired !== false,
-    weak: spot.reservationRequired !== false && (spot.difficultyScore || 0) <= 2,
+    remindable: false,
+    weak: spot.reservationRequired !== false
+      && spot.strongReminder !== true
+      && (spot.difficultyScore || 0) <= 2,
     officialAppid: spot.officialAppid || '',
     officialPath: spot.officialPath || '',
     officialWebUrl: spot.officialWebUrl || '',
@@ -539,13 +550,28 @@ function buildEvents(spot, rule, seg) {
       remindOnDefault: false,
     }));
   }
-  if (!rule || !rule.advanceDays || (!rule.releaseTime && !(rule.releaseTimes || []).length)) return [];
+  if (!hasReleaseSchedule(rule)) {
+    return dateRange(seg.startDate, seg.endDate)
+      .filter(visitDate => !rule || isOpenOn(rule, dayNameOf(visitDate)))
+      .map(visitDate => ({
+        ...base,
+        difficulty: difficultyOf(spot.difficultyScore),
+        visitDate,
+        releaseAt: null,
+        releaseDateStr: '',
+        releaseTimeStr: '随买随用',
+        visitDateLabel: formatMonthDayWeek(visitDate),
+        advanceDays: null,
+        remindOnDefault: false,
+      }));
+  }
   const events = [];
   for (const visitDate of dateRange(seg.startDate, seg.endDate)) {
     if (!isOpenOn(rule, dayNameOf(visitDate))) continue;
     const releaseDate = addDays(visitDate, -rule.advanceDays);
     events.push({
       ...base,
+      remindable: true,
       difficulty: difficultyOf(spot.difficultyScore),
       visitDate,
       releaseAt: parseBeijing(releaseDate, rule.releaseTime),
@@ -562,8 +588,11 @@ function releaseStateOf(event, nowTs = new Date()) {
   if (!event || event.reservationRequired === false) {
     return { key: 'NO_RESERVATION', label: '无需预约' };
   }
+  if (event.remindable === false || !event.releaseAt) {
+    return { key: 'NO_FIXED_RELEASE', label: '随买随用' };
+  }
   const releaseAt = event.releaseAt instanceof Date ? event.releaseAt : new Date(event.releaseAt);
-  if (!event.releaseAt || Number.isNaN(releaseAt.getTime()) || releaseAt.getTime() > nowTs.getTime()) {
+  if (Number.isNaN(releaseAt.getTime()) || releaseAt.getTime() > nowTs.getTime()) {
     return { key: 'NOT_RELEASED', label: '待开票' };
   }
   return { key: 'RELEASED', label: '已开票' };
@@ -578,10 +607,10 @@ function resolveStatus(event, ctx = {}) {
    加清单类按钮文案 = 「加入清单 / 已加清单 / 已加行程」。改一边必须改另一边，否则模拟器与
    真机文案对不上，而两边单测各自都是绿的。 */
 function buttonOf(status, event = {}) {
-  const noReservation = event.reservationRequired === false;
+  const tripOnly = event.reservationRequired === false || event.remindable === false;
   switch (status) {
-    case 'SELECTABLE': return noReservation ? { text: '加入行程', enabled: true } : { text: '加入清单', enabled: true };
-    case 'IN_CART': return { text: noReservation ? '已加入清单' : '已加清单', enabled: true, openCart: true };
+    case 'SELECTABLE': return tripOnly ? { text: '加入行程', enabled: true } : { text: '加入清单', enabled: true };
+    case 'IN_CART': return { text: tripOnly ? '已加入清单' : '已加清单', enabled: true, openCart: true };
     case 'COMMITTED': return { text: '已加行程', enabled: false };
     default: return { text: '', enabled: false };
   }
@@ -799,7 +828,7 @@ function previewTimeline(input) {
     const rule = RULES.find(r => r.spotId === seg.spotId) || null;
     const built = buildEvents(spot, rule, seg);
     if (built.length === 0) {
-      if (!rule || !rule.advanceDays || !rule.releaseTime) {
+      if (!hasReleaseSchedule(rule)) {
         closedSpots.push({ spotId: seg.spotId, spotName: spot.name, note: '无固定放票时刻，暂不生成提醒' });
       } else {
         closedSpots.push({ spotId: seg.spotId, spotName: spot.name, note: (rule.openDays || []).length > 0 ? '行程期间不可约' : '行程期间闭馆' });
@@ -869,7 +898,7 @@ function generateTimeline(tripId) {
     const rule = RULES.find(r => r.spotId === spotId) || null;
     const built = buildEvents(spot, rule, seg);
     if (built.length === 0) {
-      if (!rule || !rule.advanceDays || !rule.releaseTime) {
+      if (!hasReleaseSchedule(rule)) {
         closedSpots.push({ spotId, spotName: spot.name, note: '无固定放票时刻，暂不生成提醒' });
       } else {
         closedSpots.push({ spotId, spotName: spot.name, note: (rule.openDays || []).length > 0 ? '行程期间不可约' : '行程期间闭馆' });
@@ -991,7 +1020,11 @@ function mockReminderHealthOf(tasks, remainingQuota, nowTs = new Date()) {
 function mockReminderQuotaWarningOf(health, nowTs = new Date()) {
   if (!health || !['low', 'short', 'exhausted'].includes(health.level)) return null;
   if (!health.nearestRemindAt) return null;
-  if (health.nearestRemindAt.getTime() - nowTs.getTime() > MOCK_QUOTA_WARNING_WINDOW_HOURS * 3600000) return null;
+  /* 与云端 task.buildReminderQuotaWarning 同口径：short/exhausted 是真实缺口，
+     不受 48 小时窗口限制；只有 low（刚好够、仅缺 1 次缓冲）保留窗口。 */
+  const withinWindow = health.nearestRemindAt.getTime() - nowTs.getTime()
+    <= MOCK_QUOTA_WARNING_WINDOW_HOURS * 3600000;
+  if (health.level === 'low' && !withinWindow) return null;
   let text = '';
   if (health.level === 'low') text = '提醒授权即将用完，建议续收 1 次。';
   else if (health.level === 'exhausted') text = '提醒授权已用完，未来提醒可能收不到。';
@@ -1009,7 +1042,110 @@ function genAutoProfile() {
     avatarUrl: '/images/avatars/default-' + (1 + Math.floor(Math.random() * 6)) + '.png',
   };
 }
-const mockUser = { openId: 'mock-user', ...genAutoProfile(), phone: '', memberLevel: 'NORMAL', points: 0, subscribeQuota: 0, subscribeQuotas: {}, notifyPrefs: { officialAccount: false, sms: false, offsets: [5, 2] } };
+const mockUser = {
+  openId: 'mock-user',
+  ...genAutoProfile(),
+  phone: '',
+  memberLevel: 'NORMAL',
+  memberSince: null,
+  memberExpiresAt: null,
+  taskPackCount: 0,
+  points: 0,
+  subscribeQuota: 0,
+  subscribeQuotas: {},
+  notifyPrefs: { officialAccount: false, sms: false, offsets: [5, 2] },
+};
+
+const FREE_TASK_SLOTS = 5;
+const MEMBER_TASK_SLOTS = 10;
+const TASK_PACK_SIZE = 5;
+
+function mockMembershipSnapshot(nowTs = new Date()) {
+  const memberExpiresMs = new Date(mockUser.memberExpiresAt || 0).getTime();
+  const member = Number.isFinite(memberExpiresMs) && memberExpiresMs > nowTs.getTime();
+  const taskPackCount = member ? Math.max(0, Number(mockUser.taskPackCount) || 0) : 0;
+  const taskLimit = FREE_TASK_SLOTS
+    + (member ? MEMBER_TASK_SLOTS - FREE_TASK_SLOTS : 0)
+    + taskPackCount * TASK_PACK_SIZE;
+  const taskUsed = Object.values(db.tasks).filter(t =>
+    t.backendStatus === 'WAITING'
+    && Number.isFinite(new Date(t.releaseAt).getTime())
+    && new Date(t.releaseAt).getTime() > nowTs.getTime()).length;
+  return {
+    member,
+    memberLevel: member ? 'MEMBER' : 'NORMAL',
+    memberExpiresAt: mockUser.memberExpiresAt || null,
+    memberExpiresAtText: member
+      ? `${beijingParts(new Date(memberExpiresMs)).year}年${beijingParts(new Date(memberExpiresMs)).month}月${beijingParts(new Date(memberExpiresMs)).day}日`
+      : '',
+    memberDaysRemaining: member
+      ? Math.max(1, Math.ceil((memberExpiresMs - nowTs.getTime()) / DAY_MS))
+      : 0,
+    taskLimit,
+    taskUsed,
+    taskRemaining: Math.max(0, taskLimit - taskUsed),
+    taskPackCount,
+    ownedTaskPackCount: Math.max(0, Number(mockUser.taskPackCount) || 0),
+    memberDurationDays: 30,
+    freeTaskSlots: FREE_TASK_SLOTS,
+    memberTaskSlots: MEMBER_TASK_SLOTS,
+    taskPackSize: TASK_PACK_SIZE,
+  };
+}
+
+function mockMembershipPackages(snapshot) {
+  return [
+    {
+      id: 'member',
+      type: 'MEMBER',
+      title: '会员',
+      priceFen: 200,
+      priceText: '¥2',
+      taskSlots: 10,
+      addedSlots: 5,
+      memberDays: 30,
+      description: '30 天内最多 10 个提醒任务位',
+      badge: '推荐',
+      available: true,
+      actionText: snapshot.member ? '续费 30 天 ¥2' : '开通会员 ¥2',
+    },
+    {
+      id: 'task_pack_5',
+      type: 'TASK_PACK',
+      title: '5 个任务位',
+      priceFen: 200,
+      priceText: '¥2',
+      taskSlots: 5,
+      addedSlots: 5,
+      memberDays: 0,
+      description: '永久保留，会员有效期内生效',
+      badge: '',
+      available: snapshot.member,
+      actionText: snapshot.member ? '购买 5 个任务位 ¥2' : '先开通会员',
+    },
+  ];
+}
+
+function mockTaskLimitError(needed) {
+  const current = mockMembershipSnapshot();
+  const want = Math.max(0, Number(needed) || 0);
+  if (want <= current.taskRemaining) return null;
+  const taskLimit = {
+    limit: current.taskLimit,
+    used: current.taskUsed,
+    remaining: current.taskRemaining,
+    requested: want,
+    shortfall: Math.max(0, want - current.taskRemaining),
+  };
+  return {
+    success: false,
+    error: '提醒任务位不足，请先升级任务位',
+    errorCode: 1026,
+    membership: current,
+    taskLimit,
+    packages: mockMembershipPackages(current),
+  };
+}
 
 const handlers = {
   /* ----- spots ----- */
@@ -1188,12 +1324,12 @@ const handlers = {
     if (!spot) return { success: false, error: '景点不存在', errorCode: 1001 };
     const rule = RULES.find(r => r.spotId === data.spotId) || null;
     const reservationRequired = spot.reservationRequired !== false;
-    const remindable = reservationRequired && !!(rule && rule.advanceDays && (rule.releaseTime || rule.releaseTimes));
+    const remindable = reservationRequired && hasReleaseSchedule(rule);
     /* ⚠️ 放票时刻与云端一样**由服务端推**，不信任调用方传的（2026-09-24）：
        「约其他日」只拿得到用户选的 visitDate，压根没有 releaseAt 可传
        （见 lib/cart.js 里同一条注释）。 */
     const derivedReleaseAt = reservationRequired ? deriveReleaseAt(spot, rule, data.visitDate) : null;
-    if (reservationRequired && (!remindable || !derivedReleaseAt)) return { success: false, error: '参数不合法', errorCode: 1010 };
+    if (reservationRequired && remindable && !derivedReleaseAt) return { success: false, error: '参数不合法', errorCode: 1010 };
     /* 不传 tripId = 操作「当前暂存清单」（纯预览化后的常规路径） */
     const targetTripId = cartTripIdOf(data.tripId);
     const exists = Object.values(db.carts).some(c => c.tripId === targetTripId && c.spotId === data.spotId && c.visitDate === data.visitDate);
@@ -1201,9 +1337,11 @@ const handlers = {
        纯预览态下预览本身看不到「已在行程」，这道去重必须在这里拦住。 */
     const itemExists = Object.values(db.items).some(i => i.spotId === data.spotId && i.visitDate === data.visitDate);
     if (exists || itemExists) return { success: false, error: '这条已经在清单里啦', errorCode: 1002 };
-    const weak = reservationRequired && (spot.difficultyScore || 0) <= 2;
+    const weak = reservationRequired
+      && spot.strongReminder !== true
+      && (spot.difficultyScore || 0) <= 2;
     const releasePassed = !!derivedReleaseAt && new Date(derivedReleaseAt).getTime() <= Date.now();
-    const remindOn = reservationRequired && !releasePassed
+    const remindOn = reservationRequired && remindable && !!derivedReleaseAt && !releasePassed
       ? (typeof data.remindOn === 'boolean' ? data.remindOn : !weak)
       : false;
     const cartId = 'mock-cart-' + (++cartSeq);
@@ -1212,7 +1350,7 @@ const handlers = {
       tripId: targetTripId,
       spotId: data.spotId,
       visitDate: data.visitDate,
-      releaseAt: reservationRequired ? derivedReleaseAt : null,
+      releaseAt: derivedReleaseAt,
       remindOn,
       reservationRequired,
     };
@@ -1239,7 +1377,8 @@ const handlers = {
   },
   'cart.updateRemindOn': (data) => {
     const item = db.carts[data.cartId];
-    if (!item || (item.reservationRequired === false && data.remindOn)) {
+    const canRemind = item && item.reservationRequired !== false && !!item.releaseAt;
+    if (!item || (data.remindOn && !canRemind)) {
       return { success: false, error: '参数不合法', errorCode: 1010 };
     }
     const releasePassed = item.reservationRequired !== false
@@ -1255,6 +1394,28 @@ const handlers = {
     const want = cartTripIdOf(data && data.tripId);
     Object.keys(db.carts).forEach(id => { if (db.carts[id].tripId === want) delete db.carts[id]; });
     return { success: true, removed: 0 };
+  },
+  /* CART-RULE-007：只保留本次日期段 × 景点集合内的暂存项（镜像 cart.pruneScope） */
+  'cart.pruneScope': (data) => {
+    const { startDate, endDate, spotIds } = data || {};
+    if (!startDate || !endDate || startDate > endDate) {
+      return { success: false, error: '行程日期不合法', errorCode: 1006 };
+    }
+    if (!Array.isArray(spotIds) || spotIds.length === 0) {
+      return { success: false, error: '参数不合法', errorCode: 1010 };
+    }
+    const keepSpots = new Set(spotIds.map(String));
+    let removed = 0;
+    Object.keys(db.carts).forEach(id => {
+      const item = db.carts[id];
+      if (item.tripId !== PENDING_CART_TRIP_ID) return;
+      const stale = !keepSpots.has(String(item.spotId || ''))
+        || !item.visitDate
+        || item.visitDate < startDate
+        || item.visitDate > endDate;
+      if (stale) { delete db.carts[id]; removed += 1; }
+    });
+    return { success: true, removed };
   },
   'cart.list': (data) => {
     /* 不传 tripId = 读暂存区（「添加提醒」页要的就是这个） */
@@ -1281,6 +1442,25 @@ const handlers = {
           countdown: null,
         };
       }
+      if (!c.releaseAt) {
+        return {
+          ...c,
+          reservationRequired: true,
+          noFixedRelease: true,
+          remindOn: false,
+          remindLocked: true,
+          spotName: spot ? spot.name : '未知景点',
+          spotShort: spot ? (spot.shortName || spot.name) : '未知景点',
+          difficulty: spot ? difficultyOf(spot.difficultyScore) : null,
+          weak: !!spot && spot.strongReminder !== true && (spot.difficultyScore || 0) <= 2,
+          releaseAt: null,
+          releaseDateLabel: '',
+          releaseLabel: '',
+          releaseTimeLabel: '随买随用',
+          visitDateLabel: formatMonthDayWeek(c.visitDate) + ' · 随买随用',
+          countdown: null,
+        };
+      }
       const releaseAt = new Date(c.releaseAt);
       const msLeft = releaseAt.getTime() - now.getTime();
       const expired = msLeft <= 0;
@@ -1295,7 +1475,9 @@ const handlers = {
         spotName: spot ? spot.name : '未知景点',
     spotShort: spot ? (spot.shortName || spot.name) : '未知景点',
         difficulty: spot ? difficultyOf(spot.difficultyScore) : null,
-        weak: reservationRequired && !!spot && (spot.difficultyScore || 0) <= 2,
+        weak: reservationRequired && !!spot
+          && spot.strongReminder !== true
+          && (spot.difficultyScore || 0) <= 2,
         releaseDateLabel: `${releaseDateParts[1]}月${releaseDateParts[2]}日`,
         releaseLabel: `${releaseDateParts[1]}月${releaseDateParts[2]}日 ${formatHourMinute(releaseAt)} 放票`,
         releaseTimeLabel: formatHourMinute(releaseAt),
@@ -1332,7 +1514,13 @@ const handlers = {
       noReminderCount: items.length - reminderCount,
       text: reminderCount > 0 ? `已选 ${items.length} 项，其中 ${reminderCount} 个将设提醒` : `已选 ${items.length} 项，均无需提醒`,
     };
-    return { success: true, items: enriched, groups, summary };
+    return {
+      success: true,
+      items: enriched,
+      groups,
+      summary,
+      membership: data && data.includeMembership ? mockMembershipSnapshot(now) : null,
+    };
   },
 
   /* ----- task ----- */
@@ -1351,12 +1539,14 @@ const handlers = {
     const nowTs = new Date();
     const pastReleaseOf = c => !!c.releaseAt && new Date(c.releaseAt).getTime() <= nowTs.getTime();
     const reminderItems = disableReminders ? [] : cartItems.filter(c =>
-      c.reservationRequired !== false && c.remindOn === true && !pastReleaseOf(c));
+      c.reservationRequired !== false && !!c.releaseAt && c.remindOn === true && !pastReleaseOf(c));
     const channels = data.channels || [];
     const offsets = data.offsets || [];
     if (reminderItems.length > 0 && (channels.length === 0 || offsets.length === 0 || reminderItems.some(c => !c.releaseAt))) {
       return { success: false, error: '参数不合法', errorCode: 1010 };
     }
+    const limitError = mockTaskLimitError(reminderItems.length);
+    if (limitError) return limitError;
 
     /* 各景点保留自己的日期段（提交时由 visitDate 集合推导），
        这样合并后「故宫 10.2-10.3 + 国博 10.4」不会互相膨胀成 10.2-10.4 */
@@ -1388,7 +1578,7 @@ const handlers = {
     cartItems.forEach(c => {
       /* ⚠️ 放票已过的项**落 false**（镜像 task.submit，2026-09-23）：
          任务一生出来就会被收敛成 MISSED，用户提交一次就凭空收获一条失败提醒。 */
-      const wanted = !disableReminders && c.reservationRequired !== false && c.remindOn === true;
+      const wanted = !disableReminders && c.reservationRequired !== false && !!c.releaseAt && c.remindOn === true;
       const pastRelease = pastReleaseOf(c);
       const remindOn = wanted && !pastRelease;
       if (wanted && pastRelease) expiredReminder += 1;
@@ -1598,6 +1788,10 @@ const handlers = {
     const tasks = taskKeys.map(k => db.tasks[k]);
     const activeKeys = taskKeys.filter(k => db.tasks[k].backendStatus === 'WAITING');
     const next = data.remindOn === true;
+    if (next && activeKeys.length === 0) {
+      const limitError = mockTaskLimitError(1);
+      if (limitError) return limitError;
+    }
     /* ⚠️ 关闭时若还留着终态任务（已触发/已失败），**保留 remindOn** ——
        否则 chip 会从「未送达」变成「未设提醒」，把静默失败的信号抹掉
        （镜像 trip-item-actions 的 keepEndedRecord，2026-09-23） */
@@ -1679,7 +1873,14 @@ const handlers = {
   },
 
   /* ----- user ----- */
-  'user.profile': () => ({ success: true, user: { ...mockUser, subscribeQuota: subscribeSeq } }),
+  'user.profile': () => ({
+    success: true,
+    user: {
+      ...mockUser,
+      subscribeQuota: subscribeSeq,
+      membership: mockMembershipSnapshot(),
+    },
+  }),
   'user.updateProfile': (data) => {
     const nickname = (data.nickname || '').trim().slice(0, 32);
     if (!nickname) return { success: false, error: '昵称不能为空', errorCode: 1010 };
@@ -1690,11 +1891,116 @@ const handlers = {
       if (phone && !/^1[3-9]\d{9}$/.test(phone)) return { success: false, error: '手机号格式不正确', errorCode: 1010 };
       mockUser.phone = phone;
     }
-    return { success: true, user: { ...mockUser, subscribeQuota: subscribeSeq } };
+    return {
+      success: true,
+      user: {
+        ...mockUser,
+        subscribeQuota: subscribeSeq,
+        membership: mockMembershipSnapshot(),
+      },
+    };
   },
   'user.updateNotifyPrefs': (data) => {
     mockUser.notifyPrefs = data.notifyPrefs;
     return { success: true, notifyPrefs: data.notifyPrefs };
+  },
+
+  /* ----- 会员 / 任务位（镜像 reminder/lib/membership.js） ----- */
+  'membership.status': () => {
+    const current = mockMembershipSnapshot();
+    return {
+      success: true,
+      membership: current,
+      packages: mockMembershipPackages(current),
+    };
+  },
+  'membership.createOrder': (data) => {
+    const current = mockMembershipSnapshot();
+    const isMemberPackage = data.packageId === 'member';
+    const isPack = data.packageId === 'task_pack_5';
+    if (!isMemberPackage && !isPack) return { success: false, error: '参数不合法', errorCode: 1010 };
+    if (isPack && !current.member) return { success: false, error: '请先开通会员再加购任务位', errorCode: 1022 };
+
+    const orderId = 'mock-order-' + (++orderSeq);
+    const outTradeNo = 'MOCK' + Date.now();
+    db.orders[orderId] = {
+      _id: orderId,
+      userId: mockUser.openId,
+      outTradeNo,
+      packageId: data.packageId,
+      productType: isMemberPackage ? 'MEMBER' : 'TASK_PACK',
+      title: isMemberPackage ? '会员' : '5 个任务位',
+      body: isMemberPackage ? '智序准点游-会员' : '智序准点游-5 个任务位',
+      amountFen: 200,
+      memberDays: isMemberPackage ? 30 : 0,
+      memberFloorDays: isPack ? 30 : 0,
+      status: 'PENDING',
+      createdAt: new Date(),
+    };
+    return { success: true, orderId, outTradeNo, amountFen: 200, packageId: data.packageId };
+  },
+  'membership.orders': () => ({
+    success: true,
+    items: Object.values(db.orders)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .map(order => ({
+        _id: order._id,
+        outTradeNo: order.outTradeNo,
+        packageId: order.packageId,
+        productType: order.productType,
+        title: order.title,
+        amountFen: order.amountFen,
+        amountText: `¥${(order.amountFen / 100).toFixed(2).replace(/\.00$/, '')}`,
+        addedSlots: order.packageId === 'task_pack_5' ? 5 : 5,
+        memberDays: order.packageId === 'member' ? 30 : 0,
+        status: order.status,
+        statusLabel: ({ PENDING: '待支付', PAID: '已支付', CLOSED: '已关闭', REFUNDED: '已退款' })[order.status] || '处理中',
+        createdAtText: order.createdAt ? `${fmt(order.createdAt)} ${pad(beijingParts(order.createdAt).hour)}:${pad(beijingParts(order.createdAt).minute)}` : '',
+        paidAtText: order.paidAt ? `${fmt(order.paidAt)} ${pad(beijingParts(order.paidAt).hour)}:${pad(beijingParts(order.paidAt).minute)}` : '',
+      })),
+  }),
+
+  /* ----- mock 支付：直接成功，方便离线联调页面；真实支付始终以回调/查单为准 ----- */
+  'create': (data) => {
+    const order = db.orders[data.orderId];
+    if (!order) return { success: false, error: '订单不存在或已失效', errorCode: 1024 };
+    if (order.status !== 'PAID') {
+      const now = new Date();
+      const currentExpiryMs = new Date(mockUser.memberExpiresAt || 0).getTime();
+      const validCurrentExpiry = Number.isFinite(currentExpiryMs) && currentExpiryMs > now.getTime()
+        ? currentExpiryMs
+        : now.getTime();
+      const nextExpiryMs = Math.max(
+        order.memberDays ? validCurrentExpiry + order.memberDays * DAY_MS : 0,
+        order.memberFloorDays ? now.getTime() + order.memberFloorDays * DAY_MS : 0,
+        currentExpiryMs || 0
+      );
+      mockUser.memberLevel = 'MEMBER';
+      mockUser.memberSince = mockUser.memberSince || new Date();
+      mockUser.memberExpiresAt = new Date(nextExpiryMs);
+      if (order.productType === 'TASK_PACK') {
+        mockUser.taskPackCount = Math.max(0, Number(mockUser.taskPackCount) || 0) + 1;
+      }
+      order.status = 'PAID';
+      order.paidAt = new Date();
+    }
+    return {
+      success: true,
+      orderId: order._id,
+      status: 'PAID',
+      mockPaid: true,
+      payment: { mock: true },
+    };
+  },
+  'query': (data) => {
+    const order = db.orders[data.orderId];
+    if (!order) return { success: false, error: '订单不存在或已失效', errorCode: 1024 };
+    return {
+      success: true,
+      orderId: order._id,
+      status: order.status,
+      pending: order.status === 'PENDING',
+    };
   },
 
   /* ----- 订阅消息额度（一次性订阅，按模板记账） ----- */
@@ -1850,6 +2156,7 @@ const handlers = {
         mockReminderHealthOf(Object.values(db.tasks), subscribeSeq, nowTs),
         nowTs
       ),
+      membership: mockMembershipSnapshot(nowTs),
       /* 摘要卡底部的「即将提醒」胶囊：与 stickyBanner 平级、独立，不限 1h 窗口 */
       releasePills: releasePillsOf(decorated, nowTs, 2),
       /* 「没抢到」之后还能换哪些日期（决策文档 4.3）。与云端 homeBootstrap 同口径：

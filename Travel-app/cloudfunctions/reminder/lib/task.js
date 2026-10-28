@@ -12,6 +12,7 @@ const time = require('./time');
 const tripItem = require('./trip-item');
 const cart = require('./cart');
 const trip = require('./trip');
+const membership = require('./membership');
 const {
   shouldHealQuota, healSubscribeQuota, taskTemplateIdOf, DEFAULT_SUBSCRIBE_TEMPLATE_ID,
 } = require('./quota');
@@ -27,7 +28,8 @@ function remindAtOf(releaseAt, offsetMinutes) {
 
 /* 授权额度预留 1 次安全缓冲：待发送数正好等于剩余额度时即进入“即将用完”。 */
 const QUOTA_SAFE_BUFFER = 1;
-/* 首页只承载 48 小时内真正需要补授权的提醒，避免远期行程过早制造焦虑。 */
+/* `low` 只表示「刚好够、缺 1 次缓冲」，仍限制在 48 小时内，避免远期行程过早制造焦虑。
+   `short / exhausted` 是真实缺口（已经会影响送达），不受该窗口限制。 */
 const QUOTA_WARNING_WINDOW_HOURS = 48;
 
 /**
@@ -75,12 +77,57 @@ function reminderHealthOf(tasks, remainingQuota, nowTs = time.now(), templateId 
   };
 }
 
-/** 首页额度预警：低额度状态 + 最近提醒进入 48 小时窗口。 */
+const HEALTH_LEVEL_RANK = Object.freeze({ idle: 0, ready: 1, low: 2, short: 3, exhausted: 4 });
+
+/**
+ * 跨模板额度健康度：每个模板的待发送任务只能消耗**本模板**的额度。
+ *
+ * 旧任务没有 templateId，按旧模板记账；新任务按各自 templateId 记账。
+ * 首页预警取最危险的那一组，不能把 A 模板的余额拿去覆盖 B 模板的缺口。
+ * 同级时取最近的一条提醒，确保窗口判断仍基于即将发生的事件。
+ */
+function worstReminderHealthOf(tasks, quotaOf, nowTs = time.now()) {
+  const groups = new Map();
+  (tasks || []).forEach(t => {
+    if (!t) return;
+    const tpl = taskTemplateIdOf(t);
+    if (!groups.has(tpl)) groups.set(tpl, []);
+    groups.get(tpl).push(t);
+  });
+
+  let worst = null;
+  groups.forEach((list, tpl) => {
+    const quota = typeof quotaOf === 'function' ? quotaOf(tpl) : 0;
+    const health = reminderHealthOf(list, quota, nowTs, tpl);
+    if (!health.pendingMessageCount) return;
+    const currentRank = HEALTH_LEVEL_RANK[health.level] || 0;
+    const worstRank = worst ? (HEALTH_LEVEL_RANK[worst.level] || 0) : -1;
+    const sameRankNearer = worst
+      && currentRank === worstRank
+      && health.nearestRemindAt
+      && (!worst.nearestRemindAt
+        || health.nearestRemindAt.getTime() < worst.nearestRemindAt.getTime());
+    if (!worst || currentRank > worstRank || sameRankNearer) {
+      worst = { ...health, templateId: tpl };
+    }
+  });
+
+  return worst || reminderHealthOf([], 0, nowTs);
+}
+
+/**
+ * 首页额度预警：真实缺口立即提示；仅「低额度缓冲」限制在 48 小时窗口内。
+ *
+ * 2026-10-27 修正：此前所有档位都被 48 小时窗口挡住，用户明明只有 4 次授权、
+ * 却有 13 条待发送提醒时首页仍不提示。真实缺口不该等「最近一条进入 48 小时」
+ * 才告诉用户；只有 `low`（额度刚好够、仅少 1 次缓冲）保留窗口，避免远期焦虑。
+ */
 function buildReminderQuotaWarning(health, nowTs = time.now()) {
   if (!health || !['low', 'short', 'exhausted'].includes(health.level)) return null;
   if (!health.nearestRemindAt) return null;
   const diff = health.nearestRemindAt.getTime() - new Date(nowTs).getTime();
-  if (diff > QUOTA_WARNING_WINDOW_HOURS * 3600 * 1000) return null;
+  const withinWindow = diff <= QUOTA_WARNING_WINDOW_HOURS * 3600 * 1000;
+  if (health.level === 'low' && !withinWindow) return null;
 
   let text = '';
   if (health.level === 'low') {
@@ -424,12 +471,11 @@ async function submit(db, userId, event) {
   const nowTs = time.now();
   const pastRelease = i => !!i.releaseAt && new Date(i.releaseAt).getTime() <= nowTs.getTime();
   const wantedReminderItems = cartItems.filter(i =>
-    i.reservationRequired !== false && i.remindOn === true);
+    i.reservationRequired !== false && i.remindOn === true && !!i.releaseAt);
   /* 放票已过的项不参与提醒配置校验：用户可能在开票前加了清单、开票后才提交。
      这一步必须与 cart.list 的 remindLocked 同源，否则界面说“无需提醒”，提交却要通道。 */
   const remindable = wantedReminderItems.filter(i => !pastRelease(i));
   if (!disableReminders && remindable.length > 0 && !validateSubmit(channels, offsets)) return fail(ERRORS.BAD_PARAM);
-  if (!disableReminders && remindable.some(i => !i.releaseAt)) return fail(ERRORS.BAD_PARAM);
 
   /* ⚠️ **放票时刻已过的清单项不建任务**（2026-09-23 定规）。
      任务一生出来就会被 notifier/读取时兜底收敛成 MISSED「未送达」，
@@ -438,6 +484,11 @@ async function submit(db, userId, event) {
      这类项**照常落行程项**（票照样要抢，只是提醒已无意义），提醒开关落 false，
      卡片此后也不再提供提醒入口 —— `canSetReminder` 用的正是同一条判据。 */
   const reminderItems = disableReminders ? [] : remindable;
+
+  /* 任务位是创建提醒任务的硬闸门。必须在建行程之前校验：
+     超限时不能留下“行程建了、提醒没建”的半成品，也不能清空用户的清单。 */
+  const capacityError = await membership.capacityError(db, userId, reminderItems.length, nowTs);
+  if (capacityError) return capacityError;
 
   /* ① + ② 建/合并行程。日期段 = 清单里各项 visitDate 的并集，
      各景点保留自己的段（故宫 10.2-10.3 / 国博 10.4，合并成一个行程但不互相膨胀）。 */
@@ -452,6 +503,7 @@ async function submit(db, userId, event) {
     for (const cartItem of cartItems) {
       const wantedRemindOn = !disableReminders
         && cartItem.reservationRequired !== false
+        && !!cartItem.releaseAt
         && cartItem.remindOn === true;
       /* ⚠️ 放票已过的项**落 false**：它不是「用户没勾提醒」，而是「此刻提醒已无意义」。
          两者在卡片上都显示「未设提醒」，但前者可再开启，后者不可（canSetReminder 为 false）——
@@ -481,7 +533,7 @@ async function submit(db, userId, event) {
         createdItems.push({ _id: itemId, ...itemData });
       }
 
-      // 免预约项只落行程项；仅需预约且勾选提醒的项生成任务。
+      // 免预约项、无固定放票时刻的项都只落行程项；仅可提醒且勾选提醒的项生成任务。
       if (remindOn) {
         const taskData = {
           userId,
@@ -729,6 +781,7 @@ async function cleanup(db) {
 module.exports = {
   remindAtOf,
   reminderHealthOf,
+  worstReminderHealthOf,
   buildReminderQuotaWarning,
   QUOTA_SAFE_BUFFER,
   QUOTA_WARNING_WINDOW_HOURS,

@@ -16,6 +16,7 @@ const time = require('./time');
 const item = require('./item');
 const tripItem = require('./trip-item');
 const cart = require('./cart');
+const membership = require('./membership');
 const { DEFAULT_SUBSCRIBE_TEMPLATE_ID } = require('./quota');
 
 /* ============ 内部工具 ============ */
@@ -244,6 +245,13 @@ async function updateReminder(db, userId, { itemId, remindOn, channels, offsets 
   const tasks = ctx.tasks || [];
   const activeTasks = tasks.filter(t =>
     t.backendStatus === ReminderBackendStatus.WAITING);
+
+  /* 从“未设提醒 / 终态任务”重新开启时，会真正新增一条待发任务。
+     已有 WAITING 任务时只是改配置，不重复占任务位。 */
+  if (nextRemindOn && activeTasks.length === 0) {
+    const capacityError = await membership.capacityError(db, userId, 1, nowTs);
+    if (capacityError) return capacityError;
+  }
 
   /* ⚠️ **只在真正发生状态迁移时才写 remindOn**（2026-09-23 修）。
      原实现无条件落 `remindOn: nextRemindOn`，于是对一条 MISSED 的项点「取消提醒」

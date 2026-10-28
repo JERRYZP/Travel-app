@@ -5,7 +5,7 @@
  * 避免出现 'rules' / 'release_rules' 这类新旧混用。
  */
 
-/** TABLE-001~008 集合名 */
+/** TABLE-001~009 集合名 */
 const COLLECTIONS = {
   TRIPS: 'trips',                   // TABLE-001
   REMINDER_TASKS: 'reminder_tasks', // TABLE-002
@@ -15,6 +15,7 @@ const COLLECTIONS = {
   SEARCH_HISTORY: 'search_history', // TABLE-006
   REMINDER_CART: 'reminder_cart',   // TABLE-007
   TRIP_ITEMS: 'trip_items',         // TABLE-008（2026-09-16 首页行程状态墙）
+  ORDERS: 'orders',                 // TABLE-009（2026-10-27 会员 / 任务位订单）
 };
 
 /** ENUM-001 行程状态 */
@@ -68,6 +69,20 @@ const ChannelType = {
   SMS: 'SMS', // reserved, V1.1
 };
 
+/** ENUM-010 会员等级 */
+const MemberLevel = {
+  NORMAL: 'NORMAL',
+  MEMBER: 'MEMBER',
+};
+
+/** ENUM-011 订单状态 */
+const OrderStatus = {
+  PENDING: 'PENDING',
+  PAID: 'PAID',
+  CLOSED: 'CLOSED',
+  REFUNDED: 'REFUNDED',
+};
+
 /** ENUM-005 实时放票状态 */
 const ReleaseStatus = {
   NOT_RELEASED: 'NOT_RELEASED',
@@ -110,6 +125,12 @@ const ERRORS = {
   /* 放票时刻已过 → 提醒开关对这条项不再有任何意义（2026-09-23 定规）。
      菜单此时也不渲染这两个入口，本错误码只可能来自旧版本小程序或直接调接口。 */
   REMINDER_WINDOW_CLOSED: { code: 1017, message: '已过放票时间，提醒无法开启或取消' },
+  /* 2026-10-27 会员 / 任务位。限额只在服务端判定，页面不自行推导。 */
+  TASK_LIMIT_EXCEEDED: { code: 1026, message: '提醒任务位不足，请先升级任务位' },
+  MEMBERSHIP_REQUIRED: { code: 1022, message: '请先开通会员再加购任务位' },
+  PAYMENT_NOT_READY: { code: 1023, message: '支付通道准备中，请稍后再试' },
+  ORDER_NOT_FOUND: { code: 1024, message: '订单不存在或已失效' },
+  ORDER_AMOUNT_MISMATCH: { code: 1025, message: '订单金额校验失败' },
   BAD_PARAM: { code: 1010, message: '参数不合法' },
   UNKNOWN_ACTION: { code: 1099, message: 'unknown action' },
 };
@@ -139,7 +160,7 @@ const V1 = {
   SEARCH_HISTORY_MAX: 10,       // SEARCH-RULE-002
   BANNER_WINDOW_HOURS: 1,       // REMINDER-RULE-008
   STAGGER_WINDOW_SECONDS: 30,   // REMINDER-RULE-003
-  MEMBER_LEVEL_DEFAULT: 'NORMAL',
+  MEMBER_LEVEL_DEFAULT: MemberLevel.NORMAL,
   RESULT_UNDO_SECONDS: 4,        // 首页行程项人工结果撤销窗口（2026-09-17 由 10 秒收紧）
   UNMARKED_AFTER_HOURS: 24,      // 放票后未标记转为中性态的时间
 };
@@ -176,6 +197,8 @@ module.exports = {
   TicketResult,
   ReminderDeliveryState,
   ChannelType,
+  MemberLevel,
+  OrderStatus,
   ReleaseStatus,
   DifficultyLabel,
   difficultyOf,

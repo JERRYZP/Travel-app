@@ -62,12 +62,16 @@ function normalizeCartGroups(res, today = util.beijingTodayStr()) {
       isPast: daysPast > 0,
       daysPast,
       items: (group.items || []).map(item => {
-        const releasePassed = item.remindLocked === true;
+        const noFixedRelease = item.noFixedRelease === true;
+        const releasePassed = item.remindLocked === true && !noFixedRelease;
         return Object.assign({}, item, {
+          noFixedRelease,
           releasePassed,
           subline: item.reservationRequired === false
             ? '无需预约，随到随玩'
-            : (releasePassed ? '已放票' : (item.releaseLabel || legacyReleaseLabelOf(item))),
+            : (noFixedRelease
+              ? '随买随用，不设提醒'
+              : (releasePassed ? '已放票' : (item.releaseLabel || legacyReleaseLabelOf(item)))),
         });
       }),
     });

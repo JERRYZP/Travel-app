@@ -45,21 +45,39 @@
       </view>
     </view>
     <view class="quota-line">
-      <text>本次 {{quotaNeeded}} 条提醒 · 已授权 {{subscribeQuota}} 次</text>
+      <view class="quota-copy">
+        <text>本次 {{quotaNeeded}} 条提醒 · 当前可用 {{subscribeQuota}} 次</text>
+        <text wx:if="{{reservedQuota > 0}}" class="quota-reserved">已授权 {{ledgerQuota}} 次，其中 {{reservedQuota}} 次已被待发送提醒占用</text>
+      </view>
       <view wx:if="{{shortfall > 0 && systemOk}}" class="fill-quota-btn" bindtap="onFillQuota">点击补授权次数</view>
     </view>
 
+    <view wx:if="{{authFeedback}}" class="auth-feedback {{authFeedbackTone}}">{{authFeedback}}</view>
+
     <view wx:if="{{shortfall > 0 && systemOk}}" class="auth-note">
       <text>1、微信通知提醒需要主动授权，1次授权可发送1条提醒</text>
-      <text>2、微信一次性订阅每次点击最多增加 1 次授权，需要几次请重复点击</text>
-      <text>3、“总是保持以上选择”只会免去后续弹窗，不会让一次点击增加多次授权</text>
-      <text>4、该能力当前限时免费，后续正式版可能付费。</text>
+      <text>2、每次点击最多增加1次授权，需要几次请重复点</text>
+      <text>3、“总是保持以上选择”可免去后续弹窗</text>
     </view>
 
     <view class="sample-link" bindtap="onOpenSample">
       <text>查看提醒样式示例</text>
       <svg-icon name="chevron-right" size="12px" />
     </view>
+  </view>
+
+  <!-- 任务位不足时才出现付费入口；未超额时整块不渲染。 -->
+  <view wx:if="{{showMembershipGate}}" class="membership-gate">
+    <view class="membership-gate-head">
+      <view class="membership-gate-copy">
+        <text class="membership-gate-title">{{membershipGateTitle}}</text>
+        <text class="membership-gate-desc">{{membershipGateDesc}}</text>
+      </view>
+      <view class="membership-gate-action" bindtap="onUpgradeAndContinue">
+        <text>{{membershipActionText}}</text>
+      </view>
+    </view>
+    <text class="membership-gate-note">{{membershipGateNote}}</text>
   </view>
 
   <view class="setting-card sms-card">

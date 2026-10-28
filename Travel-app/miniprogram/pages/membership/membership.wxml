@@ -1,0 +1,108 @@
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack">
+      <svg-icon name="back-thick" size="18px" />
+    </view>
+    <text class="navbar-title">会员与任务位</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view class="page-body">
+  <view wx:if="{{loading}}" class="loading-wrap">
+    <van-loading size="36rpx" color="#B8904A" />
+  </view>
+
+  <view wx:elif="{{loadFailed}}" class="load-failed">
+    <text class="load-failed-title">会员状态加载失败</text>
+    <view class="retry-btn" bindtap="onRetry">重新加载</view>
+  </view>
+
+  <block wx:else>
+    <view class="status-band">
+      <view class="status-head">
+        <view>
+          <text class="status-title">{{memberStateText}}</text>
+          <text class="status-expiry">{{expiryText}}</text>
+        </view>
+        <text class="status-badge {{membership.member ? 'active' : ''}}">{{membership.member ? '会员' : '免费版'}}</text>
+      </view>
+      <view class="usage-row">
+        <text>提醒任务位 {{membership.taskUsed}} / {{membership.taskLimit}}</text>
+        <text>剩余 {{membership.taskRemaining}}</text>
+      </view>
+      <view class="usage-track">
+        <view class="usage-fill" style="width: {{usagePercent}}%;"></view>
+      </view>
+      <text wx:if="{{reasonText}}" class="status-reason">{{reasonText}}，当前额度不足。</text>
+    </view>
+
+    <view class="order-entry" bindtap="onOrders">
+      <view class="order-entry-copy">
+        <text class="order-entry-title">订单信息</text>
+        <text class="order-entry-desc">查看会员与任务位支付记录</text>
+      </view>
+      <svg-icon name="chevron-down" size="14px" rotate="270" />
+    </view>
+
+    <text class="section-label">会员权益</text>
+    <view class="benefit-list">
+      <view class="benefit-row">
+        <svg-icon name="check-gold" size="16px" />
+        <view class="benefit-copy">
+          <text class="benefit-title">10 个提醒任务位</text>
+          <text class="benefit-desc">会员有效期内生效，到期不会删除已有提醒。</text>
+        </view>
+      </view>
+      <view class="benefit-row">
+        <svg-icon name="check-gold" size="16px" />
+        <view class="benefit-copy">
+          <text class="benefit-title">加购任务位永久保留</text>
+          <text class="benefit-desc">后续续费会员时自动恢复，不重复购买。</text>
+        </view>
+      </view>
+      <view class="benefit-row">
+        <svg-icon name="check-gold" size="16px" />
+        <view class="benefit-copy">
+          <text class="benefit-title">30 天有效期</text>
+          <text class="benefit-desc">一次支付一次生效，不自动续费。</text>
+        </view>
+      </view>
+    </view>
+
+    <text class="section-label">选择服务</text>
+    <view class="package-list">
+      <view
+        wx:for="{{packages}}"
+        wx:key="id"
+        class="package-row {{item._selected ? 'selected' : ''}} {{item._available ? '' : 'disabled'}}"
+        bindtap="onPackageTap"
+        data-id="{{item.id}}"
+      >
+        <view class="package-main">
+          <view class="package-title-line">
+            <text class="package-title">{{item.title}}</text>
+            <text wx:if="{{item.badge}}" class="package-badge">{{item.badge}}</text>
+          </view>
+          <text class="package-desc">{{item.description}}</text>
+          <text wx:if="{{!item._available}}" class="package-lock">{{item.actionText}}</text>
+        </view>
+        <view class="package-price">
+          <text class="package-price-value">{{item.priceText}}</text>
+          <view class="package-radio {{item._selected ? 'checked' : ''}}">
+            <svg-icon wx:if="{{item._selected}}" name="check-white" size="11px" />
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="purchase-note">
+      <text>虚拟权益支付成功后即时生效，不自动续费。会员到期或加购任务位暂停生效时，已有提醒任务仍会继续发送。</text>
+    </view>
+
+    <view class="pay-btn {{selectedPackage ? '' : 'disabled'}}" bindtap="onPay">
+      <text>{{payButtonText}}</text>
+    </view>
+  </block>
+</view>

@@ -24,7 +24,7 @@
      这里只让导航块的内缩，**不让横幅的高度**——横幅就在正文里，占位归它自己。 -->
 <view class="page-body" style="padding-top: {{pageTop}}rpx;">
 
-  <!-- 授权额度预警：只承载 48 小时内真正会影响送达的问题；可当天关闭。 -->
+  <!-- 授权额度预警：short / exhausted 是真实缺口，立即提示；只有 low 缓冲受 48 小时窗口限制。可当天关闭。 -->
   <view wx:if="{{showReminderQuotaWarning}}" class="quota-warning-banner">
     <text class="qw-text">{{reminderQuotaWarning.text}}</text>
     <text class="qw-go" catchtap="onQuotaWarningOpen">去补齐</text>

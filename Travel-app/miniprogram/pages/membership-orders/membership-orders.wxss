@@ -1,0 +1,98 @@
+.navbar { position: fixed; top: 0; left: 0; right: 0; z-index: 90; background: var(--color-page); }
+.navbar-content { display: flex; align-items: center; position: relative; }
+.navbar-back {
+  position: absolute;
+  left: 20rpx;
+  width: 60rpx;
+  height: 60rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.navbar-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--color-ink);
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.page-body { padding: 24rpx 30rpx 120rpx; }
+.loading-wrap { display: flex; justify-content: center; padding: 120rpx 0; }
+.load-failed, .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18rpx;
+  padding: 120rpx 36rpx;
+  text-align: center;
+}
+.load-failed-title, .empty-title { color: var(--color-ink); font-size: 26rpx; font-weight: 600; }
+.empty-desc { color: var(--color-muted); font-size: 22rpx; line-height: 1.6; }
+.retry-btn {
+  padding: 16rpx 30rpx;
+  border-radius: 14rpx;
+  background: var(--color-cream);
+  color: var(--color-text);
+  font-size: 24rpx;
+}
+
+.order-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 4rpx 4rpx 18rpx;
+}
+.order-summary-title { color: var(--color-ink); font-size: 27rpx; font-weight: 600; }
+.order-summary-count { color: var(--color-muted); font-size: 22rpx; }
+
+.order-list { display: flex; flex-direction: column; gap: 16rpx; }
+.order-card {
+  padding: 24rpx 24rpx 20rpx;
+  border: 1rpx solid var(--color-border);
+  border-radius: 20rpx;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+.order-head { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; }
+.order-title { color: var(--color-ink); font-size: 26rpx; font-weight: 600; }
+.order-status {
+  flex-shrink: 0;
+  padding: 4rpx 12rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+}
+.order-status.pending { background: #F2E4C0; color: #7B4F13; }
+.order-status.paid { background: #D8EAD8; color: #3E7D4F; }
+.order-status.closed { background: var(--color-cream); color: var(--color-text); }
+.order-status.refunded { background: #F5DDD5; color: #8D3B28; }
+.order-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  margin-top: 14rpx;
+  color: var(--color-muted);
+  font-size: 22rpx;
+}
+.order-amount { flex-shrink: 0; color: var(--color-ink); font-size: 27rpx; font-weight: 600; }
+.order-no-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-top: 18rpx;
+  padding-top: 15rpx;
+  border-top: 1rpx solid var(--color-border);
+}
+.order-no {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 20rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.order-copy { flex-shrink: 0; color: var(--color-muted); font-size: 21rpx; }

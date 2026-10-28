@@ -451,7 +451,7 @@ Page({
     const spotId = e.currentTarget.dataset.id;
     const spot = e.currentTarget.dataset.spot;
     if (!spotId || !spot) return;
-    /* 免预约景点可加入行程；仅「需预约但无固定放票时刻」的景点不可选 */
+    /* 所有景点都可加入行程；remindable 只影响能否设提醒 */
     const addable = spot.addable === true || spot.remindable || spot.reservationRequired === false;
     if (!addable) {
       wx.showToast({ title: '该景点无固定放票时刻，随买随用即可', icon: 'none' });
@@ -502,6 +502,25 @@ Page({
     };
   },
 
+  /**
+   * 生成成功后把暂存清单收敛到本次时间线范围。
+   *
+   * 清单本身仍跨退出/重启保留，但换一批日期或景点重新生成时，上一批不在
+   * 本次范围内的草稿必须移除；否则用户会在清单里看到上一趟行程的项，并连同
+   * 本次清单一同提交。每次生成都清理一次，避免用户中途从其他页面加过草稿后
+   * 回来用同一范围重新生成时留下漏网项。
+   */
+  pruneCartToTimelineScope() {
+    if (!this.data.startDate || !this.data.endDate || this.data.selectedSpotIds.length === 0) {
+      return Promise.resolve(null);
+    }
+    return api.reminder.cart.pruneScope({
+      startDate: this.data.startDate,
+      endDate: this.data.endDate,
+      spotIds: this.data.selectedSpotIds,
+    });
+  },
+
   onGenerateTimeline() {
     if (!this.data.startDate || this.data.selectedSpotIds.length === 0) {
       wx.showToast({ title: '先选择行程日期和想去景点吧', icon: 'none' });
@@ -534,7 +553,10 @@ Page({
           this.onDateAnchorTap({ currentTarget: { dataset: { key: activeTab } } });
         }, 30);
       });
-      this.loadCart();
+      /* 先清理范围外草稿再刷新清单条；清理失败也要刷新，不能挡住主流程。 */
+      this.pruneCartToTimelineScope()
+        .catch(() => null)
+        .then(() => this.loadCart());
     }).catch(err => {
       wx.hideLoading();
       api.toastError(err);
@@ -558,8 +580,11 @@ Page({
         }
       }
       let btnSub = '';
+      const tripOnly = ev.reservationRequired === false || ev.remindable === false;
       if (ev.reservationRequired === false) {
         releaseDateLabel = '随时可约';
+      } else if (ev.remindable === false) {
+        releaseDateLabel = '随买随用';
       } else if (ev.status === 'SELECTABLE' && ev.releaseAt) {
         const ms = new Date(ev.releaseAt).getTime() - Date.now();
         if (ms > 0 && ms <= 3 * 3600000) {
@@ -574,7 +599,10 @@ Page({
         .replace(/\s*[（(]周[一二三四五六日][）)]\s*$/, '');
       return Object.assign({}, ev, {
         releaseDateLabel,
-        railDateLabel: ev.reservationRequired === false ? freeRailDateLabel : releaseDateLabel,
+        railDateLabel: tripOnly ? freeRailDateLabel : releaseDateLabel,
+        railTimeLabel: ev.reservationRequired === false
+          ? '无需预约'
+          : (ev.remindable === false ? '随买随用' : ev.releaseTimeStr),
         btnSub,
         /* wx:key 用复合键：同一景点可以有多个备选日期 */
         eventKey: ev.spotId + '|' + ev.visitDate,
@@ -655,7 +683,7 @@ Page({
       wx.showToast({
         title: (res && res.success === false)
           ? '这一项已经在行程里了'
-          : (event.reservationRequired === false ? '已加入行程' : '已加清单'),
+          : ((event.reservationRequired === false || event.remindable === false) ? '已加入行程' : '已加清单'),
         icon: 'none',
       });
       this.setData({ submitting: false });

@@ -17,8 +17,22 @@
       <view class="profile-name-row">
         <text class="profile-name" bindtap="onEditProfile">{{user.nickname || '用户'}}</text>
       </view>
-      <view class="profile-tag">普通用户</view>
+      <view class="profile-tag {{isMember ? 'member' : ''}}">{{memberTagText}}</view>
     </view>
+  </view>
+
+  <!-- 会员身份独立成块：普通用户与有效会员使用不同的底色、标签和行动文案。 -->
+  <view class="membership-entry {{isMember ? 'member' : 'normal'}}" bindtap="onMembership">
+    <view class="membership-entry-copy">
+      <view class="membership-entry-title-row">
+        <text class="membership-entry-title">{{memberCardTitle}}</text>
+      </view>
+      <text class="membership-entry-desc">{{memberCardDesc}}</text>
+    </view>
+    <view class="membership-entry-action">
+      <text>{{memberCardAction}}</text>
+    </view>
+    <svg-icon class="membership-entry-chevron" name="chevron-down" size="13px" rotate="270" />
   </view>
 
   <!-- 设置列表 1 -->

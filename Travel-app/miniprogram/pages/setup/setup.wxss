@@ -109,6 +109,16 @@
   font-size: 23rpx;
   color: #9B7F6F;
 }
+.quota-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+.quota-reserved {
+  color: #B07E35;
+  font-size: 20rpx;
+  line-height: 1.4;
+}
 .fill-quota-btn {
   flex-shrink: 0;
   padding: 14rpx 20rpx;
@@ -118,6 +128,16 @@
   font-size: 23rpx;
   font-weight: 600;
 }
+.auth-feedback {
+  margin-top: 14rpx;
+  padding: 12rpx 16rpx;
+  border-radius: 12rpx;
+  background: #FBF5E6;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+.auth-feedback.ok { color: #4A7C59; background: #EEF6EF; }
+.auth-feedback.warn { color: #B05C3C; background: #FBF0EA; }
 .auth-note {
   display: flex;
   flex-direction: column;
@@ -140,6 +160,59 @@
   font-size: 24rpx;
 }
 .sms-card { margin-top: 24rpx; }
+
+.membership-gate {
+  position: relative;
+  z-index: 1;
+  margin-top: 20rpx;
+  padding: 24rpx;
+  border: 1rpx solid #E8D6B8;
+  border-radius: 20rpx;
+  background: #FBF5E6;
+}
+.membership-gate-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+.membership-gate-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8rpx;
+}
+.membership-gate-title {
+  color: var(--color-ink);
+  font-size: 26rpx;
+  font-weight: 600;
+}
+.membership-gate-desc {
+  color: #7A5540;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+.membership-gate-action {
+  flex-shrink: 0;
+  min-height: 64rpx;
+  padding: 0 22rpx;
+  border-radius: 14rpx;
+  background: var(--color-primary);
+  color: #FFFEFB;
+  font-size: 24rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.membership-gate-note {
+  display: block;
+  margin-top: 14rpx;
+  color: #9B7F6F;
+  font-size: 21rpx;
+}
+
 .gate-hint {
   display: block;
   margin-top: 14rpx;

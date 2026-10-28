@@ -1,7 +1,10 @@
 # Travel-app 前端接口契约 V1.3
 
 > 面向：前端（微信小程序页面开发）
-> 更新：2026-09-29 明确微信一次性订阅每次用户点击最多增加 1 条额度，禁止异步连发伪装批量授权。2026-09-25 `cart.commit` 新增 `cartId`（补录只提交本次项）与 `disableReminders`（仅加行程不提醒）；此前 2026-09-16 首页行程化 V2 契约定稿，新增 `trip_items`、`tripItem.*`、`cart.commit` 与新版 `home.bootstrap`；旧第 2.0 / 2.1 / 2.3 / 2.4 中面向“提醒任务列表 / 双 Tab 首页”的接口在 V2 实现时由第 8 节取代。此前 2026-08-26 spots `remindable` / `weak`、2026-08-19 feedback 管理端、2026-08-14 日历通道下线等变更继续有效。
+> 2026-10-28 更新：`membership.orders` 返回当前用户最近 50 笔会员 / 任务位订单；会员详情页提供订单入口，订单页只展示脱敏后的展示字段。
+> 2026-10-28 更新：`spots.list` / `detail` / `batch` 的景点卡新增 `aliases`，供 PAGE-003 在页面内做名称 / 简称 / 别名 / spotId 的本地模糊过滤。PAGE-003 与 PAGE-004 已合并为单页，页面不再调用 `spots.search`、`spots.searchHistory`、`spots.clearSearchHistory`；这三个接口保留兼容。
+> 2026-10-27 更新：新增会员与任务位 `membership.*`、`payment.*`；免费 5 个未来提醒任务位，会员 ¥2/30 天提升至 10 个，加购 ¥2 永久增加 5 个任务位。支付与权益只由服务端订单确认后发放，不承诺平台自动广告可被关闭。
+> 更新：2026-10-28 新增景点字段 `strongReminder`；弱提醒口径改为“需预约、难度 ≤2 且未显式提升”，强提醒（含 `strongReminder=true`）在时间线与清单默认开启提醒。同日，无固定放票时刻的需预约景点（如环球影城）可加入行程和暂存清单，但不创建提醒任务；`timeline.preview` 增加 `NO_FIXED_RELEASE / 随买随用`，`cart.list` 增加 `noFixedRelease`；新增 `cart.pruneScope`，生成时间线后把暂存清单收敛到本次日期段 × 景点集合。2026-09-29 明确微信一次性订阅每次用户点击最多增加 1 条额度，禁止异步连发伪装批量授权。2026-09-25 `cart.commit` 新增 `cartId`（补录只提交本次项）与 `disableReminders`（仅加行程不提醒）；此前 2026-09-16 首页行程化 V2 契约定稿，新增 `trip_items`、`tripItem.*`、`cart.commit` 与新版 `home.bootstrap`；旧第 2.0 / 2.1 / 2.3 / 2.4 中面向“提醒任务列表 / 双 Tab 首页”的接口在 V2 实现时由第 8 节取代。此前 2026-08-26 spots `remindable` / `weak`、2026-08-19 feedback 管理端、2026-08-14 日历通道下线等变更继续有效。
 > 调用方式：`wx.cloud.callFunction({ name: '<函数名>', data: { action: '<域>.<动作>', ...params } })`
 
 ---
@@ -42,6 +45,7 @@
 | 1016 | 行程项所在日期已结束 | 关闭操作入口并刷新首页 |
 | 1017 | 已过放票时间，提醒无法开启或取消 | Toast 同文案（菜单此时已不渲染该入口，兜底旧版本小程序） |
 | 1020 | 反馈内容为空 | Toast「请填写反馈内容」 |
+| 1026 | 提醒任务位不足 | 进入会员页或提醒页内付费入口；保留原清单并展示真实缺口 |
 | 1099 | 未知 action | Toast |
 | 1500 | 服务端异常 | Toast「服务异常，请稍后重试」 |
 
@@ -89,10 +93,10 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 **云函数名：`spots`**
 
-### 1.1 `list` — 热门景点列表
+### 1.1 `list` — 景点列表
 
 ```
-用途：PAGE-001 热门景点网格、PAGE-003 热门景点列表
+用途：PAGE-001 热门景点网格、PAGE-003 全部景点列表
 调用：{ action: 'list' }
 ```
 
@@ -104,6 +108,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     spotId: "gugong",
     name: "故宫博物院",
     shortName: "故宫",                  // 窄容器专用简称；无值时前端回退 name
+    aliases: ["军博", "军事博物馆"],     // 搜索别名；随卡下发，供 PAGE-003 本地过滤，前端不维护第二套数据
     category: "博物馆",
     district: "东城区",
     audienceTags: ["family", "elder"],  // 2026-09-06 景点聚合页：人群标签（family=亲子 / elder=带父母），无标注为 []
@@ -111,9 +116,9 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     difficultyLabel: { key: "EXTREME", text: "极难约" },
     popularityScore: 95,
     reservationRequired: true,          // 2026 分层：是否需预约（false = 免预约，不进提醒流程）
-    remindable: true,                   // 2026-08-26：需预约且有放票时刻 → 可进时间线/清单/任务
-    addable: true,                      // 2026-09-16：可加入行程（可提醒项或免预约项）
-    weak: false,                        // 需预约且 difficultyScore≤2 → 弱提醒，标签行显示「票量充足，无需卡点」
+    remindable: true,                   // 2026-08-26：需预约且有放票时刻 → 可设提醒并创建提醒任务
+    addable: true,                      // 所有景点均可加入行程；remindable 只决定能否设提醒
+    weak: false,                        // 需预约、difficultyScore≤2 且 strongReminder!==true → 弱提醒；标签行显示「票量充足，无需卡点」
     cardDesc: "随到随买，当前旺季门票10元，联票20元",  // 免预约 B 层：「随到随买…」；弱提醒可提醒景点：「提前N天 HH:MM放票 · 票量充足，无需卡点」；需预约但无放票时刻：「无固定放票时刻，随买随用」
     tags: ["提前7天放票", "20:00放票"],
     advanceDays: 7,
@@ -127,7 +132,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     stale: true                        // scraper 未上线时为 true，前端可选「数据仅供参考」提示
   }]
 }
-// 排序：popularityScore 降序；前端按 addable 分流：可提醒项显示「选择」，免预约项显示「加入行程」；无固定放票时刻的需预约项显示「随买随用」且不可选
+// 排序：popularityScore 降序；前端按 addable 分流：可提醒项显示「选择 / 已选」；免预约或无固定放票时刻的需预约项也可选择，前者显示「无需预约」、后者显示「随买随用」，均不创建提醒任务
 ```
 
 ### 1.2 `detail` — 景点详情弹窗
@@ -179,7 +184,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ### 1.4 `search` — 搜索景点
 
 ```
-用途：PAGE-004 搜索态
+用途：原 PAGE-004 搜索态；2026-10-28 起 PAGE-003 改用本地过滤，本接口保留兼容
 调用：{ action: 'search', keyword: '故宫' }
 匹配规则：名称 / 别名 / 拼音前缀本地模糊匹配
 ```
@@ -197,7 +202,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ### 1.5 `searchHistory` — 获取搜索历史
 
 ```
-用途：PAGE-003 搜索框下方历史 tag 行
+用途：历史搜索 tag 行；2026-10-28 起 PAGE-003 不再展示，接口保留兼容
 调用：{ action: 'searchHistory' }
 ```
 
@@ -453,13 +458,13 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     spotName: "故宫博物院",
     difficulty: { key: "EXTREME", text: "极难约" },
     visitDate: "2026-06-01",           // 出行日
-    releaseAt: "2026-05-25T12:00:00.000Z", // 放票时刻（Date）
+    releaseAt: "2026-05-25T12:00:00.000Z", // 放票时刻（Date）；免预约/无固定放票时刻为 null
     releaseDateStr: "2026-05-25",
-    releaseTimeStr: "20:00",
+    releaseTimeStr: "20:00",           // 无固定放票时刻为「随买随用」
     visitDateLabel: "6月1日 (周一)",    // 已格式化
     advanceDays: 7,
-    releaseState: "RELEASED",          // NOT_RELEASED / RELEASED / NO_RESERVATION
-    releaseStateLabel: "已开票",       // 待开票 / 已开票 / 无需预约
+    releaseState: "RELEASED",          // NOT_RELEASED / RELEASED / NO_RESERVATION / NO_FIXED_RELEASE
+    releaseStateLabel: "已开票",       // 待开票 / 已开票 / 无需预约 / 随买随用
     officialAppid: "wx...",
     officialPath: "pages/...",
     officialWebUrl: "https://...",
@@ -481,7 +486,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     count: 5,
     scrollIndex: 2
   }],
-  closedSpots: [{                      // 行程内全闭馆 / 无固定放票时刻的景点（⚠️ 页面已不渲染，见下方注）
+  closedSpots: [{                      // 行程内全闭馆、段内没有可用出行日的景点（⚠️ 页面已不渲染，见下方注）
     spotId: "...",
     spotName: "...",
     note: "行程期间闭馆"
@@ -502,13 +507,13 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 | status | button.text | button.enabled | 点击行为 |
 |--------|-------------|----------------|---------|
-| SELECTABLE | 加入清单（免预约项「加入行程」） | true | `cart.add` |
-| IN_CART | 已加清单（免预约项「已加入清单」） | true | 打开 PAGE-007 (button.openCart=true) |
+| SELECTABLE | 加入清单（免预约或无固定放票时刻项「加入行程」） | true | `cart.add` |
+| IN_CART | 已加清单（免预约或无固定放票时刻项「已加入清单」） | true | 打开 PAGE-007 (button.openCart=true) |
 | COMMITTED | 已加行程 | false | 无（纯状态标签） |
 
 ⚠️（2026-09-24）文案统一为「清单」并去掉全部图标，对齐 `UI/V.0.2-0919首页行程化改版-UI/32.png`：旧值 `+ 添加提醒` → `加入清单`、`已加待选` → `已加清单`、`已在行程` → `已加行程`。
 ⚠️ `enabled` 表达的是**能不能点**，不是**看起来像不像按钮**：`IN_CART` 为 true（点它打开清单弹层），UI 上却是中性色状态胶囊。别为了「看着像状态」把它改成 false。
-⚠️（2026-09-25）时间线不再返回 `WAITING / REMINDERED / BOOKABLE / FULL`。`releaseAt ≤ now` 只把顶部 `releaseStateLabel` 变为「已开票」并渲染绿色文字，按钮仍是 `SELECTABLE → 加入清单`；已开票项入清单后固定 `remindOn=false`、`remindLocked=true`，清单行显示「仅加行程·不提醒」且不可修改。预约入口只保留在首页行程项和推送详情。
+⚠️（2026-09-25）时间线不再返回 `WAITING / REMINDERED / BOOKABLE / FULL`。`releaseAt ≤ now` 只把顶部 `releaseStateLabel` 变为「已开票」并渲染绿色文字，按钮仍是 `SELECTABLE → 加入清单`；已开票项入清单后固定 `remindOn=false`、`remindLocked=true`，清单行显示「仅加行程·不提醒」且不可修改。无固定放票时刻项同样固定不提醒，但它是可正常加入行程的候选项。预约入口只保留在首页行程项和推送详情。
 
 ---
 
@@ -517,7 +522,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 #### `cart.add` — 加入清单（单条）
 
 ```
-用途：PAGE-005/006（首页内联）事件卡「加入清单」
+用途：PAGE-005/006（首页内联）事件卡「加入清单 / 加入行程」
 调用：{
   action: 'cart.add',
   tripId: 'abc123',
@@ -530,7 +535,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 **返回：**
 ```javascript
 { success: true, cartId: "xyz789", remindOn: false }
-// remindOn：放票前按用户选择/强弱默认；放票时刻已过时由服务端强制 false
+// remindOn：放票前按用户选择/强弱默认；免预约、无固定放票时刻、放票时刻已过时由服务端强制 false
 // 重复 → { success: false, error: "这条提醒已经在清单里啦", errorCode: 1002 }
 ```
 
@@ -569,14 +574,18 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 ```
 用途：PAGE-007「清空」（需前端 Dialog 确认后调用）
-调用：{ action: 'cart.clear', tripId: 'abc123' }  // 不传 tripId 则清空该用户全部清单
+调用：{ action: 'cart.clear', tripId: 'abc123' }  // 不传 tripId 则清空当前暂存清单
 ```
 
 #### `cart.list` — 列出清单
 
 ```
 用途：PAGE-007 主数据 + PAGE-005/006（首页内联）底部清单条
-调用：{ action: 'cart.list', tripId: 'abc123' }  // 不传则查当前暂存清单
+调用：{
+  action: 'cart.list',
+  tripId: 'abc123',          // 不传则查当前暂存清单
+  includeMembership: false   // PAGE-008 传 true，顺带返回会员额度；其他页面不传，避免额外读
+}
 ```
 
 **返回：**
@@ -589,13 +598,14 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     spotId: "gugong",
     spotName: "故宫博物院",            // 已关联（PAGE-007 景点名为纯文本，不可点 UI-004 豁免）
     difficulty: { key: "EXTREME", text: "极难约" }, // V0.3 清单难度标签
-    weak: false,                       // 需预约且 difficultyScore≤2
+    weak: false,                       // 需预约、difficultyScore≤2 且 strongReminder!==true
     visitDate: "2026-06-01",
     releaseAt: "2026-05-25T12:00:00.000Z",
     releaseDateLabel: "05月25日",
     releaseTimeLabel: "20:00",
     remindOn: true,                     // 已开票项恒为 false
-    remindLocked: false,                // true = 已开票，提醒固定为「仅加行程·不提醒」
+    noFixedRelease: false,              // true = 需预约但没有固定放票时刻，仅加入行程
+    remindLocked: false,                // true = 已开票或无固定放票时刻，提醒固定为「仅加行程·不提醒」
     createdAt: "..."
   }],
   groups: [{                           // 按出行日分组
@@ -623,7 +633,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     reminderCount: 2,                  // V0.3：将设提醒条数
     noReminderCount: 1,
     text: "已选 3 项，其中 2 个将设提醒"
-  }
+  },
+  membership: null              // includeMembership=true 时为 membership.status 同口径快照
 }
 ```
 
@@ -808,8 +819,19 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
       sms: false,
       offsets: [5, 2]
     },
-    memberLevel: "NORMAL",           // V1 固定
-    points: 0
+    memberLevel: "NORMAL",
+    memberSince: null,
+    memberExpiresAt: null,
+    taskPackCount: 0,
+    points: 0,
+    membership: {
+      member: false,
+      memberExpiresAtText: "",
+      taskLimit: 5,
+      taskUsed: 2,
+      taskRemaining: 3,
+      ownedTaskPackCount: 0
+    }
   }
 }
 ```
@@ -889,6 +911,100 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```
 
 > 未授权/未落库时 quota 为 0，发送侧仍会尝试（微信侧按真实授权校验，返回 43101 即表示无额度/未订阅）。
+
+> 客户端在设置新提醒前必须按**可用额度**判断：`quota - pendingMessageCount`。`quota` 是本地台账剩余授权总数，`pendingMessageCount` 是未来 `WAITING` 任务尚未发送的消息数（每条任务每个未发送 offset 计 1）。只看 `quota` 会把已经预留给待发送提醒的次数重复承诺给新提醒。
+
+### 2.6 会员与任务位（2026-10-27）
+
+唯一口径在 `cloudfunctions/reminder/lib/membership.js`。客户端只消费服务端返回的额度、有效期、价格和可购项，不自行推导会员状态。
+
+- 免费用户最多保留 5 个未来 `WAITING` 提醒任务。
+- 会员 `¥2 / 30 天`，会员期内最多 10 个任务位；不自动续费。
+- 会员加购任务包 `¥2`，永久获得 5 个任务位；会员有效期内生效，会员过期后暂停，续费后恢复。
+- 加购任务包时，会员有效期至少延长到支付成功后 30 天。
+- 会员到期不删除已有提醒；历史或过期任务不长期占用新任务位。
+- `reminder` 的任务位限制受服务端灰度开关控制：`MEMBERSHIP_ENFORCEMENT_MODE=off|test|all`。默认 `test`，仅测试白名单账号生效；`MEMBERSHIP_TEST_OPENIDS` 可逗号分隔覆盖白名单。
+
+#### `membership.status`
+
+```javascript
+调用：{ action: 'membership.status' }
+返回：{
+  success: true,
+  membership: {
+    member: Boolean,
+    memberLevel: 'NORMAL' | 'MEMBER',
+    memberExpiresAt: Date | null,
+    memberExpiresAtText: '2026年11月26日' | '',
+    memberDaysRemaining: Number,
+    taskLimit: Number,
+    taskUsed: Number,
+    taskRemaining: Number,
+    taskPackCount: Number,
+    ownedTaskPackCount: Number,
+    taskPackSize: 5
+  },
+  packages: [{
+    id: 'member' | 'task_pack_5',
+    type: 'MEMBER' | 'TASK_PACK',
+    title, priceFen, priceText, description,
+    memberDays, addedSlots, available, actionText
+  }]
+}
+```
+
+#### `membership.createOrder`
+
+```javascript
+调用：{ action: 'membership.createOrder', packageId: 'member' | 'task_pack_5' }
+返回：{ success: true, orderId, outTradeNo, amountFen, packageId, title }
+```
+
+- 金额与商品类型只从服务端套餐表读取，客户端不能传价格。
+- `task_pack_5` 只允许会员有效期内购买；会员可提前续费。
+- 任务位不足统一返回错误码 `1026`，并携带 `taskLimit` 与 `membership`；失败时不得创建行程、任务或清空清单。
+
+#### `membership.orders`
+
+```javascript
+调用：{ action: 'membership.orders' }
+返回：{
+  success: true,
+  count: 2,
+  items: [{
+    _id,
+    outTradeNo,
+    packageId,
+    productType,
+    title,
+    amountFen,
+    amountText: '¥2',
+    addedSlots,
+    memberDays,
+    status: 'PENDING' | 'PAID' | 'CLOSED' | 'REFUNDED',
+    statusLabel: '待支付' | '已支付' | '已关闭' | '已退款',
+    createdAt,
+    createdAtText,
+    paidAt,
+    paidAtText
+  }]
+}
+```
+
+- 只允许查询当前 OpenID 的订单，最多 50 条，按 `createdAt` 倒序。
+- 不返回 `paymentResult`、微信交易号、密钥或其他支付内部字段。
+
+#### `payment.create` / `payment.query` / 支付回调
+
+```javascript
+{ action: 'create', orderId }       // payment 云函数，返回 wx.requestPayment 参数
+{ action: 'query', orderId }        // 主动查单，返回 PAID / PENDING
+```
+
+- 支付回调与主动查单都由 `payment` 云函数处理；只有微信支付确认成功后才更新订单并发放权益。
+- 金额不一致拒绝发放；重复回调幂等，不重复增加任务包。
+- 环境变量：`WECHAT_PAY_SUB_MCH_ID`、`WECHAT_PAY_CALLBACK_FUNCTION=payment`、`TCB_ENV`。
+- 小程序必须已开通微信支付并绑定商户号；商户号超级管理员需按云开发要求授权服务商 `1800008281 小程序云开发`，并授予 JSAPI 与退款权限。
 
 ---
 
@@ -1044,14 +1160,16 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-001** 首页·行程状态墙 | `home.bootstrap` V2；`tripItem.markResult` / `undoResult` / `updateReminder` / `remove` / `removeVisitDate` / `recoveryCandidates` |
 | **PAGE-009** 旧任务列表 | V2 已废弃。`task.*` 云函数保留为兼容代码，**首页与新流程均不再调用** |
 | **PAGE-002** 景点弹窗 | `spots.detail` |
-| **PAGE-003** 想去景点 | `spots.list`、`spots.batch`（已选行）、`spots.searchHistory`、`spots.clearSearchHistory`、`trip.updateSpots` |
-| **PAGE-004** 搜索态 | `spots.search` |
-| **PAGE-005** 新增提醒（独立页） | `timeline.preview`（纯预览，不建行程）、`cart.add`、`cart.addAll`、`cart.list`（暂存清单） |
+| **PAGE-003** 想去景点（含搜索） | `spots.list`、`spots.batch`（已选行）、`trip.updateSpots` |
+| **PAGE-004** 搜索态 | 2026-10-28 已合并回 PAGE-003，不再单独调用接口 |
+| **PAGE-005** 新增提醒（独立页） | `timeline.preview`（纯预览，不建行程）、`cart.pruneScope`（生成成功后收敛暂存清单）、`cart.add`、`cart.addAll`、`cart.list`（暂存清单） |
 | **PAGE-006** 景点视图 | 搁置中，不实现 |
 | **PAGE-007** 行程清单弹窗 | `cart.list`、`cart.remove`、`cart.clear`、`cart.updateRemindOn`、`cart.commit` |
-| **PAGE-008** 设置提醒 | V0.3 主流程：`cart.list`、`subscribe.get`（`cart.list` 算待设提醒条数，`subscribe.get` 算当前额度）、用户主动点击「点击补授权次数」（每次最多 +1）、`cart.commit`（额度或系统权限未满足时主按钮禁用；不提供仅加行程旁路） |
+| **PAGE-008** 设置提醒 | V0.3 主流程：`cart.list(includeMembership=true)`、`subscribe.get`、`membership.createOrder` + `payment.*`（仅任务位不足时）、用户主动点击「点击补授权次数」、`cart.commit`（授权、系统权限或任务位未满足时主按钮禁用；不提供仅加行程旁路） |
 | **PAGE-010** 我的 | `user.profile`、提醒设置权限/额度健康度（`notify.getReminderHealth`，服务端额度 + 客户端权限） |
 | **PAGE-012** 编辑资料 | `user.profile`、`user.updateProfile`（头像走 `open-type="chooseAvatar"` + `wx.cloud.uploadFile` 上传） |
+| **PAGE-014** 会员与任务位 | `membership.status`、`membership.createOrder`、`membership.orders`、`payment.create/query`；“我的”页独立会员状态卡，提醒页仅在任务位不足时直接出现同一购买流程 |
+| **PAGE-015** 订单信息 | `membership.orders`；当前用户最近 50 笔会员 / 任务位订单，点击订单复制订单号 |
 | **PAGE-013** 分享场景页 | `spots.list`（today）、`spots.batch`（national-day-2026）；点击景点后 `spots.detail` |
 | **PAGE-010-1** 提醒设置 | `subscribe.get` + 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`；缺口按钮为「补授权次数+1」，点击一次最多申请 1 条（模板未配置时「去授权」置灰） |
 | **PAGE-010-4** 帮助与反馈 | 微信原生客服 `button open-type="contact"`；无云函数调用 |
@@ -1214,7 +1332,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
     releaseAt, spotName, visitDate, itemId, countdownText
   } | null,
   releasePills: [/* 摘要卡底部「即将提醒」胶囊，按放票时刻合并 */],
-  reminderQuotaWarning: {         // 仅 48 小时内有提醒且授权 low/short/exhausted 时返回
+  reminderQuotaWarning: {         // 授权 short/exhausted 时返回；low 仅限 48 小时内
     level, pendingMessageCount, remainingQuota, shortfall, replenishNeeded,
     nearestRemindAt, text
   } | null,
@@ -1222,6 +1340,8 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   hotSpots: [/* spots.list；includeSpots 为 true 时才有内容，否则为 [] */]
 }
 ```
+
+- `reminderQuotaWarning` 的窗口规则：真实缺口 `short / exhausted` 不受 48 小时限制；只有 `low`（额度刚好够、仅缺 1 次缓冲）限制在最近一条提醒进入 48 小时内，避免远期行程过早制造焦虑。
 
 - **`includeSpots` 默认 `false`**（2026-09-30 改，此前默认 `true`）。理由是性能：
   取热门景点要**在本次请求里再调一次 `spots` 云函数**，等于一次用户请求串两个云函数的
@@ -1383,8 +1503,8 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   tripId,                       // 可省 = 当前暂存清单（8.7）
   spotId,
   visitDate,
-  releaseAt: Date | null,       // ⚠️ 2026-09-24 起**服务端忽略并自行推导**，免预约为 null
-  remindOn: Boolean             // 免预约必须 false
+  releaseAt: Date | null,       // ⚠️ 2026-09-24 起**服务端忽略并自行推导**，免预约/无固定放票时刻为 null
+  remindOn: Boolean             // 免预约或无固定放票时刻必须 false
 }
 ```
 
@@ -1392,7 +1512,25 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   行程项、时间线同一真身），调用方传什么都会被覆盖；**不传也合法**。
   「约其他日」这条动线只有用户选的 `visitDate`（`date-picker-sheet` 只回 visitDate），
   原先强制要求 `releaseAt` 会让它稳定回 1010 —— 挽回线点得开、走不通。
-  推不出放票时刻（无 `advanceDays` 的景点）仍然 `BAD_PARAM`。
+  推不出放票时刻（无固定放票规则的景点，如环球影城）仍可加入清单，服务端固定 `remindOn=false`；
+  该清单项只会在 `cart.commit` 时落成行程项，不创建提醒任务。
+
+#### `cart.pruneScope`
+
+```javascript
+调用：{
+  action: 'cart.pruneScope',
+  startDate: '2026-06-01',
+  endDate: '2026-06-05',
+  spotIds: ['gugong', 'guobo']
+}
+返回：{ success: true, removed: 2 }
+```
+
+- PAGE-005 在 `timeline.preview` 成功后调用，把暂存清单收敛到本次日期段 × 景点集合（CART-RULE-007）。
+- 只处理暂存区（`PENDING_CART_TRIP_ID`）；真实 `tripId` 下的旧链路清单不受影响。
+- 保留 `(spotId ∈ spotIds) && (visitDate ∈ [startDate, endDate])` 的项，其余移除。
+- 清理失败不得阻断预览展示；页面仍应刷新清单条。
 
 #### `cart.updateRemindOn`
 
@@ -1401,7 +1539,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 返回：{ success: true, cartId, remindOn }
 ```
 
-- 仅需预约项可切换；免预约项强制 `false`。
+- 仅需预约且有 `releaseAt` 的项可切换；免预约、无固定放票时刻项强制 `false`。
 
 #### `cart.commit`
 
@@ -1432,6 +1570,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 - 首页“约其他日”和景点页补录必须传本次 `cartId`，只提交该条并保留其他暂存清单；设置提醒页保持不传 `cartId`，代表整单提交。
 - `disableReminders=true` 是“仅加行程不提醒”的降级提交：忽略 `channels/offsets`，本次提交的清单项均以 `remindOn=false` 落成行程项，不创建 `reminder_tasks`，且不返回公众号关注引导。该模式只允许提交暂存清单，不允许同时传真实 `tripId`。
 - 服务端在一次提交中创建全部 `trip_items`；仅为 `remindOn=true` 且可提醒的项创建 `reminder_tasks`。
+- 提交前必须校验任务位。本次会创建的未来 `WAITING` 任务数超过当前上限时，返回 `1026`，请求整体失败；不得先创建行程、消费部分清单，也不能只提示前端而绕过服务端。
 - 旧 `task.submit` 在 V2 实现完成后只作为内部兼容代码，不再由首页/设置页调用。
 
 ### 8.6 不可漂移的实现约束
@@ -1450,7 +1589,8 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 返回：{ success: true, events, byDeparture, bySpot, closedSpots, closedDaySkips, empty, emptyReason }
 ```
    - 按当前所选日期段与景点**独立计算**，不创建/改写任何行程。
-   - 每个 event 带 `releaseState / releaseStateLabel`：`NOT_RELEASED / 待开票`、`RELEASED / 已开票`、`NO_RESERVATION / 无需预约`；已开票只影响展示，status 仍为 `SELECTABLE`。
+   - 每个 event 带 `releaseState / releaseStateLabel`：`NOT_RELEASED / 待开票`、`RELEASED / 已开票`、`NO_RESERVATION / 无需预约`、`NO_FIXED_RELEASE / 随买随用`；已开票只影响展示，status 仍为 `SELECTABLE`。
+   - 无固定放票时刻的需预约景点（如环球影城）按每个非闭馆出行日返回候选项：`releaseAt=null`、`releaseTimeStr='随买随用'`、按钮为「加入行程」；可加入清单和行程，但不创建提醒任务。
    - **读**当前用户的暂存清单（`reminder_cart` 的 `PENDING_CART_TRIP_ID` 那批）→ 清单里的项返回 `IN_CART`；
      清单是「用户正在这一页做的事」，不反映它按钮就像坏的。
    - `segments` 可选：`[{spotId, startDate, endDate}]`，不传则按 `spotIds × [startDate,endDate]`。

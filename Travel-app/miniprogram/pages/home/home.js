@@ -1,6 +1,7 @@
 const app = getApp();
 const api = require('../../utils/api.js');
 const spotsCache = require('../../utils/spots-cache.js');
+const membershipEntry = require('../../utils/membership-entry.js');
 const util = require('../../utils/util.js');
 const notify = require('../../utils/notify.js');
 const tripCalendar = require('../../utils/trip-calendar.js');
@@ -262,9 +263,14 @@ Page({
        窗口在数据到达时算一次并存进 `_bootTtlMs`（见 bootstrap 成功回调），
        这里只做减法 —— 中途重算会让同一次驻留期间的判定摇摆。 */
     const ttl = this._bootTtlMs > 0 ? this._bootTtlMs : HOME_BOOTSTRAP_TTL_MS;
+    /* 写操作（设提醒、补授权等）会递增该版本号。它必须参与复用判定：
+       否则用户刚设完提醒就回首页，会继续回放写操作之前的缓存，额度预警和
+       临近放票横幅最多晚 180 秒才出现。 */
+    const homeDataVersion = Number(app.globalData && app.globalData.homeDataVersion) || 0;
     const ttlFresh = Boolean(opts && opts.allowTtlReuse)
       && this._lastBootOkAt > 0
-      && (Date.now() - this._lastBootOkAt) < ttl;
+      && (Date.now() - this._lastBootOkAt) < ttl
+      && (this._bootDataVersion || 0) >= homeDataVersion;
     /* 耗时分段（2026-09-30）：`cache` = 用本地缓存画出第一帧的耗时；
        `net` = 请求往返（含云函数冷启动，最大头）；`setdata` = 返回到首屏画完。
 
@@ -364,6 +370,9 @@ Page({
       /* 记下这次成功的时刻，作为 onShow 复用窗口的起点。
          只读时钟，不参与任何业务判定；失败路径不写，所以失败不会刷新窗口。 */
       this._lastBootOkAt = Date.now();
+      /* 只记下本次请求发出时看到的版本。若请求途中又发生写入，版本号已经更大，
+         下一次 onShow 仍会强制重新拉取，不会把新写入误当成已同步。 */
+      this._bootDataVersion = homeDataVersion;
       /* 复用窗口跟着「本次数据里最近一场放票离现在多远」走，而不是固定 30 秒：
          放票窗口内 30 秒一问，今天还有票要放 60 秒，其余 180 秒。
          读的是同一个 patch 里服务端已经算好的时刻，页面不重新推导业务状态。
@@ -774,10 +783,10 @@ Page({
      页面再算一遍就是第二套口径。原先服务端强制要求传 releaseAt，
      于是点「确定」只回一句「请检查输入」——挽回线点得开、走不通（2026-09-24 修）。
 
-     ⚠️ **提交前必须先要订阅授权**：这条动线落的是一个提醒任务，
-     而微信订阅消息是「一次授权 = 能发 1 条」。不要授权直接提交，
-     结果就是用户换了个日期、行程项建好了、提醒却永远送不到——
-     症状与「未送达」的静默失败一模一样，事后排查只能看到 43101。
+     ⚠️ **授权必须在 commit 之前，但不能在 cart.add 之前**：这条动线落的是一个
+     提醒任务，而微信订阅消息是「一次授权 = 能发 1 条」。先让服务端按真实放票时刻
+     决定 `remindOn`，再决定要不要授权；否则日期对应的放票时刻已过、或 cart.add
+     失败时，用户会白授权一次，最后只得到一条没有提醒的行程。
      额度已经拿到过就不重复弹；额度不足时先就地解释，用户点“补授权并继续”后再弹微信授权。 */
   onRecoverConfirm(e) {
     const { visitDate } = e.detail || {};
@@ -787,58 +796,76 @@ Page({
     this._recovering = true;
     wx.showLoading({ title: '正在添加...' });
 
+    const spotId = this.data.sheetSpotId;
+    const rollbackAdded = cartId => (cartId
+      ? api.reminder.cart.remove(cartId).catch(() => {})
+      : Promise.resolve());
+
     /* 这次只提交新增的 1 条 cartId，不把其他暂存草稿的提醒额度一起算进来。 */
-    notify.confirmReminderAccess(1)
-      .then(access => {
-        if (access.action === 'settings') {
-          this._recovering = false;
-          wx.hideLoading();
-          notify.openReminderAccessSettings(access);
-          return null;
-        }
-        if (access.action === 'cancelled') {
-          this._recovering = false;
-          wx.hideLoading();
-          return null;
-        }
-        const tripOnly = access.action === 'trip-only';
-        return api.reminder.cart.add({
-          spotId: this.data.sheetSpotId,
-          visitDate,
-          remindOn: true,
-        }).then(added => api.reminder.cart.commit(
-          tripOnly
-            ? { cartId: added.cartId, disableReminders: true }
-            : { cartId: added.cartId, channels: ['OFFICIAL_ACCOUNT'], offsets: [5] }
-        )).then(res => {
-          this._recovering = false;
-          wx.hideLoading();
-          const dateLabel = util.formatDate(visitDate);
-          /* ⚠️ 文案必须看 `createdTasks`：选中的日期放票时刻可能已经过去，
-             `cart.add` 会把该条 remindOn 落成 false，提交后一个提醒都没建。
-             无条件写「提醒已设置」就是在骗用户——症状和下面注释里说的
-             「静默失败」一模一样（只是这次是提醒根本没生成）。 */
-          let title;
-          if (tripOnly) {
-            title = `已加入 ${dateLabel}行程，未设置提醒`;
-          } else if ((res.expiredReminder || 0) > 0) {
-            title = `已加入 ${dateLabel}行程 · 已过放票时间，提醒无法设置`;
-          } else if (res.createdTasks > 0) {
-            title = `已加入 ${dateLabel}行程，提醒已设置`;
-          } else {
-            title = `已加入 ${dateLabel}行程，未设置提醒`;
+    return api.reminder.cart.add({
+      spotId,
+      visitDate,
+      remindOn: true,
+    }).then(added => {
+      const cartId = added && added.cartId;
+      /* 服务端按真实放票时刻决定这一项还能不能设提醒。勾了提醒但放票时刻
+         已过时，cart.add 会把 remindOn 落成 false；此时不能再申请授权。 */
+      const reminderDowngraded = added && added.remindOn === false;
+      if (reminderDowngraded) {
+        return api.reminder.cart.commit({ cartId, disableReminders: true })
+          .then(res => ({ res, tripOnly: true, expired: true }));
+      }
+      return notify.confirmReminderAccess(1)
+        .catch(err => rollbackAdded(cartId).then(() => { throw err; }))
+        .then(access => {
+          if (access.action === 'settings' || access.action === 'cancelled') {
+            return rollbackAdded(cartId).then(() => ({ aborted: true, access }));
           }
-          if (!tripOnly && res.createdTasks > 0 && notify.consumeFirstReminderSuccessTip()) {
-            title = '提醒已设置，先备好游客信息';
-          }
-          wx.showToast({ title, icon: 'none', duration: 2000 });
-          this.loadHome({ silent: true });
+          const tripOnly = access.action === 'trip-only';
+          return api.reminder.cart.commit(
+            tripOnly
+              ? { cartId, disableReminders: true }
+              : { cartId, channels: ['OFFICIAL_ACCOUNT'], offsets: [5] }
+          ).then(res => ({ res, tripOnly }));
         });
-      }).catch(err => {
-        this._recovering = false;
-        wx.hideLoading();
-        api.toastError(err);
-      });
+    }).then(result => {
+      this._recovering = false;
+      wx.hideLoading();
+      if (result && result.aborted) {
+        if (result.access.action === 'settings') notify.openReminderAccessSettings(result.access);
+        else notify.showReminderAccessCancelled(result.access);
+        return false;
+      }
+      if (!result || !result.res) return false;
+
+      const dateLabel = util.formatDate(visitDate);
+      /* ⚠️ 文案必须看 `expiredReminder` / `createdTasks`：选中的日期放票时刻
+         可能已经过去，提交后一个提醒都没建。无条件写「提醒已设置」就是在骗用户。 */
+      let title;
+      if (result.expired) {
+        title = `已加入 ${dateLabel}行程 · 已过放票时间，提醒无法设置`;
+      } else if (result.tripOnly) {
+        title = `已加入 ${dateLabel}行程，未设置提醒`;
+      } else if ((result.res.expiredReminder || 0) > 0) {
+        title = `已加入 ${dateLabel}行程 · 已过放票时间，提醒无法设置`;
+      } else if (result.res.createdTasks > 0) {
+        title = `已加入 ${dateLabel}行程，提醒已设置`;
+      } else {
+        title = `已加入 ${dateLabel}行程，未设置提醒`;
+      }
+      if (!result.tripOnly && result.res.createdTasks > 0 && notify.consumeFirstReminderSuccessTip()) {
+        title = '提醒已设置，先备好游客信息';
+      }
+      wx.showToast({ title, icon: 'none', duration: 2000 });
+      this.loadHome({ silent: true });
+      return true;
+    }).catch(err => {
+      this._recovering = false;
+      wx.hideLoading();
+      if (membershipEntry.openTaskLimit(err)) return false;
+      api.toastError(err);
+      return false;
+    });
   },
 
   onDateSheetClose() {
@@ -921,7 +948,12 @@ Page({
        remindOn 为 false，而文案由 `reminder.state` 决定（`reminderClass === 'none'`）。
        两边不同源就会出现「点开启、结果执行了取消」。 */
     const on = found.reminder && found.reminder.state !== 'NOT_SET';
-    api.reminder.tripItem.updateReminder({
+    /* 授权检查与写操作之间有多段异步；没有锁时连点会同时弹授权窗并重复提交开关。 */
+    if (this._reminderToggleBusy) return;
+    this._reminderToggleBusy = true;
+    const releaseToggle = () => { this._reminderToggleBusy = false; };
+
+    const applyToggle = () => api.reminder.tripItem.updateReminder({
       itemId,
       remindOn: !on,
       channels: ['OFFICIAL_ACCOUNT'],
@@ -943,7 +975,30 @@ Page({
         });
       }
       this.loadHome({ silent: true });
-    }).catch(err => api.toastError(err));
+    }).catch(err => {
+      if (membershipEntry.openTaskLimit(err)) return;
+      api.toastError(err);
+    }).then(releaseToggle);
+
+    /* 开启提醒会新建一条待发送任务，必须和景点页「设提醒」走同一道授权闸门。
+       已有提醒被关闭时只是删除待发任务，不消耗新额度，无需再问。 */
+    if (on) {
+      applyToggle();
+      return;
+    }
+    notify.confirmReminderAccess(1, undefined, { allowTripOnly: false }).then(access => {
+      if (access.action === 'ready') {
+        /* 写接口仍是异步的；锁必须等 applyToggle 的整条链（含失败提示、
+           首页刷新）结束后再释放，否则这段时间里还能再次触发开关。 */
+        return applyToggle();
+      }
+      if (access.action === 'settings') notify.openReminderAccessSettings(access);
+      else if (access.action === 'cancelled') notify.showReminderAccessCancelled(access);
+      releaseToggle();
+    }).catch(err => {
+      releaseToggle();
+      api.toastError(err);
+    });
   },
 
   /* ===== 提醒未送达：状态直显，点开看原因 ===== */

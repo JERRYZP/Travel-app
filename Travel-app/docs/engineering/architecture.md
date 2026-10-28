@@ -16,6 +16,7 @@
 | `reminder` | 行程、行程项、清单、提醒任务、用户与首页聚合，核心业务函数 |
 | `spots` | 景点查询、规则卡片和放票状态推导 |
 | `notifier` | 到期提醒发送、MISSED 收敛、清理 |
+| `payment` | 会员 / 任务位订单微信支付、查单、回调与权益发放 |
 | `feedback` | 意见反馈与信息纠错 |
 | `scraper` | 抓取与规则推算，未完成线上闭环 |
 | `ics-generator` | `.ics` 生成，日历通道已下线但函数保留 |
@@ -30,6 +31,8 @@
 | `pages/setup` | PAGE-008 设置提醒；V0.3 授权硬闸门 |
 | `pages/notify-settings` | 系统通知权限与提醒额度设置 |
 | `pages/profile` | 我的；帮助与反馈统一入口 |
+| `pages/membership` | 会员与任务位；状态、30 天会员、永久任务包与支付 |
+| `pages/membership-orders` | 当前用户最近 50 笔会员 / 任务位订单 |
 | `pages/help-feedback` | 帮助与反馈二级入口：在线客服、意见反馈、信息纠错、我的反馈 |
 | `pages/my-feedback` | 当前用户最近 50 条反馈/纠错记录，只读 |
 | `pages/legal` | 隐私政策与用户服务协议 |
@@ -65,8 +68,15 @@ reminder_cart 是提交前的暂存区，不属于正式行程。
 ```
 
 - `trip_items`：行程 + 景点 + 出行日的最小执行单元。
-- `reminder_tasks`：由明确开启提醒的行程项派生，挂 `itemId`；新任务写入 `templateId`，旧任务缺字段时发送侧回退旧订阅模板。
+- `reminder_tasks`：由明确开启提醒且存在 `releaseAt` 的行程项派生，挂 `itemId`；新任务写入 `templateId`，旧任务缺字段时发送侧回退旧订阅模板。无固定放票时刻的行程项只落 `trip_items`，不创建任务。
 - `reminder_cart`：提交前清单；提交成功后才创建/合并正式行程并清空。
+
+## 会员与任务位
+
+- 免费用户最多 5 个未来 WAITING 提醒任务。
+- 会员 2 元 / 30 天，期内上限 10；任务包 2 元永久增加 5 个任务位，会员有效期内生效。
+- 唯一规则在 `cloudfunctions/reminder/lib/membership.js`；`cart.commit` 与 `tripItem.updateReminder` 都必须过同一服务端闸门。
+- 订单只由 `payment` 云函数在微信支付回调或主动查单确认后置为 `PAID`；客户端不能自行改会员。
 
 ## 数据真身与镜像
 

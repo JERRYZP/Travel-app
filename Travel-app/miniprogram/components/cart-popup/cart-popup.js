@@ -13,7 +13,8 @@ const cartView = require('../../utils/cart-view.js');
  * 每行有两条信息必须同屏可见：
  *   ① 这张票什么时候放（或「无需预约，随到随玩」）；
  *   ② 要不要提醒（下拉二选一）。
- * 弱提醒景点默认「仅加行程·不提醒」，可手动改；免预约项固定不可改。
+ * 弱提醒景点默认「仅加行程·不提醒」，可手动改；显式强提醒与高难度景点默认开启。
+ * 免预约项固定不可改。
  * 已开票项同样固定不可改：服务端下发 remindLocked，页面只渲染「仅加行程·不提醒」，
  * 点击时说明「放票时间已过」。
  */
@@ -100,8 +101,8 @@ Component({
       api.reminder.cart.list().then(res => {
         const groups = cartView.normalizeCartGroups(res).map(g => Object.assign({}, g, {
           items: (g.items || []).map(it => Object.assign({}, it, {
-            /* 免预约项和已开票项都固定不可改，不是置灰——是压根没有这个选择。
-               已开票项由服务端下发 remindLocked，避免页面按当前时间再算一遍。 */
+            /* 免预约项、无固定放票时刻项和已开票项都固定不可改，不是置灰——是压根没有这个选择。
+               锁定态由服务端下发，避免页面按当前时间再算一遍。 */
             canToggle: it.reservationRequired !== false && !it.remindLocked,
             remindLocked: it.remindLocked === true,
             remindText: it.remindOn ? this.data.OPTION_ON : this.data.OPTION_OFF,
@@ -141,10 +142,11 @@ Component({
       const cartId = e.currentTarget.dataset.id;
       const item = this.findItem(cartId);
       if (!item) return;
-      /* 免预约/已开票项固定不可改：保留同款灰态，但不打开菜单。
-         已开票项要明确解释锁定原因，免预约项无需重复左侧副行说明。 */
+      /* 免预约/无固定放票时刻/已开票项固定不可改：保留同款灰态，但不打开菜单。
+         已开票项与无固定放票时刻项要明确解释锁定原因，免预约项无需重复左侧副行说明。 */
       if (!item.canToggle) {
-        if (item.remindLocked) wx.showToast({ title: '放票时间已过', icon: 'none' });
+        if (item.noFixedRelease) wx.showToast({ title: '随买随用，不设提醒', icon: 'none' });
+        else if (item.remindLocked) wx.showToast({ title: '放票时间已过', icon: 'none' });
         return;
       }
       this.createSelectorQuery().select('#cart-drop-' + cartId).boundingClientRect(rect => {

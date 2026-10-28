@@ -25,11 +25,12 @@
 | `RULE-HOME-002` | `CLAUDE.md` 85 | 双 Tab/`homeMode` 已废弃，首页只保留单形态 | `docs/engineering/domain-rules.md` | `history` |
 | `RULE-TIMELINE-001` | `CLAUDE.md` 51-60 | 纯预览、按钮态、已开票锁定、清单分组 | `docs/engineering/domain-rules.md` | `extracted` |
 | `RULE-CART-001` | `CLAUDE.md` 61 | 清单是提交前暂存区 | `docs/engineering/domain-rules.md`、`docs/engineering/architecture.md` | `extracted` |
+| `RULE-CART-002` | `产品文档.md` CART-RULE-003 / 007 | 清单收敛到当前这次生成的时间线范围 | `产品文档.md`、`docs/engineering/domain-rules.md` | `delegated` |
 | `RULE-DOC-001` | `CLAUDE.md` 62 | 首页权威文档位置 | 根 `CLAUDE.md` 路由表 | `root-current` |
 | `RULE-SPOTDATA-001` | `CLAUDE.md` 65-72 | 开放日、公告过期、核验与景点详情 | `.claude/rules/data-contracts.md`、`docs/engineering/domain-rules.md` | `extracted` |
 | `RULE-SPOTDATA-002` | `CLAUDE.md` 73-76 | 闭馆跳过展示已删除，云函数字段保留 | `docs/engineering/domain-rules.md` | `extracted` |
 | `RULE-CLOUD-001` | `CLAUDE.md` 77-79 | 集合权限、spot-hub 加载误报 | `docs/engineering/frontend-pitfalls.md`、`docs/engineering/architecture.md` | `extracted` |
-| `RULE-TIER-001` | `CLAUDE.md` 80 | C/S/A 景点分层与可提醒条件 | `docs/engineering/domain-rules.md`、`.claude/rules/data-contracts.md` | `extracted` |
+| `RULE-TIER-001` | `CLAUDE.md` 80 | C/S/A 景点分层、可提醒条件与显式强提醒 | `docs/engineering/domain-rules.md`、`.claude/rules/data-contracts.md` | `extracted` |
 | `RULE-SOURCE-001` | `CLAUDE.md` 82 | 产品/视觉权威文档 | 根 `CLAUDE.md` 的权威来源表 | `root-current` |
 | `RULE-PAGE-001` | `CLAUDE.md` 83 | 页面职责与退役页 | `docs/engineering/architecture.md` | `extracted` |
 | `RULE-ENV-001` | `CLAUDE.md` 84, 148 | mock 开关、cloudEnv、appid 配对 | `.claude/rules/deployment.md` | `extracted` |
@@ -41,6 +42,8 @@
 | `RULE-WXML-001` | `CLAUDE.md` 121 | WXML 选中态与 setData 引用 | `.claude/rules/frontend.md`、`docs/engineering/frontend-pitfalls.md` | `extracted` |
 | `RULE-REMINDERCFG-001` | `CLAUDE.md` 122-127 | 系统权限、订阅额度、PAGE-008 硬闸门 | `docs/engineering/domain-rules.md`、`.claude/rules/frontend.md` | `extracted` |
 | `RULE-REMINDERCFG-002` | `产品文档.md` 3.5 / PAGE-002 | 轻量提醒入口订阅授权补充后继续原动线 | `产品文档.md` `REMINDER-RULE-009`、`docs/engineering/domain-rules.md` | `delegated` |
+| `RULE-MEMBER-001` | `产品文档.md` PAGE-008 / PAGE-014 | 免费 5 个任务位、会员 30 天 10 个、永久加购任务包、仅超额时出现付费 | `产品文档.md`、`docs/engineering/domain-rules.md`、`docs/engineering/membership-payment.md` | `delegated` |
+| `RULE-PAY-001` | `API-契约.md` 会员与支付 | 订单金额服务端决定、支付回调/查单后发放、金额校验与幂等 | `API-契约.md`、`.claude/rules/deployment.md`、`docs/engineering/membership-payment.md` | `delegated` |
 | `RULE-NOTIFYOPS-001` | `CLAUDE.md` 128-137 | 状态收敛、台账自愈、发送链路 | `docs/engineering/reminder-troubleshooting.md`、`.claude/rules/deployment.md` | `delegated` |
 | `RULE-AUTH-001` | `CLAUDE.md` 138-139 | 无感登录、资料编辑与反馈管理 | `docs/engineering/architecture.md` | `extracted` |
 | `RULE-DIFF-001` | `CLAUDE.md` 140-143 | 难度真身、mock/seed 与数据确认 | `.claude/rules/data-contracts.md` | `extracted` |

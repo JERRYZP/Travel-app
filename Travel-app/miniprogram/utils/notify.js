@@ -248,7 +248,9 @@ function ensureSubscribe(needed, templateId) {
   const tpl = templateIdOf(templateId);
   const want = Math.max(1, Number(needed) || 1);
   return getSubscribeQuota(tpl).then(r => {
-    const quota = r.ok ? r.quota : 0;
+    /* 与 confirmReminderAccess 同一口径：待发送提醒已经预定了微信的次数，
+       不能拿台账总数重复承诺给本次提交。 */
+    const quota = r.ok ? r.availableQuota : 0;
     const gap = want - quota;
     if (gap <= 0) {
       return { ok: true, called: false, remembered: false, added: 0, shortfall: 0 };
@@ -278,8 +280,12 @@ function getReminderQuotaNeeded(perTask) {
     .catch(() => taskCount);
 }
 
-/** 订阅授权不足时让用户明确选择：补授权、仅加行程或取消。 */
-function showReminderAccessSheet(alertText, firstLabel) {
+/**
+ * 订阅授权不足时让用户明确选择：补授权、仅加行程或取消。
+ * 已经在行程里的提醒开关没有「仅加行程」语义，用 allowTripOnly:false 去掉该分支。
+ */
+function showReminderAccessSheet(alertText, firstLabel, options) {
+  const allowTripOnly = !options || options.allowTripOnly !== false;
   return new Promise(resolve => {
     if (!wx.showActionSheet) {
       resolve({ choice: 'cancelled', reason: 'action-sheet-unavailable' });
@@ -287,14 +293,32 @@ function showReminderAccessSheet(alertText, firstLabel) {
     }
     wx.showActionSheet({
       alertText,
-      itemList: [firstLabel, '仅加行程·不提醒', '取消'],
+      itemList: allowTripOnly ? [firstLabel, '仅加行程·不提醒', '取消'] : [firstLabel, '取消'],
       success: res => {
         const idx = Number(res && res.tapIndex);
+        if (idx === 0) {
+          resolve({ choice: 'first' });
+          return;
+        }
+        if (allowTripOnly && idx === 1) {
+          resolve({ choice: 'trip-only' });
+          return;
+        }
+        /* 用户明确点了列表里的「取消」。必须和「点遮罩/返回键关掉面板」区分开：
+           前者是一次明确的不授权动作，调用方要给出可见反馈；后者安静关闭即可。 */
+        resolve({ choice: 'cancelled', reason: 'user-cancelled' });
+      },
+      fail: err => {
+        const message = String((err && (err.errMsg || err.message)) || '').toLowerCase();
+        /* 微信在用户点遮罩/返回时也会走 fail，errMsg 通常含 cancel。
+           这类主动关闭不打扰；其他失败（面板被占用、基础库异常）必须让用户知道
+           “不是没反应，是授权选择没打开”。 */
+        const dismissed = message.indexOf('cancel') >= 0;
         resolve({
-          choice: idx === 0 ? 'first' : (idx === 1 ? 'trip-only' : 'cancelled'),
+          choice: 'cancelled',
+          reason: dismissed ? 'sheet-dismissed' : 'action-sheet-failed',
         });
       },
-      fail: () => resolve({ choice: 'cancelled' }),
     });
   });
 }
@@ -306,9 +330,6 @@ function showReminderAccessSheet(alertText, firstLabel) {
  */
 function completeSubscribeShortfall(shortfall, tpl, needed) {
   return requestSubscribeBurst(shortfall, tpl).then(r => {
-    if (r.shortfall <= 0) {
-      return { action: 'ready', needed, shortfall: 0, added: r.added, reason: r.reason };
-    }
     if (r.reason === 'master-switch-off' || r.reason === 'subscription-disabled') {
       return {
         action: 'settings',
@@ -319,14 +340,52 @@ function completeSubscribeShortfall(shortfall, tpl, needed) {
         reason: r.reason,
       };
     }
-    return {
-      action: 'cancelled',
-      needed,
-      shortfall: r.shortfall,
-      added: r.added,
-      reason: r.reason || 'quota-shortfall',
-    };
+    /* 微信授权回调 / 云端 +1 成功都不能单独当作“本次额度已够”：待发送提醒会
+       占用可用额度，写入也可能尚未同步。以重新查询后的可用额度为准，避免
+       “提示补齐成功，实际没有余额”继续落一条注定 43101 的提醒。 */
+    return getSubscribeQuota(tpl).then(q => {
+      const availableQuota = q.ok ? q.availableQuota : 0;
+      const left = Math.max(0, needed - availableQuota);
+      if (left <= 0) {
+        return { action: 'ready', needed, shortfall: 0, availableQuota, added: r.added, reason: r.reason };
+      }
+      return {
+        action: 'cancelled',
+        needed,
+        shortfall: left,
+        availableQuota,
+        added: r.added,
+        reason: r.ok ? 'quota-shortfall' : (r.reason || 'quota-shortfall'),
+      };
+    });
   });
+}
+
+/**
+ * 用户明确取消或授权失败时，给轻量入口统一一句可行动文案。
+ * 用户只是关掉我们自己的选择面板（reason 为空）时返回空字符串，不额外打扰。
+ */
+function reminderAccessCancelText(access) {
+  if (!access || access.action !== 'cancelled') return '';
+  switch (access.reason) {
+    case 'user-cancelled': return '已取消，本次未设置提醒';
+    case 'rejected': return '已取消，本次未设置提醒';
+    case 'quota-shortfall': return '授权还未补齐，本次未设置提醒';
+    case 'banned': return '该模板已被微信限制，本次未设置提醒';
+    case 'template-filtered': return '模板未通过微信校验，本次未设置提醒';
+    case 'account-failed': return '授权未记账，本次未设置提醒';
+    case 'request-failed':
+    case 'action-sheet-unavailable':
+    case 'action-sheet-failed': return '授权未完成，本次未设置提醒';
+    default: return '';
+  }
+}
+
+function showReminderAccessCancelled(access) {
+  const title = reminderAccessCancelText(access);
+  if (!title) return false;
+  wx.showToast({ title, icon: 'none' });
+  return true;
 }
 
 /**
@@ -341,7 +400,7 @@ function completeSubscribeShortfall(shortfall, tpl, needed) {
  *   needed: number, shortfall: number, reason?: string
  * }>
  */
-function confirmReminderAccess(needed, templateId) {
+function confirmReminderAccess(needed, templateId, options) {
   const tpl = templateIdOf(templateId);
   const want = Math.max(0, Number(needed) || 0);
   if (want <= 0) {
@@ -351,7 +410,8 @@ function confirmReminderAccess(needed, templateId) {
   if (!getSystemNotifyOk()) {
     return showReminderAccessSheet(
       '微信通知权限未开启，提醒可能收不到。',
-      '去开启微信通知'
+      '去开启微信通知',
+      options
     ).then(choice => {
       if (choice.choice === 'first') {
         return { action: 'settings', settingsKind: 'system', needed: want, shortfall: 0, reason: 'system-notify-off' };
@@ -364,15 +424,16 @@ function confirmReminderAccess(needed, templateId) {
   }
 
   return getSubscribeQuota(tpl).then(q => {
-    const quota = q.ok ? q.quota : 0;
-    const shortfall = Math.max(0, want - quota);
+    const availableQuota = q.ok ? q.availableQuota : 0;
+    const shortfall = Math.max(0, want - availableQuota);
     if (shortfall <= 0) {
-      return { action: 'ready', needed: want, shortfall: 0 };
+      return { action: 'ready', needed: want, shortfall: 0, availableQuota };
     }
 
     return showReminderAccessSheet(
-      `本次设置提醒需要 ${want} 次微信授权，当前还差 ${shortfall} 次。补齐后会继续完成刚才的提醒。`,
-      '补授权并继续'
+      `本次设置提醒需要 ${want} 次微信授权，当前可用 ${availableQuota} 次，还差 ${shortfall} 次。补齐后会继续完成刚才的提醒。`,
+      '补授权并继续',
+      options
     ).then(choice => {
       if (choice.choice === 'first') {
         return completeSubscribeShortfall(shortfall, tpl, want);
@@ -393,21 +454,30 @@ function confirmReminderAccess(needed, templateId) {
 function getSubscribeQuota(templateId) {
   const tpl = templateIdOf(templateId);
   return api.reminder.subscribe.get(tpl)
-    .then(r => ({
-      ok: true,
-      quota: (r && r.quota) || 0,
-      totalQuota: (r && r.totalQuota) || 0,
-      quotas: (r && r.quotas) || {},
-      templateId: tpl,
-      pendingMessageCount: (r && r.pendingMessageCount) || 0,
-      nearestRemindAt: (r && r.nearestRemindAt) || null,
-      level: (r && r.level) || 'idle',
-      shortfall: (r && r.shortfall) || 0,
-      replenishNeeded: (r && r.replenishNeeded) || 0,
-    }))
+    .then(r => {
+      const quota = Math.max(0, Number(r && r.quota) || 0);
+      const pendingMessageCount = Math.max(0, Number(r && r.pendingMessageCount) || 0);
+      return {
+        ok: true,
+        quota,
+        /* 可用额度必须扣除已排队的待发送提醒：这些消息还没发，但微信侧的次数
+           已经被它们预定。只看 quota 会让用户用同一笔授权再设一条提醒，
+           最后总有一条在发送时 43101「未送达」。 */
+        availableQuota: Math.max(0, quota - pendingMessageCount),
+        totalQuota: (r && r.totalQuota) || 0,
+        quotas: (r && r.quotas) || {},
+        templateId: tpl,
+        pendingMessageCount,
+        nearestRemindAt: (r && r.nearestRemindAt) || null,
+        level: (r && r.level) || 'idle',
+        shortfall: (r && r.shortfall) || 0,
+        replenishNeeded: (r && r.replenishNeeded) || 0,
+      };
+    })
     .catch(() => ({
       ok: false,
       quota: 0,
+      availableQuota: 0,
       totalQuota: 0,
       quotas: {},
       templateId: tpl,
@@ -431,6 +501,7 @@ function getReminderHealth(templateId) {
     permissionState: permission.state,
     quotaOk: quota.ok,
     quota: quota.quota,
+    availableQuota: quota.availableQuota,
     totalQuota: quota.totalQuota,
     quotas: quota.quotas,
     templateId: tpl,
@@ -534,6 +605,8 @@ module.exports = {
   ensureSubscribe,
   getReminderQuotaNeeded,
   confirmReminderAccess,
+  reminderAccessCancelText,
+  showReminderAccessCancelled,
   openReminderAccessSettings,
   getSubscribeQuota,
   getReminderHealth,

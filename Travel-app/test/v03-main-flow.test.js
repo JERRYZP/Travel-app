@@ -141,9 +141,9 @@ console.log('=== 1. 创建行程主流程 ===');
 
 console.log('\n=== 2. 行程清单 ===');
 {
-  eq(/超难约的景点默认开启提醒/.test(CART_WXML), true, '展开后的默认提醒策略可见');
+  eq(/强提醒景点默认开启提醒/.test(CART_WXML), true, '展开后的默认提醒策略可见');
   eq(/cart-tips-title">默认提醒策略</.test(CART_WXML), true, '温馨提示标题改为默认提醒策略');
-  eq(/cart-tips-folded">超难约开启 · 较易约关闭 ·免预约不提醒 · 已开票不提醒</.test(CART_WXML), true,
+  eq(/cart-tips-folded">强提醒开启 · 弱提醒关闭 · 免预约不提醒 · 已开票不提醒</.test(CART_WXML), true,
     '收起态正文去掉重复前缀');
   eq(/已过放票时间的景点不予提醒/.test(CART_WXML), true, '温馨提示包含已过放票时间不提醒规则');
   eq(/tipsExpanded/.test(CART_WXML + CART_JS), true, '温馨提示支持展开与折叠');
@@ -159,7 +159,17 @@ console.log('\n=== 3. 想去景点即时生效 ===');
   eq(/完成并返回/.test(SPOTS_WXML), true, '底部按钮使用即时生效语义');
   eq(/确认选择并返回/.test(SPOTS_WXML), false, '不再使用暂存确认语义');
   eq(/onDone\(\) \{ this\.onBack\(\); \}/.test(SPOTS_JS), true, '顶部返回和底部按钮共用返回逻辑');
-  eq(/已加入行程清单/.test(SPOTS_JS), true, '选择后有即时保存反馈');
+  eq(/已加入行程清单/.test(SPOTS_JS), false, '选择后不再只靠 Toast 反馈');
+  eq(/nextSpots = util\.markSpotsSelected\(spots\.concat\(spot\), nextIds\)/.test(SPOTS_JS), true,
+    '选择后直接把景点写入已选数据');
+  eq(/visibleSpots: this\.filterSpots\(allSpots, this\.data\.keyword\)/.test(SPOTS_JS), true,
+    '选择后同步刷新列表选中态');
+  const selectedAt = SPOTS_WXML.indexOf('selected-section');
+  const searchAt = SPOTS_WXML.indexOf('search-bar');
+  eq(selectedAt >= 0 && searchAt > selectedAt, true, '搜索框位于已选景点模块下方');
+  eq(/wx:for="\{\{visibleSpots\}\}"/.test(SPOTS_WXML), true, '列表渲染全量景点或搜索结果');
+  eq(/换一批|换一换/.test(SPOTS_WXML + SPOTS_JS), false, '移除换一批入口与逻辑');
+  eq(/searchMode/.test(SPOTS_WXML + SPOTS_JS), false, '不再渲染独立搜索态');
   eq(/清空已选景点？/.test(SPOTS_WXML), true, '清空已选需要二次确认');
 }
 
@@ -189,21 +199,28 @@ console.log('\n=== 4. 设置提醒权限与硬闸门 ===');
   eq(/加满提醒授权/.test(SETUP_WXML + SETUP_JS), false, '移除“加满”文案');
   eq(/经过二次开发|限种子用户使用/.test(SETUP_WXML + SETUP_JS), false, '移除内部实现语言');
   eq(/暂不开启提醒|仅加入行程/.test(SETUP_WXML + SETUP_JS), false, '设置提醒页不提供绕过授权的出口');
-  eq(/requestSubscribeBurst\(1\)/.test(SETUP_JS), true,
+  eq(/requestSubscribeBurst\(1(?:,\s*this\.data\.templateId)?\)/.test(SETUP_JS), true,
     'PAGE-008 每次用户点击只申请 1 条授权');
   eq(/confirmReminderAccess/.test(SETUP_JS), false, '提交不再调用带“仅加行程”分支的旧闸门');
-  eq(/还差 \' \+ shortfall \+ \' 次授权，补齐后才能开启提醒/.test(SETUP_JS), true, '额度不足时给出明确硬提示');
+  eq(/当前可用 \' \+ subscribeQuota \+ \' 次，还差 \' \+ shortfall \+ \' 次授权，补齐后才能开启提醒/.test(SETUP_JS), true,
+    '额度不足时给出当前可用与真实缺口的硬提示');
   eq(/view class="submit-btn \{\{canSubmit \? '' : 'disabled'\}\}"/.test(SETUP_WXML), true, '额度不足时主按钮禁用');
   eq(/wx:if="\{\{shortfall > 0 && systemOk\}\}"[\s\S]*?class="auth-note"/.test(SETUP_WXML), true,
     '授权说明只在授权不足且可补齐时展示');
+  eq(/当前可用 \{\{subscribeQuota\}\} 次/.test(SETUP_WXML), true,
+    'PAGE-008 展示当前可用授权，而不是把台账总数误写成已授权');
+  eq(/reservedQuota > 0[\s\S]*?待发送提醒占用/.test(SETUP_WXML), true,
+    '待发送提醒占用额度时给出第二行说明');
+  eq(/wx:if="\{\{authFeedback\}\}" class="auth-feedback/.test(SETUP_WXML), true,
+    '拒绝/占用/成功反馈保留在页面内，不只靠 Toast');
   eq(/种子用户体验/.test(SETUP_WXML + SETUP_JS), false, '移除种子用户体验标题');
   eq(/1、微信通知提醒需要主动授权，1次授权可发送1条提醒/.test(SETUP_WXML), true,
     '第一条说明主动授权用途');
-  eq(/2、微信一次性订阅每次点击最多增加 1 次授权，需要几次请重复点击/.test(SETUP_WXML), true,
+  eq(/2、每次点击最多增加1次授权，需要几次请重复点/.test(SETUP_WXML), true,
     '第二条说明每次点击的真实授权上限');
-  eq(/3、“总是保持以上选择”只会免去后续弹窗，不会让一次点击增加多次授权/.test(SETUP_WXML), true,
-    '第三条说明总是保持不改变单次授权上限');
-  eq(/4、该能力当前限时免费，后续正式版可能付费。/.test(SETUP_WXML), true, '第四条短句说明限时免费');
+  eq(/3、“总是保持以上选择”可免去后续弹窗/.test(SETUP_WXML), true,
+    '第三条说明总是保持只免弹窗');
+  eq(/4、/.test(SETUP_WXML), false, '授权不足说明只保留三条');
   eq(/class="sample-link" bindtap="onOpenSample"/.test(SETUP_WXML), true,
     '查看提醒样式示例保持常驻');
   eq(/offset-hint|建议提前 5 分钟/.test(SETUP_WXML + read('miniprogram/pages/setup/setup.wxss')), false,
@@ -245,11 +262,12 @@ const apiStub = {
   },
   toastError: () => {},
 };
-const health = { systemOk: true, quota: 5 };
+const health = { systemOk: true, quota: 5, availableQuota: 5, pendingMessageCount: 0 };
 const notifyStub = {
   getReminderHealth: () => Promise.resolve(Object.assign({}, health)),
   requestSubscribeBurst: times => {
     health.quota += 1;
+    health.availableQuota = Math.max(0, health.quota - (health.pendingMessageCount || 0));
     return Promise.resolve({ ok: true, added: 1, silent: false, shortfall: Math.max(0, times - 1) });
   },
   hintKeepAlwaysChoice: () => {},
@@ -307,8 +325,51 @@ function instantiate(def) {
   eq(health.quota, 6, '用户主动补齐后额度真实增加');
   eq(page.data.shortfall, 4, '页面实时刷新剩余缺口');
   eq(page.data.canSubmit, false, '仍不足时继续禁用主按钮');
+  eq(page.data.authFeedbackTone, 'ok', '可用额度增加时给出成功态页面反馈');
+
+  /* 2026-10-27 用户反馈：点了补授权只看到 Toast，页面数字不变，像是没生效。
+     一种是拒绝授权；另一种是新增额度恰好被待发送提醒占用。两条都必须留下页面内说明。 */
+  console.log('=== 5.1 拒绝授权必须保留页面反馈 ===');
+  health.quota = 0;
+  health.availableQuota = 0;
+  health.pendingMessageCount = 1;
+  await page.refreshAccessState(4);
+  notifyStub.requestSubscribeBurst = () => Promise.resolve({
+    ok: false, added: 0, silent: false, shortfall: 1, reason: 'rejected',
+  });
+  toasts.length = 0;
+  await page.onFillQuota();
+  eq(page.data.subscribeQuota, 0, '拒绝后可用额度保持 0');
+  eq(/本次未授权，当前可用 0 次，还差 4 次/.test(page.data.authFeedback), true,
+    '拒绝后显示持久的未授权说明，并带上当前缺口');
+  eq(page.data.authFeedbackTone, 'warn', '拒绝反馈使用警示态');
+  eq(toasts[toasts.length - 1], '已取消，本次未增加授权', '拒绝 Toast 仍保留');
+  const rejectedFeedback = page.data.authFeedback;
+  page.onShow();
+  await new Promise(r => setTimeout(r, 20));
+  eq(page.data.authFeedback, rejectedFeedback, 'onShow（如微信授权窗返回）不得清空拒绝反馈');
+
+  console.log('=== 5.2 授权被待发送提醒占用时说明真实原因 ===');
+  health.quota = 0;
+  health.availableQuota = 0;
+  health.pendingMessageCount = 1;
+  await page.refreshAccessState(4);
+  notifyStub.requestSubscribeBurst = () => {
+    health.quota += 1;
+    health.availableQuota = Math.max(0, health.quota - health.pendingMessageCount);
+    return Promise.resolve({ ok: true, added: 1, silent: false, shortfall: 0 });
+  };
+  toasts.length = 0;
+  await page.onFillQuota();
+  eq(page.data.ledgerQuota, 1, '台账确实新增 1 次授权');
+  eq(page.data.subscribeQuota, 0, '可用额度仍为 0（被待发送提醒占用）');
+  eq(page.data.reservedQuota, 1, '页面明确显示 1 次已被占用');
+  eq(/已被 1 条待发送提醒占用/.test(page.data.authFeedback), true, '页面解释为什么数字没有增加');
+  eq(toasts[toasts.length - 1], '授权已增加，但已被待发送提醒占用', 'Toast 不再谎报当前已补齐');
 
   health.quota = 10;
+  health.availableQuota = 10;
+  health.pendingMessageCount = 0;
   await page.refreshAccessState(10);
   eq(page.data.canSubmit, true, '授权满足后启用主按钮');
   modalCalls.length = 0;

@@ -7,6 +7,8 @@
     "pages/spot-rule/spot-rule",
     "pages/setup/setup",
     "pages/profile/profile",
+    "pages/membership/membership",
+    "pages/membership-orders/membership-orders",
     "pages/profile-edit/profile-edit",
     "pages/help-feedback/help-feedback",
     "pages/my-feedback/my-feedback",

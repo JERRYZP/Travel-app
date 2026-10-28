@@ -22,6 +22,7 @@ const task = require('./lib/task');
 const item = require('./lib/item');
 const itemActions = require('./lib/trip-item-actions');
 const recovery = require('./lib/recovery');
+const membership = require('./lib/membership');
 const {
   DEFAULT_SUBSCRIBE_TEMPLATE_ID,
   subscribeQuotaOf,
@@ -104,8 +105,13 @@ exports.main = async (event) => {
         return await cart.remove(db, userId, event.cartId);
       case 'cart.clear':
         return await cart.clear(db, userId, event.tripId || null);
+      case 'cart.pruneScope':
+        // CART-RULE-007：生成时间线成功后，把暂存区收敛到本次日期段 × 景点集合
+        return await cart.pruneScope(db, userId, event);
       case 'cart.list':
-        return await cart.list(db, userId, event.tripId || null);
+        return await cart.list(db, userId, event.tripId || null, {
+          includeMembership: event.includeMembership === true,
+        });
       case 'cart.updateRemindOn':
         return await cart.updateRemindOn(db, userId, event.cartId, event.remindOn === true);
       case 'cart.commit': {
@@ -152,12 +158,28 @@ exports.main = async (event) => {
       }
 
       /* ======== 用户 ======== */
-      case 'user.profile':
-        return await getOrCreateUser(userId);
+      case 'user.profile': {
+        const profile = await getOrCreateUser(userId);
+        const current = await membership.status(db, userId);
+        return ok({
+          user: {
+            ...profile.user,
+            membership: current.membership,
+          },
+        });
+      }
       case 'user.updateProfile':
         return await updateUserProfile(userId, event);
       case 'user.updateNotifyPrefs':
         return await updateNotifyPrefs(userId, event.notifyPrefs || {});
+
+      /* ======== 会员 / 任务位 ======== */
+      case 'membership.status':
+        return await membership.status(db, userId);
+      case 'membership.createOrder':
+        return await membership.createOrder(db, userId, event);
+      case 'membership.orders':
+        return await membership.listOrders(db, userId);
 
       /* ======== 订阅消息额度（一次性订阅） ======== */
       case 'subscribe.add':
@@ -276,9 +298,11 @@ async function homeBootstrap(db, userId, event = {}) {
   console.log('[bootstrap-timing]', JSON.stringify(timing));
 
   const user = (userRes.data || [])[0] || {};
-  const quotaHealth = task.reminderHealthOf(
+  /* 每个模板只能用自己台账里的剩余次数。旧模板任务与新模板任务混在一起时，
+     取最危险的一组给首页预警，避免把 A 模板余额拿去掩盖 B 模板的缺口。 */
+  const quotaHealth = task.worstReminderHealthOf(
     allTasks,
-    subscribeQuotaOf(user, DEFAULT_SUBSCRIBE_TEMPLATE_ID),
+    (templateId) => subscribeQuotaOf(user, templateId),
     nowTs
   );
 
@@ -342,6 +366,7 @@ async function homeBootstrap(db, userId, event = {}) {
        的行程一颗胶囊都不显示——那正是设计稿上要展示的情况。 */
     releasePills: task.buildReleasePills(decorated, nowTs, 2),
     reminderQuotaWarning: task.buildReminderQuotaWarning(quotaHealth, nowTs),
+    membership: membership.snapshotFromTasks(user, allTasks, nowTs),
     /* 「没抢到」之后还能换哪些日期（决策文档 4.3）。
        ⚠️ **必须在这一次响应里给**：页面侧另开一次请求去算候选，会与已经带着
        `result = FAILED` 的这份返回体错序——卡片先按「不可挽回」渲染，挽回线
@@ -386,7 +411,10 @@ async function getOrCreateUser(userId) {
     },
     subscribeQuota: 0,
     memberLevel: V1.MEMBER_LEVEL_DEFAULT, // V1 固定 NORMAL
-    points: 0,                            // V1 固定 0
+    points: 0,
+    taskPackCount: 0,
+    memberSince: null,
+    memberExpiresAt: null,
     createdAt: time.now(),
   };
   const add = await db.collection(COLLECTIONS.USERS).add({ data });
@@ -504,7 +532,7 @@ async function getSubscribe(userId, templateId) {
   const liveTasks = (taskRes.data || []).filter(t => t
     && t.backendStatus === ReminderBackendStatus.WAITING
     && Number.isFinite(new Date(t.releaseAt).getTime()));
-  const health = task.reminderHealthOf(liveTasks, quota, nowTs);
+  const health = task.reminderHealthOf(liveTasks, quota, nowTs, tpl);
   return ok({
     quota,
     totalQuota: totalSubscribeQuota(quotas, u.subscribeQuota),

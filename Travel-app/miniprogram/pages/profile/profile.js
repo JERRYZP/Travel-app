@@ -20,6 +20,11 @@ Page({
     statusBarHeight: 20,
     navBarHeight: 44,
     user: null,
+    isMember: false,
+    memberTagText: '普通用户',
+    memberCardTitle: '会员',
+    memberCardDesc: '开通后 30 天内可用 10 个提醒任务位',
+    memberCardAction: '开通',
     notifyHint: '未开启',
     notifyState: 'none',
     /* 公众号入口文案取自 utils/official-account.js，页面不写死名称 */
@@ -44,11 +49,28 @@ Page({
   /* 无感登录：profile 首次调用即自动建号（自动昵称+默认头像），页面常驻登录态 */
   loadUser() {
     api.reminder.user.profile().then(res => {
-      this.setData({ user: res.user || {} });
+      this.applyUser(res.user || {});
     }).catch(() => {
-      this.setData({
-        user: { nickname: '', avatarUrl: '', memberLevel: 'NORMAL', points: 0 },
-      });
+      this.applyUser({ nickname: '', avatarUrl: '', memberLevel: 'NORMAL', points: 0 });
+    });
+  },
+
+  applyUser(user) {
+    const current = user.membership || {};
+    const expiryMatch = String(current.memberExpiresAtText || '')
+      .match(/^(\d{4})年(\d{1,2})月(\d{1,2})日$/);
+    const expiryDate = expiryMatch
+      ? `${expiryMatch[1]}-${String(expiryMatch[2]).padStart(2, '0')}-${String(expiryMatch[3]).padStart(2, '0')}`
+      : '';
+    this.setData({
+      user,
+      isMember: current.member === true,
+      memberTagText: current.member ? '尊贵会员' : '普通用户',
+      memberCardTitle: current.member ? '尊贵会员' : '非会员',
+      memberCardDesc: current.member
+        ? `${expiryDate || current.memberExpiresAtText || '—'} 到期｜任务位 ${current.taskUsed}/${current.taskLimit}`
+        : '可开启至多 10 个提醒任务位',
+      memberCardAction: current.member ? '升级' : '开通',
     });
   },
 
@@ -67,6 +89,10 @@ Page({
 
   onNotifySettings() {
     wx.navigateTo({ url: '/pages/notify-settings/notify-settings' });
+  },
+
+  onMembership() {
+    wx.navigateTo({ url: '/pages/membership/membership' });
   },
 
   onGuide() {

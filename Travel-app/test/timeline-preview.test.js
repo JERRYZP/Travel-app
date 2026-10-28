@@ -151,6 +151,35 @@ function digest(res) {
     eq(listed.groups[1].dayLabel, '【第2天】', '连续出行日的序号递增');
   }
 
+  console.log('=== 1d. 清单收敛到本次时间线的日期段 × 景点集合 ===');
+  {
+    const db = freshDb();
+    const insideDate = time.addDays(START, 1);
+    const beforeStart = time.addDays(START, -1);
+
+    /* 两条本批次应保留/清理的暂存项 + 一条旧 tripId 链路数据。 */
+    await cart.add(db, USER, { spotId: 'gugong', visitDate: insideDate, remindOn: false });
+    await cart.add(db, USER, { spotId: 'tiantan', visitDate: insideDate, remindOn: false });
+    await cart.add(db, USER, { spotId: 'gugong', visitDate: beforeStart, remindOn: false });
+    await cart.add(db, USER, {
+      tripId: 'legacy-trip', spotId: 'guobo', visitDate: insideDate, remindOn: false,
+    });
+
+    const pruned = await cart.pruneScope(db, USER, {
+      startDate: START, endDate: END, spotIds: ['gugong'],
+    });
+    eq(pruned.success, true, '清理成功');
+    eq(pruned.removed, 2, '移除不在本次景点集合/日期段里的 2 条暂存草稿');
+
+    const pending = await cart.list(db, USER);
+    eq(pending.summary.count, 1, '暂存清单只剩本次范围内的一条');
+    eq(pending.items[0].spotId, 'gugong', '保留的是本次景点');
+    eq(pending.items[0].visitDate, insideDate, '保留的是本次日期段内的出行日');
+
+    const legacy = await cart.list(db, USER, 'legacy-trip');
+    eq(legacy.summary.count, 1, '真实 tripId 下的旧链路清单不受影响');
+  }
+
   console.log('=== 2. 纯预览只读「当前暂存清单」，不读已落库的行程项 ===');
   {
     /* 这条界线是这次改版的关键，两个方向都要钉住：
@@ -360,15 +389,44 @@ function digest(res) {
     }
   }
 
-  console.log('=== 10. 无固定放票规则的景点（环球影城）进 closedSpots ===');
+  console.log('=== 10. 无固定放票规则的景点（环球影城）可加入行程、不可设提醒 ===');
   {
     const db = freshDb();
     const res = await timeline.preview(db, USER, {
       startDate: START, endDate: END, spotIds: ['huanqiu-yingcheng'],
     });
-    eq(res.empty, true, '不可选景点不让预览整体失败');
-    eq(res.closedSpots.length, 1, '进入 closedSpots 并给出说明');
-    eq(res.closedSpots[0].note.indexOf('无固定放票时刻') >= 0, true, '说明文案点明原因');
+    eq(res.success, true, '预览成功');
+    eq(res.empty, false, '环球影城生成可加入行程的候选项');
+    eq(res.events.length, 5, '日期段内每天一个候选项');
+    eq(res.closedSpots.length, 0, '不再被归入「不可选 / 闭馆」');
+    eq(res.events.every(e => e.releaseAt === null), true, '没有固定放票时刻');
+    eq(res.events.every(e => e.releaseState === 'NO_FIXED_RELEASE' && e.releaseStateLabel === '随买随用'), true,
+      '顶部状态为「随买随用」');
+    eq(res.events.every(e => e.button.text === '加入行程' && e.button.enabled === true), true,
+      '按钮为「加入行程」');
+
+    const visitDate = res.events[0].visitDate;
+    const added = await cart.add(db, USER, {
+      spotId: 'huanqiu-yingcheng', visitDate, remindOn: true,
+    });
+    eq(added.success, true, '可以加入清单');
+    eq(added.remindOn, false, '即使请求勾提醒也强制不提醒');
+
+    const listed = await cart.list(db, USER);
+    eq(listed.items[0].noFixedRelease, true, '清单标记为无固定放票时刻');
+    eq(listed.items[0].remindLocked, true, '清单提醒开关锁定');
+    eq(listed.items[0].releaseTimeLabel, '随买随用', '清单显示随买随用');
+    const changed = await cart.updateRemindOn(db, USER, listed.items[0]._id, true);
+    eq(changed.success, false, '直接调用也不能开启提醒');
+
+    const committed = await task.submit(db, USER, {});
+    eq(committed.success, true, '无提醒项直接提交成功');
+    eq(committed.createdItems, 1, '落成 1 个行程项');
+    eq(committed.createdTasks, 0, '不创建提醒任务');
+    eq(committed.toast, '已加入行程 · 1 项', '提交文案如实说明只加了行程');
+    const item = db._dump(COLLECTIONS.TRIP_ITEMS)[0];
+    eq(item.spotId, 'huanqiu-yingcheng', '行程项景点正确');
+    eq(item.remindOn, false, '行程项不设提醒');
   }
 
   console.log('=== 11. 空景点列表 ===');

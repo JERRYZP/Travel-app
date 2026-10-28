@@ -33,6 +33,11 @@ function closedSpotNoteOf(rule) {
   return (rule && rule.openDays && rule.openDays.length > 0) ? '行程期间不可约' : '行程期间闭馆';
 }
 
+/** 规则里是否有可推算的固定放票时刻 */
+function hasReleaseSchedule(rule) {
+  return !!(rule && rule.advanceDays && (rule.releaseTime || (rule.releaseTimes || []).length));
+}
+
 /**
  * TIMELINE-RULE-001 + 005 为单个景点生成事件（交叉积）
  *
@@ -53,6 +58,7 @@ function buildEvents(spot, rule, seg) {
     spotId: spot.spotId,
     spotName: spot.name,
     reservationRequired: spot.reservationRequired !== false,
+    remindable: false,
     weak: tripItem.isWeakSpot(spot),
     officialAppid: spot.officialAppid || '',
     officialPath: spot.officialPath || '',
@@ -74,7 +80,23 @@ function buildEvents(spot, rule, seg) {
     }));
   }
 
-  if (!rule || !rule.advanceDays || (!rule.releaseTime && !(rule.releaseTimes || []).length)) return [];
+  /* 需预约但没有固定放票时刻（如环球影城）：仍为每个出行日生成候选项，
+     让用户能把「确定要去」的景点加入行程；只是不能设提醒。 */
+  if (!hasReleaseSchedule(rule)) {
+    return time.dateRange(seg.startDate, seg.endDate)
+      .filter(visitDate => !rule || time.isOpenOn(rule, time.dayNameOf(visitDate)))
+      .map(visitDate => ({
+        ...base,
+        difficulty: difficultyOf(spot.difficultyScore),
+        visitDate,
+        releaseAt: null,
+        releaseDateStr: '',
+        releaseTimeStr: '随买随用',
+        visitDateLabel: time.formatMonthDayWeek(visitDate),
+        advanceDays: null,
+        remindOnDefault: false,
+      }));
+  }
 
   const events = [];
   for (const visitDate of time.dateRange(seg.startDate, seg.endDate)) {
@@ -85,6 +107,7 @@ function buildEvents(spot, rule, seg) {
     const releaseDate = time.addDays(visitDate, -rule.advanceDays);
     events.push({
       ...base,
+      remindable: true,
       difficulty: difficultyOf(spot.difficultyScore),
       visitDate,
       releaseAt: time.parseBeijing(releaseDate, rule.releaseTime),
@@ -108,8 +131,11 @@ function releaseStateOf(event, nowTs = time.now()) {
   if (!event || event.reservationRequired === false) {
     return { key: 'NO_RESERVATION', label: '无需预约' };
   }
+  if (event.remindable === false || !event.releaseAt) {
+    return { key: 'NO_FIXED_RELEASE', label: '随买随用' };
+  }
   const releaseAt = event.releaseAt instanceof Date ? event.releaseAt : new Date(event.releaseAt);
-  if (!event.releaseAt || Number.isNaN(releaseAt.getTime()) || releaseAt.getTime() > nowTs.getTime()) {
+  if (Number.isNaN(releaseAt.getTime()) || releaseAt.getTime() > nowTs.getTime()) {
     return { key: 'NOT_RELEASED', label: '待开票' };
   }
   return { key: 'RELEASED', label: '已开票' };
@@ -146,15 +172,15 @@ function resolveStatus(event, ctx = {}) {
  *   改成 false，那会把「点开看清单」这条路一起堵死。
  */
 function buttonOf(status, event = {}) {
-  const noReservation = event.reservationRequired === false;
+  const tripOnly = event.reservationRequired === false || event.remindable === false;
   switch (status) {
     case EventSelectStatus.SELECTABLE:
-      return noReservation
+      return tripOnly
         ? { text: '加入行程', enabled: true }
         : { text: '加入清单', enabled: true };
     case EventSelectStatus.IN_CART:
       return {
-        text: noReservation ? '已加入清单' : '已加清单',
+        text: tripOnly ? '已加入清单' : '已加清单',
         enabled: true,
         openCart: true,
       };
@@ -253,7 +279,7 @@ async function preview(db, userId, { startDate, endDate, spotIds = [], segments 
     const rule = ruleMap[spot.spotId];
     const built = buildEvents(spot, rule, seg);
     if (built.length === 0) {
-      if (!rule || !rule.advanceDays || !rule.releaseTime) {
+      if (!hasReleaseSchedule(rule)) {
         closedSpots.push({ spotId: spot.spotId, spotName: spot.name, note: '无固定放票时刻，暂不生成提醒' });
       } else {
         closedSpots.push({ spotId: spot.spotId, spotName: spot.name, note: closedSpotNoteOf(rule) });
@@ -411,7 +437,7 @@ async function generate(db, userId, tripId) {
     const built = buildEvents(spot, rule, seg);
     if (built.length === 0) {
       // 区分两种「无事件」：规则不全（无放票时刻，如环球影城购票型）≠ 段内闭馆
-      if (!rule || !rule.advanceDays || !rule.releaseTime) {
+      if (!hasReleaseSchedule(rule)) {
         closedSpots.push({ spotId: spot.spotId, spotName: spot.name, note: '无固定放票时刻，暂不生成提醒' });
       } else {
         // TIMELINE-RULE-005：段内每天都不可约 → 想去列表该行标注（闭馆 / 仅周末可约但段内不含周末）

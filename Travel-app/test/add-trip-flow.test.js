@@ -107,6 +107,15 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   cards.forEach(c => page.onSpotSelectToggle({ currentTarget: { dataset: { id: c.spotId, spot: c } } }));
   eq(page.data.selectedSpotIds.length, cards.length, '全部选上');
 
+  /* 上一批清单草稿：日期不在本次生成范围内。生成新时间线后必须被收敛掉，
+     否则它会跟着本次清单一起出现在 BottomSheet 并被提交。 */
+  const OLD_DATE = iso(new Date(TODAY.getTime() + 80 * 86400000));
+  const stale = await mock.mockCall('reminder', {
+    action: 'cart.add', spotId: 'tiantan', visitDate: OLD_DATE, remindOn: false,
+  });
+  eq(stale.success, true, '构造上一批暂存草稿');
+  eq((await mock.mockCall('reminder', { action: 'cart.list' })).summary.count, 1, '生成前清单里仍有旧草稿');
+
   console.log('=== 2. 生成（纯预览，不建行程）===');
   logs.length = 0;
   page.onGenerateTimeline();
@@ -114,6 +123,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   eq(page.data.showTimeline, true, '时间线已展示');
   eq(page.data.timelineEvents.length > 0, true, '有事件');
   eq((await mock.mockCall('reminder', { action: 'trip.list' })).trips.length, 0, '⚠️ 纯预览不创建任何行程');
+  eq((await mock.mockCall('reminder', { action: 'cart.list' })).summary.count, 0,
+    '上一批范围外草稿已被清掉，不会带入本次清单');
+  eq(page.data.cartCount, 0, '页面清单条同步归零');
 
   const freeRail = page.decorateEvents([{
     spotId: 'tiantan',
@@ -332,6 +344,40 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     eq(returnTarget.data.selectedSpotIds.join(','), 'gugong', '返回后已选 ID 带回上一页');
     eq((returnTarget.data.hotSpots.find(s => s.spotId === 'gugong') || {}).selected, true,
       '返回后热门网格同步已选状态');
+  }
+
+  console.log('=== 11. 景点页全量列表与输入即时过滤 ===');
+  {
+    const spotsPage = instantiate(spotsPageDef);
+    spotsPage.onLoad({});
+    await wait(200);
+    const total = mock.SPOTS.length;
+    eq(spotsPage.data.allSpots.length, total, '默认加载全部景点');
+    eq(spotsPage.data.visibleSpots.length, total, '无关键词时展示全部景点');
+    eq(spotsPage.data.spotsLoading, false, '景点列表加载结束');
+
+    spotsPage.onSearchInput({ detail: { value: '故宫' } });
+    eq(spotsPage.data.visibleSpots.map(s => s.spotId).join(','), 'gugong', '按名称即时过滤');
+
+    spotsPage.onSearchInput({ detail: { value: '升旗' } });
+    eq(spotsPage.data.visibleSpots.map(s => s.spotId).join(','), 'tiananmen-square',
+      '按别名即时过滤');
+
+    spotsPage.onSearchInput({ detail: { value: '军博' } });
+    eq(spotsPage.data.visibleSpots.map(s => s.spotId).join(','), 'junbo', '按简称即时过滤');
+
+    const target = Object.assign({}, spotsPage.data.visibleSpots[0]);
+    logs.length = 0;
+    spotsPage.onSpotToggle({ currentTarget: { dataset: { id: target.spotId, spot: target } } });
+    eq(spotsPage.data.selectedSpotIds.join(','), 'junbo', '选择后写入已选 ID');
+    eq(spotsPage.data.selectedSpots.map(s => s.spotId).join(','), 'junbo', '已选模块立即拿到数据');
+    eq((spotsPage.data.visibleSpots.find(s => s.spotId === 'junbo') || {}).selected, true,
+      '搜索结果按钮同步为已选');
+    eq(logs.some(line => line.indexOf('已加入行程清单') >= 0), false,
+      '不再用「已加入行程清单」Toast 代替已选模块');
+
+    spotsPage.onClearKeyword();
+    eq(spotsPage.data.visibleSpots.length, total, '清空关键词恢复全部景点');
   }
 
   console.log('\n' + (fail === 0 ? 'ALL PASS' : ('FAIL ' + fail)));

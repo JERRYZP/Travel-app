@@ -2,6 +2,8 @@ const app = getApp();
 const api = require('../../utils/api.js');
 const notify = require('../../utils/notify.js');
 const oa = require('../../utils/official-account.js');
+const membershipEntry = require('../../utils/membership-entry.js');
+const membershipPay = require('../../utils/membership-pay.js');
 
 /** 成功卡片自动返回首页的秒数；倒计时文案同步走弱化提示 */
 const AUTO_BACK_SECONDS = 4;
@@ -20,11 +22,23 @@ Page({
     reminderCount: 0,
     quotaNeeded: 0,
     subscribeQuota: 0,
+    ledgerQuota: 0,
+    reservedQuota: 0,
     shortfall: 0,
+    membership: null,
+    showMembershipGate: false,
+    membershipGateTitle: '',
+    membershipGateDesc: '',
+    membershipGateNote: '',
+    membershipActionText: '',
+    upgradePackageId: '',
     systemOk: false,
     accessReady: false,
     canSubmit: false,
     gateText: '正在检查提醒权限',
+    authFeedback: '',
+    authFeedbackTone: '',
+    templateId: '',
     submitting: false,
     showSampleSheet: false,
     /* 成功态：轻量卡片替代原来的 toast，卡片里只留一行公众号入口 */
@@ -42,26 +56,87 @@ Page({
     this.setData({
       statusBarHeight: g.statusBarHeight,
       navBarHeight: g.navBarHeight,
+      templateId: (notify.SUBSCRIBE_TEMPLATES[0] || {}).templateId || '',
     });
   },
 
   onShow() {
+    /* 授权反馈必须留到下一次用户动作再覆盖。WeChat 授权窗/设置页返回时
+       也可能触发 onShow；在这里清空会让“拒绝授权”只剩一个转瞬即逝的 Toast，
+       页面数字又恰好没变化，用户会以为点击没生效。 */
     this.loadCartAndAccess();
   },
 
   loadCartAndAccess() {
-    return api.reminder.cart.list().then(res => {
+    return api.reminder.cart.list(null, { includeMembership: true }).then(res => {
       const reminderCount = (res && res.summary && res.summary.reminderCount) || 0;
       const quotaNeeded = reminderCount * this.data.offsets.length;
-      this.setData({ reminderCount, quotaNeeded });
+      const gate = this.membershipGateOf(reminderCount, res && res.membership);
+      this.setData({
+        reminderCount,
+        quotaNeeded,
+        membership: (res && res.membership) || null,
+        ...gate,
+      });
       return this.refreshAccessState(quotaNeeded);
     }).catch(() => this.refreshAccessState(this.data.quotaNeeded));
   },
 
+  membershipGateOf(reminderCount, current) {
+    if (!current || reminderCount <= current.taskRemaining) {
+      return {
+        showMembershipGate: false,
+        membershipGateTitle: '',
+        membershipGateDesc: '',
+        membershipGateNote: '',
+        membershipActionText: '',
+        upgradePackageId: '',
+      };
+    }
+
+    const gap = Math.max(0, reminderCount - current.taskRemaining);
+    if (current.member) {
+      return {
+        showMembershipGate: true,
+        membershipGateTitle: `还差 ${gap} 个提醒任务位`,
+        membershipGateDesc: '加购 5 个任务位，永久保留，会员有效期内生效。',
+        membershipGateNote: `会员到期：${current.memberExpiresAtText || '—'}`,
+        membershipActionText: '¥2 加购并继续',
+        upgradePackageId: 'task_pack_5',
+      };
+    }
+
+    /* 会员过期时 ownedTaskPackCount 仍然保留；续费后这些已购任务位会一起恢复，
+       所以判断“开通会员是否足够”时不能只看会员基础的 10 个。 */
+    const memberRemaining = Math.max(
+      0,
+      current.memberTaskSlots
+        + (current.ownedTaskPackCount || 0) * (current.taskPackSize || 5)
+        - current.taskUsed
+    );
+    const memberEnough = reminderCount <= memberRemaining;
+    return {
+      showMembershipGate: true,
+      membershipGateTitle: `还差 ${gap} 个提醒任务位`,
+      membershipGateDesc: memberEnough
+        ? '开通会员后 30 天内可用 10 个任务位。'
+        : `本次需要 ${reminderCount} 个，开通会员后可继续加购任务位。`,
+      membershipGateNote: '¥2 / 30 天，不自动续费',
+      membershipActionText: '¥2 开通并继续',
+      upgradePackageId: 'member',
+    };
+  },
+
   refreshAccessState(needed) {
     const want = typeof needed === 'number' ? needed : this.data.quotaNeeded;
-    return notify.getReminderHealth().then(health => {
-      const subscribeQuota = health.quota || 0;
+    return notify.getReminderHealth(this.data.templateId).then(health => {
+      /* 已排队的提醒还没发送，但它们会消耗微信一次性订阅次数；这里必须用
+         「台账剩余 - 待发送消息数」的可用额度，否则会把同一笔授权重复承诺给新提醒。
+         老版本测试桩/旧接口没有 availableQuota 时回退到 quota，保持兼容。 */
+      const ledgerQuota = Math.max(0, Number(health.quota) || 0);
+      const subscribeQuota = Number.isFinite(health.availableQuota)
+        ? health.availableQuota : (health.quota || 0);
+      const reservedQuota = Math.max(0, ledgerQuota - subscribeQuota);
       const shortfall = Math.max(0, want - subscribeQuota);
       const hasChannel = this.data.channels.officialAccount === true;
       const accessReady = health.systemOk && shortfall === 0 && want > 0;
@@ -69,12 +144,16 @@ Page({
       let gateText = '';
       if (!hasChannel) gateText = '请选择微信通知提醒';
       else if (!health.systemOk) gateText = '请先开启微信通知权限';
-      else if (shortfall > 0) gateText = '还差 ' + shortfall + ' 次授权，补齐后才能开启提醒';
+      else if (shortfall > 0) {
+        gateText = '当前可用 ' + subscribeQuota + ' 次，还差 ' + shortfall + ' 次授权，补齐后才能开启提醒';
+      }
       else if (want === 0) gateText = '当前没有需要提醒的景点';
       this.setData({
         quotaNeeded: want,
         systemOk: health.systemOk,
         subscribeQuota,
+        ledgerQuota,
+        reservedQuota,
         shortfall,
         accessReady,
         canSubmit,
@@ -115,40 +194,127 @@ Page({
       this.onOpenSystem();
       return;
     }
+    if (this._fillingQuota) return;
+    this._fillingQuota = true;
+    const releaseFill = () => { this._fillingQuota = false; };
     wx.showLoading({ title: '正在申请授权...' });
+    const beforeAvailable = Math.max(0, Number(this.data.subscribeQuota) || 0);
+    const beforeLedger = Math.max(0, Number(this.data.ledgerQuota) || 0);
     /* 微信一次性订阅：一次点击最多完成一次授权调用，也就是最多 +1 条。
        “总是保持”只免去后续弹窗，不会让一次点击批量增加同模板额度。 */
-    return notify.requestSubscribeBurst(1).then(res => {
+    return notify.requestSubscribeBurst(1, this.data.templateId).then(res => {
       wx.hideLoading();
       return this.refreshAccessState(this.data.quotaNeeded).then(() => {
-        if (res.ok) {
-          const left = Math.max(0, this.data.shortfall || 0);
+        const available = Math.max(0, Number(this.data.subscribeQuota) || 0);
+        const ledgerGain = Math.max(0, (Number(this.data.ledgerQuota) || 0) - beforeLedger);
+        const availableGain = Math.max(0, available - beforeAvailable);
+        const left = Math.max(0, this.data.shortfall || 0);
+
+        if (res.ok && ledgerGain > 0 && availableGain > 0) {
+          const feedback = left > 0
+            ? '已新增 ' + availableGain + ' 次授权，当前可用 ' + available + ' 次，还差 ' + left + ' 次。'
+            : '授权已补齐，当前可用 ' + available + ' 次。';
+          this.setData({ authFeedback: feedback, authFeedbackTone: 'ok' });
           wx.showToast({
-            title: left > 0 ? ('已补齐 ' + res.added + ' 次，还差 ' + left + ' 次') : '授权已补齐',
+            title: left > 0 ? ('当前可用 ' + available + ' 次，还差 ' + left + ' 次') : '授权已补齐',
             icon: 'none',
           });
           if (!res.silent && !res.remembered) notify.hintKeepAlwaysChoice();
           return;
         }
+
+        /* 授权确实到账，但新增额度被已排队的提醒占用：台账 +1，可用额度不变。
+           这是「界面没变化」最容易让人误以为失败的真实场景，必须把占用说清楚。 */
+        if (res.ok && ledgerGain > 0) {
+          const reserved = Math.max(0, Number(this.data.reservedQuota) || 0);
+          const feedback = reserved > 0
+            ? '已新增 ' + ledgerGain + ' 次授权，但已被 ' + reserved
+              + ' 条待发送提醒占用；当前可用仍为 ' + available + ' 次' + (left > 0 ? '，还差 ' + left + ' 次。' : '。')
+            : '授权已到账，但暂未转化为可用额度，请稍后重试。';
+          this.setData({ authFeedback: feedback, authFeedbackTone: 'warn' });
+          wx.showToast({
+            title: reserved > 0 ? '授权已增加，但已被待发送提醒占用' : '额度暂未同步，请稍后重试',
+            icon: 'none',
+          });
+          return;
+        }
+
+        /* 微信侧已允许，但云端额度没读到增量：不谎报“已补齐”，提示稍后重试。 */
+        if (res.ok) {
+          const feedback = '授权已提交，但额度暂未同步，请稍后再试。';
+          this.setData({ authFeedback: feedback, authFeedbackTone: 'warn' });
+          wx.showToast({ title: '额度暂未同步，请稍后重试', icon: 'none' });
+          return;
+        }
+
+        let feedback = '';
         if (res.reason === 'master-switch-off' || res.reason === 'subscription-disabled') {
+          feedback = '订阅授权仍未开启，请到微信授权设置中改为允许后再试。';
           notify.guideOpenSubscribeSetting(res.reason);
         } else if (res.reason === 'rejected') {
+          feedback = '本次未授权，当前可用 ' + available + ' 次'
+            + (left > 0 ? '，还差 ' + left + ' 次。' : '。');
           wx.showToast({ title: '已取消，本次未增加授权', icon: 'none' });
         } else if (res.reason === 'banned') {
+          feedback = '该模板已被微信限制，暂时无法补齐授权。';
           wx.showToast({ title: '该模板已被微信限制，暂无法补齐', icon: 'none' });
+        } else if (res.reason === 'template-filtered') {
+          feedback = '模板未通过微信校验，请稍后再试。';
+          wx.showToast({ title: '模板未通过微信校验，请稍后再试', icon: 'none' });
         } else {
+          feedback = '授权未完成，请重试。';
           console.warn('[setup] fill quota failed', res);
           wx.showToast({ title: '授权未完成，请重试', icon: 'none' });
         }
+        this.setData({ authFeedback: feedback, authFeedbackTone: 'warn' });
       });
+    }).then(result => {
+      releaseFill();
+      return result;
     }).catch(() => {
+      releaseFill();
       wx.hideLoading();
+      this.setData({ authFeedback: '授权未完成，请重试。', authFeedbackTone: 'warn' });
       wx.showToast({ title: '授权未完成，请重试', icon: 'none' });
     });
   },
 
   onOpenSample() { this.setData({ showSampleSheet: true }); },
   onCloseSample() { this.setData({ showSampleSheet: false }); },
+
+  onUpgradeAndContinue() {
+    if (this._upgrading || this.data.submitting) return;
+    const packageId = this.data.upgradePackageId;
+    if (!packageId) return;
+    this._upgrading = true;
+    wx.showLoading({ title: '正在准备支付...' });
+    membershipPay.purchase(packageId).then(result => {
+      wx.hideLoading();
+      this._upgrading = false;
+      if (result && result.pending) {
+        wx.showToast({ title: '支付结果确认中，请稍后重试', icon: 'none' });
+        return null;
+      }
+      wx.showToast({ title: '会员权益已生效', icon: 'none' });
+      return this.loadCartAndAccess().then(() => {
+        setTimeout(() => {
+          if (this.data.showMembershipGate) {
+            wx.showToast({ title: '还需加购任务位', icon: 'none' });
+            return;
+          }
+          this.onSubmit();
+        }, 80);
+      });
+    }).catch(err => {
+      wx.hideLoading();
+      this._upgrading = false;
+      if (err && err.cancelled) {
+        wx.showToast({ title: '已取消支付', icon: 'none' });
+        return;
+      }
+      api.toastError(err);
+    });
+  },
 
   onSubmit() {
     const { channels, offsets } = this.data;
@@ -229,6 +395,7 @@ Page({
     }).catch(err => {
       wx.hideLoading();
       this.setData({ submitting: false });
+      if (membershipEntry.openTaskLimit(err)) return;
       api.toastError(err);
     });
   },
