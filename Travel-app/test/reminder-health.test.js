@@ -40,7 +40,26 @@ eq(partiallySent.nearestRemindAt.getTime(), hoursLater(24).getTime() - 2 * 60000
 const expired = task.reminderHealthOf([taskAt(hoursLater(-1), [5, 2])], 0, NOW);
 eq(expired.pendingMessageCount, 0, '过期 WAITING 不进入额度需求');
 
-console.log('\n=== 3. 首页只提示 48 小时内的真实缺口 ===');
+console.log('\n=== 2.1 不同模板的待发送数不能互相占用额度 ===');
+const TPL_A = 'template-a';
+const TPL_B = 'template-b';
+const mixedTemplates = [
+  { ...taskAt(hoursLater(24), [5]), templateId: TPL_A },
+  { ...taskAt(hoursLater(24), [5, 2]), templateId: TPL_B },
+];
+const onlyA = task.reminderHealthOf(mixedTemplates, 1, NOW, TPL_A);
+eq(onlyA.pendingMessageCount, 1, '按模板过滤后只统计本模板待发送数');
+eq(onlyA.level, 'low', 'A 模板自己的 1 次额度刚好覆盖 1 条任务');
+const worst = task.worstReminderHealthOf(
+  mixedTemplates,
+  tpl => (tpl === TPL_A ? 1 : 0),
+  NOW
+);
+eq(worst.templateId, TPL_B, '首页预警选择真实缺口所在的模板');
+eq(worst.level, 'exhausted', 'B 模板 0 次授权、2 条待发送 → exhausted');
+eq(worst.shortfall, 2, '跨模板汇总不会拿 A 的余额填 B 的缺口');
+
+console.log('\n=== 3. 首页提示真实缺口；仅 low 受 48 小时窗口限制 ===');
 const soonWarning = task.buildReminderQuotaWarning(
   task.reminderHealthOf([taskAt(hoursLater(24), [5])], 0, NOW),
   NOW
@@ -51,13 +70,34 @@ const farWarning = task.buildReminderQuotaWarning(
   task.reminderHealthOf([taskAt(hoursLater(72), [5])], 0, NOW),
   NOW
 );
-eq(farWarning, null, '72 小时后 → 首页不提前告警');
+eq(farWarning && farWarning.level, 'exhausted', '真实缺口不受 48 小时限制：72 小时后仍提示');
+eq(/未来提醒可能收不到/.test(farWarning.text), true, '远期真实缺口仍明确说明可能收不到');
+const farShortWarning = task.buildReminderQuotaWarning(
+  task.reminderHealthOf([taskAt(hoursLater(72), [5, 2])], 1, NOW),
+  NOW
+);
+eq(farShortWarning && farShortWarning.level, 'short', '授权少于待发送数时不受 48 小时限制');
 const lowWarning = task.buildReminderQuotaWarning(
   task.reminderHealthOf([taskAt(hoursLater(12), [5])], 1, NOW),
   NOW
 );
 eq(lowWarning.level, 'low', '刚好够但无缓冲 → low');
 eq(/建议续收 1 次/.test(lowWarning.text), true, 'low 文案给出明确动作');
+const farLowWarning = task.buildReminderQuotaWarning(
+  task.reminderHealthOf([taskAt(hoursLater(72), [5])], 1, NOW),
+  NOW
+);
+eq(farLowWarning, null, '仅缺缓冲的 low 仍限制在 48 小时窗口，避免远期焦虑');
+
+console.log('\n=== 4. 临近放票横幅只覆盖 1 小时窗口 ===');
+const decoratedBanner = releaseAt => [{
+  itemId: 'I1', spotId: 'gugong', spotName: '故宫博物院',
+  visitDate: '2026-10-02', releaseAt,
+}];
+eq(Boolean(task.buildReleaseBanner(decoratedBanner(new Date(NOW.getTime() + 59 * 60000)), NOW)), true,
+  '距放票 59 分钟 → 显示横幅');
+eq(task.buildReleaseBanner(decoratedBanner(new Date(NOW.getTime() + 61 * 60000)), NOW), null,
+  '距放票 61 分钟 → 不显示横幅（1 小时窗口边界）');
 
 console.log('\n' + (fail === 0 ? 'ALL PASS' : ('FAIL ' + fail)));
 process.exit(fail === 0 ? 0 : 1);

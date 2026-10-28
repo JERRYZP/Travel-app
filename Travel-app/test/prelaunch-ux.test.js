@@ -28,8 +28,16 @@ const apiStub = {
       list: () => Promise.resolve({ success: true, summary: { reminderCount: 3 } }),
     },
     subscribe: {
-      add: () => Promise.resolve({ success: true }),
-      get: () => Promise.resolve({ success: true, quota: wxState.quota, totalQuota: wxState.quota }),
+      add: () => {
+        /* 镜像云端 subscribe.add 的真实效果；个别用例会关掉它，
+           模拟“微信已允许、云端接口也返回成功，但可读台账没有增量”。 */
+        if (apiStub.applyAdd) wxState.quota += 1;
+        return Promise.resolve({ success: true });
+      },
+      get: () => Promise.resolve({
+        success: true, quota: wxState.quota, totalQuota: wxState.quota,
+        pendingMessageCount: wxState.pendingMessageCount,
+      }),
     },
   },
 };
@@ -37,13 +45,17 @@ const apiStub = {
 const wxState = {
   system: 'authorized',
   quota: 0,
+  pendingMessageCount: 0,
   remembered: null,
   subscribeValue: 'accept',
   subscribeCalls: 0,
   actionIndex: 0,
+  actionFail: null,
   actionCalls: [],
   storage: {},
 };
+
+apiStub.applyAdd = true;
 
 global.wx = {
   getAppAuthorizeSetting: () => ({
@@ -65,7 +77,8 @@ global.wx = {
   },
   showActionSheet(opts) {
     wxState.actionCalls.push(opts);
-    opts.success({ tapIndex: wxState.actionIndex });
+    if (wxState.actionFail) opts.fail(wxState.actionFail);
+    else opts.success({ tapIndex: wxState.actionIndex });
   },
   openSetting() {},
   openAppAuthorizeSetting() {},
@@ -87,9 +100,11 @@ Module._load = origLoad;
 function resetWx(patch = {}) {
   wxState.system = patch.system || 'authorized';
   wxState.quota = Number.isFinite(patch.quota) ? patch.quota : 3;
+  wxState.pendingMessageCount = Number.isFinite(patch.pendingMessageCount) ? patch.pendingMessageCount : 0;
   wxState.remembered = patch.remembered || null;
   wxState.subscribeCalls = 0;
   wxState.actionIndex = Number.isFinite(patch.actionIndex) ? patch.actionIndex : 0;
+  wxState.actionFail = patch.actionFail || null;
   wxState.actionCalls = [];
 }
 
@@ -124,12 +139,35 @@ function resetWx(patch = {}) {
   eq(access.shortfall, 2, '仅加行程时返回用户未补授权前的真实缺口');
   eq(wxState.actionCalls[0].itemList[1], '仅加行程·不提醒', '选择面板有仅加行程入口');
 
+  /* 2026-10-27 回归：台账里还有 1 次授权，但它已经被 1 条待发送提醒占用。
+     可用额度是 0，不能再把同一笔授权承诺给新提醒，否则总有一条发送时 43125/43101。 */
+  resetWx({ system: 'authorized', quota: 1, pendingMessageCount: 1, actionIndex: 2 });
+  access = await notify.confirmReminderAccess(1);
+  eq(access.action, 'cancelled', '可用额度为 0 时必须先提示，不能直接 ready');
+  eq(access.shortfall, 1, '待发送提醒占满额度时，新提醒缺口为 1');
+  eq(wxState.actionCalls.length, 1, '可用额度为 0 时弹出补齐/取消选择面板');
+  eq(/当前可用 0 次/.test(wxState.actionCalls[0].alertText), true, '弹窗明确显示当前可用 0 次');
+  eq(wxState.subscribeCalls, 0, '用户取消时不得发起微信授权');
+
   resetWx({ system: 'authorized', quota: 0, actionIndex: 0 });
   access = await notify.confirmReminderAccess(1);
   eq(wxState.subscribeCalls, 1, '用户点“补授权并继续”后才发起微信授权');
   eq(access.action, 'ready', '补授权成功后原地继续本次提醒');
   eq(access.shortfall, 0, '补授权成功后缺口清零');
   eq(wxState.actionCalls[0].itemList[0], '补授权并继续', '选择面板首项明确说明会继续原流程');
+
+  resetWx({ system: 'authorized', quota: 0, actionIndex: 0 });
+  apiStub.applyAdd = false;
+  access = await notify.confirmReminderAccess(1);
+  eq(access.action, 'cancelled', '云端回调成功但可用额度没增加时，不得假装补齐');
+  eq(access.reason, 'quota-shortfall', '额度未同步按真实缺口处理');
+  eq(access.shortfall, 1, '额度未同步时仍上报 1 条缺口');
+  apiStub.applyAdd = true;
+
+  resetWx({ system: 'authorized', quota: 1, pendingMessageCount: 1, actionIndex: 1 });
+  access = await notify.confirmReminderAccess(1, undefined, { allowTripOnly: false });
+  eq(access.action, 'cancelled', '行程内开启提醒不提供“仅加行程”假分支');
+  eq(wxState.actionCalls[0].itemList.join('|'), '补授权并继续|取消', '仅保留补授权与取消两项');
 
   resetWx({ system: 'authorized', quota: 0, actionIndex: 0 });
   access = await notify.confirmReminderAccess(2);
@@ -145,6 +183,18 @@ function resetWx(patch = {}) {
   resetWx({ system: 'denied', actionIndex: 2 });
   access = await notify.confirmReminderAccess(1);
   eq(access.action, 'cancelled', '用户可取消且不提交');
+  eq(access.reason, 'user-cancelled', '明确点「取消」要带回可见反馈原因');
+
+  /* 主动点遮罩/返回键关闭面板：安静关闭，不追加 Toast。 */
+  resetWx({ system: 'denied', actionFail: { errMsg: 'showActionSheet:fail cancel' } });
+  access = await notify.confirmReminderAccess(1);
+  eq(access.action, 'cancelled', '用户关闭授权选择面板时仍中止提交');
+  eq(access.reason, 'sheet-dismissed', '遮罩关闭不制造额外打扰');
+
+  /* 面板本身打不开：不能表现成“点了没反应”。 */
+  resetWx({ system: 'denied', actionFail: { errMsg: 'showActionSheet:fail system error' } });
+  access = await notify.confirmReminderAccess(1);
+  eq(access.reason, 'action-sheet-failed', '面板异常要带回可提示原因');
 
   console.log('\n=== 3. 三条设置提醒路径共用闸门 ===');
   const setupSrc = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/setup/setup.js'), 'utf8');
@@ -153,7 +203,7 @@ function resetWx(patch = {}) {
   const reminderFlowSrc = fs.readFileSync(path.join(ROOT, 'miniprogram/utils/reminder-flow.js'), 'utf8');
   eq(/reminderCount \* this\.data\.offsets\.length/.test(setupSrc), true, 'setup 按提醒条数和提前量计算额度');
   eq(/getReminderHealth/.test(setupSrc), true, 'setup 使用统一授权健康状态');
-  eq(/requestSubscribeBurst\(1\)/.test(setupSrc), true,
+  eq(/requestSubscribeBurst\(1(?:,\s*this\.data\.templateId)?\)/.test(setupSrc), true,
     'setup 每次用户点击只申请 1 条授权');
   eq(/confirmReminderAccess/.test(setupSrc), false, 'setup 不再提供仅加行程旁路');
   eq(/confirmReminderAccess\(1\)/.test(homeSrc), true, '挽回路径只按本次 1 条提醒校验授权');

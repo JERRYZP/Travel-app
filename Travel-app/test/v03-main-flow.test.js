@@ -189,21 +189,28 @@ console.log('\n=== 4. 设置提醒权限与硬闸门 ===');
   eq(/加满提醒授权/.test(SETUP_WXML + SETUP_JS), false, '移除“加满”文案');
   eq(/经过二次开发|限种子用户使用/.test(SETUP_WXML + SETUP_JS), false, '移除内部实现语言');
   eq(/暂不开启提醒|仅加入行程/.test(SETUP_WXML + SETUP_JS), false, '设置提醒页不提供绕过授权的出口');
-  eq(/requestSubscribeBurst\(1\)/.test(SETUP_JS), true,
+  eq(/requestSubscribeBurst\(1(?:,\s*this\.data\.templateId)?\)/.test(SETUP_JS), true,
     'PAGE-008 每次用户点击只申请 1 条授权');
   eq(/confirmReminderAccess/.test(SETUP_JS), false, '提交不再调用带“仅加行程”分支的旧闸门');
-  eq(/还差 \' \+ shortfall \+ \' 次授权，补齐后才能开启提醒/.test(SETUP_JS), true, '额度不足时给出明确硬提示');
+  eq(/当前可用 \' \+ subscribeQuota \+ \' 次，还差 \' \+ shortfall \+ \' 次授权，补齐后才能开启提醒/.test(SETUP_JS), true,
+    '额度不足时给出当前可用与真实缺口的硬提示');
   eq(/view class="submit-btn \{\{canSubmit \? '' : 'disabled'\}\}"/.test(SETUP_WXML), true, '额度不足时主按钮禁用');
   eq(/wx:if="\{\{shortfall > 0 && systemOk\}\}"[\s\S]*?class="auth-note"/.test(SETUP_WXML), true,
     '授权说明只在授权不足且可补齐时展示');
+  eq(/当前可用 \{\{subscribeQuota\}\} 次/.test(SETUP_WXML), true,
+    'PAGE-008 展示当前可用授权，而不是把台账总数误写成已授权');
+  eq(/reservedQuota > 0[\s\S]*?待发送提醒占用/.test(SETUP_WXML), true,
+    '待发送提醒占用额度时给出第二行说明');
+  eq(/wx:if="\{\{authFeedback\}\}" class="auth-feedback/.test(SETUP_WXML), true,
+    '拒绝/占用/成功反馈保留在页面内，不只靠 Toast');
   eq(/种子用户体验/.test(SETUP_WXML + SETUP_JS), false, '移除种子用户体验标题');
   eq(/1、微信通知提醒需要主动授权，1次授权可发送1条提醒/.test(SETUP_WXML), true,
     '第一条说明主动授权用途');
-  eq(/2、微信一次性订阅每次点击最多增加 1 次授权，需要几次请重复点击/.test(SETUP_WXML), true,
+  eq(/2、每次点击最多增加1次授权，需要几次请重复点/.test(SETUP_WXML), true,
     '第二条说明每次点击的真实授权上限');
-  eq(/3、“总是保持以上选择”只会免去后续弹窗，不会让一次点击增加多次授权/.test(SETUP_WXML), true,
-    '第三条说明总是保持不改变单次授权上限');
-  eq(/4、该能力当前限时免费，后续正式版可能付费。/.test(SETUP_WXML), true, '第四条短句说明限时免费');
+  eq(/3、“总是保持以上选择”可免去后续弹窗/.test(SETUP_WXML), true,
+    '第三条说明总是保持只免弹窗');
+  eq(/4、/.test(SETUP_WXML), false, '授权不足说明只保留三条');
   eq(/class="sample-link" bindtap="onOpenSample"/.test(SETUP_WXML), true,
     '查看提醒样式示例保持常驻');
   eq(/offset-hint|建议提前 5 分钟/.test(SETUP_WXML + read('miniprogram/pages/setup/setup.wxss')), false,

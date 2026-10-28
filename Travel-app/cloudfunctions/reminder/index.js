@@ -276,9 +276,11 @@ async function homeBootstrap(db, userId, event = {}) {
   console.log('[bootstrap-timing]', JSON.stringify(timing));
 
   const user = (userRes.data || [])[0] || {};
-  const quotaHealth = task.reminderHealthOf(
+  /* 每个模板只能用自己台账里的剩余次数。旧模板任务与新模板任务混在一起时，
+     取最危险的一组给首页预警，避免把 A 模板余额拿去掩盖 B 模板的缺口。 */
+  const quotaHealth = task.worstReminderHealthOf(
     allTasks,
-    subscribeQuotaOf(user, DEFAULT_SUBSCRIBE_TEMPLATE_ID),
+    (templateId) => subscribeQuotaOf(user, templateId),
     nowTs
   );
 
@@ -504,7 +506,7 @@ async function getSubscribe(userId, templateId) {
   const liveTasks = (taskRes.data || []).filter(t => t
     && t.backendStatus === ReminderBackendStatus.WAITING
     && Number.isFinite(new Date(t.releaseAt).getTime()));
-  const health = task.reminderHealthOf(liveTasks, quota, nowTs);
+  const health = task.reminderHealthOf(liveTasks, quota, nowTs, tpl);
   return ok({
     quota,
     totalQuota: totalSubscribeQuota(quotas, u.subscribeQuota),

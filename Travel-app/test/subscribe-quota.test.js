@@ -316,6 +316,14 @@ async function frontendGapFill() {
   r = await withInstantTimers(() => notify.requestSubscribeBurst(1, TPL));
   eq(r.reason, 'master-switch-off', '20004 → 总开关关闭，需引导去设置页');
 
+  console.log('\n=== 2.1 取消/拒绝授权统一反馈 ===');
+  eq(notify.reminderAccessCancelText({ action: 'cancelled', reason: 'user-cancelled' }), '已取消，本次未设置提醒');
+  eq(notify.reminderAccessCancelText({ action: 'cancelled', reason: 'rejected' }), '已取消，本次未设置提醒');
+  eq(notify.reminderAccessCancelText({ action: 'cancelled', reason: 'quota-shortfall' }), '授权还未补齐，本次未设置提醒');
+  eq(notify.reminderAccessCancelText({ action: 'cancelled', reason: 'request-failed' }), '授权未完成，本次未设置提醒');
+  eq(notify.reminderAccessCancelText({ action: 'cancelled', reason: 'action-sheet-failed' }), '授权未完成，本次未设置提醒');
+  eq(notify.reminderAccessCancelText({ action: 'cancelled' }), '', '用户主动关掉选择面板不追加 Toast');
+
   console.log('\n=== 3. ensureSubscribe：额度够就不调用，不够才按缺口补 ===');
 
   // 额度足够 → 既不弹也不调用
@@ -393,8 +401,10 @@ function crossCheck() {
     path.join(__dirname, '..', 'miniprogram', 'utils', 'notify.js'), 'utf8');
   eq(/reminderCount \* this\.data\.offsets\.length/.test(setupSrc), true, 'setup 按清单提醒数与提前量数算需求量');
   eq(/count \* taskCount/.test(notifySrc), true, '需求量 = 项数 × 提前量数');
-  eq(/requestSubscribeBurst\(1\)/.test(setupSrc), true,
+  eq(/requestSubscribeBurst\(1(?:,\s*this\.data\.templateId)?\)/.test(setupSrc), true,
     'setup 每次用户点击只申请 1 条授权');
+  eq(/_fillingQuota/.test(setupSrc), true, 'setup 补授权有防连点锁');
+  eq(/showReminderAccessCancelled/.test(notifySrc), true, '轻量入口共用取消/拒绝反馈');
 
   const mockSrc = require('fs').readFileSync(
     path.join(__dirname, '..', 'miniprogram', 'utils', 'mock.js'), 'utf8');
@@ -411,6 +421,7 @@ function crossCheck() {
   eq(/可提醒 \$\{q\.quota\}|quotaLabel: hasQuota \? `可提醒/.test(settingsSrc), false, '标签不再出现「可提醒 N 次」');
   eq(/hintKeepAlwaysChoice/.test(settingsSrc), true, '续收成功后接上「总是保持」引导');
   eq(/未弹窗/.test(settingsSrc), false, '成功提示不暴露「未弹窗」等实现细节');
+  eq(/authFeedback/.test(settingsSrc), true, '提醒设置页拒绝授权后保留页面内反馈');
 
   const profileSrc = require('fs').readFileSync(
     path.join(__dirname, '..', 'miniprogram', 'pages', 'profile', 'profile.js'), 'utf8');

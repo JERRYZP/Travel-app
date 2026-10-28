@@ -1,6 +1,7 @@
 # Travel-app 前端接口契约 V1.3
 
 > 面向：前端（微信小程序页面开发）
+> 2026-10-28 更新：设置新提醒前必须使用可用授权 `quota - pendingMessageCount`；待发送数按任务实际模板统计，不同模板不能互相补缺口。授权页面需同时展示台账额度、待发送占用和当前可用额度。
 > 更新：2026-09-29 明确微信一次性订阅每次用户点击最多增加 1 条额度，禁止异步连发伪装批量授权。2026-09-25 `cart.commit` 新增 `cartId`（补录只提交本次项）与 `disableReminders`（仅加行程不提醒）；此前 2026-09-16 首页行程化 V2 契约定稿，新增 `trip_items`、`tripItem.*`、`cart.commit` 与新版 `home.bootstrap`；旧第 2.0 / 2.1 / 2.3 / 2.4 中面向“提醒任务列表 / 双 Tab 首页”的接口在 V2 实现时由第 8 节取代。此前 2026-08-26 spots `remindable` / `weak`、2026-08-19 feedback 管理端、2026-08-14 日历通道下线等变更继续有效。
 > 调用方式：`wx.cloud.callFunction({ name: '<函数名>', data: { action: '<域>.<动作>', ...params } })`
 
@@ -889,6 +890,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```
 
 > 未授权/未落库时 quota 为 0，发送侧仍会尝试（微信侧按真实授权校验，返回 43101 即表示无额度/未订阅）。
+> 客户端判断新提醒能否设置时使用 `availableQuota = max(0, quota - pendingMessageCount)`；`quota` 是台账剩余总量，不是可再次分配的数量。
 
 ---
 
@@ -1214,7 +1216,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
     releaseAt, spotName, visitDate, itemId, countdownText
   } | null,
   releasePills: [/* 摘要卡底部「即将提醒」胶囊，按放票时刻合并 */],
-  reminderQuotaWarning: {         // 仅 48 小时内有提醒且授权 low/short/exhausted 时返回
+  reminderQuotaWarning: {         // short/exhausted 真实缺口立即返回；low 仍受 48 小时窗口限制
     level, pendingMessageCount, remainingQuota, shortfall, replenishNeeded,
     nearestRemindAt, text
   } | null,

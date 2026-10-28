@@ -20,10 +20,12 @@ const fs = require('fs');
 const path = require('path');
 
 const JS = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/home/home.js'), 'utf8');
+const API_JS = fs.readFileSync(path.join(__dirname, '../miniprogram/utils/api.js'), 'utf8');
 
 /** 剥掉注释再断言 —— 否则解释性注释里的 `ttlFresh` 等词会把断言喂成误报。 */
 const codeOf = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 const code = codeOf(JS);
+const apiCode = codeOf(API_JS);
 
 let fail = 0;
 const eq = (a, b, m) => {
@@ -45,8 +47,8 @@ eq(/loadHome\(opts\) \{\s*const silent = opts && opts\.silent;/.test(code), true
 console.log('=== 2. 前置条件缺一不可，窗口按上次数据算出的长度 ===');
 eq(/const ttl = this\._bootTtlMs > 0 \? this\._bootTtlMs : HOME_BOOTSTRAP_TTL_MS;/.test(code), true,
   '窗口 = 上次数据算出的 _bootTtlMs，缺失时兜底');
-eq(/const ttlFresh = Boolean\(opts && opts\.allowTtlReuse\)\s*&& this\._lastBootOkAt > 0\s*&& \(Date\.now\(\) - this\._lastBootOkAt\) < ttl;/.test(code),
-  true, 'ttlFresh = 显式允许 && 曾经成功过 && 未超出自适应窗口');
+eq(/const ttlFresh = Boolean\(opts && opts\.allowTtlReuse\)\s*&& this\._lastBootOkAt > 0\s*&& \(Date\.now\(\) - this\._lastBootOkAt\) < ttl\s*&& \(this\._bootDataVersion \|\| 0\) >= homeDataVersion;/.test(code),
+  true, 'ttlFresh = 显式允许 && 曾经成功过 && 未超出自适应窗口 && 没有更新的写操作');
 eq(/loadHome\(\(\{ allowTtlReuse/.test(code) || /allowTtlReuse: true/.test(code), true,
   'allowTtlReuse 只有 onShow 一处传（其余调用不带）');
 eq((code.match(/allowTtlReuse/g) || []).length, 2, 'allowTtlReuse 只出现在声明与 onShow 两处');
@@ -62,6 +64,18 @@ eq((code.match(/_bootTtlMs = refreshWindow\.ttlOf\(/g) || []).length, 1, '只算
 }
 eq(/refreshWindow\.ttlOf\(patch, this\._lastBootOkAt\)/.test(code), true,
   '算窗口读的是本次 buildHomeData 的产物，页面不另外推导');
+eq(/this\._bootDataVersion = homeDataVersion;/.test(code), true,
+  '成功回调记下本次请求发出时的首页数据版本');
+
+console.log('=== 2c. 写操作递增首页数据版本 ===');
+eq(/homeDataVersion = \(Number\(app\.globalData\.homeDataVersion\) \|\| 0\) \+ 1;/.test(apiCode), true,
+  'api.js 的写操作统一递增 homeDataVersion');
+eq(/commit: \(p\) => homeMutationCall\(/.test(apiCode), true,
+  'cart.commit 成功后让首页缓存失效');
+eq(/updateReminder: \(p\) => homeMutationCall\(/.test(apiCode), true,
+  '行程项提醒开关成功后让首页缓存失效');
+eq(/add: \(templateId\) => homeMutationCall\(/.test(apiCode), true,
+  '补授权成功后让首页缓存失效（额度预警应及时消失）');
 
 console.log('=== 3. ⚠️ 早退必须在「非 silent 且有缓存」的分支内 ===');
 {
@@ -84,6 +98,8 @@ console.log('=== 5. 时刻只在成功回调里写一次 ===');
 eq((code.match(/_lastBootOkAt = Date\.now\(\)/g) || []).length, 1, '_lastBootOkAt 只赋值一次');
 eq(code.indexOf('_lastBootOkAt = Date.now()') > code.indexOf('api.reminder.home.bootstrap('),
   true, '写在 bootstrap 的成功回调内（失败不刷新窗口）');
+eq(code.indexOf('this._bootDataVersion = homeDataVersion') > code.indexOf('api.reminder.home.bootstrap('),
+  true, '版本号也只在成功回调里写入');
 
 if (fail) { console.log(`\n${fail} 项失败`); process.exit(1); }
 console.log('\nhome-bootstrap-ttl.test.js 全部通过');

@@ -22,6 +22,29 @@ function call(name, data) {
   });
 }
 
+/**
+ * 写操作完成后标记首页数据版本，供 `onShow` 绕过自适应复用窗口。
+ *
+ * 典型断点：用户在景点页设完提醒后立刻回首页，首页仍处在 180 秒复用窗口内，
+ * 于是继续回放旧缓存 —— 新提醒对应的额度预警/放票横幅要等窗口过期才出现。
+ * 这里只递增版本号，不碰任何业务状态；首页读取版本后决定是否必须重新 bootstrap。
+ */
+function markHomeDataDirty() {
+  try {
+    const app = getApp();
+    if (!app || !app.globalData) return;
+    app.globalData.homeDataVersion = (Number(app.globalData.homeDataVersion) || 0) + 1;
+  } catch (e) {}
+}
+
+/** 会改变首页行程/提醒/授权的写调用：成功后统一让首页缓存失效。 */
+function homeMutationCall(name, data) {
+  return call(name, data).then(res => {
+    markHomeDataDirty();
+    return res;
+  });
+}
+
 /* ===== spots ===== */
 const spots = {
   list: () => call('spots', { action: 'list' }),
@@ -58,7 +81,7 @@ const reminder = {
   tripItem: {
     markResult: (p) => call('reminder', { action: 'tripItem.markResult', ...p }),
     undoResult: (p) => call('reminder', { action: 'tripItem.undoResult', ...p }),
-    updateReminder: (p) => call('reminder', { action: 'tripItem.updateReminder', ...p }),
+    updateReminder: (p) => homeMutationCall('reminder', { action: 'tripItem.updateReminder', ...p }),
     remove: (p) => call('reminder', { action: 'tripItem.remove', ...p }),
     removeVisitDate: (p) => call('reminder', { action: 'tripItem.removeVisitDate', ...p }),
     /* 「建议」入口是固定的：误关浮层后随时能重新打开，不做「只能调一次」的限制 */
@@ -68,7 +91,7 @@ const reminder = {
     add: (p) => call('reminder', { action: 'cart.add', ...p }),
     addAll: (p) => call('reminder', { action: 'cart.addAll', ...p }),
     updateRemindOn: (p) => call('reminder', { action: 'cart.updateRemindOn', ...p }),
-    commit: (p) => call('reminder', { action: 'cart.commit', ...p }),
+    commit: (p) => homeMutationCall('reminder', { action: 'cart.commit', ...p }),
     remove: (cartId) => call('reminder', { action: 'cart.remove', cartId }),
     clear: (tripId) => call('reminder', { action: 'cart.clear', tripId }),
     /* 不传 tripId = 读「当前暂存清单」（纯预览化后清单不再挂在行程上） */
@@ -86,7 +109,7 @@ const reminder = {
     updateNotifyPrefs: (notifyPrefs) => call('reminder', { action: 'user.updateNotifyPrefs', notifyPrefs }),
   },
   subscribe: {
-    add: (templateId) => call('reminder', { action: 'subscribe.add', templateId }),
+    add: (templateId) => homeMutationCall('reminder', { action: 'subscribe.add', templateId }),
     get: (templateId) => call('reminder', { action: 'subscribe.get', templateId }),
   },
 };
@@ -122,6 +145,7 @@ function toastError(result) {
     1015: '已超过撤销时间',
     1016: '行程项所在日期已结束',
     1017: '已过放票时间，提醒无法开启或取消',
+    1020: '请填写反馈内容',
     1500: '服务异常，请稍后重试',
   };
   if (result && map[result.errorCode]) {
@@ -150,4 +174,4 @@ function toastError(result) {
   wx.showToast({ title: '操作失败', icon: 'none' });
 }
 
-module.exports = { spots, reminder, feedback, ics, toastError };
+module.exports = { spots, reminder, feedback, ics, toastError, markHomeDataDirty };

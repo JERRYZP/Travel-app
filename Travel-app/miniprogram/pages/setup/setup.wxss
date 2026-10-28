@@ -109,6 +109,16 @@
   font-size: 23rpx;
   color: #9B7F6F;
 }
+.quota-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+.quota-reserved {
+  color: #B07E35;
+  font-size: 20rpx;
+  line-height: 1.4;
+}
 .fill-quota-btn {
   flex-shrink: 0;
   padding: 14rpx 20rpx;
@@ -118,6 +128,16 @@
   font-size: 23rpx;
   font-weight: 600;
 }
+.auth-feedback {
+  margin-top: 14rpx;
+  padding: 12rpx 16rpx;
+  border-radius: 12rpx;
+  background: #FBF5E6;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+.auth-feedback.ok { color: #4A7C59; background: #EEF6EF; }
+.auth-feedback.warn { color: #B05C3C; background: #FBF0EA; }
 .auth-note {
   display: flex;
   flex-direction: column;
@@ -140,6 +160,7 @@
   font-size: 24rpx;
 }
 .sms-card { margin-top: 24rpx; }
+
 .gate-hint {
   display: block;
   margin-top: 14rpx;

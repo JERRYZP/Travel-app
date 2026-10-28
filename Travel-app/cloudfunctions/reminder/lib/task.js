@@ -27,7 +27,8 @@ function remindAtOf(releaseAt, offsetMinutes) {
 
 /* 授权额度预留 1 次安全缓冲：待发送数正好等于剩余额度时即进入“即将用完”。 */
 const QUOTA_SAFE_BUFFER = 1;
-/* 首页只承载 48 小时内真正需要补授权的提醒，避免远期行程过早制造焦虑。 */
+/* `low` 只表示「刚好够、缺 1 次缓冲」，仍限制在 48 小时内，避免远期行程过早制造焦虑。
+   `short / exhausted` 是真实缺口（已经会影响送达），不受该窗口限制。 */
 const QUOTA_WARNING_WINDOW_HOURS = 48;
 
 /**
@@ -75,12 +76,57 @@ function reminderHealthOf(tasks, remainingQuota, nowTs = time.now(), templateId 
   };
 }
 
-/** 首页额度预警：低额度状态 + 最近提醒进入 48 小时窗口。 */
+const HEALTH_LEVEL_RANK = Object.freeze({ idle: 0, ready: 1, low: 2, short: 3, exhausted: 4 });
+
+/**
+ * 跨模板额度健康度：每个模板的待发送任务只能消耗**本模板**的额度。
+ *
+ * 旧任务没有 templateId，按旧模板记账；新任务按各自 templateId 记账。
+ * 首页预警取最危险的那一组，不能把 A 模板的余额拿去覆盖 B 模板的缺口。
+ * 同级时取最近的一条提醒，确保窗口判断仍基于即将发生的事件。
+ */
+function worstReminderHealthOf(tasks, quotaOf, nowTs = time.now()) {
+  const groups = new Map();
+  (tasks || []).forEach(t => {
+    if (!t) return;
+    const tpl = taskTemplateIdOf(t);
+    if (!groups.has(tpl)) groups.set(tpl, []);
+    groups.get(tpl).push(t);
+  });
+
+  let worst = null;
+  groups.forEach((list, tpl) => {
+    const quota = typeof quotaOf === 'function' ? quotaOf(tpl) : 0;
+    const health = reminderHealthOf(list, quota, nowTs, tpl);
+    if (!health.pendingMessageCount) return;
+    const currentRank = HEALTH_LEVEL_RANK[health.level] || 0;
+    const worstRank = worst ? (HEALTH_LEVEL_RANK[worst.level] || 0) : -1;
+    const sameRankNearer = worst
+      && currentRank === worstRank
+      && health.nearestRemindAt
+      && (!worst.nearestRemindAt
+        || health.nearestRemindAt.getTime() < worst.nearestRemindAt.getTime());
+    if (!worst || currentRank > worstRank || sameRankNearer) {
+      worst = { ...health, templateId: tpl };
+    }
+  });
+
+  return worst || reminderHealthOf([], 0, nowTs);
+}
+
+/**
+ * 首页额度预警：真实缺口立即提示；仅「低额度缓冲」限制在 48 小时窗口内。
+ *
+ * 2026-10-27 修正：此前所有档位都被 48 小时窗口挡住，用户明明只有 4 次授权、
+ * 却有 13 条待发送提醒时首页仍不提示。真实缺口不该等「最近一条进入 48 小时」
+ * 才告诉用户；只有 `low`（额度刚好够、仅少 1 次缓冲）保留窗口，避免远期焦虑。
+ */
 function buildReminderQuotaWarning(health, nowTs = time.now()) {
   if (!health || !['low', 'short', 'exhausted'].includes(health.level)) return null;
   if (!health.nearestRemindAt) return null;
   const diff = health.nearestRemindAt.getTime() - new Date(nowTs).getTime();
-  if (diff > QUOTA_WARNING_WINDOW_HOURS * 3600 * 1000) return null;
+  const withinWindow = diff <= QUOTA_WARNING_WINDOW_HOURS * 3600 * 1000;
+  if (health.level === 'low' && !withinWindow) return null;
 
   let text = '';
   if (health.level === 'low') {
@@ -729,6 +775,7 @@ async function cleanup(db) {
 module.exports = {
   remindAtOf,
   reminderHealthOf,
+  worstReminderHealthOf,
   buildReminderQuotaWarning,
   QUOTA_SAFE_BUFFER,
   QUOTA_WARNING_WINDOW_HOURS,

@@ -262,9 +262,14 @@ Page({
        窗口在数据到达时算一次并存进 `_bootTtlMs`（见 bootstrap 成功回调），
        这里只做减法 —— 中途重算会让同一次驻留期间的判定摇摆。 */
     const ttl = this._bootTtlMs > 0 ? this._bootTtlMs : HOME_BOOTSTRAP_TTL_MS;
+    /* 写操作（设提醒、补授权等）会递增该版本号。它必须参与复用判定：
+       否则用户刚设完提醒就回首页，会继续回放写操作之前的缓存，额度预警和
+       临近放票横幅最多晚 180 秒才出现。 */
+    const homeDataVersion = Number(app.globalData && app.globalData.homeDataVersion) || 0;
     const ttlFresh = Boolean(opts && opts.allowTtlReuse)
       && this._lastBootOkAt > 0
-      && (Date.now() - this._lastBootOkAt) < ttl;
+      && (Date.now() - this._lastBootOkAt) < ttl
+      && (this._bootDataVersion || 0) >= homeDataVersion;
     /* 耗时分段（2026-09-30）：`cache` = 用本地缓存画出第一帧的耗时；
        `net` = 请求往返（含云函数冷启动，最大头）；`setdata` = 返回到首屏画完。
 
@@ -364,6 +369,9 @@ Page({
       /* 记下这次成功的时刻，作为 onShow 复用窗口的起点。
          只读时钟，不参与任何业务判定；失败路径不写，所以失败不会刷新窗口。 */
       this._lastBootOkAt = Date.now();
+      /* 只记下本次请求发出时看到的版本。若请求途中又发生写入，版本号已经更大，
+         下一次 onShow 仍会强制重新拉取，不会把新写入误当成已同步。 */
+      this._bootDataVersion = homeDataVersion;
       /* 复用窗口跟着「本次数据里最近一场放票离现在多远」走，而不是固定 30 秒：
          放票窗口内 30 秒一问，今天还有票要放 60 秒，其余 180 秒。
          读的是同一个 patch 里服务端已经算好的时刻，页面不重新推导业务状态。
