@@ -29,7 +29,8 @@ paths:
 
 - 先数据与索引，再业务云函数。
 - 同时影响 `reminder` 与 `notifier` 的改动必须分别确认。
-- 会员 / 任务位上线还需部署 `payment`，并在云开发控制台配置 `WECHAT_PAY_SUB_MCH_ID`、`WECHAT_PAY_CALLBACK_FUNCTION=payment`、`TCB_ENV`；商户号必须先绑定当前小程序并完成云开发服务商授权。
+- 会员 / 任务位上线还需部署 `payment`，并使用微信支付 API v3 直连。云函数环境变量必须配置 `WECHAT_PAY_MCH_ID`、`WECHAT_PAY_SERIAL_NO`、`WECHAT_PAY_PRIVATE_KEY`、`WECHAT_PAY_API_V3_KEY`、`WECHAT_PAY_NOTIFY_URL`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID`；商户号只需绑定当前小程序并开通 JSAPI 支付，不再要求云开发服务商授权。
+- `payment` 的公网回调必须走 CloudBase HTTP 网关：路由指向云函数 `payment`，关闭身份认证、跨域和路径透传，并配置独立 HTTPS 域名；默认域名只能用于测试，正式回调使用备案自定义域名。
 - `reminder` 的会员限制由 `MEMBERSHIP_ENFORCEMENT_MODE` 控制：`off` 关闭、`test` 仅测试白名单、`all` 全量。默认 `test`，白名单在 `membership.js` 中，可用 `MEMBERSHIP_TEST_OPENIDS` 逗号分隔覆盖。正式发布前不得切 `all`。
 - 只改小程序页面通常不需要部署云函数，但如果接口契约变化则必须部署。
 

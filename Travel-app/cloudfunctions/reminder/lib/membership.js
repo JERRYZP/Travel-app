@@ -30,6 +30,7 @@ const DEFAULT_ENFORCEMENT_MODE = ENFORCEMENT_TEST;
 const DEFAULT_TEST_OPENIDS = Object.freeze([
   'oZ6IFxvYK1mKzBaehMcOPIl_CgN0',
   'oZ6IFxmYI3grd17Aa2rEem2SMqNo',
+  'oZ6IFxi1K98ihzn5DH6KP5Jx9_bs',
 ]);
 const ORDER_STATUS_LABEL = {
   PENDING: '待支付',

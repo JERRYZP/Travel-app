@@ -1001,10 +1001,25 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 { action: 'query', orderId }        // 主动查单，返回 PAID / PENDING
 ```
 
+- 支付协议为微信支付 **API v3 直连**，不调用 `cloud.cloudPay`，也不要求把商户号授权给云开发服务商。
+- 普通 `wx.cloud.callFunction` 调用处理 `create` / `query`；支付回调由 CloudBase HTTP 网关转发到同一个 `payment` 云函数。
+- `payment.create` 调用 `POST /v3/pay/transactions/jsapi`，用服务端订单快照生成金额、商品描述、商户订单号和 OpenID，再返回 `wx.requestPayment` 参数。
+- `payment.query` 调用 `GET /v3/pay/transactions/out-trade-no/{outTradeNo}?mchid={mchid}`；只有 `trade_state=SUCCESS` 才发放权益。
+- HTTP 回调必须先校验 `Wechatpay-Timestamp`、`Wechatpay-Nonce`、`Wechatpay-Signature`、`Wechatpay-Serial`，再用 APIv3 密钥解密 `resource`；验签、商户号、AppID、订单金额任一不匹配都不得发放权益。
 - 支付回调与主动查单都由 `payment` 云函数处理；只有微信支付确认成功后才更新订单并发放权益。
 - 金额不一致拒绝发放；重复回调幂等，不重复增加任务包。
-- 环境变量：`WECHAT_PAY_SUB_MCH_ID`、`WECHAT_PAY_CALLBACK_FUNCTION=payment`、`TCB_ENV`。
-- 小程序必须已开通微信支付并绑定商户号；商户号超级管理员需按云开发要求授权服务商 `1800008281 小程序云开发`，并授予 JSAPI 与退款权限。
+- 必需环境变量：
+  - `WECHAT_PAY_MCH_ID`：商户号。
+  - `WECHAT_PAY_SERIAL_NO`：商户 API 证书序列号。
+  - `WECHAT_PAY_PRIVATE_KEY`：商户 API 私钥 PEM，支持直接 PEM 或 Base64。
+  - `WECHAT_PAY_API_V3_KEY`：32 字节 APIv3 密钥。
+  - `WECHAT_PAY_NOTIFY_URL`：公网 HTTPS 回调地址，指向 HTTP 网关 `/payment/notify`。
+  - `WECHAT_PAY_PLATFORM_PUBLIC_KEY`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID`：微信支付公钥及公钥 ID。
+  - `WECHAT_PAY_PLATFORM_CERT`、`WECHAT_PAY_PLATFORM_CERT_SERIAL`：未使用公钥模式时的平台证书回退配置。
+  - `WECHAT_PAY_APP_ID`：可选，缺省 `wx05c160a589b97d76`。
+  - `WECHAT_PAY_CALLBACK_MAX_SKEW_SECONDS`：可选，回调时间窗，默认 300 秒。
+- 小程序必须先开通微信支付并把当前 AppID 与商户号绑定，商户平台需开通 JSAPI 支付；不需要云开发服务商授权。
+- HTTP 网关路由必须关闭身份认证与路径透传，并保留原始请求体；默认 `*.tcloudbase.com` 域名仅用于开发和测试，正式环境应使用备案自定义域名。
 
 ---
 

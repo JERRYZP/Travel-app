@@ -12,7 +12,9 @@ const {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function amountOf(payment = {}) {
-  const raw = payment.totalFee != null ? payment.totalFee : payment.total_fee;
+  const raw = payment.amount && typeof payment.amount === 'object'
+    ? payment.amount.total
+    : (payment.totalFee != null ? payment.totalFee : payment.total_fee);
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
 }
@@ -52,6 +54,14 @@ async function fulfillOrder(db, order, payment = {}) {
 
   const nowTs = new Date();
   const transactionId = payment.transactionId || payment.transaction_id || '';
+  const paymentResult = {
+    transactionId,
+    amountFen: paidAmount,
+    tradeState: payment.tradeState || payment.trade_state || '',
+    appId: payment.appId || payment.appid || '',
+    mchId: payment.mchId || payment.mchid || '',
+    outTradeNo: payment.outTradeNo || payment.out_trade_no || order.outTradeNo,
+  };
   const userPatch = {
     memberLevel: MemberLevel.MEMBER,
     memberSince: user.memberSince || nowTs,
@@ -82,7 +92,7 @@ async function fulfillOrder(db, order, payment = {}) {
         status: OrderStatus.PAID,
         paidAt: nowTs,
         transactionId,
-        paymentResult: payment,
+        paymentResult,
       },
     });
     await transaction.commit();

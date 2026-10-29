@@ -1,9 +1,8 @@
 # Travel-app 当前工程状态
 
-> 当前分支：`codex/v0.3-main-flow-ux`
-> 当前 HEAD：`e321a5e perf(home): 修复首页冷启动白屏，砍掉云端串行查询与嵌套冷启动`
-> 远端：`origin/codex/v0.3-main-flow-ux` 仍为 `6324517`；本地分支领先远端 3 个提交，另有未提交工作区改动
-> 更新时间：2026-10-01
+> 当前分支：`codex/membership-payment-wip`
+> 版本以 `git log -1` 为准；本文件记录工作区状态，提交和部署状态分开判断。
+> 更新时间：2026-10-30
 
 ## 当前定位
 
@@ -36,7 +35,7 @@
 ## 当前配置
 
 - `USE_MOCK=false`，默认走腾讯云开发。
-- 当前 cloudEnv：`cloud1-d9g9f4hja396d6e92`。
+- 当前 cloudEnv：`cloud1-d9g9f4hja396d6e92`；只有支付探针页在 `envVersion=develop` 时临时路由到 `unpay-d4gf8fyrt5523ca65`，体验版与正式版仍使用 `cloud1`。
 - 当前 appid：`wx05c160a589b97d76`。
 - appid 与 cloudEnv 必须成对更换。
 
@@ -44,7 +43,11 @@
 
 - 代码：本地 HEAD `e321a5e`；`origin/codex/v0.3-main-flow-ux` 停在 `6324517`，本地领先 3 个提交。工作区仍有 30+ 个未提交改动，尚未进入远端。最近一轮云端状态记录见 `docs/engineering/archive/launch-test-report-v0.3-20260928-review.md` §九。
 - 构建：2026-10-01 当前工作区 `npm test`（27 套）、`npm run check`、`git diff --check` 均通过。首页缓存/实况重复 `setData` 已修复：缓存帧改用缓存返回体自带的 `serverNow` 计算，避免设备时间与云端时间被解释成不同日期。
-- 会员与任务位工作区：2026-10-27 `npm test`（37 套）、`npm run check`、`git diff --check` 均通过；只覆盖本地逻辑与静态检查，微信支付、自动广告与真机流程仍为 `pending`。
+- 会员与任务位工作区：2026-10-30 `npm test`（40 套）、`npm run check`、`git diff --check` 均通过。
+- 2026-10-29 已完成 `payment` 微信支付 API v3 直连改造（请求签名、JSAPI 参数、查单、回调验签与解密）并补本地测试；`unpay` 默认域名回调探针已验证原始 body 哈希一致。
+- 2026-10-30 用户已在 `cloud1` 体验版完成真实会员支付，权益通过客户端主动查单确认发放；微信 HTTP 回调端到端和完整真机流程仍未闭环。
+- 当前没有退款申请入口、客服审核后台、退款 API、退款回调和权益回收；`REFUNDED` 仅为展示枚举。商户平台手工退款不会自动同步小程序。
+- 支付部署与商户配置步骤见 `docs/engineering/payment-v3-runbook.md`；退款售后方案待产品确认后再实现。
 - 云函数：`reminder` 已于 2026-09-28 部署，并通过真实云环境只读 `home.bootstrap` 冒烟；当前未提交的 `reminder`、`spots`、`feedback`、`notifier` 改动尚未部署。
 - 小程序：**2026-10-27 已发布**（用户上传工作区代码并提交发布，含当日三项客户端降本改动）。发布前的待办仍未闭环：新订阅模板真机曾出现 `20001 No template data return`；`cart.commit` 写路径、完整真机交互和多机型视觉仍未 live verified。**当前线上客户端与 git 任何提交都不严格对应**（发布源是未提交工作区），需要尽快补一个 tag 对齐。
 - 因此不得把“测试通过”“部分云函数已部署”写成“整体已上线”或“用户已看到新版本”。
@@ -123,9 +126,9 @@
 | 索引 `spots.spotId` / `release_rules.spotId` / `reminder_tasks.userId+itemId` | **已建**（2026-10-27，用户操作） | 控制台操作，即时生效 |
 | 客户端第一批（固定 30s TTL、spots 缓存、add-trip 去重） | **已发版**（2026-10-27，用户操作） | 发布源为未提交工作区，与 git 无对应提交；需补 tag 对齐 |
 | 客户端第二批（首页自适应窗口 + 写操作后强制刷新） | **未发版**（本地工作区） | 纯客户端改动；需连同 `reminder` 重新部署一起验证 |
-| 会员与任务位（客户端 + `reminder` + 新 `payment`） | **未部署、未发版** | 需先建 `orders.outTradeNo`、`orders.userId+createdAt`、`reminder_tasks.userId+backendStatus+releaseAt` 索引，配置微信支付商户号并授权云开发服务商；支付与真机流程均未验证 |
+| 会员与任务位（客户端 + `reminder` + `payment` API v3） | **已在 `cloud1` 体验版完成真实支付；正式版未发布** | 权益由主动查单确认发放；HTTP 回调端到端、完整真机流程、退款售后仍未闭环 |
 
-⚠️ **测试通过、已部署、真机已验证是三个不同状态，不能互相替代。** 以上部署项仍为 `pending` 真机验证。
+⚠️ **测试通过、已部署、真机已验证是三个不同状态，不能互相替代。** 会员支付已取得一次真实支付结果，但不等于全流程、HTTP 回调或退款链路已经验证。
 
 **部署后要盯的三件事：**
 

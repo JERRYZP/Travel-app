@@ -76,7 +76,7 @@ reminder_cart 是提交前的暂存区，不属于正式行程。
 - 免费用户最多 5 个未来 WAITING 提醒任务。
 - 会员 2 元 / 30 天，期内上限 10；任务包 2 元永久增加 5 个任务位，会员有效期内生效。
 - 唯一规则在 `cloudfunctions/reminder/lib/membership.js`；`cart.commit` 与 `tripItem.updateReminder` 都必须过同一服务端闸门。
-- 订单只由 `payment` 云函数在微信支付回调或主动查单确认后置为 `PAID`；客户端不能自行改会员。
+- 订单只由 `payment` 云函数在微信支付 API v3 回调或主动查单确认后置为 `PAID`；回调必须验签并解密，客户端不能自行改会员。
 
 ## 数据真身与镜像
 

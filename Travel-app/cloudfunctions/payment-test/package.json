@@ -1,0 +1,9 @@
+{
+  "name": "payment-test",
+  "version": "1.0.0",
+  "description": "微信支付 API v3 独立测试探针，不写业务数据库",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

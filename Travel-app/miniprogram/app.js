@@ -1,10 +1,13 @@
 const shareEntry = require('./utils/share-entry.js');
 
+const CLOUD_ENV_PROD = 'cloud1-d9g9f4hja396d6e92';
+const CLOUD_ENV_TEST = 'unpay-d4gf8fyrt5523ca65';
+
 App({
   globalData: {
     userInfo: null,
     openid: null,
-    cloudEnv: 'cloud1-d9g9f4hja396d6e92',
+    cloudEnv: CLOUD_ENV_PROD,
     statusBarHeight: 20,
     navBarHeight: 44,
     menuButton: null,
@@ -24,6 +27,12 @@ App({
     this.globalData.navBarHeight = (menuButton.top - sysInfo.statusBarHeight) * 2 + menuButton.height;
     this.globalData.menuButton = menuButton;
     this.globalData.envVersion = (accountInfo && accountInfo.miniProgram && accountInfo.miniProgram.envVersion) || '';
+    /* 只有独立支付探针在开发版/真机调试中进入免费环境，其他页面继续使用 cloud1。 */
+    const launchPath = String((options && options.path) || '').split('?')[0].replace(/^\//, '');
+    const isPaymentProbe = launchPath === 'pages/payment-probe/payment-probe';
+    this.globalData.cloudEnv = this.globalData.envVersion === 'develop' && isPaymentProbe
+      ? CLOUD_ENV_TEST
+      : CLOUD_ENV_PROD;
 
     if (!wx.cloud) {
       console.error('请使用 2.2.3 或以上的基础库以使用云能力');

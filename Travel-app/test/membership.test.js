@@ -16,6 +16,7 @@ const USER = 'openid_membership_001';
 const DAY_MS = 86400000;
 const TEST_OPENID_A = 'oZ6IFxvYK1mKzBaehMcOPIl_CgN0';
 const TEST_OPENID_B = 'oZ6IFxmYI3grd17Aa2rEem2SMqNo';
+const TEST_OPENID_ANDROID = 'oZ6IFxi1K98ihzn5DH6KP5Jx9_bs';
 
 let fail = 0;
 const eq = (a, b, m) => {
@@ -80,6 +81,7 @@ async function run() {
   eq(membership.enforcementModeOf(), 'test', '默认只对测试白名单生效');
   eq(membership.shouldEnforceFor(TEST_OPENID_A), true, '测试账号 A 在白名单');
   eq(membership.shouldEnforceFor(TEST_OPENID_B), true, '测试账号 B 在白名单');
+  eq(membership.shouldEnforceFor(TEST_OPENID_ANDROID), true, '安卓测试账号在白名单');
   eq(membership.shouldEnforceFor(USER), false, '其他线上用户不启用任务位限制');
 
   process.env.MEMBERSHIP_ENFORCEMENT_MODE = 'off';

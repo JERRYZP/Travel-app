@@ -19,7 +19,8 @@
     "pages/feedback/feedback",
     "pages/spot-correction/spot-correction",
     "pages/admin-feedback/admin-feedback",
-    "pages/share-scene/share-scene"
+    "pages/share-scene/share-scene",
+    "pages/payment-probe/payment-probe"
   ],
   "window": {
     "backgroundColor": "#F8F3EA",
