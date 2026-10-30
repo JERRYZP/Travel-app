@@ -170,47 +170,52 @@
   border-radius: 20rpx;
   background: #FBF5E6;
 }
-.membership-gate-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20rpx;
-}
 .membership-gate-copy {
   display: flex;
-  flex: 1;
   min-width: 0;
   flex-direction: column;
   gap: 8rpx;
 }
 .membership-gate-title {
   color: var(--color-ink);
-  font-size: 26rpx;
-  font-weight: 600;
+  font-size: 28rpx;
+  font-weight: 700;
 }
 .membership-gate-desc {
   color: #7A5540;
   font-size: 22rpx;
-  line-height: 1.5;
+  line-height: 1.6;
+}
+.membership-gate-note {
+  display: block;
+  margin-top: 2rpx;
+  color: #9B7F6F;
+  font-size: 21rpx;
 }
 .membership-gate-action {
-  flex-shrink: 0;
-  min-height: 64rpx;
-  padding: 0 22rpx;
-  border-radius: 14rpx;
+  width: 100%;
+  min-height: 72rpx;
+  margin-top: 20rpx;
+  border-radius: 16rpx;
   background: var(--color-primary);
   color: #FFFEFB;
-  font-size: 24rpx;
+  font-size: 25rpx;
   font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
 }
-.membership-gate-note {
-  display: block;
-  margin-top: 14rpx;
-  color: #9B7F6F;
-  font-size: 21rpx;
+.membership-gate-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid #E8D6B8;
+  color: #8A6A43;
+  font-size: 22rpx;
 }
 
 .gate-hint {

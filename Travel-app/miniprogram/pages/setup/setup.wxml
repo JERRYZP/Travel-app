@@ -68,16 +68,18 @@
 
   <!-- 提醒名额不足时才出现付费入口；未超额时整块不渲染。 -->
   <view wx:if="{{showMembershipGate}}" class="membership-gate">
-    <view class="membership-gate-head">
-      <view class="membership-gate-copy">
-        <text class="membership-gate-title">{{membershipGateTitle}}</text>
-        <text class="membership-gate-desc">{{membershipGateDesc}}</text>
-      </view>
-      <view class="membership-gate-action" bindtap="onUpgradeAndContinue">
-        <text>{{membershipActionText}}</text>
-      </view>
+    <view class="membership-gate-copy">
+      <text class="membership-gate-title">{{membershipGateTitle}}</text>
+      <text class="membership-gate-desc">{{membershipGateDesc}}</text>
+      <text class="membership-gate-note">{{membershipGateNote}}</text>
     </view>
-    <text class="membership-gate-note">{{membershipGateNote}}</text>
+    <view class="membership-gate-action" bindtap="onUpgradeAndContinue">
+      <text>{{membershipActionText}}</text>
+    </view>
+    <view class="membership-gate-link" bindtap="onMembership">
+      <text>查看会员权益与退款说明</text>
+      <svg-icon name="chevron-right" size="12px" />
+    </view>
   </view>
 
   <view wx:if="{{paymentState}}" class="payment-state {{paymentState.status}}">

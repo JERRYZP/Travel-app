@@ -75,11 +75,13 @@ async function run() {
     taskPackSize: 5,
   });
   eq(gate.upgradePackageId, 'member', '续费会员即可恢复原有 15 个提醒名额');
-  eq(/开通会员后 30 天内最多可用 10 个提醒名额/.test(gate.membershipGateDesc), true,
-    '有历史任务包时续费描述仍保持简单');
+  eq(gate.membershipGateDesc, '免费版最多可设置 5 个提醒名额；开通会员后上限提升至 10 个，有效期 30 天。',
+    '有历史任务包时仍用一句话说明免费额度、会员上限和有效期');
 
   console.log('\n=== 4. 页面结构与常驻入口 ===');
   const setupWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/setup/setup.wxml'), 'utf8');
+  const setupJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/setup/setup.js'), 'utf8');
+  const setupWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/setup/setup.wxss'), 'utf8');
   const profileWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.wxml'), 'utf8');
   const profileJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.js'), 'utf8');
   const profileWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.wxss'), 'utf8');
@@ -90,6 +92,34 @@ async function run() {
   ].join('\n');
 
   eq(setupWxml.includes('wx:if="{{showMembershipGate}}"'), true, '付费块整体由额度不足开关控制');
+  eq(setupWxml.indexOf('membership-gate-desc') < setupWxml.indexOf('membership-gate-action'), true,
+    '会员说明在上、支付按钮在下，长文案不再挤在右侧');
+  eq(/membership-gate-link[^>]*bindtap="onMembership"/.test(setupWxml), true,
+    '会员卡有独立的权益详情入口');
+  eq(setupWxml.includes('查看会员权益与退款说明'), true,
+    '权益入口明确说明可查看会员和退款信息');
+  eq(/submit-btn \{\{canSubmit \? '' : 'disabled'\}\}/.test(setupWxml), true,
+    '会员名额不足时通过统一 canSubmit 同步置灰主按钮');
+  eq(/membershipBlocked\s*=\s*this\.data\.showMembershipGate === true/.test(setupJs), true,
+    'JS 提交态与会员闸门使用同一事实');
+  eq(/onSubmit\(\)[\s\S]{0,180}?showMembershipGate/.test(setupJs), true,
+    'onSubmit 有不可绕过的会员闸门');
+  eq(/\.membership-gate-action\s*\{[^}]*width:\s*100%/.test(setupWxss), true,
+    '支付按钮占满卡片宽度，避免长文案截断');
+  let membershipUrl = '';
+  const oldWx = global.wx;
+  global.wx = { navigateTo: ({ url }) => { membershipUrl = url; } };
+  setupDef.onMembership.call({
+    data: {
+      membership: { taskUsed: 5, taskLimit: 5, taskRemaining: 0 },
+      reminderCount: 3,
+    },
+  });
+  global.wx = oldWx;
+  eq(membershipUrl.includes('/pages/membership/membership?reason=task_limit'), true,
+    '会员详情入口跳到会员页并携带超额上下文');
+  eq(membershipUrl.includes('requested=3') && membershipUrl.includes('shortfall=3'), true,
+    '会员页收到本次提醒数与缺口');
   eq(profileWxml.includes('membership-entry'), true, '我的页常驻会员状态卡');
   eq(profileWxml.includes('membership-entry {{isMember ? \'member\' : \'normal\'}}'), true,
     '会员卡普通/会员两套视觉状态');

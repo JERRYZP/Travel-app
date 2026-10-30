@@ -101,6 +101,9 @@ Page({
     }
 
     const gap = Math.max(0, reminderCount - current.taskRemaining);
+    const freeSlots = Math.max(1, Number(current.freeTaskSlots) || 5);
+    const memberSlots = Math.max(freeSlots, Number(current.memberTaskSlots) || 10);
+    const memberDays = Math.max(1, Number(current.memberDurationDays) || 30);
     if (current.member) {
       return {
         showMembershipGate: true,
@@ -115,8 +118,8 @@ Page({
     /* 会员过期时 ownedTaskPackCount 仍然保留；续费后这些已购名额会一起恢复，
        所以判断“开通会员是否足够”时不能只看会员基础的 10 个。 */
     const memberBaseLimit = Math.max(
-      Number(current.memberTaskSlots) || 10,
-      Number(current.protectedTaskQuota) || 5
+      memberSlots,
+      Number(current.protectedTaskQuota) || freeSlots
     );
     const memberRemaining = Math.max(
       0,
@@ -129,10 +132,10 @@ Page({
       showMembershipGate: true,
       membershipGateTitle: `还差 ${gap} 个提醒名额`,
       membershipGateDesc: memberEnough
-        ? '开通会员后 30 天内最多可用 10 个提醒名额。'
-        : `本次需要 ${reminderCount} 个；开通会员后可继续加购名额。`,
-      membershipGateNote: '¥2 / 30 天，不自动续费',
-      membershipActionText: '支付 ¥2，开通 30 天会员并继续',
+        ? `免费版最多可设置 ${freeSlots} 个提醒名额；开通会员后上限提升至 ${memberSlots} 个，有效期 ${memberDays} 天。`
+        : `本次需要 ${reminderCount} 个；开通会员后可继续加购名额。会员有效期 ${memberDays} 天。`,
+      membershipGateNote: `¥2 / ${memberDays} 天，不自动续费`,
+      membershipActionText: `支付 ¥2，开通 ${memberDays} 天会员并继续`,
       upgradePackageId: 'member',
     };
   },
@@ -149,15 +152,17 @@ Page({
       const reservedQuota = Math.max(0, ledgerQuota - subscribeQuota);
       const shortfall = Math.max(0, want - subscribeQuota);
       const hasChannel = this.data.channels.officialAccount === true;
+      const membershipBlocked = this.data.showMembershipGate === true;
       const accessReady = health.systemOk && shortfall === 0 && want > 0;
-      const canSubmit = accessReady && hasChannel;
+      const canSubmit = accessReady && hasChannel && !membershipBlocked;
       let gateText = '';
       if (!hasChannel) gateText = '请选择微信通知提醒';
       else if (!health.systemOk) gateText = '请先开启微信通知权限';
       else if (shortfall > 0) {
         gateText = '当前可用 ' + subscribeQuota + ' 次，还差 ' + shortfall + ' 次授权，补齐后才能开启提醒';
-      }
-      else if (want === 0) gateText = '当前没有需要提醒的景点';
+      } else if (membershipBlocked) {
+        gateText = '提醒名额不足，请先开通会员或加购名额';
+      } else if (want === 0) gateText = '当前没有需要提醒的景点';
       this.setData({
         quotaNeeded: want,
         systemOk: health.systemOk,
@@ -354,6 +359,20 @@ Page({
     });
   },
 
+  onMembership() {
+    const current = this.data.membership || {};
+    const requested = Math.max(0, Number(this.data.reminderCount) || 0);
+    const remaining = Math.max(0, Number(current.taskRemaining) || 0);
+    const query = [
+      'reason=task_limit',
+      `used=${encodeURIComponent(Number(current.taskUsed) || 0)}`,
+      `limit=${encodeURIComponent(Number(current.taskLimit) || 0)}`,
+      `requested=${encodeURIComponent(requested)}`,
+      `shortfall=${encodeURIComponent(Math.max(0, requested - remaining))}`,
+    ].join('&');
+    wx.navigateTo({ url: `/pages/membership/membership?${query}` });
+  },
+
   onUpgradeAndContinue() {
     if (this._upgrading || this.data.submitting) return;
     const packageId = this.data.upgradePackageId;
@@ -441,6 +460,10 @@ Page({
 
   onSubmit() {
     const { channels, offsets } = this.data;
+    if (this.data.showMembershipGate) {
+      wx.showToast({ title: '请先开通会员或加购提醒名额', icon: 'none' });
+      return;
+    }
     if (!channels.officialAccount) {
       wx.showToast({ title: '请选择微信通知提醒', icon: 'none' });
       return;
