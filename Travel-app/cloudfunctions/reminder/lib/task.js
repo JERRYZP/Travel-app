@@ -485,7 +485,7 @@ async function submit(db, userId, event) {
      卡片此后也不再提供提醒入口 —— `canSetReminder` 用的正是同一条判据。 */
   const reminderItems = disableReminders ? [] : remindable;
 
-  /* 任务位是创建提醒任务的硬闸门。必须在建行程之前校验：
+  /* 提醒名额是创建提醒任务的硬闸门。必须在建行程之前校验：
      超限时不能留下“行程建了、提醒没建”的半成品，也不能清空用户的清单。 */
   const capacityError = await membership.capacityError(db, userId, reminderItems.length, nowTs);
   if (capacityError) return capacityError;
@@ -562,6 +562,10 @@ async function submit(db, userId, event) {
   } catch (err) {
     await transaction.rollback();
     return fail({ code: 1011, message: `提交失败：${err.message}` });
+  }
+
+  if (createdTasks.length > 0) {
+    await membership.markReminderCreated(db, userId, nowTs);
   }
 
   const noReminder = disableReminders ? cartItems.length : cartItems.length - reminderItems.length;

@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const Module = require('module');
 const path = require('path');
 const { createDb } = require('./mock-db');
-const { COLLECTIONS, OrderStatus } = require('../cloudfunctions/payment/lib/schema');
+const { COLLECTIONS, OrderStatus, CaseStatus, RefundStatus, GrantStatus } = require('../cloudfunctions/payment/lib/schema');
 
 let fail = 0;
 const eq = (a, b, message) => {
@@ -146,7 +146,8 @@ async function main() {
       trade_state: 'SUCCESS',
       amount: { total: 200, currency: 'CNY' },
     };
-    const request = callbackRequest(platform, encryptResource(transaction, apiV3Key));
+    const resource = encryptResource(transaction, apiV3Key);
+    const request = callbackRequest(platform, resource);
     const response = await payment.main(request);
     const responseBody = JSON.parse(response.body);
     eq(response.statusCode, 200, '合法回调返回 HTTP 200');
@@ -158,9 +159,75 @@ async function main() {
     eq(order.paymentResult.amountFen, 200, 'paymentResult 只保存最小审计字段');
     eq(user.memberLevel, 'MEMBER', '用户获得会员');
 
+    db._seed(COLLECTIONS.USERS, [{
+      _id: 'user_callback_grant_failed',
+      openId: 'openid_callback_grant_failed',
+      memberLevel: 'NORMAL',
+      memberExpiresAt: null,
+      taskPackCount: 0,
+    }]);
+    db._seed(COLLECTIONS.ORDERS, [{
+      _id: 'order_callback_grant_failed',
+      userId: 'openid_callback_grant_failed',
+      outTradeNo: 'T20261029GRANTFAILED',
+      packageId: 'member',
+      productType: 'MEMBER',
+      title: '会员 30 天',
+      body: '智序准点游-会员 30 天',
+      amountFen: 200,
+      memberDays: 30,
+      memberFloorDays: 0,
+      status: OrderStatus.PENDING,
+      createdAt: new Date(),
+      paidAt: null,
+    }]);
+    const originalStartTransaction = db.startTransaction;
+    db.startTransaction = async () => {
+      const tx = await originalStartTransaction();
+      const originalCollection = tx.collection.bind(tx);
+      tx.collection = (name) => {
+        const collection = originalCollection(name);
+        if (name !== COLLECTIONS.USERS) return collection;
+        return {
+          ...collection,
+          doc: (id) => ({
+            ...collection.doc(id),
+            update: async () => { throw new Error('模拟权益写入失败'); },
+          }),
+        };
+      };
+      return tx;
+    };
+    const failedTransaction = {
+      ...transaction,
+      out_trade_no: 'T20261029GRANTFAILED',
+      transaction_id: '42000000000000000000000000000002',
+    };
+    const failedResponse = await payment.main(callbackRequest(
+      platform,
+      encryptResource(failedTransaction, apiV3Key)
+    ));
+    db.startTransaction = originalStartTransaction;
+    eq(failedResponse.statusCode, 500, '权益发放事务失败时返回 5xx 让微信重试');
+    const failedOrder = db._dump(COLLECTIONS.ORDERS)
+      .find(item => item._id === 'order_callback_grant_failed');
+    const grantCase = db._dump(COLLECTIONS.AFTER_SALES_CASES)
+      .find(item => item.orderId === failedOrder._id);
+    eq(failedOrder.status, OrderStatus.PAID, '支付已确认的订单不回到 PENDING');
+    eq(failedOrder.grantStatus, GrantStatus.FAILED, '权益发放失败单独标记');
+    eq(failedOrder.refundStatus, RefundStatus.NONE, '补发异常不污染退款生命周期');
+    eq(!!grantCase, true, '权益发放失败自动生成售后单');
+    eq(grantCase && grantCase.status, CaseStatus.AUTO_CHECKING, '权益异常进入自动核验队列');
+    eq(grantCase && grantCase.priority, 'HIGH', '权益异常为高优先级');
+
     const tampered = { ...request, body: request.body.replace('支付成功', '支付成功 ') };
     const rejected = await payment.main(tampered);
     eq(rejected.statusCode, 401, '篡改原始 body 的 HTTP 回调被拒绝');
+    const badResource = await payment.main(callbackRequest(platform, {
+      ...resource,
+      ciphertext: 'AAAA',
+    }));
+    eq(badResource.statusCode, 500, '签名有效但资源无法解密时返回 5xx 让微信重试');
   } finally {
     for (const key of Object.keys(process.env)) {
       if (!(key in previousEnv)) delete process.env[key];

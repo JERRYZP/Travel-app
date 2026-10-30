@@ -1,67 +1,136 @@
-# 会员与任务位支付
+# 会员支付、售后与提醒名额
 
-> 2026-10-27 首次实现。
-> 2026-10-30 支付通道切换为微信支付 API v3 直连；用户已在体验版完成真实支付，权益通过主动查单确认。HTTP 回调端到端、完整真机流程和退款售后仍未闭环。
+> 2026-10-30 工作区状态：代码与本地协议测试已实现并提交为 `f6d117b`；`reminder`、`payment` 已部署到 `cloud1`，真实购买与退款驳回已验证；**真实成功退款、退款回调、支付回调验签成功和关闭小程序后补偿到账仍待验证**。
+>
+> 权威业务口径以 `产品文档.md` 为准，接口以 `API-契约.md` 为准，索引以 `数据库索引.md` 为准。
 
-## 业务口径
+## 1. 产品定义
 
-- 免费用户最多保留 5 个未来 `WAITING` 提醒任务。
-- 会员 2 元 / 30 天，有效期内最多 10 个任务位，不自动续费。
-- 会员可加购 2 元任务包，每包永久保留 5 个任务位；只在会员有效期内生效，续费后恢复。
-- 加购任务包时，会员有效期至少延长到支付成功后 30 天。
-- 提醒页仅在本次提交导致任务位不足时出现支付入口；“我的”常驻会员状态入口。
-- 微信后台智能自动广告没有按会员关闭能力，本功能不提供“免广告”承诺。
-- 服务端限制支持灰度：`MEMBERSHIP_ENFORCEMENT_MODE=off|test|all`。默认 `test`，只限制 `membership.js` 内置的内部测试 OpenID；其他线上用户保持旧版免费行为。
-- `MEMBERSHIP_TEST_OPENIDS` 可用逗号分隔覆盖内置测试白名单。正式小程序全量发布前，禁止切换为 `all`。
+- 会员不是抢票服务，而是 **30 天提醒名额扩容**。
+- 免费版：5 个提醒名额。
+- 会员：¥2 / 30 天，会员有效期内最多 10 个提醒名额，不自动续费。
+- 提醒名额包：¥2，每个名额包记录 5 个提醒名额；仅在会员有效期内生效，续费后自动恢复。
+- 加购名额包时，会员有效期至少延长到支付成功后 30 天。
+- 会员到期不删除已有提醒；不保证景点有票，不代抢、不代约。
+- 用户侧统一使用「提醒名额」，不再使用「任务位」。
+- 老用户固定保护额度：`max(5, 上线前当前未来 WAITING 提醒数)`；有效上限为 `max(会员权益额度, protectedTaskQuota)`。
 
-## 代码边界
+## 2. 支付可靠性
 
-- 规则唯一真身：`cloudfunctions/reminder/lib/membership.js`
+唯一事实链：
+
+```text
+客户端创建服务端订单
+→ 微信支付 API v3 JSAPI 下单
+→ wx.requestPayment 只代表客户端流程结束
+→ 回调验签 + 主动查单 / 2 分钟补偿
+→ 服务端取得 trade_state=SUCCESS
+→ 订单与权益在同一事务提交
+→ payment.query 返回 PAID_GRANTED
+```
+
+- 支付回调与退款回调都使用微信支付公钥模式，校验 `Wechatpay-Timestamp`、`Wechatpay-Nonce`、`Wechatpay-Signature`、`Wechatpay-Serial`。
+- `cloud1` 的 HTTP 路由已用错误签名请求验证可达并返回 401；真实签名的微信回调样本尚未观察到，因此回调代码路径存在不等于端到端已通过。
+- 验签必须使用 HTTP 网关提供的原始 body；不得 JSON 序列化后重新签名。
+- 回调必须校验时间戳窗口、微信支付公钥 ID、AppID、商户号、商户订单号、金额、交易状态和资源解密结果。
+- 下单、查单、关单、退款、退款查询的微信响应也必须验签；缺少响应验签公钥时 `hasApiConfig=false`，不允许静默跳过。
+- 支付回调只有在订单与权益事务提交成功后才返回 200；验签失败返回 401，内部处理失败返回 5xx 让微信重试。
+- 日志记录路由、`outTradeNo` / `outRefundNo`、公钥 ID、时间戳、原始 body SHA-256、验签结果和失败原因；不记录私钥、APIv3 密钥或完整签名。
+- 15 分钟未支付的本地订单会关闭；再次购买创建新订单。同一商品存在未过期 `PENDING` 订单时复用。
+- 每 2 分钟定时扫描：`PENDING` 订单查单补偿、`PAID_GRANT_FAILED` 重试发放、自动售后核验、退款处理中/失败单同步。
+- 查单成功但权益发放失败：订单保持 `PAID`，写 `grantStatus=FAILED`，自动生成高优先级 `RIGHTS_NOT_RECEIVED` 售后单，不要求用户重复支付。
+- 同用户同商品 10 分钟内出现两笔已支付订单时，自动识别较新的订单并进入售后队列；本单未新增提醒时由定时任务自动发起全额退款，已使用则转客服审核。
+
+支付主状态：
+
+```text
+PENDING -> PAID
+PENDING -> CLOSED
+PAID    -> 不回到 PENDING
+```
+
+退款生命周期独立：
+
+```text
+orders.refundStatus = NONE
+  | REQUESTED | UNDER_REVIEW | PROCESSING
+  | REFUNDED | REJECTED | FAILED
+```
+
+`orders.status=REFUNDED` 仅兼容历史数据；新流程不写这个主状态。
+
+## 3. 售后与退款
+
+用户资格：
+
+- 支付后 24 小时内，且支付后没有新增任何提醒，可提交未使用退款申请。
+- 提醒创建后即使被删除，仍算已使用；依据 `users.lastReminderCreatedAt`。
+- 未到账、重复支付、系统故障优先自动查单、补发或核验退款。
+- 已新增提醒、超过 24 小时、权益正常或无正当理由，原则上驳回；特殊情况由客服复核。
+- 每个订单最多一次全额退款；V1 不做部分退款。
+
+售后状态：
+
+```text
+AUTO_CHECKING -> UNDER_REVIEW -> APPROVED -> PROCESSING -> REFUNDED
+UNDER_REVIEW -> REJECTED
+PROCESSING   -> REFUND_FAILED -> UNDER_REVIEW
+RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
+```
+
+- 退款调用 `POST /v3/refund/domestic/refunds`，`outRefundNo` 由原商户订单号确定性生成，网络重试不重复退款。
+- 退款结果只认退款回调或主动退款查询；客户端操作成功不代表到账。
+- 退款成功后按订单 `entitlementGrant` 快照回收本单新增会员时长和名额包，不影响其他订单，不删除已有提醒。
+- 用户额度被回收后若当前提醒数超过上限，只禁止继续新增，不删除既有提醒。
+- 售后集合：`after_sales_cases`；审计集合：`admin_audit_logs`。
+- 客服工作台只对显式配置的 `AFTER_SALES_ADMIN_OPENIDS` 开放；未配置时关闭，不存在代码内置兜底账号。所有查看敏感信息、同步、补发、同意、驳回、重试退款都必须在服务端二次鉴权并写审计日志。
+- 工作台支持老用户保护额度按 50 人一批迁移，可重复执行；迁移永远不会删除或改写提醒任务。
+
+## 4. 代码边界
+
+- 唯一提醒名额规则：`cloudfunctions/reminder/lib/membership.js`
 - 订单创建：`reminder.membership.createOrder`
-- 任务位硬闸门：`cart.commit`、`tripItem.updateReminder`
-- 微信支付与权益发放：`cloudfunctions/payment/`
-- 支付回调和部署说明：`docs/engineering/payment-v3-runbook.md`
-- 会员页：`miniprogram/pages/membership/`
-- 订单页：`miniprogram/pages/membership-orders/`
-- 提醒页内升级入口：`miniprogram/pages/setup/`
+- 权益硬闸门：`cart.commit`、`tripItem.updateReminder`
+- 支付、查单、退款、定时补偿：`cloudfunctions/payment/index.js`
+- 订单状态与权益发放：`cloudfunctions/payment/lib/order.js`
+- 售后资格、重复支付证据、管理员历史：`cloudfunctions/payment/lib/after-sales.js`
+- 老用户迁移：`cloudfunctions/payment/lib/migration.js`
+- 会员购买页：`miniprogram/pages/membership/`
+- 设置提醒内付费入口：`miniprogram/pages/setup/`
+- 订单列表与详情：`membership-orders`（`membership.orders`）、`membership-order-detail`（`membership.orderDetail`）
+- 用户售后：`membership-after-sales`
+- 售后工作台：`admin-after-sales`
+- 支付运行手册：`docs/engineering/payment-v3-runbook.md`
 
-## 上线前置
+## 5. 当前验证状态
 
-1. 小程序已开通微信支付，并把当前 AppID 与公司商户号绑定。
-2. 在微信支付商户平台开通 JSAPI 支付；退款功能后续单独开通 API 退款权限。
-3. 在 CloudBase HTTP 网关新增支付回调路由，指向云函数 `payment`，关闭身份认证、跨域和路径透传，并保留原始请求体。默认域名只用于开发和测试，正式回调使用备案 HTTPS 域名。
-4. 建索引 `reminder_tasks.userId+backendStatus+releaseAt`、`orders.outTradeNo`、`orders.userId+createdAt`。
-5. 云函数 `payment` 配置环境变量：
-   - `WECHAT_PAY_MCH_ID`
-   - `WECHAT_PAY_SERIAL_NO`
-   - `WECHAT_PAY_PRIVATE_KEY`
-   - `WECHAT_PAY_API_V3_KEY`
-   - `WECHAT_PAY_NOTIFY_URL`
-   - `WECHAT_PAY_PLATFORM_PUBLIC_KEY`
-   - `WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID`
-   - 可选：`WECHAT_PAY_APP_ID`、`WECHAT_PAY_PLATFORM_CERT`、`WECHAT_PAY_PLATFORM_CERT_SERIAL`、`WECHAT_PAY_CALLBACK_MAX_SKEW_SECONDS`
-6. 测试阶段 `reminder` 配置：
-   - `MEMBERSHIP_ENFORCEMENT_MODE=test`
-   - 如需临时换测试账号，再配置 `MEMBERSHIP_TEST_OPENIDS=openid1,openid2`
-7. 部署 `reminder` 与 `payment`，再发布小程序端。
-8. 新版客户端确认覆盖后，才可把 `MEMBERSHIP_ENFORCEMENT_MODE` 切为 `all`。
+本地已通过：
 
-## 当前未实现：退款与售后
+- `test/payment-v3.test.js`
+- `test/payment-order.test.js`
+- `test/payment-callback.test.js`
+- `test/payment-after-sales.test.js`
+- `test/payment-refund-callback.test.js`
+- `test/membership.test.js`
+- `test/membership-ux.test.js`
+- `test/membership-pay.test.js`
+- `test/mock-mirror.test.js`
 
-- 当前没有用户退款申请入口、客服审核后台、管理员退款接口、微信退款调用、退款回调和权益回收。
-- `orders.status=REFUNDED` 目前只是展示枚举，系统不会自动进入退款状态或收回会员/任务包权益。
-- 在微信支付商户平台手工退款不会自动同步小程序订单和权益，不能当作完整退款流程。
-- 在上述能力闭环前，不得向用户展示“申请退款”或宣称支持在线退款。退款规则、客服权限和审核流程待产品方案确认后再实现。
+云端已验证：
 
-## 验证清单
+- `reminder`、`payment` 已部署到 `cloud1`，会员状态、订单查询、售后申请、客服工作台、驳回和审计入口可执行。
+- `cloud1` 完成一次 ¥2 真实购买，订单为 `PAID / PAID_GRANTED`。
+- `cloud1` 完成一次“已使用权益”退款驳回，订单详情和售后详情均展示驳回原因。
+- 微信云开发定时触发器已部署为 `paymentReconcileEveryTwoMinutes`，表达式 `0 */2 * * * * *`。
+- 体验版 `1.0.10` 已上传并覆盖上一体验版；正式版仍为 `1.0.9`，未提交审核。
 
-- 免费用户 1–5 条任务时页面无会员入口。
-- 第 6 条或单批超额时提醒页出现入口。
-- 支付取消后清单、金额、会员状态均未变化。
-- 支付成功后权益到账，并自动继续原提交；用户确认的 cloud1 体验版真实支付已通过主动查单发放权益。
-- HTTP 回调验签、解密和原始请求体透传完成端到端验证前，客户端主动查单仍是补偿路径。
-- 重复支付回调只发一次权益；金额不一致拒绝发放。
-- 会员到期后已有提醒继续发送，新增强制走免费额度。
-- 会员过期后重新续费，已购任务包恢复。
-- 会员详情页可进入订单信息，只显示当前用户订单；点击订单可复制订单号。
-- 自动广告仍然展示，页面和协议均无误导性“免广告”承诺。
+仍未完成：
+
+- 本轮代码提交。
+- 微信支付真实签名回调、微信退款真实签名回调。
+- 关闭小程序后 2 分钟内由定时补偿到账。
+- 一次真实成功退款、退款后会员权益回收及 6 条既有提醒保留验证。
+- `unpay` 环境真实退款回调端到端验证。
+- 正式环境 `MEMBERSHIP_ENFORCEMENT_MODE=all` 切换。
+
+⚠️ 测试通过、已提交、已部署、真机验证是不同状态，不能互相替代。

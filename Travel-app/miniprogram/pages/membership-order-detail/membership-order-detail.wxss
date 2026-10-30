@@ -1,0 +1,30 @@
+.navbar { position: fixed; top: 0; left: 0; right: 0; z-index: 90; background: var(--color-page); }
+.navbar-content { display: flex; align-items: center; position: relative; }
+.navbar-back { position: absolute; left: 20rpx; width: 60rpx; height: 60rpx; display: flex; align-items: center; justify-content: center; }
+.navbar-title { position: absolute; left: 50%; transform: translateX(-50%); color: var(--color-ink); font-size: 30rpx; font-weight: 600; }
+.page-body { padding: 24rpx 30rpx 120rpx; }
+.loading-wrap { display: flex; justify-content: center; padding: 120rpx 0; }
+.load-failed { display: flex; flex-direction: column; align-items: center; gap: 20rpx; padding: 120rpx 0; }
+.load-failed-title { color: var(--color-muted); font-size: 24rpx; }
+.retry-btn { padding: 16rpx 30rpx; border-radius: 14rpx; background: var(--color-cream); color: var(--color-text); font-size: 24rpx; }
+.state-card { display: flex; flex-direction: column; gap: 8rpx; padding: 26rpx; border: 1rpx solid #E5D4B4; border-radius: 20rpx; background: #FFF9EA; }
+.state-card.success { border-color: #BFD8C2; background: #F1F8F1; }
+.state-card.error { border-color: #E6C0B3; background: #FFF4F0; }
+.state-card.refunded { border-color: #E3C8C1; background: #FFF5F1; }
+.state-card.review { border-color: #C8D9E6; background: #F3F8FC; }
+.state-title { color: var(--color-ink); font-size: 29rpx; font-weight: 700; }
+.state-desc, .state-expiry { color: var(--color-muted); font-size: 22rpx; line-height: 1.6; }
+.state-expiry { color: #4A7C59; font-weight: 600; }
+.action-message { margin-top: 16rpx; padding: 17rpx 20rpx; border-radius: 14rpx; background: var(--color-cream); color: var(--color-text); font-size: 22rpx; line-height: 1.55; }
+.info-card, .rights-card, .rule-card { margin-top: 18rpx; padding: 22rpx 24rpx; border: 1rpx solid var(--color-border); border-radius: 18rpx; background: var(--color-surface); box-shadow: var(--shadow-card); }
+.info-row { display: flex; justify-content: space-between; gap: 24rpx; padding: 12rpx 0; color: var(--color-text); font-size: 23rpx; }
+.info-row text:last-child { max-width: 68%; text-align: right; }
+.amount { color: var(--color-primary); font-size: 27rpx; font-weight: 700; }
+.order-no-row { align-items: flex-start; }
+.order-no { word-break: break-all; color: var(--color-muted); font-size: 20rpx; }
+.copy-action { margin-top: 10rpx; text-align: right; color: var(--color-primary); font-size: 21rpx; }
+.rights-card, .rule-card { display: flex; flex-direction: column; gap: 9rpx; color: var(--color-muted); font-size: 21rpx; line-height: 1.55; }
+.rights-title, .rule-title { color: var(--color-ink); font-size: 25rpx; font-weight: 600; }
+.action-list { display: flex; flex-direction: column; gap: 13rpx; margin-top: 22rpx; }
+.action { height: 76rpx; border: 1rpx solid var(--color-border); border-radius: 16rpx; background: var(--color-surface); color: var(--color-text); font-size: 25rpx; display: flex; align-items: center; justify-content: center; }
+.action.primary { border-color: var(--color-primary); background: var(--color-primary); color: #FFFEFB; font-weight: 600; }

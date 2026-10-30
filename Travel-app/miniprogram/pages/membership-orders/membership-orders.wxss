@@ -96,3 +96,28 @@
   white-space: nowrap;
 }
 .order-copy { flex-shrink: 0; color: var(--color-muted); font-size: 21rpx; }
+
+.refund-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-top: 14rpx;
+  padding: 12rpx 14rpx;
+  border-radius: 10rpx;
+  background: var(--color-cream);
+  color: var(--color-muted);
+  font-size: 21rpx;
+}
+.refund-line.review { background: #FFF5DD; color: #8A5A12; }
+.refund-line.processing { background: #EAF2FA; color: #356A8A; }
+.refund-line.refunded { background: #F5DDD5; color: #8D3B28; }
+.refund-line.rejected, .refund-line.failed { background: #FFF0EB; color: #A7462B; }
+.order-detail-hint {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6rpx;
+  margin-top: 14rpx;
+  color: var(--color-muted);
+  font-size: 20rpx;
+}

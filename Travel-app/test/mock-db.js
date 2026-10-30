@@ -3,10 +3,10 @@
  *
  * 只实现本项目实际用到的 API 子集：
  *   collection().where().get() / count() / update() / remove() / orderBy() / limit()
- *   collection().doc().update() / remove()
+ *   collection().doc().get() / update() / remove()
  *   collection().add()
  *   db.command.in / gt / lte / and
- *   db.startTransaction() → collection().add() / doc().remove() / commit() / rollback()
+ *   db.startTransaction() → collection().add() / doc().get() / update() / remove() / commit() / rollback()
  */
 
 let seq = 0;
@@ -156,6 +156,10 @@ function createDb() {
             return r;
           },
           doc: (id) => ({
+            get: async () => {
+              const d = coll(name).get(id);
+              return { data: d ? [{ ...d }] : [] };
+            },
             update: async ({ data }) => {
               const before = { ...coll(name).get(id) };
               undo.push(() => coll(name).set(id, before));

@@ -1,5 +1,5 @@
 /**
- * 会员任务位规则与服务端硬闸门。
+ * 会员提醒名额规则与服务端硬闸门。
  *
  * 运行：node test/membership.test.js
  */
@@ -82,7 +82,7 @@ async function run() {
   eq(membership.shouldEnforceFor(TEST_OPENID_A), true, '测试账号 A 在白名单');
   eq(membership.shouldEnforceFor(TEST_OPENID_B), true, '测试账号 B 在白名单');
   eq(membership.shouldEnforceFor(TEST_OPENID_ANDROID), true, '安卓测试账号在白名单');
-  eq(membership.shouldEnforceFor(USER), false, '其他线上用户不启用任务位限制');
+  eq(membership.shouldEnforceFor(USER), false, '其他线上用户不启用提醒名额限制');
 
   process.env.MEMBERSHIP_ENFORCEMENT_MODE = 'off';
   eq(membership.shouldEnforceFor(TEST_OPENID_A), false, 'off 模式关闭所有限制');
@@ -104,7 +104,7 @@ async function run() {
   process.env.MEMBERSHIP_ENFORCEMENT_MODE = 'all';
   delete process.env.MEMBERSHIP_TEST_OPENIDS;
 
-  console.log('=== 1. 免费 / 会员 / 加量包任务位 ===');
+  console.log('=== 1. 免费 / 会员 / 加量包提醒名额 ===');
   let db = createDb();
   seedUser(db);
   seedActiveTasks(db, 5);
@@ -116,7 +116,7 @@ async function run() {
 
   const blocked = await membership.capacityError(db, USER, 1);
   eq(blocked.success, false, '超额被拒');
-  eq(blocked.errorCode, 1026, '返回任务位错误码');
+  eq(blocked.errorCode, 1026, '返回提醒名额错误码');
   eq(blocked.taskLimit.shortfall, 1, '缺口 1');
 
   await db.collection(COLLECTIONS.USERS).where({ openId: USER }).update({
@@ -130,7 +130,7 @@ async function run() {
   eq(current.membership.taskLimit, 15, '会员 10 + 1 个加量包 = 15');
   eq(await membership.capacityError(db, USER, 10), null, '15 位内允许新增 10');
 
-  console.log('\n=== 2. 过期任务不占新任务位 ===');
+  console.log('\n=== 2. 过期任务不占新提醒名额 ===');
   db = createDb();
   seedUser(db);
   seedActiveTasks(db, 5);
@@ -153,7 +153,7 @@ async function run() {
     offsets: [5],
   });
   eq(submitted.success, false, '免费用户新增 2 条被拒');
-  eq(submitted.errorCode, 1026, '提交返回任务位错误码');
+  eq(submitted.errorCode, 1026, '提交返回提醒名额错误码');
   eq(db._size(COLLECTIONS.REMINDER_CART), 2, '失败后清单原样保留');
   eq(db._size(COLLECTIONS.TRIPS), 0, '失败后不创建行程');
   eq(db._size(COLLECTIONS.REMINDER_TASKS), 5, '失败后不创建任务');
@@ -232,7 +232,7 @@ async function run() {
   seedActiveTasks(db, 12);
   current = await membership.status(db, USER);
   eq(current.membership.member, false, '已过有效期按普通用户处理');
-  eq(current.membership.taskLimit, 5, '过期后只保留免费 5 个任务位');
+  eq(current.membership.taskLimit, 12, '老用户 12 条未来提醒被固定保护');
   eq(current.membership.ownedTaskPackCount, 1, '已购任务包仍保留');
   const packOrder = await membership.createOrder(db, USER, { packageId: 'task_pack_5' });
   eq(packOrder.success, false, '非有效会员不能直接加购');
@@ -266,7 +266,7 @@ async function run() {
       outTradeNo: 'TNEW',
       packageId: 'task_pack_5',
       productType: 'TASK_PACK',
-      title: '5 个任务位',
+      title: '5 个任务位', // 兼容升级前历史订单的旧文案
       amountFen: 200,
       addedSlots: 5,
       memberDays: 0,
@@ -279,8 +279,61 @@ async function run() {
   eq(orders.items[0]._id, 'order_new', '按创建时间倒序');
   eq(orders.items[0].statusLabel, '待支付', 'PENDING 展示待支付');
   eq(orders.items[1].amountText, '¥2', '金额格式化');
+  eq(orders.items[0].title, '5 个提醒名额', '历史任务位订单统一显示为提醒名额');
   eq('paymentResult' in orders.items[0], false, '不向客户端返回支付原始结果');
   eq('transactionId' in orders.items[1], false, '不向客户端返回微信交易号');
+  eq(orders.items[1].isExpired, false, '已支付订单不会因 15 分钟支付有效期被标成过期');
+  eq(orders.items[1].actionFlags.canRebuy, false, '已支付订单不会出现重新购买');
+  eq(Number.isFinite(orders.items[1].refundEligibility.hoursSincePaid), true,
+    '订单视图返回距离支付小时数，供退款申请页展示');
+  eq(orders.items[0].actionFlags.canRebuy, true, '过期未支付订单允许重新购买');
+  const detail = await membership.orderDetail(db, USER, 'order_new');
+  eq(detail.success, true, '本人可读取单笔订单详情');
+  eq(detail.item._id, 'order_new', '单笔详情返回目标订单');
+  eq('paymentResult' in detail.item, false, '单笔详情仍不返回支付原始结果');
+  const otherDetail = await membership.orderDetail(db, 'openid_other', 'order_new');
+  eq(otherDetail.success, false, '不能读取他人订单详情');
+  eq(otherDetail.errorCode, 1024, '他人订单按不存在处理');
+
+  console.log('\n=== 7. 过期待支付订单立即关闭并新建 ===');
+  db = createDb();
+  seedUser(db);
+  db._seed(COLLECTIONS.ORDERS, [{
+    _id: 'order_expired',
+    userId: USER,
+    outTradeNo: 'TEXPIRED',
+    packageId: 'member',
+    productType: 'MEMBER',
+    title: '会员 30 天',
+    amountFen: 200,
+    memberDays: 30,
+    status: 'PENDING',
+    createdAt: new Date(Date.now() - 20 * 60 * 1000),
+    expiresAt: new Date(Date.now() - 5 * 60 * 1000),
+  }]);
+  const freshOrder = await membership.createOrder(db, USER, { packageId: 'member' });
+  const orderRows = db._dump(COLLECTIONS.ORDERS);
+  eq(freshOrder.success, true, '过期订单后仍可创建新订单');
+  eq(orderRows.find(item => item._id === 'order_expired').status, 'CLOSED', '旧待支付订单立即关闭');
+  eq(freshOrder.orderId === 'order_expired', false, '不会复用已过期待支付订单');
+  eq(orderRows.filter(item => item.status === 'PENDING').length, 1, '只保留一笔有效待支付订单');
+
+  console.log('\n=== 8. 历史提醒也作为退款使用证据 ===');
+  db = createDb();
+  seedUser(db);
+  const historicalCreatedAt = new Date(Date.now() - 60 * 60 * 1000);
+  db._seed(COLLECTIONS.REMINDER_TASKS, [mkTask('task_historical', {
+    backendStatus: ReminderBackendStatus.CLOSED,
+    releaseAt: new Date(Date.now() - 30 * 60 * 1000),
+    createdAt: historicalCreatedAt,
+  })]);
+  await membership.status(db, USER);
+  const migratedUser = db._dump(COLLECTIONS.USERS)[0];
+  eq(
+    new Date(migratedUser.lastReminderCreatedAt).getTime(),
+    historicalCreatedAt.getTime(),
+    '最近提醒时间从历史任务回填，而不是只看未来 WAITING'
+  );
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);

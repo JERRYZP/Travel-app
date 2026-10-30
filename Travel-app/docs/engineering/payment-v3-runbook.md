@@ -1,42 +1,39 @@
-# 微信支付 API v3 接入 Runbook
+# 微信支付 API v3 接入与售后 Runbook
 
-> 状态：本地代码和协议测试已完成；未部署、未发起真实支付、未真机验证。
+> 2026-10-30 工作区状态：本地代码与协议测试已完成并提交为 `f6d117b`；`reminder`、`payment` 已部署到 `cloud1`，真实购买与退款驳回已验证；**真实成功退款、退款回调、支付回调验签成功和关闭小程序后补偿到账仍待验证**。
 >
-> 本文只描述操作步骤，不记录商户号、私钥、APIv3 密钥或微信支付公钥。
+> 本文不记录商户号、私钥、APIv3 密钥、微信支付公钥或管理员 OpenID 的实际值。
+> 所有部署、环境切换、环境变量修改和索引创建都必须取得用户当场明确授权。
 
 ## 1. 方案边界
 
 - 小程序继续使用微信云开发作为后端和数据库。
-- 支付直接调用微信支付 API v3，不使用 `cloud.cloudPay`，不要求把商户号授权给云开发服务商。
-- `payment` 云函数负责：
-  - JSAPI 统一下单；
-  - `wx.requestPayment` 参数签名；
-  - 主动查单；
-  - HTTP 回调验签、APIv3 资源解密、订单发放。
-- 订单金额、商品类型和会员权益只从服务端订单快照读取，客户端不能传价格。
+- 支付直接调用微信支付 API v3，不使用 `cloud.cloudPay`，不要求商户号授权给云开发服务商。
+- `payment` 云函数负责 JSAPI 下单、支付参数签名、主动查单、关单、支付回调、定时补偿、退款、退款查询、退款回调和权益发放。
+- 金额、商品类型、会员时长和提醒名额只从服务端订单快照读取；客户端不能传价格。
+- 支付成功唯一依据是服务端取得 `trade_state=SUCCESS`；`wx.requestPayment.success` 只代表客户端流程结束。
 
-## 2. 商户平台准备
+## 2. 商户平台前置条件
 
-确认以下条件：
-
-1. 小程序 AppID `wx05c160a589b97d76` 已绑定商户号。
+1. 小程序 AppID `wx05c160a589b97d76` 已与商户号绑定。
 2. 商户平台已开通 JSAPI 支付。
-3. 已取得商户 API 证书私钥和证书序列号。
-4. 已设置 32 字节 APIv3 密钥。
-5. 已取得微信支付公钥和公钥 ID。推荐使用公钥模式，避免平台证书轮换导致回调验签失败。
-6. 回调地址为公网 HTTPS，路径不能带查询参数。
+3. 已开通 API 退款权限。
+4. 已有商户 API 证书私钥和证书序列号。
+5. 已设置 32 字节 APIv3 密钥。
+6. 已取得微信支付公钥和公钥 ID；推荐公钥模式。
+7. 支付与退款回调均为公网 HTTPS，路径不能带查询参数。
 
-测试环境回调地址：
+测试默认域名示例：
 
 ```text
-https://unpay-d4gf8fyrt5523ca65-1487385918.ap-shanghai.app.tcloudbase.com/payment/notify
+https://unpay-d4gf8fyrt5523ca65-1487385918.ap-shanghai.app.tcloudbase.com
 ```
 
-正式环境建议使用备案自定义域名；`*.tcloudbase.com` 默认域名用于开发和测试。
+正式环境应使用备案自定义域名；`*.tcloudbase.com` 默认域名用于开发和测试。
 
-## 3. 云函数环境变量
+## 3. 环境变量
 
-在 `payment` 云函数配置中设置：
+在 `payment` 云函数中配置：
 
 | 变量 | 必填 | 说明 |
 |---|---|---|
@@ -44,99 +41,116 @@ https://unpay-d4gf8fyrt5523ca65-1487385918.ap-shanghai.app.tcloudbase.com/paymen
 | `WECHAT_PAY_SERIAL_NO` | 是 | 商户 API 证书序列号 |
 | `WECHAT_PAY_PRIVATE_KEY` | 是 | 商户私钥 PEM 或其 Base64 |
 | `WECHAT_PAY_API_V3_KEY` | 是 | 32 字节 APIv3 密钥 |
-| `WECHAT_PAY_NOTIFY_URL` | 是 | 公网 HTTPS 回调地址 |
-| `WECHAT_PAY_PLATFORM_PUBLIC_KEY` | 是* | 微信支付公钥 PEM 或其 Base64 |
-| `WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID` | 是* | 微信支付公钥 ID |
-| `WECHAT_PAY_PLATFORM_CERT` | 否 | 未使用公钥模式时的平台证书回退 |
-| `WECHAT_PAY_PLATFORM_CERT_SERIAL` | 否 | 平台证书序列号回退 |
+| `WECHAT_PAY_NOTIFY_URL` | 是 | 支付回调，指向 `/payment/notify` |
+| `WECHAT_PAY_REFUND_NOTIFY_URL` | 退款时必填 | 退款回调，指向 `/payment/refund-notify` |
+| `WECHAT_PAY_PLATFORM_PUBLIC_KEY` | 是 | 微信支付公钥 PEM 或其 Base64 |
+| `WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID` | 是 | 微信支付公钥 ID |
+| `WECHAT_PAY_PLATFORM_CERT` | 否 | 旧平台证书模式回退，不能与公钥模式隐式混用 |
+| `WECHAT_PAY_PLATFORM_CERT_SERIAL` | 否 | 旧平台证书序列号 |
 | `WECHAT_PAY_APP_ID` | 否 | 默认 `wx05c160a589b97d76` |
 | `WECHAT_PAY_CALLBACK_MAX_SKEW_SECONDS` | 否 | 回调时间窗，默认 300 秒 |
+| `AFTER_SALES_ADMIN_OPENIDS` | 售后工作台必填 | 逗号分隔；未配置时售后工作台关闭，不存在代码内置兜底账号 |
 
-\* 公钥模式必填；若使用平台证书回退，则改为配置平台证书和序列号。
+没有微信支付公钥或平台证书回退配置时，`hasApiConfig=false`；支付 API 不会跳过响应验签继续运行。
 
-密钥只录入云函数环境变量，不写入 `project.config.json`、代码或 Git。录入密钥前必须再次确认目标环境和用途。
+`reminder` 侧会员灰度变量：
 
-## 4. 只验证支付：CloudBase 免费环境探针
+- `MEMBERSHIP_ENFORCEMENT_MODE=off|test|all`，默认 `test`。
+- `MEMBERSHIP_TEST_OPENIDS=openid1,openid2`，可覆盖内置测试名单。
+- 正式发布前不得切 `all`。
 
-免费体验版环境 `unpay-d4gf8fyrt5523ca65` 不支持项目使用的文档型数据库，因此这里**只部署 `payment-test` 支付探针**：
+## 4. HTTP 网关
 
-- 不创建 `users`、`orders`、`reminder_tasks` 集合；
-- 不部署 `reminder` 或正式 `payment` 云函数；
-- 不创建会员、不写订单、不发权益；
-- 只验证 API v3 下单、真机拉起微信支付、微信服务器回调验签/解密和主动查单。
+支付回调：
 
-1. 部署 `payment-test` 云函数到 `unpay-d4gf8fyrt5523ca65`。
-2. 在 `payment-test` 环境变量中配置：
-   - `WECHAT_PAY_MCH_ID`
-   - `WECHAT_PAY_SERIAL_NO`
-   - `WECHAT_PAY_PRIVATE_KEY`
-   - `WECHAT_PAY_API_V3_KEY`
-   - `WECHAT_PAY_NOTIFY_URL=https://unpay-d4gf8fyrt5523ca65-1487385918.ap-shanghai.app.tcloudbase.com/payment/notify-test`
-   - `WECHAT_PAY_PLATFORM_PUBLIC_KEY`
-   - `WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID`
-   - `PAYMENT_PROBE_ALLOWED_OPENIDS`（逗号分隔；不配则使用代码内白名单）
-   - `PAYMENT_PROBE_AMOUNT_FEN=1`
-3. 在 HTTP 网关创建路由：
-   - 域名：`unpay-d4gf8fyrt5523ca65-1487385918.ap-shanghai.app.tcloudbase.com`
-   - 路径：`/payment/notify-test`
-   - 资源类型：云函数
-   - 资源实例：`payment-test`
-   - 版本：`$DEFAULT`
-   - 跨域：关闭
-   - 路径透传：关闭
-   - 身份认证：关闭
-4. 在微信开发者工具把编译模式设为 `pages/payment-probe/payment-probe`，使用真机调试启动。该页面只允许开发版/真机调试，体验版和正式版会拒绝执行。
-5. 支付 ¥0.01 后同时确认：
-   - `payment-test` 日志出现 `[payment-test] callback verified`；
-   - 页面主动查单显示 `SUCCESS` 和微信交易号。
+- 路径：`/payment/notify`
+- 资源类型：云函数
+- 实例：`payment`
+- 身份认证：关闭
+- 跨域：关闭
+- 路径透传：关闭
+- 必须保留原始 HTTP body
 
-这一步通过只代表“真实微信支付链路可用”，不代表会员订单、权益发放和完整提交流程已通过。
+退款回调：
 
-## 5. CloudBase 完整业务测试环境步骤
+- 路径：`/payment/refund-notify`
+- 其余配置与支付回调相同
 
-测试环境 ID：
+不建议把 `/payment/notify` 同时当退款回调。代码按精确路径区分；退款回调和支付回调都必须用 `/payment/refund-notify` 验签和路由。
+
+## 5. 定时补偿
+
+`cloudfunctions/payment/config.json` 配置每 2 分钟一次：
 
 ```text
-unpay-d4gf8fyrt5523ca65
+0 */2 * * * * *
 ```
 
-1. 创建集合：
-   - `users`
-   - `orders`
-   - `reminder_tasks`
-2. 建立索引：
-   - `orders.outTradeNo`
-   - `orders.userId + createdAt`
-   - `reminder_tasks.userId + backendStatus + releaseAt`
-3. 部署测试环境所需的 `reminder`、`payment` 云函数。不要部署到 `cloud1`。
-4. 配置 `payment` 环境变量。
-5. 在 HTTP 网关创建路由：
-   - 域名：测试环境默认域名；
-   - 路径：`/payment/notify`；
-   - 资源类型：云函数；
-   - 资源实例：`payment`；
-   - 版本：`$DEFAULT`；
-   - 跨域：关闭；
-   - 路径透传：关闭；
-   - 身份认证：关闭。
-6. 保留 `payment-notify-probe` 直到真实回调验签通过，确认后再由用户授权删除。
+定时任务处理：
 
-## 6. 端到端验收
+- `PENDING` 订单主动查单、关闭过期订单。
+- `PAID_GRANT_FAILED` 订单重试发放；成功后自动解决权益未到账售后单。
+- `AUTO_CHECKING` 售后单：补齐权益或自动处理符合证据的重复支付退款。
+- `PROCESSING / REFUND_FAILED` 售后单主动查询退款结果。
 
-1. 用开发版或真机调试打开会员页。
-2. 创建会员或任务位订单。
-3. 确认 `orders` 中出现 `PENDING` 订单。
-4. 拉起真实 `wx.requestPayment`。
-5. 支付成功后确认：
-   - 回调 HTTP 请求进入 `payment`；
-   - 签名、时间窗、公钥 ID 校验通过；
-   - APIv3 资源解密成功；
-   - `orders.status=PAID`；
-   - 用户会员有效期或任务位正确增加。
-6. 再验证：
-   - 取消支付不发权益；
-   - 主动查单可在回调丢失时补发；
-   - 重复回调不重复发放；
-   - 金额不一致、商户号不一致、AppID 不一致均拒绝。
+定时任务只做补偿，不替代支付回调；两者都确认后才算真实链路完整。
 
-只有真实支付和真实回调都通过，才能把状态写成“微信支付已联调完成”。
+2026-10-30 已在 `cloud1` 控制台确认：微信云开发触发器名为 `paymentReconcileEveryTwoMinutes`，表达式为 `0 */2 * * * * *`，标准触发器为空属正常。函数日志会混入客户端 `payment.query`/售后调用，不能仅按日志条数判断定时器重复。
+
+`cloud1` 支付与退款 HTTP 路由已用错误签名请求验证可达并返回 401；这只能证明请求能到函数，不能替代真实微信签名回调。真实签名回调未观察到前，支付结果仍由主动查单和定时补偿兜底。
+
+## 6. 支付探针
+
+免费测试环境 `unpay-d4gf8fyrt5523ca65` 只用 `payment-test` 探针验证支付协议：
+
+- 不写会员、订单或提醒集合。
+- 只验证 API v3 下单、真机拉起微信支付、回调验签/解密、主动查单。
+- 探针通过不等于会员权益和退款链路通过。
+
+探针配置与步骤：
+
+1. 部署 `payment-test` 到 `unpay-d4gf8fyrt5523ca65`。
+2. 配置商户 API 参数、`WECHAT_PAY_NOTIFY_URL=https://unpay-d4gf8fyrt5523ca65-1487385918.ap-shanghai.app.tcloudbase.com/payment/notify-test`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID` 和 `PAYMENT_PROBE_ALLOWED_OPENIDS`。
+3. `PAYMENT_PROBE_AMOUNT_FEN=1`。
+4. 在 HTTP 网关创建 `/payment/notify-test`，指向 `payment-test`，关闭身份认证、跨域和路径透传。
+5. 真机支付 ¥0.01，确认日志出现验签成功、主动查单为 `SUCCESS`。
+
+## 7. 部署顺序
+
+1. 用户确认目标环境、集合与索引清单。
+2. 在目标环境创建 `after_sales_cases`、`admin_audit_logs` 和 `数据库索引.md` 第二节要求的索引。
+3. 配置 `payment` 环境变量，先保持 `MEMBERSHIP_ENFORCEMENT_MODE=test`。
+4. 部署 `payment`。
+5. 部署 `reminder`。
+6. 上传体验版小程序端；2026-10-30 已上传 `1.0.10`，正式版仍为 `1.0.9`。
+7. 在售后工作台手动分批执行老用户保护额度迁移，直到 `hasMore=false`。
+8. 完成体验版验收后，才允许切 `MEMBERSHIP_ENFORCEMENT_MODE=all`。
+
+任何一步失败都停在该步，不能用测试通过替代部署或真机验证。
+
+## 8. 验收清单
+
+支付：
+
+- 正确签名、错误签名、错误公钥 ID、过期时间戳、篡改 body、重复回调、金额不一致。
+- 下单/查单/退款请求的微信响应签名校验失败时不得使用返回值。
+- 15 分钟内复用待支付订单；过期后本地关闭并新建。
+- 支付后立即关闭小程序，2 分钟内主动查单补偿能发权益。
+- 权益只发一次；回调失败但查单成功仍能到账。
+- 查单成功但发放失败时，自动生成高优先级售后单，不重复扣款。
+
+退款：
+
+- 24 小时内且未新增提醒可申请；已使用、超 24 小时、正常权益驳回。
+- 重复支付证据准确，退款单号确定且重试不重复退款。
+- 退款回调失败后主动查询能收敛；重复退款回调不重复回收权益。
+- 退款成功后不删除已有提醒，只回收本单新增会员时长和名额包。
+- 已使用权益导致额度超限时，只禁止继续新增，不删除既有提醒。
+
+真机：
+
+- `unpay` 完成真实签名回调样本或探针验证。
+- `cloud1` 体验版 `1.0.10` 已完成 ¥2 会员购买和一次退款驳回；仍需完成关闭小程序后到账、一次真实成功退款和退款后权益回收。
+- 售后工作台已完成一次查看、同步支付结果与驳回；补发权益（模拟失败）、同意退款和审计核对仍需完成。
+
+⚠️ 只有以上真实环境步骤完成，才能把状态写成“微信支付与退款已联调完成”。

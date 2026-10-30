@@ -95,6 +95,7 @@ function run() {
   ), true, '支付参数签名可验证');
 
   console.log('\n=== 3. 回调签名与时间窗 ===');
+  const apiV3Key = '0123456789abcdef0123456789abcdef';
   const platform = rsaPair();
   const callbackBody = JSON.stringify({
     event_type: 'TRANSACTION.SUCCESS',
@@ -111,6 +112,18 @@ function run() {
     platformPublicKeyId: 'PUB_KEY_ID_TEST',
     maxSkewSeconds: 300,
   };
+  const apiConfig = {
+    appId: 'wx05c160a589b97d76',
+    mchId: '1900000000',
+    serialNo: 'MERCHANT_SERIAL',
+    privateKey: merchant.privateKey,
+    apiV3Key,
+    notifyUrl: 'https://example.com/payment/notify',
+    platformPublicKey: platform.publicKey,
+    platformPublicKeyId: 'PUB_KEY_ID_TEST',
+  };
+  eq(wxpay.hasApiConfig(apiConfig), true, '支付 API 配置包含响应验签公钥');
+  eq(wxpay.hasApiConfig({ ...apiConfig, platformPublicKey: '', platformPublicKeyId: '' }), false, '缺少响应验签公钥时不认为支付 API 就绪');
   const callbackHeaders = {
     'Wechatpay-Timestamp': callbackTimestamp,
     'Wechatpay-Nonce': callbackNonce,
@@ -139,9 +152,22 @@ function run() {
     body: callbackBody,
     config,
   }), false, '缺少微信支付公钥 ID 被拒绝');
+  const staleTimestamp = String(Number(callbackTimestamp) - 600);
+  const staleHeaders = {
+    ...callbackHeaders,
+    'Wechatpay-Timestamp': staleTimestamp,
+    'Wechatpay-Signature': sign(
+      `${staleTimestamp}\n${callbackNonce}\n${callbackBody}\n`,
+      platform.privateKey
+    ),
+  };
+  eq(wxpay.verifyCallbackSignature({
+    headers: staleHeaders,
+    body: callbackBody,
+    config,
+  }), false, '超过时间窗的回调被拒绝');
 
   console.log('\n=== 4. APIv3 回调资源解密与金额读取 ===');
-  const apiV3Key = '0123456789abcdef0123456789abcdef';
   const transaction = {
     appid: 'wx05c160a589b97d76',
     mchid: '1900000000',
@@ -155,6 +181,13 @@ function run() {
   eq(decrypted.transaction_id, transaction.transaction_id, '回调资源解密出微信交易号');
   eq(decrypted.trade_state, 'SUCCESS', '回调资源保留支付状态');
   eq(amountOf(decrypted), 200, 'amountOf 支持 v3 amount.total');
+  let rejectedAlgorithm = false;
+  try {
+    wxpay.decryptResource({ ...resource, algorithm: 'AEAD_AES_128_GCM' }, apiV3Key);
+  } catch (err) {
+    rejectedAlgorithm = /不支持的支付回调加密算法/.test(err.message);
+  }
+  eq(rejectedAlgorithm, true, '非 AEAD_AES_256_GCM 资源被拒绝');
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);

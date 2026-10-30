@@ -4,7 +4,7 @@
     <view class="navbar-back" bindtap="onBack">
       <svg-icon name="back-thick" size="18px" />
     </view>
-    <text class="navbar-title">订单信息</text>
+    <text class="navbar-title">订单与退款</text>
   </view>
 </view>
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
@@ -21,12 +21,12 @@
 
   <view wx:elif="{{items.length === 0}}" class="empty-state">
     <text class="empty-title">还没有会员订单</text>
-    <text class="empty-desc">开通会员或加购任务位后，支付记录会显示在这里。</text>
+    <text class="empty-desc">开通会员或加购提醒名额后，支付和退款进度会显示在这里。</text>
   </view>
 
   <block wx:else>
     <view class="order-summary">
-      <text class="order-summary-title">会员与任务位支付记录</text>
+      <text class="order-summary-title">会员与提醒名额记录</text>
       <text class="order-summary-count">共 {{count}} 笔</text>
     </view>
 
@@ -35,8 +35,8 @@
         wx:for="{{items}}"
         wx:key="_id"
         class="order-card"
-        bindtap="onCopyOrderNo"
-        data-no="{{item.outTradeNo}}"
+        bindtap="onOrderDetail"
+        data-id="{{item._id}}"
       >
         <view class="order-head">
           <text class="order-title">{{item.title}}</text>
@@ -46,10 +46,15 @@
           <text>{{item.paidAtText ? '支付于 ' + item.paidAtText : '创建于 ' + item.createdAtText}}</text>
           <text class="order-amount">{{item.amountText}}</text>
         </view>
+        <view wx:if="{{item.refundStatusLabel}}" class="refund-line {{item._refundTone}}">
+          <text>退款进度</text>
+          <text>{{item.refundStatusLabel}}</text>
+        </view>
         <view class="order-no-row">
           <text class="order-no">订单号 {{item.outTradeNo}}</text>
-          <text class="order-copy">复制</text>
+          <text class="order-copy" catchtap="onCopyOrderNo" data-no="{{item.outTradeNo}}">复制</text>
         </view>
+        <view class="order-detail-hint">查看订单详情与可执行操作 <svg-icon name="chevron-down" size="11px" rotate="270" /></view>
       </view>
     </view>
   </block>

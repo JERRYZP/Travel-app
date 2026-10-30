@@ -48,7 +48,7 @@ async function run() {
   gate = setupDef.membershipGateOf(1, { ...free, taskUsed: 5, taskRemaining: 0 });
   eq(gate.showMembershipGate, true, '第 6 条时显示');
   eq(gate.upgradePackageId, 'member', '普通用户优先开会员');
-  eq(gate.membershipActionText, '¥2 开通并继续', '按钮直接说明继续原流程');
+  eq(gate.membershipActionText, '支付 ¥2，开通 30 天会员并继续', '按钮直接说明商品、金额并继续原流程');
 
   console.log('\n=== 2. 会员超额时加购，不重复卖会员 ===');
   gate = setupDef.membershipGateOf(1, {
@@ -61,9 +61,9 @@ async function run() {
   });
   eq(gate.showMembershipGate, true, '会员满额时显示');
   eq(gate.upgradePackageId, 'task_pack_5', '会员显示加购包');
-  eq(gate.membershipActionText, '¥2 加购并继续', '加购后继续原提交');
+  eq(gate.membershipActionText, '支付 ¥2，加购 5 个名额并继续', '加购后继续原提交');
 
-  console.log('\n=== 3. 会员过期后续费会恢复已购任务位 ===');
+  console.log('\n=== 3. 会员过期后续费会恢复已购提醒名额 ===');
   gate = setupDef.membershipGateOf(1, {
     ...free,
     member: false,
@@ -74,8 +74,8 @@ async function run() {
     ownedTaskPackCount: 1,
     taskPackSize: 5,
   });
-  eq(gate.upgradePackageId, 'member', '续费会员即可恢复原有 15 个任务位');
-  eq(/开通会员后 30 天内可用 10 个任务位/.test(gate.membershipGateDesc), true,
+  eq(gate.upgradePackageId, 'member', '续费会员即可恢复原有 15 个提醒名额');
+  eq(/开通会员后 30 天内最多可用 10 个提醒名额/.test(gate.membershipGateDesc), true,
     '有历史任务包时续费描述仍保持简单');
 
   console.log('\n=== 4. 页面结构与常驻入口 ===');
@@ -111,6 +111,12 @@ async function run() {
   eq(appJson.pages.includes('pages/membership-orders/membership-orders'), true, '订单页已注册');
   eq(membershipAll.includes('bindtap="onOrders"'), true, '会员详情页有订单信息入口');
   eq(/免广告/.test(membershipAll), false, '会员页不承诺平台无法控制的免广告');
+  const orderDetailJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-order-detail/membership-order-detail.js'), 'utf8');
+  const afterSalesWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-after-sales/membership-after-sales.wxml'), 'utf8');
+  eq(orderDetailJs.includes('latestCase && latestCase.decisionNote'), true,
+    '订单详情展示客服填写的驳回原因');
+  eq(afterSalesWxml.includes('previousCase.decisionNote'), true,
+    '重新申请售后前展示上次驳回原因');
 
   console.log('\n=== 5. 身份卡文案随会员状态切换 ===');
   let profileData = {};
@@ -135,8 +141,23 @@ async function run() {
   );
   eq(profileData.memberTagText, '尊贵会员', '会员标签凸显身份');
   eq(profileData.memberCardTitle, '尊贵会员', '会员卡标题');
-  eq(profileData.memberCardDesc, '2026-11-26 到期｜任务位 3/10', '会员卡显示到期和任务位');
+  eq(profileData.memberCardDesc, '2026-11-26 到期｜提醒名额 3/10', '会员卡显示到期和提醒名额');
   eq(profileData.memberCardAction, '升级', '会员卡行动为升级');
+
+  console.log('\n=== 6. 加购确认展示真实到期时间 ===');
+  const now = Date.now();
+  const currentExpiry = new Date(now + 40 * 86400000);
+  let upgradeData = {
+    membership: { member: true, memberExpiresAt: currentExpiry },
+    upgradePackageId: 'task_pack_5',
+  };
+  setupDef.onUpgradeAndContinue.call({
+    data: upgradeData,
+    setData(patch) { upgradeData = { ...upgradeData, ...patch }; },
+  });
+  const expectedExpiry = new Date(currentExpiry.getTime() + 8 * 60 * 60 * 1000);
+  const expectedText = `会员有效期至 ${expectedExpiry.getUTCFullYear()}年${expectedExpiry.getUTCMonth() + 1}月${expectedExpiry.getUTCDate()}日`;
+  eq(upgradeData.upgradeConfirmExpiry, expectedText, '已有更长会员期时不被 30 天底线缩短');
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);

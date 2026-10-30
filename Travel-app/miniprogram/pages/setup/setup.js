@@ -32,6 +32,12 @@ Page({
     membershipGateNote: '',
     membershipActionText: '',
     upgradePackageId: '',
+    paymentState: null,
+    showUpgradeConfirm: false,
+    upgradeConfirmTitle: '',
+    upgradeConfirmDesc: '',
+    upgradeConfirmAmount: '¥2',
+    upgradeConfirmExpiry: '',
     systemOk: false,
     accessReady: false,
     canSubmit: false,
@@ -64,7 +70,7 @@ Page({
     /* 授权反馈必须留到下一次用户动作再覆盖。WeChat 授权窗/设置页返回时
        也可能触发 onShow；在这里清空会让“拒绝授权”只剩一个转瞬即逝的 Toast，
        页面数字又恰好没变化，用户会以为点击没生效。 */
-    this.loadCartAndAccess();
+    this.loadCartAndAccess().then(() => this.restorePendingPayment());
   },
 
   loadCartAndAccess() {
@@ -98,31 +104,35 @@ Page({
     if (current.member) {
       return {
         showMembershipGate: true,
-        membershipGateTitle: `还差 ${gap} 个提醒任务位`,
-        membershipGateDesc: '加购 5 个任务位，永久保留，会员有效期内生效。',
+        membershipGateTitle: `还差 ${gap} 个提醒名额`,
+        membershipGateDesc: '加购 5 个提醒名额；名额永久记录，会员有效期内生效。',
         membershipGateNote: `会员到期：${current.memberExpiresAtText || '—'}`,
-        membershipActionText: '¥2 加购并继续',
+        membershipActionText: '支付 ¥2，加购 5 个名额并继续',
         upgradePackageId: 'task_pack_5',
       };
     }
 
-    /* 会员过期时 ownedTaskPackCount 仍然保留；续费后这些已购任务位会一起恢复，
+    /* 会员过期时 ownedTaskPackCount 仍然保留；续费后这些已购名额会一起恢复，
        所以判断“开通会员是否足够”时不能只看会员基础的 10 个。 */
+    const memberBaseLimit = Math.max(
+      Number(current.memberTaskSlots) || 10,
+      Number(current.protectedTaskQuota) || 5
+    );
     const memberRemaining = Math.max(
       0,
-      current.memberTaskSlots
+      memberBaseLimit
         + (current.ownedTaskPackCount || 0) * (current.taskPackSize || 5)
         - current.taskUsed
     );
     const memberEnough = reminderCount <= memberRemaining;
     return {
       showMembershipGate: true,
-      membershipGateTitle: `还差 ${gap} 个提醒任务位`,
+      membershipGateTitle: `还差 ${gap} 个提醒名额`,
       membershipGateDesc: memberEnough
-        ? '开通会员后 30 天内可用 10 个任务位。'
-        : `本次需要 ${reminderCount} 个，开通会员后可继续加购任务位。`,
+        ? '开通会员后 30 天内最多可用 10 个提醒名额。'
+        : `本次需要 ${reminderCount} 个；开通会员后可继续加购名额。`,
       membershipGateNote: '¥2 / 30 天，不自动续费',
-      membershipActionText: '¥2 开通并继续',
+      membershipActionText: '支付 ¥2，开通 30 天会员并继续',
       upgradePackageId: 'member',
     };
   },
@@ -282,37 +292,150 @@ Page({
   onOpenSample() { this.setData({ showSampleSheet: true }); },
   onCloseSample() { this.setData({ showSampleSheet: false }); },
 
+  restorePendingPayment() {
+    if (this._upgrading || this._restoringPayment) return Promise.resolve();
+    const saved = membershipPay.pendingOrder();
+    if (!saved || !saved.orderId) return Promise.resolve();
+    this._restoringPayment = true;
+    this.setPaymentState(
+      'PENDING',
+      '正在确认支付结果',
+      '请勿重复支付；系统会自动查单并在到账后更新权益。',
+      saved.orderId
+    );
+    return api.payment.query({ orderId: saved.orderId }).then(result => {
+      this._restoringPayment = false;
+      const restored = membershipPay.paidResultOf(result, saved.orderId);
+      if (!restored || restored.status === 'PENDING') {
+        this.setPaymentState(
+          'PENDING',
+          '正在确认支付结果',
+          '本次清单和提醒设置已保留，系统会继续自动补偿。',
+          saved.orderId
+        );
+        return;
+      }
+      membershipPay.clearPendingOrder(saved.orderId);
+      if (restored.status === 'PAID_GRANTED') {
+        return this.loadCartAndAccess().then(() => {
+          this.setPaymentState(
+            'PAID_GRANTED',
+            '权益已到账',
+            '支付结果已由服务端确认，请确认提醒时间后继续开启提醒。',
+            saved.orderId
+          );
+        });
+      }
+      if (restored.status === 'PAID_GRANT_FAILED') {
+        this.setPaymentState(
+          'PAID_GRANT_FAILED',
+          '支付已完成，权益发放异常',
+          '请勿重复支付；请到订单详情同步或联系售后处理。',
+          saved.orderId
+        );
+        return;
+      }
+      this.setPaymentState(
+        restored.status === 'REFUNDED' ? 'REFUNDED' : 'CLOSED',
+        restored.status === 'REFUNDED' ? '订单已退款' : '订单已关闭',
+        restored.status === 'REFUNDED'
+          ? '本单权益已按订单快照回收，已有提醒不会被删除。'
+          : '本次未完成支付，可以重新发起。',
+        saved.orderId
+      );
+    }).catch(() => {
+      this._restoringPayment = false;
+      this.setPaymentState(
+        'PENDING',
+        '暂时无法确认支付结果',
+        '权益不会丢失；后台会自动补偿，也可打开订单详情手动同步。',
+        saved.orderId
+      );
+    });
+  },
+
   onUpgradeAndContinue() {
     if (this._upgrading || this.data.submitting) return;
     const packageId = this.data.upgradePackageId;
     if (!packageId) return;
+    const isMember = packageId === 'member';
+    const currentExpiry = new Date(this.data.membership && this.data.membership.memberExpiresAt || 0).getTime();
+    const expiry = isMember
+      ? new Date(Math.max(Date.now(), currentExpiry) + 30 * 86400000)
+      : new Date(Math.max(
+        Number.isFinite(currentExpiry) ? currentExpiry : 0,
+        Date.now() + 30 * 86400000
+      ));
+    const p = new Date(expiry.getTime() + 8 * 60 * 60 * 1000);
+    this.setData({
+      showUpgradeConfirm: true,
+      upgradeConfirmTitle: isMember ? '30 天会员' : '5 个提醒名额',
+      upgradeConfirmDesc: isMember
+        ? '支付成功后立即生效，提醒名额提升到 10 个，并继续完成本次提醒。'
+        : '支付成功后立即记录 5 个名额，并继续完成本次提醒。',
+      upgradeConfirmExpiry: `会员有效期至 ${p.getUTCFullYear()}年${p.getUTCMonth() + 1}月${p.getUTCDate()}日`,
+    });
+  },
+
+  onCloseUpgradeConfirm() {
+    if (this._upgrading) return;
+    this.setData({ showUpgradeConfirm: false });
+  },
+
+  setPaymentState(status, title, description, orderId) {
+    this.setData({
+      paymentState: { status, title, description, orderId: orderId || '' },
+    });
+  },
+
+  onPaymentOrder() {
+    const orderId = this.data.paymentState && this.data.paymentState.orderId;
+    if (!orderId) return;
+    wx.navigateTo({ url: `/pages/membership-order-detail/membership-order-detail?orderId=${orderId}` });
+  },
+
+  onConfirmUpgrade() {
+    if (this._upgrading || this.data.submitting) return;
+    const packageId = this.data.upgradePackageId;
+    if (!packageId) return;
     this._upgrading = true;
+    this.setData({ showUpgradeConfirm: false });
+    this.setPaymentState('PENDING', '正在确认支付结果', '请勿重复支付，系统会自动查单并更新权益。');
     wx.showLoading({ title: '正在准备支付...' });
     membershipPay.purchase(packageId).then(result => {
       wx.hideLoading();
       this._upgrading = false;
-      if (result && result.pending) {
-        wx.showToast({ title: '支付结果确认中，请稍后重试', icon: 'none' });
-        return null;
+      if (result.status === 'PAID_GRANTED') {
+        this.setPaymentState('PAID_GRANTED', '权益已到账', '正在继续完成本次提醒。', result.orderId);
+        return this.loadCartAndAccess().then(() => {
+          setTimeout(() => {
+            if (this.data.showMembershipGate) {
+              this.setPaymentState('PAID_GRANTED', '权益已到账', '当前清单仍需增加名额，请再选择一次。', result.orderId);
+              return;
+            }
+            this.onSubmit();
+          }, 80);
+        });
       }
-      wx.showToast({ title: '会员权益已生效', icon: 'none' });
-      return this.loadCartAndAccess().then(() => {
-        setTimeout(() => {
-          if (this.data.showMembershipGate) {
-            wx.showToast({ title: '还需加购任务位', icon: 'none' });
-            return;
-          }
-          this.onSubmit();
-        }, 80);
-      });
+      if (result.status === 'PAID_GRANT_FAILED') {
+        this.setPaymentState('PAID_GRANT_FAILED', '支付已完成，权益发放异常', '请勿重复支付；请到订单详情同步或联系售后处理。', result.orderId);
+        return;
+      }
+      if (result.status === 'PENDING') {
+        this.setPaymentState('PENDING', '正在确认支付结果', '本次清单和提醒设置已保留，请勿重复支付。', result.orderId);
+        return;
+      }
+      this.setPaymentState('CLOSED', '订单已关闭', '本次未扣款，可以重新发起支付。', result.orderId);
     }).catch(err => {
       wx.hideLoading();
       this._upgrading = false;
+      const saved = membershipPay.pendingOrder();
+      const orderId = (err && err.orderId) || (saved && saved.orderId) || '';
       if (err && err.cancelled) {
-        wx.showToast({ title: '已取消支付', icon: 'none' });
+        this.setPaymentState('CANCELLED', '支付未完成', '本次清单和提醒设置已保留，未扣款时不会发放权益。', orderId);
         return;
       }
-      api.toastError(err);
+      this.setPaymentState('FAILED', '支付未完成', '尚未发放权益；如微信已扣款，请到订单详情同步支付结果。', orderId);
     });
   },
 

@@ -290,3 +290,50 @@
   font-size: 21rpx;
   color: var(--text-faint);
 }
+
+.payment-state {
+  display: flex;
+  flex-direction: column;
+  gap: 7rpx;
+  margin-top: 16rpx;
+  padding: 20rpx 22rpx;
+  border: 1rpx solid #E5D4B4;
+  border-radius: 16rpx;
+  background: #FFF9EA;
+}
+.payment-state.PAID_GRANTED { border-color: #BFD8C2; background: #F1F8F1; }
+.payment-state.PAID_GRANT_FAILED, .payment-state.FAILED { border-color: #E6C0B3; background: #FFF4F0; }
+.payment-state-title { color: var(--color-ink); font-size: 25rpx; font-weight: 600; }
+.payment-state-desc { color: var(--color-muted); font-size: 21rpx; line-height: 1.55; }
+.payment-state-action {
+  align-self: flex-start;
+  margin-top: 4rpx;
+  color: var(--color-primary);
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.upgrade-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 240;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(34, 25, 19, .46);
+}
+.upgrade-sheet {
+  width: 100%;
+  padding: 30rpx 34rpx calc(34rpx + env(safe-area-inset-bottom));
+  border-radius: 30rpx 30rpx 0 0;
+  background: #FFFDF8;
+  box-sizing: border-box;
+}
+.upgrade-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22rpx; }
+.upgrade-title { color: var(--color-ink); font-size: 30rpx; font-weight: 700; }
+.upgrade-close { color: var(--color-muted); font-size: 42rpx; line-height: 1; padding: 0 8rpx; }
+.upgrade-row { display: flex; justify-content: space-between; gap: 24rpx; padding: 12rpx 0; color: var(--color-text); font-size: 24rpx; }
+.upgrade-row text:last-child { max-width: 72%; text-align: right; }
+.upgrade-amount { color: var(--color-primary); font-weight: 700; }
+.upgrade-desc, .upgrade-rule { display: block; margin-top: 14rpx; color: var(--color-muted); font-size: 21rpx; line-height: 1.55; }
+.upgrade-rule { padding: 16rpx 18rpx; border-radius: 13rpx; background: var(--color-cream); }
+.upgrade-confirm-btn { height: 82rpx; margin-top: 24rpx; border-radius: 18rpx; background: var(--color-primary); color: #FFFEFB; font-size: 28rpx; font-weight: 600; display: flex; align-items: center; justify-content: center; }

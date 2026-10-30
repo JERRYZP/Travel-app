@@ -1,0 +1,115 @@
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack"><svg-icon name="back-thick" size="18px" /></view>
+    <text class="navbar-title">售后管理</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view class="page-body">
+  <view wx:if="{{forbidden}}" class="state-box">
+    <text class="state-title">无权限</text>
+    <text class="state-desc">当前账号不在 AFTER_SALES_ADMIN_OPENIDS 白名单内。</text>
+  </view>
+
+  <block wx:else>
+    <view class="migration-card">
+      <view class="migration-copy">
+        <text class="migration-title">上线前数据迁移</text>
+        <text class="migration-desc">为老用户回填固定保护额度，单批最多 50 人。不会删除或改写已有提醒。</text>
+        <text wx:if="{{migrationMessage}}" class="migration-message">{{migrationMessage}}</text>
+      </view>
+      <view class="migration-action {{migrating ? 'disabled' : ''}}" bindtap="onMigrateProtection">
+        {{migrating ? '迁移中...' : (migrationHasMore ? '继续下一批' : '迁移一批')}}
+      </view>
+    </view>
+
+    <scroll-view class="filter-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+      <view class="filter-row">
+        <view
+          wx:for="{{filters}}"
+          wx:key="key"
+          class="filter-chip {{activeFilter === item.key ? 'active' : ''}}"
+          bindtap="onFilterTap"
+          data-key="{{item.key}}"
+        >{{item.label}}</view>
+      </view>
+    </scroll-view>
+
+    <view wx:if="{{loading}}" class="loading-wrap"><van-loading size="36rpx" color="#B8904A" /></view>
+    <view wx:elif="{{loadFailed}}" class="state-box">
+      <text class="state-title">加载失败</text>
+      <view class="retry-btn" bindtap="loadList">重新加载</view>
+    </view>
+    <view wx:elif="{{items.length === 0}}" class="state-box">
+      <text class="state-title">当前筛选没有售后单</text>
+      <text class="state-desc">客服目标是在 24 小时内完成审核。</text>
+    </view>
+
+    <view wx:else class="case-list">
+      <view wx:for="{{items}}" wx:key="_id" class="case-card" bindtap="onCaseTap" data-id="{{item._id}}">
+        <view class="case-head"><text class="case-no">{{item.caseNo}}</text><text class="case-status">{{item.statusLabel}}</text></view>
+        <text class="case-title">{{item.typeLabel}} · {{item.title}}</text>
+        <text class="case-meta">订单 {{item.outTradeNo}}</text>
+        <text class="case-meta">申请时间 {{item.createdAtText}}</text>
+        <text class="case-amount">{{item.amountText}}</text>
+      </view>
+    </view>
+  </block>
+</view>
+
+<view wx:if="{{detail}}" class="detail-mask" bindtap="onCloseDetail">
+  <view class="detail-sheet" catchtap="noop">
+    <view class="detail-head">
+      <text class="detail-title">售后单 {{detail.case.caseNo}}</text>
+      <view class="detail-close" bindtap="onCloseDetail">×</view>
+    </view>
+    <scroll-view class="detail-scroll" scroll-y>
+      <view class="detail-status">{{detail.case.statusLabel}}</view>
+      <view class="detail-section">
+        <text class="detail-section-title">用户申请</text>
+        <text>类型：{{detail.case.typeLabel}}</text>
+        <text>说明：{{detail.case.description || '未填写'}}</text>
+        <text>金额：{{detail.case.amountText}}</text>
+      </view>
+      <view class="detail-section">
+        <text class="detail-section-title">订单与权益证据</text>
+        <text>优先级：{{detail.case.priorityLabel}}</text>
+        <text>订单状态：{{detail.order.status}} / 退款 {{detail.order.refundStatus}}</text>
+        <text>权益发放：{{detail.order.grantStatus}} / {{detail.order.entitlementStatus}}</text>
+        <text wx:if="{{detail.order.paymentResult.tradeState}}">最近查单：{{detail.order.paymentResult.tradeState}}，金额 {{detail.order.paymentResult.amountFen}} 分</text>
+        <text>本单增加会员时长：{{detail.order.entitlementGrant.memberDaysAddedMs || 0}} ms</text>
+        <text>本单增加名额包：{{detail.order.entitlementGrant.taskPackDelta || 0}}</text>
+        <text>支付时间：{{detail.order.paidAt || '—'}}</text>
+        <text>最近新增提醒：{{detail.user.lastReminderCreatedAt || '无'}}</text>
+        <text>支付后是否使用权益：{{detail.case.evidence.eligibility.usedAfterPurchase ? '是' : '否'}}</text>
+        <text>距离支付：{{detail.case.evidence.eligibility.hoursSincePaid}} 小时</text>
+        <text wx:if="{{detail.case.evidence.duplicate}}">重复支付证据：{{detail.case.evidence.duplicate.duplicate ? '已发现同商品订单' : '未发现'}}</text>
+      </view>
+      <view class="detail-section">
+        <text class="detail-section-title">历史售后与退款</text>
+        <text>累计申请 {{detail.history.stats.total}} 次；退款完成 {{detail.history.stats.refunded}} 次；驳回 {{detail.history.stats.rejected}} 次；处理中 {{detail.history.stats.active}} 次。</text>
+        <text>本订单累计申请 {{detail.history.stats.sameOrder}} 次。</text>
+        <view wx:for="{{detail.history.items}}" wx:key="_id" class="history-row">
+          <text>{{item.createdAtText}} · {{item.typeLabel}} · {{item.statusLabel}}</text>
+          <text wx:if="{{item.decisionNote}}">说明：{{item.decisionNote}}</text>
+        </view>
+      </view>
+      <view class="detail-section">
+        <text class="detail-section-title">审核操作</text>
+        <textarea class="decision-input" placeholder="驳回时必须填写用户可见原因" value="{{decisionNote}}" bindinput="onDecisionInput" />
+        <view wx:if="{{actionMessage}}" class="action-message">{{actionMessage}}</view>
+        <view class="action-grid">
+          <view wx:if="{{detail.actionCapabilities.canSyncPayment}}" class="admin-action" bindtap="onSyncPayment">同步支付结果</view>
+          <view wx:if="{{detail.actionCapabilities.canRetryGrant}}" class="admin-action" bindtap="onRetryGrant">补发权益</view>
+          <view wx:if="{{detail.actionCapabilities.canSyncRefund}}" class="admin-action" bindtap="onSyncRefund">同步退款结果</view>
+          <view wx:if="{{detail.actionCapabilities.canApproveRefund}}" class="admin-action primary" bindtap="onApprove">同意全额退款</view>
+          <view wx:if="{{detail.actionCapabilities.canReject}}" class="admin-action danger" bindtap="onReject">驳回申请</view>
+          <view wx:if="{{!detail.actionCapabilities.canSyncPayment && !detail.actionCapabilities.canRetryGrant && !detail.actionCapabilities.canSyncRefund && !detail.actionCapabilities.canApproveRefund && !detail.actionCapabilities.canReject}}" class="action-empty">当前售后单没有可执行操作</view>
+        </view>
+        <text class="audit-note">所有查看、同步、补发、同意、驳回和重试退款操作均写入 admin_audit_logs。</text>
+      </view>
+    </scroll-view>
+  </view>
+</view>

@@ -18,6 +18,7 @@ const db = {
   items: {},
   feedbacks: {},
   orders: {},
+  afterSalesCases: {},
   searchHistory: [],
 };
 /* 暂存清单的占位 tripId（镜像 schema.PENDING_CART_TRIP_ID，2026-09-20 清单改暂存区）：
@@ -1050,6 +1051,8 @@ const mockUser = {
   memberSince: null,
   memberExpiresAt: null,
   taskPackCount: 0,
+  protectedTaskQuota: 5,
+  lastReminderCreatedAt: null,
   points: 0,
   subscribeQuota: 0,
   subscribeQuotas: {},
@@ -1064,9 +1067,11 @@ function mockMembershipSnapshot(nowTs = new Date()) {
   const memberExpiresMs = new Date(mockUser.memberExpiresAt || 0).getTime();
   const member = Number.isFinite(memberExpiresMs) && memberExpiresMs > nowTs.getTime();
   const taskPackCount = member ? Math.max(0, Number(mockUser.taskPackCount) || 0) : 0;
-  const taskLimit = FREE_TASK_SLOTS
+  const protectedTaskQuota = Math.max(FREE_TASK_SLOTS, Number(mockUser.protectedTaskQuota) || FREE_TASK_SLOTS);
+  const entitlementTaskLimit = FREE_TASK_SLOTS
     + (member ? MEMBER_TASK_SLOTS - FREE_TASK_SLOTS : 0)
     + taskPackCount * TASK_PACK_SIZE;
+  const taskLimit = Math.max(entitlementTaskLimit, protectedTaskQuota);
   const taskUsed = Object.values(db.tasks).filter(t =>
     t.backendStatus === 'WAITING'
     && Number.isFinite(new Date(t.releaseAt).getTime())
@@ -1082,6 +1087,8 @@ function mockMembershipSnapshot(nowTs = new Date()) {
       ? Math.max(1, Math.ceil((memberExpiresMs - nowTs.getTime()) / DAY_MS))
       : 0,
     taskLimit,
+    entitlementTaskLimit,
+    protectedTaskQuota,
     taskUsed,
     taskRemaining: Math.max(0, taskLimit - taskUsed),
     taskPackCount,
@@ -1104,7 +1111,7 @@ function mockMembershipPackages(snapshot) {
       taskSlots: 10,
       addedSlots: 5,
       memberDays: 30,
-      description: '30 天内最多 10 个提醒任务位',
+      description: '30 天内最多 10 个提醒名额',
       badge: '推荐',
       available: true,
       actionText: snapshot.member ? '续费 30 天 ¥2' : '开通会员 ¥2',
@@ -1112,18 +1119,169 @@ function mockMembershipPackages(snapshot) {
     {
       id: 'task_pack_5',
       type: 'TASK_PACK',
-      title: '5 个任务位',
+      title: '5 个提醒名额',
       priceFen: 200,
       priceText: '¥2',
       taskSlots: 5,
       addedSlots: 5,
       memberDays: 0,
-      description: '永久保留，会员有效期内生效',
+      description: '名额永久记录，会员有效期内生效',
       badge: '',
       available: snapshot.member,
-      actionText: snapshot.member ? '购买 5 个任务位 ¥2' : '先开通会员',
+      actionText: snapshot.member ? '加购 5 个名额 ¥2' : '先开通会员',
     },
   ];
+}
+
+
+const MOCK_REFUND_LABEL = {
+  NONE: '',
+  REQUESTED: '售后处理中',
+  UNDER_REVIEW: '退款审核中',
+  PROCESSING: '退款处理中',
+  REFUNDED: '已退款',
+  REJECTED: '退款未通过',
+  FAILED: '退款异常',
+};
+const MOCK_CASE_STATUS_LABEL = {
+  SUBMITTED: '已提交',
+  AUTO_CHECKING: '自动核验中',
+  UNDER_REVIEW: '客服审核中',
+  PROCESSING: '退款处理中',
+  REFUNDED: '已退款',
+  REJECTED: '已驳回',
+  REFUND_FAILED: '退款异常',
+};
+const MOCK_CASE_TYPE_LABEL = {
+  RIGHTS_NOT_RECEIVED: '权益未到账',
+  DUPLICATE_CHARGE: '重复支付',
+  UNUSED_REFUND: '未使用退款',
+  ENTITLEMENT_MISMATCH: '权益不符',
+  OTHER: '其他问题',
+};
+
+function mockOrderEligibility(order) {
+  const paidMs = new Date(order.paidAt || 0).getTime();
+  const lastMs = new Date(mockUser.lastReminderCreatedAt || 0).getTime();
+  const nowMs = Date.now();
+  const refundStatus = order.refundStatus || 'NONE';
+  const inProgress = ['REQUESTED', 'UNDER_REVIEW', 'PROCESSING'].includes(refundStatus);
+  const usedAfterPurchase = paidMs > 0 && lastMs > paidMs;
+  const withinWindow = paidMs > 0 && nowMs - paidMs <= 24 * 60 * 60 * 1000;
+  return {
+    withinWindow,
+    usedAfterPurchase,
+    alreadyRefunded: refundStatus === 'REFUNDED',
+    refundInProgress: inProgress,
+    hoursSincePaid: paidMs ? Math.floor((nowMs - paidMs) / 3600000) : null,
+    eligibleForReview: order.status === 'PAID' && withinWindow && !usedAfterPurchase && !inProgress,
+  };
+}
+
+function mockOrderActions(order, eligibility) {
+  const refundStatus = order.refundStatus || 'NONE';
+  const createdMs = new Date(order.createdAt || 0).getTime();
+  const expiresMs = order.expiresAt ? new Date(order.expiresAt).getTime() : (createdMs + 15 * 60 * 1000);
+  const pendingExpired = order.status === 'PENDING' && expiresMs > 0 && expiresMs <= Date.now();
+  const canAfterSales = order.status === 'PAID'
+    && ['NONE', 'REQUESTED', 'UNDER_REVIEW', 'PROCESSING', 'REFUNDED', 'REJECTED', 'FAILED'].includes(refundStatus);
+  const canSync = order.status === 'PAID' && ['NONE', 'REJECTED', 'FAILED'].includes(refundStatus);
+  const actionFlags = {
+    canPay: order.status === 'PENDING' && !pendingExpired,
+    canCancel: order.status === 'PENDING' && !pendingExpired,
+    canSync,
+    canAfterSales,
+    canRebuy: order.status === 'CLOSED' || pendingExpired,
+    afterSalesLabel: ['NONE', 'REJECTED', 'FAILED'].includes(refundStatus) ? '未到账/申请售后' : '查看售后进度',
+  };
+  const actions = [];
+  if (actionFlags.canPay) actions.push({ key: 'PAY', label: '继续支付' });
+  if (actionFlags.canCancel) actions.push({ key: 'CANCEL', label: '取消订单' });
+  if (actionFlags.canSync) actions.push({ key: 'SYNC', label: '同步支付结果' });
+  if (actionFlags.canAfterSales) actions.push({ key: 'AFTER_SALES', label: actionFlags.afterSalesLabel });
+  if (actionFlags.canRebuy) actions.push({ key: 'REBUY', label: '重新购买' });
+  return {
+    actions,
+    actionFlags,
+    canRequestRefund: eligibility.eligibleForReview,
+  };
+}
+
+function mockOrderView(order) {
+  const refundStatus = order.refundStatus || 'NONE';
+  const eligibility = mockOrderEligibility(order);
+  const actionState = mockOrderActions(order, eligibility);
+  const createdMs = new Date(order.createdAt || 0).getTime();
+  const expiresMs = order.expiresAt ? new Date(order.expiresAt).getTime() : (createdMs + 15 * 60 * 1000);
+  return {
+    _id: order._id,
+    outTradeNo: order.outTradeNo,
+    packageId: order.packageId,
+    productType: order.productType,
+    title: order.title,
+    amountFen: order.amountFen,
+    amountText: `¥${(order.amountFen / 100).toFixed(2).replace(/\.00$/, '')}`,
+    addedSlots: order.addedSlots || 0,
+    memberDays: order.memberDays || 0,
+    status: order.status,
+    statusLabel: ({ PENDING: '待支付', PAID: '已支付', CLOSED: '已关闭', REFUNDED: '已退款' })[order.status] || '处理中',
+    refundStatus,
+    refundStatusLabel: MOCK_REFUND_LABEL[refundStatus] || '',
+    refundAmountFen: order.refundedAmountFen || 0,
+    refundedAtText: order.refundedAt
+      ? `${fmt(order.refundedAt)} ${pad(beijingParts(order.refundedAt).hour)}:${pad(beijingParts(order.refundedAt).minute)}` : '',
+    grantStatus: order.grantStatus || (order.status === 'PAID' ? 'GRANTED' : 'NONE'),
+    entitlementStatus: refundStatus === 'REFUNDED' || order.grantStatus === 'REVERTED'
+      ? 'REFUNDED'
+      : (order.status === 'PAID' ? (order.grantStatus === 'FAILED' ? 'PAID_GRANT_FAILED' : 'PAID_GRANTED') : (order.status === 'CLOSED' ? 'CLOSED' : 'PENDING')),
+    entitlementGrant: order.entitlementGrant || null,
+    canRequestRefund: actionState.canRequestRefund,
+    refundEligibility: eligibility,
+    isExpired: order.status === 'PENDING' && expiresMs > 0 && expiresMs <= Date.now(),
+    actions: actionState.actions,
+    actionFlags: actionState.actionFlags,
+    createdAt: order.createdAt,
+    createdAtText: order.createdAt
+      ? `${fmt(order.createdAt)} ${pad(beijingParts(order.createdAt).hour)}:${pad(beijingParts(order.createdAt).minute)}` : '',
+    expiresAt: order.expiresAt || null,
+    paidAt: order.paidAt || null,
+    paidAtText: order.paidAt
+      ? `${fmt(order.paidAt)} ${pad(beijingParts(order.paidAt).hour)}:${pad(beijingParts(order.paidAt).minute)}` : '',
+  };
+}
+
+function mockCaseView(item) {
+  const status = item.status || 'SUBMITTED';
+  return {
+    _id: item._id,
+    caseNo: item.caseNo,
+    orderId: item.orderId,
+    outTradeNo: item.outTradeNo,
+    title: item.title,
+    amountFen: item.amountFen,
+    amountText: `¥${(item.amountFen / 100).toFixed(2).replace(/\.00$/, '')}`,
+    type: item.type,
+    typeLabel: MOCK_CASE_TYPE_LABEL[item.type] || '其他问题',
+    priority: item.priority || (['RIGHTS_NOT_RECEIVED', 'DUPLICATE_CHARGE'].includes(item.type) ? 'HIGH' : 'NORMAL'),
+    priorityLabel: (item.priority || (['RIGHTS_NOT_RECEIVED', 'DUPLICATE_CHARGE'].includes(item.type) ? 'HIGH' : 'NORMAL')) === 'HIGH' ? '高优先级' : '普通',
+    reasonCode: item.reasonCode || '',
+    description: item.description || '',
+    status,
+    statusLabel: MOCK_CASE_STATUS_LABEL[status] || '处理中',
+    refundStatus: item.refundStatus || 'NONE',
+    refundStatusLabel: MOCK_CASE_STATUS_LABEL[status] || '处理中',
+    decisionNote: item.decisionNote || '',
+    outRefundNo: item.outRefundNo || '',
+    refundAmountFen: item.refundAmountFen || 0,
+    refundAmountText: `¥${((item.refundAmountFen || item.amountFen) / 100).toFixed(2).replace(/\.00$/, '')}`,
+    evidence: item.evidence || {},
+    createdAt: item.createdAt,
+    createdAtText: item.createdAt
+      ? `${fmt(item.createdAt)} ${pad(beijingParts(item.createdAt).hour)}:${pad(beijingParts(item.createdAt).minute)}` : '',
+    reviewedAtText: '',
+    refundedAtText: item.refundedAt
+      ? `${fmt(item.refundedAt)} ${pad(beijingParts(item.refundedAt).hour)}:${pad(beijingParts(item.refundedAt).minute)}` : '',
+  };
 }
 
 function mockTaskLimitError(needed) {
@@ -1139,7 +1297,7 @@ function mockTaskLimitError(needed) {
   };
   return {
     success: false,
-    error: '提醒任务位不足，请先升级任务位',
+    error: '提醒名额不足，请先开通会员或加购名额',
     errorCode: 1026,
     membership: current,
     taskLimit,
@@ -1622,6 +1780,7 @@ const handlers = {
       }
       delete db.carts[c._id];
     });
+    if (created > 0) mockUser.lastReminderCreatedAt = new Date();
     return {
       success: true,
       created,
@@ -1822,6 +1981,7 @@ const handlers = {
           visitDate: item.visitDate, releaseAt, offsets, channels,
           backendStatus: 'WAITING', sentOffsets: [],
         };
+        mockUser.lastReminderCreatedAt = new Date();
       }
     }
     return {
@@ -1905,21 +2065,31 @@ const handlers = {
     return { success: true, notifyPrefs: data.notifyPrefs };
   },
 
-  /* ----- 会员 / 任务位（镜像 reminder/lib/membership.js） ----- */
+  /* ----- 会员 / 提醒名额与售后（镜像 reminder + payment） ----- */
   'membership.status': () => {
     const current = mockMembershipSnapshot();
-    return {
-      success: true,
-      membership: current,
-      packages: mockMembershipPackages(current),
-    };
+    return { success: true, membership: current, packages: mockMembershipPackages(current) };
   },
   'membership.createOrder': (data) => {
     const current = mockMembershipSnapshot();
     const isMemberPackage = data.packageId === 'member';
     const isPack = data.packageId === 'task_pack_5';
     if (!isMemberPackage && !isPack) return { success: false, error: '参数不合法', errorCode: 1010 };
-    if (isPack && !current.member) return { success: false, error: '请先开通会员再加购任务位', errorCode: 1022 };
+    if (isPack && !current.member) return { success: false, error: '请先开通会员再加购提醒名额', errorCode: 1022 };
+
+    Object.values(db.orders).forEach(order => {
+      if (order.packageId === data.packageId && order.status === 'PENDING'
+        && order.expiresAt && new Date(order.expiresAt).getTime() <= Date.now()) {
+        order.status = 'CLOSED';
+        order.closeReason = 'EXPIRED_LOCAL';
+      }
+    });
+    const reusable = Object.values(db.orders).find(order =>
+      order.packageId === data.packageId && order.status === 'PENDING'
+      && (!order.expiresAt || new Date(order.expiresAt).getTime() > Date.now()));
+    if (reusable) {
+      return { success: true, orderId: reusable._id, outTradeNo: reusable.outTradeNo, amountFen: 200, packageId: reusable.packageId, reused: true };
+    }
 
     const orderId = 'mock-order-' + (++orderSeq);
     const outTradeNo = 'MOCK' + Date.now();
@@ -1929,65 +2099,62 @@ const handlers = {
       outTradeNo,
       packageId: data.packageId,
       productType: isMemberPackage ? 'MEMBER' : 'TASK_PACK',
-      title: isMemberPackage ? '会员' : '5 个任务位',
-      body: isMemberPackage ? '智序准点游-会员' : '智序准点游-5 个任务位',
+      title: isMemberPackage ? '会员 30 天' : '5 个提醒名额',
+      body: isMemberPackage ? '智序准点游-会员 30 天' : '智序准点游-5 个提醒名额',
       amountFen: 200,
+      addedSlots: 5,
       memberDays: isMemberPackage ? 30 : 0,
       memberFloorDays: isPack ? 30 : 0,
       status: 'PENDING',
+      refundStatus: 'NONE',
+      grantStatus: 'NONE',
       createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     };
     return { success: true, orderId, outTradeNo, amountFen: 200, packageId: data.packageId };
   },
-  'membership.orders': () => ({
-    success: true,
-    items: Object.values(db.orders)
+  'membership.orders': () => {
+    const items = Object.values(db.orders)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .map(order => ({
-        _id: order._id,
-        outTradeNo: order.outTradeNo,
-        packageId: order.packageId,
-        productType: order.productType,
-        title: order.title,
-        amountFen: order.amountFen,
-        amountText: `¥${(order.amountFen / 100).toFixed(2).replace(/\.00$/, '')}`,
-        addedSlots: order.packageId === 'task_pack_5' ? 5 : 5,
-        memberDays: order.packageId === 'member' ? 30 : 0,
-        status: order.status,
-        statusLabel: ({ PENDING: '待支付', PAID: '已支付', CLOSED: '已关闭', REFUNDED: '已退款' })[order.status] || '处理中',
-        createdAtText: order.createdAt ? `${fmt(order.createdAt)} ${pad(beijingParts(order.createdAt).hour)}:${pad(beijingParts(order.createdAt).minute)}` : '',
-        paidAtText: order.paidAt ? `${fmt(order.paidAt)} ${pad(beijingParts(order.paidAt).hour)}:${pad(beijingParts(order.paidAt).minute)}` : '',
-      })),
-  }),
+      .map(mockOrderView);
+    return { success: true, items, count: items.length };
+  },
 
-  /* ----- mock 支付：直接成功，方便离线联调页面；真实支付始终以回调/查单为准 ----- */
   'create': (data) => {
     const order = db.orders[data.orderId];
     if (!order) return { success: false, error: '订单不存在或已失效', errorCode: 1024 };
     if (order.status !== 'PAID') {
       const now = new Date();
       const currentExpiryMs = new Date(mockUser.memberExpiresAt || 0).getTime();
-      const validCurrentExpiry = Number.isFinite(currentExpiryMs) && currentExpiryMs > now.getTime()
-        ? currentExpiryMs
-        : now.getTime();
+      const validCurrentExpiry = Number.isFinite(currentExpiryMs) && currentExpiryMs > now.getTime() ? currentExpiryMs : now.getTime();
       const nextExpiryMs = Math.max(
         order.memberDays ? validCurrentExpiry + order.memberDays * DAY_MS : 0,
         order.memberFloorDays ? now.getTime() + order.memberFloorDays * DAY_MS : 0,
         currentExpiryMs || 0
       );
+      order.entitlementGrant = {
+        beforeExpiresAt: currentExpiryMs ? new Date(currentExpiryMs) : null,
+        afterExpiresAt: new Date(nextExpiryMs),
+        memberDaysAddedMs: Math.max(0, nextExpiryMs - validCurrentExpiry),
+        taskPackDelta: order.productType === 'TASK_PACK' ? 1 : 0,
+        appliedAt: now,
+        revertedAt: null,
+      };
       mockUser.memberLevel = 'MEMBER';
-      mockUser.memberSince = mockUser.memberSince || new Date();
+      mockUser.memberSince = mockUser.memberSince || now;
       mockUser.memberExpiresAt = new Date(nextExpiryMs);
-      if (order.productType === 'TASK_PACK') {
-        mockUser.taskPackCount = Math.max(0, Number(mockUser.taskPackCount) || 0) + 1;
-      }
+      if (order.productType === 'TASK_PACK') mockUser.taskPackCount = Math.max(0, Number(mockUser.taskPackCount) || 0) + 1;
       order.status = 'PAID';
-      order.paidAt = new Date();
+      order.paidAt = now;
+      order.grantStatus = 'GRANTED';
     }
     return {
       success: true,
       orderId: order._id,
       status: 'PAID',
+      entitlementStatus: 'PAID_GRANTED',
+      memberExpiresAt: mockUser.memberExpiresAt,
+      taskPackCount: mockUser.taskPackCount,
       mockPaid: true,
       payment: { mock: true },
     };
@@ -1997,11 +2164,180 @@ const handlers = {
     if (!order) return { success: false, error: '订单不存在或已失效', errorCode: 1024 };
     return {
       success: true,
-      orderId: order._id,
-      status: order.status,
+      ...mockOrderView(order),
       pending: order.status === 'PENDING',
+      memberExpiresAt: mockUser.memberExpiresAt || null,
+      taskPackCount: mockUser.taskPackCount || 0,
     };
   },
+  'cancel': (data) => {
+    const order = db.orders[data.orderId];
+    if (!order) return { success: false, error: '订单不存在或已失效', errorCode: 1024 };
+    if (order.status === 'PENDING') {
+      order.status = 'CLOSED';
+      order.closeReason = 'USER_CANCEL';
+    }
+    return { success: true, ...mockOrderView(order) };
+  },
+
+  'afterSales.submit': (data) => {
+    const order = db.orders[data.orderId];
+    if (!order) return { success: false, error: '订单不存在或已失效', errorCode: 1024 };
+    const existing = Object.values(db.afterSalesCases).find(item => item.orderId === data.orderId && !['REJECTED', 'REFUNDED'].includes(item.status));
+    if (existing) return { success: false, error: '该订单已有处理中或已完成的售后申请', errorCode: 1028 };
+    const eligibility = mockOrderEligibility(order);
+    if (data.type === 'RIGHTS_NOT_RECEIVED' && order.grantStatus === 'GRANTED') {
+      return { success: true, resolved: true, ...mockOrderView(order) };
+    }
+    if (data.type === 'UNUSED_REFUND' && !eligibility.eligibleForReview) {
+      return { success: false, error: '当前订单暂不符合退款申请条件', errorCode: 1029, eligibility };
+    }
+    const caseId = 'mock-case-' + (++orderSeq);
+    const status = ['RIGHTS_NOT_RECEIVED', 'DUPLICATE_CHARGE'].includes(data.type) ? 'AUTO_CHECKING' : 'UNDER_REVIEW';
+    db.afterSalesCases[caseId] = {
+      _id: caseId,
+      caseNo: 'ASMOCK' + orderSeq,
+      orderId: order._id,
+      outTradeNo: order.outTradeNo,
+      title: order.title,
+      amountFen: order.amountFen,
+      type: data.type,
+      priority: ['RIGHTS_NOT_RECEIVED', 'DUPLICATE_CHARGE'].includes(data.type) ? 'HIGH' : 'NORMAL',
+      reasonCode: data.reasonCode || data.type,
+      description: data.description || '',
+      status,
+      refundStatus: data.type === 'UNUSED_REFUND'
+        ? 'UNDER_REVIEW'
+        : (data.type === 'DUPLICATE_CHARGE' ? 'REQUESTED' : 'NONE'),
+      evidence: { eligibility, duplicate: { duplicate: false, windowMinutes: 10 } },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    if (db.afterSalesCases[caseId].refundStatus !== 'NONE') {
+      order.refundStatus = db.afterSalesCases[caseId].refundStatus;
+    }
+    return { success: true, case: mockCaseView(db.afterSalesCases[caseId]) };
+  },
+  'afterSales.list': () => ({
+    success: true,
+    items: Object.values(db.afterSalesCases).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(mockCaseView),
+  }),
+  'afterSales.detail': (data) => {
+    const item = db.afterSalesCases[data.caseId];
+    if (!item) return { success: false, error: '售后记录不存在', errorCode: 1030 };
+    return { success: true, item: mockCaseView(item) };
+  },
+  'afterSales.syncRights': (data) => {
+    const order = db.orders[data.orderId];
+    if (!order) return { success: false, error: '订单不存在或已失效', errorCode: 1024 };
+    return { success: true, ...mockOrderView(order), memberExpiresAt: mockUser.memberExpiresAt || null };
+  },
+  'afterSales.adminStatus': () => ({ success: true, isAdmin: true }),
+  'afterSales.adminList': (data) => {
+    let items = Object.values(db.afterSalesCases);
+    if (data.status) items = items.filter(item => item.status === data.status);
+    items = items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(mockCaseView);
+    return { success: true, items, count: items.length };
+  },
+  'afterSales.adminDetail': (data) => {
+    const item = db.afterSalesCases[data.caseId];
+    if (!item) return { success: false, error: '售后记录不存在', errorCode: 1030 };
+    const order = db.orders[item.orderId];
+    const userCases = Object.values(db.afterSalesCases).filter(entry => entry.orderId === order._id);
+    const orderView = mockOrderView(order);
+    return {
+      success: true,
+      case: mockCaseView(item),
+      order: {
+        ...orderView,
+        entitlementGrant: order.entitlementGrant || {},
+        paymentResult: order.paymentResult || {},
+      },
+      user: {
+        openId: mockUser.openId,
+        nickname: mockUser.nickname,
+        memberExpiresAt: mockUser.memberExpiresAt,
+        taskPackCount: mockUser.taskPackCount || 0,
+        protectedTaskQuota: mockUser.protectedTaskQuota || 5,
+        lastReminderCreatedAt: mockUser.lastReminderCreatedAt || null,
+      },
+      history: {
+        items: userCases.map(mockCaseView),
+        stats: {
+          total: userCases.length,
+          refunded: userCases.filter(entry => entry.status === 'REFUNDED').length,
+          rejected: userCases.filter(entry => entry.status === 'REJECTED').length,
+          active: userCases.filter(entry => !['REFUNDED', 'REJECTED', 'RESOLVED', 'CLOSED'].includes(entry.status)).length,
+          sameOrder: userCases.length,
+        },
+      },
+      actionCapabilities: {
+        canSyncPayment: !!order && ['PENDING', 'PAID'].includes(order.status),
+        canRetryGrant: !!order && order.status === 'PAID' && order.grantStatus === 'FAILED',
+        canApproveRefund: !!order && order.status === 'PAID'
+          && ['AUTO_CHECKING', 'UNDER_REVIEW', 'REFUND_FAILED'].includes(item.status)
+          && order.refundStatus !== 'REFUNDED',
+        canReject: ['AUTO_CHECKING', 'UNDER_REVIEW', 'REFUND_FAILED'].includes(item.status),
+        canSyncRefund: !!item.outRefundNo && ['PROCESSING', 'REFUND_FAILED'].includes(item.status),
+      },
+    };
+  },
+  'afterSales.adminApproveRefund': (data) => {
+    const item = db.afterSalesCases[data.caseId];
+    if (!item) return { success: false, error: '售后记录不存在', errorCode: 1030 };
+    const order = db.orders[item.orderId];
+    item.status = 'REFUNDED';
+    item.refundStatus = 'REFUNDED';
+    item.refundedAt = new Date();
+    item.refundAmountFen = order.amountFen;
+    order.refundStatus = 'REFUNDED';
+    order.refundedAmountFen = order.amountFen;
+    order.refundedAt = new Date();
+    order.grantStatus = 'REVERTED';
+    if (order.entitlementGrant) order.entitlementGrant.revertedAt = new Date();
+    const addedMs = order.entitlementGrant ? Number(order.entitlementGrant.memberDaysAddedMs) || 0 : 0;
+    const currentExpiry = new Date(mockUser.memberExpiresAt || 0).getTime();
+    const nextExpiry = Math.max(Date.now(), currentExpiry - addedMs);
+    mockUser.memberExpiresAt = new Date(nextExpiry);
+    mockUser.memberLevel = nextExpiry > Date.now() ? 'MEMBER' : 'NORMAL';
+    if (order.entitlementGrant && order.entitlementGrant.taskPackDelta) {
+      mockUser.taskPackCount = Math.max(0, Number(mockUser.taskPackCount) - order.entitlementGrant.taskPackDelta);
+    }
+    return { success: true, refundStatus: 'REFUNDED', caseId: item._id };
+  },
+  'afterSales.adminReject': (data) => {
+    const item = db.afterSalesCases[data.caseId];
+    if (!item) return { success: false, error: '售后记录不存在', errorCode: 1030 };
+    if (!String(data.decisionNote || '').trim()) return { success: false, error: '请填写驳回原因', errorCode: 1010 };
+    item.status = 'REJECTED';
+    item.refundStatus = 'REJECTED';
+    item.decisionNote = data.decisionNote;
+    db.orders[item.orderId].refundStatus = 'REJECTED';
+    return { success: true, case: mockCaseView(item) };
+  },
+  'afterSales.adminSyncPayment': (data) => {
+    const item = db.afterSalesCases[data.caseId];
+    if (!item) return { success: false, error: '售后记录不存在', errorCode: 1030 };
+    const order = db.orders[item.orderId];
+    return { success: true, ...mockOrderView(order), memberExpiresAt: mockUser.memberExpiresAt || null };
+  },
+  'afterSales.adminRetryGrant': (data) => {
+    const item = db.afterSalesCases[data.caseId];
+    if (!item) return { success: false, error: '售后记录不存在', errorCode: 1030 };
+    const order = db.orders[item.orderId];
+    if (!order || order.status !== 'PAID' || order.grantStatus !== 'FAILED') {
+      return { success: false, error: '当前订单不需要补发权益', errorCode: 1029 };
+    }
+    order.grantStatus = 'GRANTED';
+    item.status = 'RESOLVED';
+    return { success: true, entitlementStatus: 'PAID_GRANTED' };
+  },
+  'afterSales.adminSyncRefund': (data) => {
+    const item = db.afterSalesCases[data.caseId];
+    if (!item) return { success: false, error: '售后记录不存在', errorCode: 1030 };
+    return { success: true, refundStatus: item.refundStatus || 'PROCESSING', caseId: item._id };
+  },
+  'afterSales.adminMigrateProtection': () => ({ success: true, scanned: 0, updated: 0, nextCursor: null, hasMore: false }),
 
   /* ----- 订阅消息额度（一次性订阅，按模板记账） ----- */
   'subscribe.add': (data) => {

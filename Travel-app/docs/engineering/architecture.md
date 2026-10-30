@@ -16,7 +16,7 @@
 | `reminder` | 行程、行程项、清单、提醒任务、用户与首页聚合，核心业务函数 |
 | `spots` | 景点查询、规则卡片和放票状态推导 |
 | `notifier` | 到期提醒发送、MISSED 收敛、清理 |
-| `payment` | 会员 / 任务位订单微信支付、查单、回调与权益发放 |
+| `payment` | 会员 / 提醒名额订单、支付与退款回调、主动查单、售后、权益发放与 2 分钟补偿 |
 | `feedback` | 意见反馈与信息纠错 |
 | `scraper` | 抓取与规则推算，未完成线上闭环 |
 | `ics-generator` | `.ics` 生成，日历通道已下线但函数保留 |
@@ -31,8 +31,11 @@
 | `pages/setup` | PAGE-008 设置提醒；V0.3 授权硬闸门 |
 | `pages/notify-settings` | 系统通知权限与提醒额度设置 |
 | `pages/profile` | 我的；帮助与反馈统一入口 |
-| `pages/membership` | 会员与任务位；状态、30 天会员、永久任务包与支付 |
-| `pages/membership-orders` | 当前用户最近 50 笔会员 / 任务位订单 |
+| `pages/membership` | 会员与提醒名额；权益解释、支付前确认、持久支付状态 |
+| `pages/membership-orders` | 当前用户最近 50 笔订单，点击通过本人单笔接口进入订单详情 |
+| `pages/membership-order-detail` | 订单主状态、独立退款状态、权益快照和可执行动作 |
+| `pages/membership-after-sales` | 用户提交未到账、重复支付、未使用退款等售后申请 |
+| `pages/admin-after-sales` | 管理员售后工作台、审计操作与老用户保护额度迁移 |
 | `pages/help-feedback` | 帮助与反馈二级入口：在线客服、意见反馈、信息纠错、我的反馈 |
 | `pages/my-feedback` | 当前用户最近 50 条反馈/纠错记录，只读 |
 | `pages/legal` | 隐私政策与用户服务协议 |
@@ -71,12 +74,34 @@ reminder_cart 是提交前的暂存区，不属于正式行程。
 - `reminder_tasks`：由明确开启提醒且存在 `releaseAt` 的行程项派生，挂 `itemId`；新任务写入 `templateId`，旧任务缺字段时发送侧回退旧订阅模板。无固定放票时刻的行程项只落 `trip_items`，不创建任务。
 - `reminder_cart`：提交前清单；提交成功后才创建/合并正式行程并清空。
 
-## 会员与任务位
+## 会员、支付与售后
 
-- 免费用户最多 5 个未来 WAITING 提醒任务。
-- 会员 2 元 / 30 天，期内上限 10；任务包 2 元永久增加 5 个任务位，会员有效期内生效。
+```text
+reminder.membership.createOrder
+  -> orders (PENDING)
+  -> payment.create
+  -> 微信支付 API v3
+  -> /payment/notify 或 payment.query/2 分钟补偿
+  -> 订单与 users 权益事务提交
+  -> orders (PAID, entitlementGrant 快照)
+
+用户售后
+  -> after_sales_cases
+  -> 自动核验 / 客服审核
+  -> 微信退款 API
+  -> /payment/refund-notify 或退款查询
+  -> 按本单快照回收权益
+```
+
+- 免费用户 5 个提醒名额；会员 ¥2/30 天上限 10；有效会员可 ¥2 加购 5 个提醒名额。
 - 唯一规则在 `cloudfunctions/reminder/lib/membership.js`；`cart.commit` 与 `tripItem.updateReminder` 都必须过同一服务端闸门。
-- 订单只由 `payment` 云函数在微信支付 API v3 回调或主动查单确认后置为 `PAID`；回调必须验签并解密，客户端不能自行改会员。
+- 老用户保护额度 `protectedTaskQuota=max(5, 当前未来 WAITING 提醒数)`，迁移由管理员分批触发。
+- 订单只由 `payment` 云函数在微信支付 API v3 回调或主动查单确认后置为 `PAID`；客户端不能自行改会员。
+- 回调必须校验微信支付公钥 ID 和原始 body 签名，并解密资源；下单、查单、退款响应也必须验签。
+- `orders.status` 保持 `PENDING/PAID/CLOSED`；退款生命周期独立写入 `refundStatus`，历史 `REFUNDED` 只兼容展示。
+- 每笔订单保存权益发放快照；退款成功只回收本单新增时长和名额包，不删除已有提醒。
+- 售后证据、审核结果和退款单号存 `after_sales_cases`；敏感查看与审核操作写 `admin_audit_logs`。
+- 售后工作台仅对 `AFTER_SALES_ADMIN_OPENIDS` 开放，所有操作服务端二次鉴权。
 
 ## 数据真身与镜像
 

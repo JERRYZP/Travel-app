@@ -35,6 +35,16 @@
     <svg-icon class="membership-entry-chevron" name="chevron-down" size="13px" rotate="270" />
   </view>
 
+  <view wx:if="{{showAfterSalesEntry}}" class="setting-card">
+    <view class="setting-row" bindtap="onAfterSalesAdmin">
+      <text class="setting-row-label">售后管理</text>
+      <view class="setting-row-right">
+        <text class="setting-row-hint">退款审核与权益补偿</text>
+        <svg-icon name="chevron-down" size="14px" rotate="270" />
+      </view>
+    </view>
+  </view>
+
   <!-- 设置列表 1 -->
   <view class="setting-card">
     <view class="setting-row" bindtap="onNotifySettings">

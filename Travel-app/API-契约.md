@@ -1,9 +1,9 @@
 # Travel-app 前端接口契约 V1.3
 
 > 面向：前端（微信小程序页面开发）
-> 2026-10-28 更新：`membership.orders` 返回当前用户最近 50 笔会员 / 任务位订单；会员详情页提供订单入口，订单页只展示脱敏后的展示字段。
+> 2026-10-30 更新：会员支付新增独立退款生命周期、订单详情、用户售后申请和小程序售后工作台；`membership.orders` 返回当前用户最近 50 笔会员 / 提醒名额订单及可执行动作，退款结果以微信支付回调或主动查单为准。
 > 2026-10-28 更新：`spots.list` / `detail` / `batch` 的景点卡新增 `aliases`，供 PAGE-003 在页面内做名称 / 简称 / 别名 / spotId 的本地模糊过滤。PAGE-003 与 PAGE-004 已合并为单页，页面不再调用 `spots.search`、`spots.searchHistory`、`spots.clearSearchHistory`；这三个接口保留兼容。
-> 2026-10-27 更新：新增会员与任务位 `membership.*`、`payment.*`；免费 5 个未来提醒任务位，会员 ¥2/30 天提升至 10 个，加购 ¥2 永久增加 5 个任务位。支付与权益只由服务端订单确认后发放，不承诺平台自动广告可被关闭。
+> 2026-10-27 更新：新增会员与提醒名额 `membership.*`、`payment.*`；免费 5 个提醒名额，会员 ¥2/30 天提升至 10 个，加购 ¥2 记录 5 个名额并在会员有效期内生效。支付与权益只由服务端订单确认后发放，不承诺平台自动广告可被关闭。
 > 更新：2026-10-28 新增景点字段 `strongReminder`；弱提醒口径改为“需预约、难度 ≤2 且未显式提升”，强提醒（含 `strongReminder=true`）在时间线与清单默认开启提醒。同日，无固定放票时刻的需预约景点（如环球影城）可加入行程和暂存清单，但不创建提醒任务；`timeline.preview` 增加 `NO_FIXED_RELEASE / 随买随用`，`cart.list` 增加 `noFixedRelease`；新增 `cart.pruneScope`，生成时间线后把暂存清单收敛到本次日期段 × 景点集合。2026-09-29 明确微信一次性订阅每次用户点击最多增加 1 条额度，禁止异步连发伪装批量授权。2026-09-25 `cart.commit` 新增 `cartId`（补录只提交本次项）与 `disableReminders`（仅加行程不提醒）；此前 2026-09-16 首页行程化 V2 契约定稿，新增 `trip_items`、`tripItem.*`、`cart.commit` 与新版 `home.bootstrap`；旧第 2.0 / 2.1 / 2.3 / 2.4 中面向“提醒任务列表 / 双 Tab 首页”的接口在 V2 实现时由第 8 节取代。此前 2026-08-26 spots `remindable` / `weak`、2026-08-19 feedback 管理端、2026-08-14 日历通道下线等变更继续有效。
 > 调用方式：`wx.cloud.callFunction({ name: '<函数名>', data: { action: '<域>.<动作>', ...params } })`
 
@@ -45,7 +45,7 @@
 | 1016 | 行程项所在日期已结束 | 关闭操作入口并刷新首页 |
 | 1017 | 已过放票时间，提醒无法开启或取消 | Toast 同文案（菜单此时已不渲染该入口，兜底旧版本小程序） |
 | 1020 | 反馈内容为空 | Toast「请填写反馈内容」 |
-| 1026 | 提醒任务位不足 | 进入会员页或提醒页内付费入口；保留原清单并展示真实缺口 |
+| 1026 | 提醒名额不足 | 进入会员页或提醒页内付费入口；保留原清单并展示真实缺口 |
 | 1099 | 未知 action | Toast |
 | 1500 | 服务端异常 | Toast「服务异常，请稍后重试」 |
 
@@ -914,16 +914,16 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 > 客户端在设置新提醒前必须按**可用额度**判断：`quota - pendingMessageCount`。`quota` 是本地台账剩余授权总数，`pendingMessageCount` 是未来 `WAITING` 任务尚未发送的消息数（每条任务每个未发送 offset 计 1）。只看 `quota` 会把已经预留给待发送提醒的次数重复承诺给新提醒。
 
-### 2.6 会员与任务位（2026-10-27）
+### 2.6 会员、提醒名额、支付与售后（2026-10-30）
 
-唯一口径在 `cloudfunctions/reminder/lib/membership.js`。客户端只消费服务端返回的额度、有效期、价格和可购项，不自行推导会员状态。
+唯一额度口径在 `cloudfunctions/reminder/lib/membership.js`，唯一支付/退款状态机在 `cloudfunctions/payment/lib/order.js` 与 `cloudfunctions/payment/lib/after-sales.js`。客户端只消费服务端返回的额度、价格、有效期、退款资格和可执行动作。
 
-- 免费用户最多保留 5 个未来 `WAITING` 提醒任务。
-- 会员 `¥2 / 30 天`，会员期内最多 10 个任务位；不自动续费。
-- 会员加购任务包 `¥2`，永久获得 5 个任务位；会员有效期内生效，会员过期后暂停，续费后恢复。
-- 加购任务包时，会员有效期至少延长到支付成功后 30 天。
-- 会员到期不删除已有提醒；历史或过期任务不长期占用新任务位。
-- `reminder` 的任务位限制受服务端灰度开关控制：`MEMBERSHIP_ENFORCEMENT_MODE=off|test|all`。默认 `test`，仅测试白名单账号生效；`MEMBERSHIP_TEST_OPENIDS` 可逗号分隔覆盖白名单。
+- 用户侧统一使用「提醒名额」。免费版 5 个；会员 `¥2 / 30 天` 提升到 10 个；有效会员可 `¥2` 加购 5 个名额，名额永久记录但只在会员有效期内生效。
+- 加购名额包时，会员有效期至少延长到支付成功后 30 天。不自动续费，会员到期不删除已有提醒。
+- 老用户保护额度为 `protectedTaskQuota=max(5, 上线前未来 WAITING 提醒数)`；有效上限取会员权益额度与保护额度的较大值。
+- `reminder` 的会员限制受 `MEMBERSHIP_ENFORCEMENT_MODE=off|test|all` 控制，默认 `test`；`MEMBERSHIP_TEST_OPENIDS` 可覆盖白名单。正式发布前不得切 `all`。
+- 支付成功唯一依据是服务端取得微信支付 `trade_state=SUCCESS`；`wx.requestPayment.success` 只代表客户端流程结束。
+- 主订单状态固定 `PENDING / PAID / CLOSED`；退款生命周期独立存于 `refundStatus`，不混入主状态。
 
 #### `membership.status`
 
@@ -940,8 +940,12 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     taskLimit: Number,
     taskUsed: Number,
     taskRemaining: Number,
+    entitlementTaskLimit: Number,
+    protectedTaskQuota: Number,
     taskPackCount: Number,
     ownedTaskPackCount: Number,
+    freeTaskSlots: 5,
+    memberTaskSlots: 10,
     taskPackSize: 5
   },
   packages: [{
@@ -957,12 +961,17 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 ```javascript
 调用：{ action: 'membership.createOrder', packageId: 'member' | 'task_pack_5' }
-返回：{ success: true, orderId, outTradeNo, amountFen, packageId, title }
+返回：{
+  success: true,
+  orderId, outTradeNo, amountFen, packageId, title,
+  reused?: true
+}
 ```
 
-- 金额与商品类型只从服务端套餐表读取，客户端不能传价格。
-- `task_pack_5` 只允许会员有效期内购买；会员可提前续费。
-- 任务位不足统一返回错误码 `1026`，并携带 `taskLimit` 与 `membership`；失败时不得创建行程、任务或清空清单。
+- 金额、商品类型和权益只从服务端套餐表读取，客户端不能传价格。
+- `task_pack_5` 只允许会员有效期内购买；会员可续费。
+- 同一商品存在未过期的 `PENDING` 订单时直接复用；超过 15 分钟的本地待支付订单只会按 `status=PENDING` 条件关闭，不能覆盖并发回调已经置为 `PAID` 的订单。
+- 提醒名额不足统一返回错误码 `1026`，携带 `taskLimit`、`membership` 和 `packages`；失败时不得创建行程、任务或清空清单。
 
 #### `membership.orders`
 
@@ -972,54 +981,117 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   success: true,
   count: 2,
   items: [{
-    _id,
-    outTradeNo,
-    packageId,
-    productType,
-    title,
-    amountFen,
-    amountText: '¥2',
-    addedSlots,
-    memberDays,
-    status: 'PENDING' | 'PAID' | 'CLOSED' | 'REFUNDED',
-    statusLabel: '待支付' | '已支付' | '已关闭' | '已退款',
-    createdAt,
-    createdAtText,
-    paidAt,
-    paidAtText
+    _id, outTradeNo, packageId, productType, title,
+    amountFen, amountText, addedSlots, memberDays,
+    status: 'PENDING' | 'PAID' | 'CLOSED' | 'REFUNDED', // REFUNDED 仅兼容历史数据
+    statusLabel,
+    refundStatus: 'NONE' | 'REQUESTED' | 'UNDER_REVIEW' | 'PROCESSING' | 'REFUNDED' | 'REJECTED' | 'FAILED',
+    refundStatusLabel, refundAmountFen, refundedAtText,
+    grantStatus: 'NONE' | 'GRANTED' | 'FAILED' | 'REVERTED',
+    entitlementStatus: 'PENDING' | 'PAID_GRANTED' | 'PAID_GRANT_FAILED' | 'CLOSED' | 'REFUNDED',
+    entitlementGrant: {
+      beforeExpiresAt, afterExpiresAt, memberDaysAddedMs,
+      taskPackDelta, appliedAt, revertedAt
+    } | null,
+    canRequestRefund: Boolean,
+    refundEligibility: { withinWindow, usedAfterPurchase, alreadyRefunded, refundInProgress, hoursSincePaid, eligible },
+    isExpired: Boolean,
+    actions: [{ key: 'PAY' | 'CANCEL' | 'SYNC' | 'AFTER_SALES' | 'REBUY', label }],
+    actionFlags: { canPay, canCancel, canSync, canAfterSales, canRebuy, afterSalesLabel },
+    createdAt, createdAtText, expiresAt, paidAt, paidAtText
   }]
 }
 ```
 
 - 只允许查询当前 OpenID 的订单，最多 50 条，按 `createdAt` 倒序。
 - 不返回 `paymentResult`、微信交易号、密钥或其他支付内部字段。
+- 退款资格以 `users.lastReminderCreatedAt` 为主，并从 `reminder_tasks.createdAt` 复核；提醒创建后即使被删除仍算已使用。
 
-#### `payment.create` / `payment.query` / 支付回调
+#### `membership.orderDetail`
 
 ```javascript
-{ action: 'create', orderId }       // payment 云函数，返回 wx.requestPayment 参数
-{ action: 'query', orderId }        // 主动查单，返回 PAID / PENDING
+调用：{ action: 'membership.orderDetail', orderId }
+返回：{ success: true, item: { ...与 membership.orders 单条同构 } }
+```
+
+- 只允许读取当前 OpenID 本人订单；不存在或不属于本人统一返回 `1024`，避免泄露订单归属。
+- 详情页和售后申请页使用单笔接口，不再由客户端拉取最近 50 条后自行筛选。
+
+#### `payment.create` / `payment.query` / `payment.cancel`
+
+```javascript
+{ action: 'create', orderId } // 返回 wx.requestPayment 参数；已支付订单返回已发放状态
+{ action: 'query', orderId }  // 主动查单并返回 entitlementStatus
+{ action: 'cancel', orderId } // 先查单，确认未支付后再向微信关单
+```
+
+```javascript
+返回：{
+  success: true,
+  orderId,
+  status: 'PENDING' | 'PAID' | 'CLOSED',
+  entitlementStatus: 'PENDING' | 'PAID_GRANTED' | 'PAID_GRANT_FAILED' | 'CLOSED' | 'REFUNDED',
+  refundStatus,
+  isExpired,
+  memberExpiresAt,
+  taskPackCount,
+  payment?: Object, // 仅 create 且待支付时返回
+  expiresAt?: Date
+}
 ```
 
 - 支付协议为微信支付 **API v3 直连**，不调用 `cloud.cloudPay`，也不要求把商户号授权给云开发服务商。
-- 普通 `wx.cloud.callFunction` 调用处理 `create` / `query`；支付回调由 CloudBase HTTP 网关转发到同一个 `payment` 云函数。
-- `payment.create` 调用 `POST /v3/pay/transactions/jsapi`，用服务端订单快照生成金额、商品描述、商户订单号和 OpenID，再返回 `wx.requestPayment` 参数。
-- `payment.query` 调用 `GET /v3/pay/transactions/out-trade-no/{outTradeNo}?mchid={mchid}`；只有 `trade_state=SUCCESS` 才发放权益。
-- HTTP 回调必须先校验 `Wechatpay-Timestamp`、`Wechatpay-Nonce`、`Wechatpay-Signature`、`Wechatpay-Serial`，再用 APIv3 密钥解密 `resource`；验签、商户号、AppID、订单金额任一不匹配都不得发放权益。
-- 支付回调与主动查单都由 `payment` 云函数处理；只有微信支付确认成功后才更新订单并发放权益。
-- 金额不一致拒绝发放；重复回调幂等，不重复增加任务包。
-- 必需环境变量：
-  - `WECHAT_PAY_MCH_ID`：商户号。
-  - `WECHAT_PAY_SERIAL_NO`：商户 API 证书序列号。
-  - `WECHAT_PAY_PRIVATE_KEY`：商户 API 私钥 PEM，支持直接 PEM 或 Base64。
-  - `WECHAT_PAY_API_V3_KEY`：32 字节 APIv3 密钥。
-  - `WECHAT_PAY_NOTIFY_URL`：公网 HTTPS 回调地址，指向 HTTP 网关 `/payment/notify`。
-  - `WECHAT_PAY_PLATFORM_PUBLIC_KEY`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID`：微信支付公钥及公钥 ID。
-  - `WECHAT_PAY_PLATFORM_CERT`、`WECHAT_PAY_PLATFORM_CERT_SERIAL`：未使用公钥模式时的平台证书回退配置。
-  - `WECHAT_PAY_APP_ID`：可选，缺省 `wx05c160a589b97d76`。
-  - `WECHAT_PAY_CALLBACK_MAX_SKEW_SECONDS`：可选，回调时间窗，默认 300 秒。
-- 小程序必须先开通微信支付并把当前 AppID 与商户号绑定，商户平台需开通 JSAPI 支付；不需要云开发服务商授权。
-- HTTP 网关路由必须关闭身份认证与路径透传，并保留原始请求体；默认 `*.tcloudbase.com` 域名仅用于开发和测试，正式环境应使用备案自定义域名。
+- 下单、查单、关单、退款和退款查询的微信响应都必须校验签名；验签失败不得使用响应内容。
+- 支付回调与退款回调分别由 CloudBase HTTP 网关 `/payment/notify`、`/payment/refund-notify` 转发到 `payment` 云函数。
+- 回调先校验 `Wechatpay-Timestamp`、`Wechatpay-Nonce`、`Wechatpay-Signature`、`Wechatpay-Serial`，再用 APIv3 密钥解密 `resource`；原始 body 必须原样参与验签。
+- AppID、商户号、订单号、金额、交易状态和资源解密结果任一不匹配都不得发放权益。
+- 金额不一致拒绝发放；重复回调幂等，不重复增加会员时长或名额包。退款完成后的重复支付回调也不得重新发放权益。
+- 15 分钟未支付订单自动关闭；2 分钟定时任务主动查单、重试权益发放、自动核验售后和同步退款结果。
+- 必需环境变量：`WECHAT_PAY_MCH_ID`、`WECHAT_PAY_SERIAL_NO`、`WECHAT_PAY_PRIVATE_KEY`、`WECHAT_PAY_API_V3_KEY`、`WECHAT_PAY_NOTIFY_URL`、`WECHAT_PAY_REFUND_NOTIFY_URL`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID`；`WECHAT_PAY_PLATFORM_CERT` / `WECHAT_PAY_PLATFORM_CERT_SERIAL` 只作旧平台证书兼容，不能与公钥模式隐式混用。`AFTER_SALES_ADMIN_OPENIDS` 为售后管理员白名单。
+
+#### 支付与退款回调
+
+- 验签失败返回 401；订单或售后记录不存在、内部事务失败返回 5xx，让微信继续重试。
+- 支付回调只在订单和权益事务提交成功后返回 200。
+- 退款回调只在退款状态更新和权益快照回收成功后返回 200；重复回调幂等。
+- 日志只记录路由、`outTradeNo` / `outRefundNo`、公钥 ID、时间戳、原始 body SHA-256、验签结果和失败原因；不记录私钥、APIv3 密钥或完整签名。
+
+#### `payment.afterSales.*`（用户）
+
+```javascript
+{ action: 'afterSales.submit', orderId, type, reasonCode?, description? }
+{ action: 'afterSales.list' }
+{ action: 'afterSales.detail', caseId }
+{ action: 'afterSales.syncRights', orderId }
+```
+
+- `type`: `RIGHTS_NOT_RECEIVED | DUPLICATE_CHARGE | UNUSED_REFUND | ENTITLEMENT_MISMATCH | OTHER`。
+- `RIGHTS_NOT_RECEIVED` 先自动查单并补发；补发成功直接返回 `resolved=true`，不创建无意义售后单。
+- `DUPLICATE_CHARGE` 先核验同用户、同商品、10 分钟内重复支付；证据明确且未新增提醒时自动发起较新订单的全额退款，否则转客服审核。
+- `UNUSED_REFUND` 仅在支付后 24 小时内且支付后未新增任何提醒时可提交，进入客服审核。
+- 已使用、超过 24 小时、权益正常或无正当理由的申请原则上驳回；每个订单最多一次全额退款，V1 不做部分退款。
+- 售后状态：`SUBMITTED | AUTO_CHECKING | UNDER_REVIEW | APPROVED | PROCESSING | REFUNDED | REJECTED | REFUND_FAILED | RESOLVED | CLOSED`。
+
+#### `payment.afterSales.admin*`（管理员）
+
+```javascript
+{ action: 'afterSales.adminStatus' }
+{ action: 'afterSales.adminList', status? }
+{ action: 'afterSales.adminDetail', caseId }
+{ action: 'afterSales.adminApproveRefund', caseId }
+{ action: 'afterSales.adminReject', caseId, decisionNote }
+{ action: 'afterSales.adminSyncPayment', caseId }
+{ action: 'afterSales.adminRetryGrant', caseId }
+{ action: 'afterSales.adminSyncRefund', caseId }
+{ action: 'afterSales.adminMigrateProtection', cursor? }
+```
+
+- 仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用；未配置时工作台关闭，不存在代码内置兜底账号。
+- `adminDetail` 返回订单、用户权益、支付查单结果、权益发放快照、支付后新增提醒数、重复支付证据和历史售后记录。
+- 查看敏感信息、同步支付结果、补发权益、同意退款、驳回和同步退款均写 `admin_audit_logs`。
+- 驳回必须填写用户可见原因。退款使用确定性 `outRefundNo`，网络重试不会重复退款；退款结果只认微信回调或主动退款查询。
+- 退款成功后按本订单 `entitlementGrant` 快照回收本单新增会员时长和名额包，不影响其他订单，也不删除用户已有提醒。
+- `adminMigrateProtection` 按默认 `_id` 游标每批最多处理 50 位用户，可重复执行；迁移未完成前不得切 `MEMBERSHIP_ENFORCEMENT_MODE=all`。
 
 ---
 
@@ -1180,11 +1252,13 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-005** 新增提醒（独立页） | `timeline.preview`（纯预览，不建行程）、`cart.pruneScope`（生成成功后收敛暂存清单）、`cart.add`、`cart.addAll`、`cart.list`（暂存清单） |
 | **PAGE-006** 景点视图 | 搁置中，不实现 |
 | **PAGE-007** 行程清单弹窗 | `cart.list`、`cart.remove`、`cart.clear`、`cart.updateRemindOn`、`cart.commit` |
-| **PAGE-008** 设置提醒 | V0.3 主流程：`cart.list(includeMembership=true)`、`subscribe.get`、`membership.createOrder` + `payment.*`（仅任务位不足时）、用户主动点击「点击补授权次数」、`cart.commit`（授权、系统权限或任务位未满足时主按钮禁用；不提供仅加行程旁路） |
+| **PAGE-008** 设置提醒 | V0.3 主流程：`cart.list(includeMembership=true)`、`subscribe.get`、`membership.createOrder` + `payment.*`（仅提醒名额不足时）、用户主动点击「点击补授权次数」、`cart.commit`（授权、系统权限或提醒名额未满足时主按钮禁用；不提供仅加行程旁路） |
 | **PAGE-010** 我的 | `user.profile`、提醒设置权限/额度健康度（`notify.getReminderHealth`，服务端额度 + 客户端权限） |
 | **PAGE-012** 编辑资料 | `user.profile`、`user.updateProfile`（头像走 `open-type="chooseAvatar"` + `wx.cloud.uploadFile` 上传） |
-| **PAGE-014** 会员与任务位 | `membership.status`、`membership.createOrder`、`membership.orders`、`payment.create/query`；“我的”页独立会员状态卡，提醒页仅在任务位不足时直接出现同一购买流程 |
-| **PAGE-015** 订单信息 | `membership.orders`；当前用户最近 50 笔会员 / 任务位订单，点击订单复制订单号 |
+| **PAGE-014** 会员与提醒名额 | `membership.status`、`membership.createOrder`、`membership.orders`、`payment.create/query/cancel`；支付前确认、持久支付状态和订单入口；“我的”页常驻会员状态卡 |
+| **PAGE-015** 订单与退款详情 | `membership.orders`、`membership.orderDetail`；列表最多 50 笔，详情按本人单笔读取，主订单状态与退款状态分离，支持继续支付、取消、同步、申请售后和重新购买 |
+| **PAGE-016** 用户售后申请 | `membership.orderDetail`、`payment.afterSales.submit/list/detail/syncRights`；未到账、重复支付、未使用退款、权益不符和其他问题 |
+| **PAGE-017** 售后管理 | `payment.afterSales.admin*`；仅 `AFTER_SALES_ADMIN_OPENIDS` 可见，服务端二次鉴权并写审计日志 |
 | **PAGE-013** 分享场景页 | `spots.list`（today）、`spots.batch`（national-day-2026）；点击景点后 `spots.detail` |
 | **PAGE-010-1** 提醒设置 | `subscribe.get` + 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`；缺口按钮为「补授权次数+1」，点击一次最多申请 1 条（模板未配置时「去授权」置灰） |
 | **PAGE-010-4** 帮助与反馈 | 微信原生客服 `button open-type="contact"`；无云函数调用 |
@@ -1585,7 +1659,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 - 首页“约其他日”和景点页补录必须传本次 `cartId`，只提交该条并保留其他暂存清单；设置提醒页保持不传 `cartId`，代表整单提交。
 - `disableReminders=true` 是“仅加行程不提醒”的降级提交：忽略 `channels/offsets`，本次提交的清单项均以 `remindOn=false` 落成行程项，不创建 `reminder_tasks`，且不返回公众号关注引导。该模式只允许提交暂存清单，不允许同时传真实 `tripId`。
 - 服务端在一次提交中创建全部 `trip_items`；仅为 `remindOn=true` 且可提醒的项创建 `reminder_tasks`。
-- 提交前必须校验任务位。本次会创建的未来 `WAITING` 任务数超过当前上限时，返回 `1026`，请求整体失败；不得先创建行程、消费部分清单，也不能只提示前端而绕过服务端。
+- 提交前必须校验提醒名额。本次会创建的未来 `WAITING` 任务数超过当前可用额度时，返回 `1026`，请求整体失败；不得先创建行程、消费部分清单，也不能只提示前端而绕过服务端。
 - 旧 `task.submit` 在 V2 实现完成后只作为内部兼容代码，不再由首页/设置页调用。
 
 ### 8.6 不可漂移的实现约束

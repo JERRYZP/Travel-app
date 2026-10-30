@@ -173,13 +173,15 @@ exports.main = async (event) => {
       case 'user.updateNotifyPrefs':
         return await updateNotifyPrefs(userId, event.notifyPrefs || {});
 
-      /* ======== 会员 / 任务位 ======== */
+      /* ======== 会员 / 提醒名额 ======== */
       case 'membership.status':
         return await membership.status(db, userId);
       case 'membership.createOrder':
         return await membership.createOrder(db, userId, event);
       case 'membership.orders':
         return await membership.listOrders(db, userId);
+      case 'membership.orderDetail':
+        return await membership.orderDetail(db, userId, event.orderId);
 
       /* ======== 订阅消息额度（一次性订阅） ======== */
       case 'subscribe.add':
@@ -413,6 +415,8 @@ async function getOrCreateUser(userId) {
     memberLevel: V1.MEMBER_LEVEL_DEFAULT, // V1 固定 NORMAL
     points: 0,
     taskPackCount: 0,
+    protectedTaskQuota: 5,
+    lastReminderCreatedAt: null,
     memberSince: null,
     memberExpiresAt: null,
     createdAt: time.now(),

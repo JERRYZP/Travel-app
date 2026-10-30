@@ -247,7 +247,7 @@ async function updateReminder(db, userId, { itemId, remindOn, channels, offsets 
     t.backendStatus === ReminderBackendStatus.WAITING);
 
   /* 从“未设提醒 / 终态任务”重新开启时，会真正新增一条待发任务。
-     已有 WAITING 任务时只是改配置，不重复占任务位。 */
+     已有 WAITING 任务时只是改配置，不重复占提醒名额。 */
   if (nextRemindOn && activeTasks.length === 0) {
     const capacityError = await membership.capacityError(db, userId, 1, nowTs);
     if (capacityError) return capacityError;
@@ -319,6 +319,7 @@ async function updateReminder(db, userId, { itemId, remindOn, channels, offsets 
           createdAt: nowTs,
         },
       });
+      await membership.markReminderCreated(db, userId, nowTs);
     }
   }
 

@@ -1,7 +1,7 @@
 {
   "name": "payment",
   "version": "1.0.0",
-  "description": "会员与任务位微信支付",
+  "description": "会员与提醒名额微信支付及售后退款",
   "main": "index.js",
   "dependencies": {
     "wx-server-sdk": "latest"

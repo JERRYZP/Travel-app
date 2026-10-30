@@ -42,6 +42,7 @@ function configOf(env = process.env) {
     privateKey: valueOfEnv(env.WECHAT_PAY_PRIVATE_KEY),
     apiV3Key: String(env.WECHAT_PAY_API_V3_KEY || '').trim(),
     notifyUrl: String(env.WECHAT_PAY_NOTIFY_URL || '').trim(),
+    refundNotifyUrl: String(env.WECHAT_PAY_REFUND_NOTIFY_URL || '').trim(),
     platformPublicKey: valueOfEnv(env.WECHAT_PAY_PLATFORM_PUBLIC_KEY),
     platformPublicKeyId: String(env.WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID || '').trim(),
     platformCert: valueOfEnv(env.WECHAT_PAY_PLATFORM_CERT),
@@ -58,12 +59,17 @@ function hasApiConfig(config = {}) {
     && config.privateKey
     && Buffer.byteLength(config.apiV3Key, 'utf8') === 32
     && config.notifyUrl
+    && hasCallbackPublicKey(config)
   );
 }
 
 function hasCallbackPublicKey(config = {}) {
   return !!((config.platformPublicKey && config.platformPublicKeyId)
     || (config.platformCert && config.platformCertSerial));
+}
+
+function hasRefundConfig(config = {}) {
+  return hasApiConfig(config) && !!config.refundNotifyUrl;
 }
 
 function nonce(size = 16) {
@@ -144,7 +150,25 @@ function request({ method, path, body = '', config }) {
 }
 
 async function requestJson(options) {
+  if (!hasCallbackPublicKey(options.config)) {
+    throw new WxPayApiError('微信支付响应验签配置缺失', {
+      code: 'MISSING_RESPONSE_VERIFY_KEY',
+    });
+  }
   const response = await request(options);
+  const verified = verifyCallbackSignature({
+    headers: response.headers,
+    body: response.body,
+    config: options.config,
+  });
+  if (!verified) {
+    // 连错误响应也必须先通过微信支付签名校验，不能把网关或中间人伪造的
+    // err_code/status 当成微信支付结论；失败继续由上层按支付未确认处理。
+    throw new WxPayApiError('微信支付响应签名校验失败', {
+      statusCode: response.statusCode,
+      code: 'INVALID_RESPONSE_SIGNATURE',
+    });
+  }
   if (response.statusCode < 200 || response.statusCode >= 300) {
     const data = response.data || {};
     throw new WxPayApiError(data.message || data.errmsg || '微信支付接口请求失败', {
@@ -156,8 +180,14 @@ async function requestJson(options) {
   return response.data;
 }
 
+function beijingRfc3339(value) {
+  const ms = new Date(value || 0).getTime();
+  if (!Number.isFinite(ms) || ms <= 0) return '';
+  return new Date(ms + 8 * 60 * 60 * 1000).toISOString().replace('Z', '+08:00');
+}
+
 function createJsapiBody({ appId, mchId, notifyUrl, order, openid }) {
-  return {
+  const body = {
     appid: appId,
     mchid: mchId,
     description: order.body,
@@ -169,6 +199,9 @@ function createJsapiBody({ appId, mchId, notifyUrl, order, openid }) {
     },
     payer: { openid },
   };
+  const timeExpire = beijingRfc3339(order.expiresAt);
+  if (timeExpire) body.time_expire = timeExpire;
+  return body;
 }
 
 async function createJsapiOrder({ order, openid, config }) {
@@ -202,6 +235,42 @@ function signPayParams({ appId, prepayId, privateKey, timeStamp = timestampSecon
 
 async function queryOrder({ outTradeNo, config }) {
   const path = `/v3/pay/transactions/out-trade-no/${encodeURIComponent(outTradeNo)}?mchid=${encodeURIComponent(config.mchId)}`;
+  return requestJson({ method: 'GET', path, config });
+}
+
+async function closeOrder({ outTradeNo, config }) {
+  const path = `/v3/pay/transactions/out-trade-no/${encodeURIComponent(outTradeNo)}/close`;
+  const body = JSON.stringify({ mchid: config.mchId });
+  return requestJson({ method: 'POST', path, body, config });
+}
+
+function createRefundBody({ order, outRefundNo, reason, config }) {
+  const body = {
+    out_trade_no: order.outTradeNo,
+    out_refund_no: outRefundNo,
+    reason: String(reason || '用户申请退款').slice(0, 80),
+    notify_url: config.refundNotifyUrl,
+    amount: {
+      refund: Number(order.amountFen),
+      total: Number(order.amountFen),
+      currency: 'CNY',
+    },
+  };
+  return body;
+}
+
+async function createRefund({ order, outRefundNo, reason, config }) {
+  const body = JSON.stringify(createRefundBody({ order, outRefundNo, reason, config }));
+  return requestJson({
+    method: 'POST',
+    path: '/v3/refund/domestic/refunds',
+    body,
+    config,
+  });
+}
+
+async function queryRefund({ outRefundNo, config }) {
+  const path = `/v3/refund/domestic/refunds/${encodeURIComponent(outRefundNo)}`;
   return requestJson({ method: 'GET', path, config });
 }
 
@@ -257,6 +326,9 @@ function verifyCallbackSignature({ headers, body, config, now = Date.now() }) {
 
 function decryptResource(resource = {}, apiV3Key) {
   if (!resource.ciphertext || !resource.nonce) throw new Error('支付回调资源不完整');
+  if (resource.algorithm && resource.algorithm !== 'AEAD_AES_256_GCM') {
+    throw new Error(`不支持的支付回调加密算法：${resource.algorithm}`);
+  }
   const key = Buffer.from(String(apiV3Key), 'utf8');
   if (key.length !== 32) throw new Error('WECHAT_PAY_API_V3_KEY 必须是 32 字节');
   const ciphertext = Buffer.from(String(resource.ciphertext), 'base64');
@@ -279,6 +351,7 @@ module.exports = {
   configOf,
   hasApiConfig,
   hasCallbackPublicKey,
+  hasRefundConfig,
   nonce,
   timestampSeconds,
   requestSignature,
@@ -287,6 +360,11 @@ module.exports = {
   createJsapiOrder,
   signPayParams,
   queryOrder,
+  closeOrder,
+  createRefundBody,
+  createRefund,
+  queryRefund,
+  beijingRfc3339,
   callbackHeaders,
   verifyCallbackSignature,
   decryptResource,

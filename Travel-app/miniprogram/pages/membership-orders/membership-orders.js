@@ -8,6 +8,15 @@ const STATUS_TONE = {
   REFUNDED: 'refunded',
 };
 
+const REFUND_TONE = {
+  REQUESTED: 'review',
+  UNDER_REVIEW: 'review',
+  PROCESSING: 'processing',
+  REFUNDED: 'refunded',
+  REJECTED: 'rejected',
+  FAILED: 'failed',
+};
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -20,10 +29,7 @@ Page({
 
   onLoad() {
     const g = app.globalData;
-    this.setData({
-      statusBarHeight: g.statusBarHeight,
-      navBarHeight: g.navBarHeight,
-    });
+    this.setData({ statusBarHeight: g.statusBarHeight, navBarHeight: g.navBarHeight });
   },
 
   onShow() {
@@ -36,12 +42,9 @@ Page({
       const items = (res.items || []).map(item => ({
         ...item,
         _statusTone: STATUS_TONE[item.status] || 'closed',
+        _refundTone: REFUND_TONE[item.refundStatus] || '',
       }));
-      this.setData({
-        loading: false,
-        items,
-        count: Number(res.count) || items.length,
-      });
+      this.setData({ loading: false, items, count: Number(res.count) || items.length });
     }).catch(err => {
       this.setData({ loading: false, loadFailed: true, items: [] });
       api.toastError(err);
@@ -50,6 +53,12 @@ Page({
 
   onRetry() {
     this.loadOrders();
+  },
+
+  onOrderDetail(e) {
+    const orderId = e.currentTarget.dataset.id;
+    if (!orderId) return;
+    wx.navigateTo({ url: `/pages/membership-order-detail/membership-order-detail?orderId=${orderId}` });
   },
 
   onCopyOrderNo(e) {

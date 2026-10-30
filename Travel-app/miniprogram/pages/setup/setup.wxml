@@ -66,7 +66,7 @@
     </view>
   </view>
 
-  <!-- 任务位不足时才出现付费入口；未超额时整块不渲染。 -->
+  <!-- 提醒名额不足时才出现付费入口；未超额时整块不渲染。 -->
   <view wx:if="{{showMembershipGate}}" class="membership-gate">
     <view class="membership-gate-head">
       <view class="membership-gate-copy">
@@ -78,6 +78,12 @@
       </view>
     </view>
     <text class="membership-gate-note">{{membershipGateNote}}</text>
+  </view>
+
+  <view wx:if="{{paymentState}}" class="payment-state {{paymentState.status}}">
+    <text class="payment-state-title">{{paymentState.title}}</text>
+    <text class="payment-state-desc">{{paymentState.description}}</text>
+    <view wx:if="{{paymentState.orderId}}" class="payment-state-action" bindtap="onPaymentOrder">查看订单详情</view>
   </view>
 
   <view class="setting-card sms-card">
@@ -132,6 +138,22 @@
       <svg-icon name="chevron-right" size="12px" />
     </view>
     <text class="success-countdown">{{successCountdown}} 秒后自动返回首页</text>
+  </view>
+</view>
+
+<view wx:if="{{showUpgradeConfirm}}" class="upgrade-mask" bindtap="onCloseUpgradeConfirm">
+  <view class="upgrade-sheet" catchtap="noop">
+    <view class="upgrade-head">
+      <text class="upgrade-title">确认支付</text>
+      <view class="upgrade-close" bindtap="onCloseUpgradeConfirm">×</view>
+    </view>
+    <view class="upgrade-row"><text>商品</text><text>{{upgradeConfirmTitle}}</text></view>
+    <view class="upgrade-row"><text>金额</text><text class="upgrade-amount">{{upgradeConfirmAmount}}</text></view>
+    <view class="upgrade-row"><text>生效</text><text>支付成功后立即生效</text></view>
+    <view class="upgrade-row"><text>有效期</text><text>{{upgradeConfirmExpiry}}</text></view>
+    <text class="upgrade-desc">{{upgradeConfirmDesc}}</text>
+    <text class="upgrade-rule">24 小时内且未新增任何提醒，可申请退款并等待客服审核；不自动续费，不保证景点有票。</text>
+    <view class="upgrade-confirm-btn" bindtap="onConfirmUpgrade">支付 ¥2</view>
   </view>
 </view>
 

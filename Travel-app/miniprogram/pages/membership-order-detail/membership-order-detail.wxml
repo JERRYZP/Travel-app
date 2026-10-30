@@ -1,0 +1,59 @@
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack"><svg-icon name="back-thick" size="18px" /></view>
+    <text class="navbar-title">订单详情</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view class="page-body">
+  <view wx:if="{{loading}}" class="loading-wrap"><van-loading size="36rpx" color="#B8904A" /></view>
+  <view wx:elif="{{loadFailed}}" class="load-failed">
+    <text class="load-failed-title">订单加载失败</text>
+    <view class="retry-btn" bindtap="onRetry">重新加载</view>
+  </view>
+  <block wx:else>
+    <view class="state-card {{state.tone}}">
+      <text class="state-title">{{state.title}}</text>
+      <text class="state-desc">{{state.desc}}</text>
+      <text wx:if="{{order.grantStatus === 'GRANTED' && memberExpiresAtText}}" class="state-expiry">当前会员有效期至 {{memberExpiresAtText}}</text>
+    </view>
+
+    <view wx:if="{{actionMessage}}" class="action-message">{{actionMessage}}</view>
+
+    <view class="info-card">
+      <view class="info-row"><text>商品</text><text>{{order.title}}</text></view>
+      <view class="info-row"><text>金额</text><text class="amount">{{order.amountText}}</text></view>
+      <view class="info-row"><text>订单状态</text><text>{{order.statusLabel}}</text></view>
+      <view wx:if="{{order.refundStatusLabel}}" class="info-row"><text>退款状态</text><text>{{order.refundStatusLabel}}</text></view>
+      <view class="info-row"><text>创建时间</text><text>{{order.createdAtText}}</text></view>
+      <view wx:if="{{order.paidAtText}}" class="info-row"><text>支付时间</text><text>{{order.paidAtText}}</text></view>
+      <view wx:if="{{order.refundedAtText}}" class="info-row"><text>退款时间</text><text>{{order.refundedAtText}}</text></view>
+      <view class="info-row order-no-row"><text>订单号</text><text class="order-no">{{order.outTradeNo}}</text></view>
+      <view class="copy-action" bindtap="onCopy">复制订单号</view>
+    </view>
+
+    <view wx:if="{{order.entitlementGrant}}" class="rights-card">
+      <text class="rights-title">本单权益发放记录</text>
+      <text>会员时长增加：{{order.entitlementGrant.memberDaysAddedMs ? '已记录' : '无'}}</text>
+      <text>提醒名额增加：{{order.entitlementGrant.taskPackDelta ? order.entitlementGrant.taskPackDelta * 5 + ' 个' : '会员基础额度'}}</text>
+      <text wx:if="{{order.entitlementGrant.revertedAt}}">退款后已按本单快照回收；不会删除已有提醒。</text>
+    </view>
+
+    <view class="action-list">
+      <view wx:if="{{order.actionFlags.canPay}}" class="action primary" bindtap="onPay">继续支付</view>
+      <view wx:if="{{order.actionFlags.canCancel}}" class="action" bindtap="onCancel">取消订单</view>
+      <view wx:if="{{order.actionFlags.canSync}}" class="action" bindtap="onSync">同步支付结果</view>
+      <view wx:if="{{order.actionFlags.canAfterSales}}" class="action" bindtap="onAfterSales">{{order.actionFlags.afterSalesLabel}}</view>
+      <view wx:if="{{order.actionFlags.canRebuy}}" class="action primary" bindtap="onRebuy">重新购买</view>
+    </view>
+
+    <view class="rule-card">
+      <text class="rule-title">退款规则</text>
+      <text>支付后 24 小时内且没有新增任何提醒，可提交退款申请，需客服核实。</text>
+      <text>已新增提醒、超过 24 小时或无正当理由的申请原则上不支持。每笔订单最多一次全额退款。</text>
+      <text>退款到账时间以微信支付实际处理结果为准；退款成功后只回收本订单新增权益。</text>
+    </view>
+  </block>
+</view>

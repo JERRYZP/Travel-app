@@ -4,7 +4,7 @@
     <view class="navbar-back" bindtap="onBack">
       <svg-icon name="back-thick" size="18px" />
     </view>
-    <text class="navbar-title">会员与任务位</text>
+    <text class="navbar-title">会员与提醒名额</text>
   </view>
 </view>
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
@@ -20,6 +20,23 @@
   </view>
 
   <block wx:else>
+    <view class="explain-card">
+      <text class="explain-kicker">会员不是“抢票加速”</text>
+      <text class="explain-title">{{reasonText || '会员只增加可同时开启的提醒名额'}}</text>
+      <view class="quota-pair">
+        <view class="quota-item">
+          <text class="quota-label">免费版</text>
+          <text class="quota-value">5 个</text>
+        </view>
+        <view class="quota-arrow">→</view>
+        <view class="quota-item highlight">
+          <text class="quota-label">30 天会员</text>
+          <text class="quota-value">10 个</text>
+        </view>
+      </view>
+      <text class="explain-foot">¥2 一次支付，不自动续费；已有提醒不会被删除。</text>
+    </view>
+
     <view class="status-band">
       <view class="status-head">
         <view>
@@ -29,52 +46,58 @@
         <text class="status-badge {{membership.member ? 'active' : ''}}">{{membership.member ? '会员' : '免费版'}}</text>
       </view>
       <view class="usage-row">
-        <text>提醒任务位 {{membership.taskUsed}} / {{membership.taskLimit}}</text>
+        <text>提醒名额 {{membership.taskUsed}} / {{membership.taskLimit}}</text>
         <text>剩余 {{membership.taskRemaining}}</text>
       </view>
       <view class="usage-track">
         <view class="usage-fill" style="width: {{usagePercent}}%;"></view>
       </view>
-      <text wx:if="{{reasonText}}" class="status-reason">{{reasonText}}，当前额度不足。</text>
+      <text wx:if="{{membership.protectedTaskQuota > membership.entitlementTaskLimit}}" class="protected-note">已为老用户保留 {{membership.protectedTaskQuota}} 个保护名额，不额外收费，也不会删除已有提醒。</text>
+    </view>
+
+    <view wx:if="{{paymentState}}" class="payment-state {{paymentState.status}}">
+      <text class="payment-state-title">{{paymentState.title}}</text>
+      <text class="payment-state-desc">{{paymentState.description}}</text>
+      <view wx:if="{{paymentState.orderId}}" class="payment-state-action" bindtap="onPaymentOrder">查看订单详情</view>
     </view>
 
     <view class="order-entry" bindtap="onOrders">
       <view class="order-entry-copy">
-        <text class="order-entry-title">订单信息</text>
-        <text class="order-entry-desc">查看会员与任务位支付记录</text>
+        <text class="order-entry-title">订单与退款</text>
+        <text class="order-entry-desc">同步支付结果、申请售后、查看退款进度</text>
       </view>
       <svg-icon name="chevron-down" size="14px" rotate="270" />
     </view>
 
-    <text class="section-label">会员权益</text>
+    <text class="section-label">你能得到什么</text>
     <view class="benefit-list">
       <view class="benefit-row">
         <svg-icon name="check-gold" size="16px" />
         <view class="benefit-copy">
-          <text class="benefit-title">10 个提醒任务位</text>
-          <text class="benefit-desc">会员有效期内生效，到期不会删除已有提醒。</text>
+          <text class="benefit-title">提醒名额从 5 个提升到 10 个</text>
+          <text class="benefit-desc">只影响同时可开启的提醒数量，不改变景点官方预约规则。</text>
         </view>
       </view>
       <view class="benefit-row">
         <svg-icon name="check-gold" size="16px" />
         <view class="benefit-copy">
-          <text class="benefit-title">加购任务位永久保留</text>
-          <text class="benefit-desc">后续续费会员时自动恢复，不重复购买。</text>
+          <text class="benefit-title">会员有效期内可加购提醒名额</text>
+          <text class="benefit-desc">¥2 增加 5 个名额；名额永久记录，续费会员后自动恢复。</text>
         </view>
       </view>
       <view class="benefit-row">
         <svg-icon name="check-gold" size="16px" />
         <view class="benefit-copy">
-          <text class="benefit-title">30 天有效期</text>
-          <text class="benefit-desc">一次支付一次生效，不自动续费。</text>
+          <text class="benefit-title">到期不删除已有提醒</text>
+          <text class="benefit-desc">不代抢、不代约，也不保证景点有票。请按官方渠道自行预约。</text>
         </view>
       </view>
     </view>
 
-    <text class="section-label">选择服务</text>
+    <text class="section-label">选择本次服务</text>
     <view class="package-list">
       <view
-        wx:for="{{packages}}"
+        wx:for="{{visiblePackages}}"
         wx:key="id"
         class="package-row {{item._selected ? 'selected' : ''}} {{item._available ? '' : 'disabled'}}"
         bindtap="onPackageTap"
@@ -96,13 +119,32 @@
         </view>
       </view>
     </view>
+    <text wx:if="{{!membership.member}}" class="package-tip">开通会员后可加购 5 个提醒名额。</text>
 
     <view class="purchase-note">
-      <text>虚拟权益支付成功后即时生效，不自动续费。会员到期或加购任务位暂停生效时，已有提醒任务仍会继续发送。</text>
+      <text>虚拟权益支付成功后生效。支付后 24 小时内且没有新增任何提醒，可申请退款，需客服核实；已使用、超时或无正当理由的申请原则上不支持。每笔订单最多一次全额退款。</text>
     </view>
 
     <view class="pay-btn {{selectedPackage ? '' : 'disabled'}}" bindtap="onPay">
       <text>{{payButtonText}}</text>
     </view>
   </block>
+</view>
+
+<view wx:if="{{showPayConfirm}}" class="modal-mask" bindtap="onClosePayConfirm">
+  <view class="confirm-sheet" catchtap="noop">
+    <view class="confirm-head">
+      <text class="confirm-title">确认支付</text>
+      <view class="confirm-close" bindtap="onClosePayConfirm">×</view>
+    </view>
+    <view class="confirm-row"><text>商品</text><text>{{confirmTitle}}</text></view>
+    <view class="confirm-row"><text>金额</text><text class="confirm-amount">{{confirmAmount}}</text></view>
+    <view class="confirm-row"><text>生效</text><text>支付成功后立即生效</text></view>
+    <view class="confirm-row"><text>有效期</text><text>{{confirmExpiry}}</text></view>
+    <view class="confirm-rule">
+      <text>24 小时内且未新增任何提醒，可申请退款并等待客服审核；已使用、超时或无正当理由原则上不支持。</text>
+      <text>不自动续费，不会删除已有提醒，不保证景点有票。</text>
+    </view>
+    <view class="confirm-pay-btn" bindtap="onConfirmPay">支付 {{confirmAmount}}</view>
+  </view>
 </view>

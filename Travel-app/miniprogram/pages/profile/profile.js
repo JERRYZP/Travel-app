@@ -23,7 +23,7 @@ Page({
     isMember: false,
     memberTagText: '普通用户',
     memberCardTitle: '会员',
-    memberCardDesc: '开通后 30 天内可用 10 个提醒任务位',
+    memberCardDesc: '免费版 5 个提醒名额；会员 30 天内最多 10 个',
     memberCardAction: '开通',
     notifyHint: '未开启',
     notifyState: 'none',
@@ -31,6 +31,7 @@ Page({
     oaRowLabel: oa.ROW_LABEL,
     oaRowHint: oa.ROW_HINT,
     showOaSheet: false,
+    showAfterSalesEntry: false,
   },
 
   onLoad() {
@@ -44,6 +45,7 @@ Page({
   onShow() {
     this.loadUser();
     this.loadNotifyHint();
+    this.loadAdminEntries();
   },
 
   /* 无感登录：profile 首次调用即自动建号（自动昵称+默认头像），页面常驻登录态 */
@@ -68,8 +70,8 @@ Page({
       memberTagText: current.member ? '尊贵会员' : '普通用户',
       memberCardTitle: current.member ? '尊贵会员' : '非会员',
       memberCardDesc: current.member
-        ? `${expiryDate || current.memberExpiresAtText || '—'} 到期｜任务位 ${current.taskUsed}/${current.taskLimit}`
-        : '可开启至多 10 个提醒任务位',
+        ? `${expiryDate || current.memberExpiresAtText || '—'} 到期｜提醒名额 ${current.taskUsed}/${current.taskLimit}`
+        : '免费版可用 5 个提醒名额；开通后最多 10 个',
       memberCardAction: current.member ? '升级' : '开通',
     });
   },
@@ -93,6 +95,18 @@ Page({
 
   onMembership() {
     wx.navigateTo({ url: '/pages/membership/membership' });
+  },
+
+  loadAdminEntries() {
+    api.payment.afterSales.adminStatus().then(res => {
+      this.setData({ showAfterSalesEntry: !!(res && res.isAdmin) });
+    }).catch(() => {
+      this.setData({ showAfterSalesEntry: false });
+    });
+  },
+
+  onAfterSalesAdmin() {
+    wx.navigateTo({ url: '/pages/admin-after-sales/admin-after-sales' });
   },
 
   onGuide() {

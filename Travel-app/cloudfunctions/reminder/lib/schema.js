@@ -15,7 +15,9 @@ const COLLECTIONS = {
   SEARCH_HISTORY: 'search_history', // TABLE-006
   REMINDER_CART: 'reminder_cart',   // TABLE-007
   TRIP_ITEMS: 'trip_items',         // TABLE-008（2026-09-16 首页行程状态墙）
-  ORDERS: 'orders',                 // TABLE-009（2026-10-27 会员 / 任务位订单）
+  ORDERS: 'orders',                 // TABLE-009（2026-10-27 会员 / 提醒名额订单）
+  AFTER_SALES_CASES: 'after_sales_cases',
+  ADMIN_AUDIT_LOGS: 'admin_audit_logs',
 };
 
 /** ENUM-001 行程状态 */
@@ -125,12 +127,17 @@ const ERRORS = {
   /* 放票时刻已过 → 提醒开关对这条项不再有任何意义（2026-09-23 定规）。
      菜单此时也不渲染这两个入口，本错误码只可能来自旧版本小程序或直接调接口。 */
   REMINDER_WINDOW_CLOSED: { code: 1017, message: '已过放票时间，提醒无法开启或取消' },
-  /* 2026-10-27 会员 / 任务位。限额只在服务端判定，页面不自行推导。 */
-  TASK_LIMIT_EXCEEDED: { code: 1026, message: '提醒任务位不足，请先升级任务位' },
-  MEMBERSHIP_REQUIRED: { code: 1022, message: '请先开通会员再加购任务位' },
+  /* 2026-10-27 会员 / 提醒名额。限额只在服务端判定，页面不自行推导。 */
+  TASK_LIMIT_EXCEEDED: { code: 1026, message: '提醒名额不足，请先开通会员或加购名额' },
+  MEMBERSHIP_REQUIRED: { code: 1022, message: '请先开通会员再加购提醒名额' },
   PAYMENT_NOT_READY: { code: 1023, message: '支付通道准备中，请稍后再试' },
   ORDER_NOT_FOUND: { code: 1024, message: '订单不存在或已失效' },
   ORDER_AMOUNT_MISMATCH: { code: 1025, message: '订单金额校验失败' },
+  ORDER_EXPIRED: { code: 1027, message: '订单已过期，请重新下单' },
+  AFTER_SALES_EXISTS: { code: 1028, message: '该订单已有处理中或已完成的售后申请' },
+  REFUND_NOT_ELIGIBLE: { code: 1029, message: '当前订单暂不符合退款申请条件' },
+  CASE_NOT_FOUND: { code: 1030, message: '售后记录不存在' },
+  FORBIDDEN: { code: 1040, message: '无权限' },
   BAD_PARAM: { code: 1010, message: '参数不合法' },
   UNKNOWN_ACTION: { code: 1099, message: 'unknown action' },
 };

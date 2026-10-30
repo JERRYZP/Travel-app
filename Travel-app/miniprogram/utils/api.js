@@ -122,6 +122,7 @@ const reminder = {
     status: () => call('reminder', { action: 'membership.status' }),
     createOrder: (p) => call('reminder', { action: 'membership.createOrder', ...(p || {}) }),
     orders: () => call('reminder', { action: 'membership.orders' }),
+    orderDetail: (orderId) => call('reminder', { action: 'membership.orderDetail', orderId }),
   },
 };
 
@@ -139,6 +140,24 @@ const feedback = {
 const payment = {
   create: (p) => call('payment', { action: 'create', ...(p || {}) }),
   query: (p) => call('payment', { action: 'query', ...(p || {}) }),
+  cancel: (p) => call('payment', { action: 'cancel', ...(p || {}) }),
+  afterSales: {
+    submit: (p) => call('payment', { action: 'afterSales.submit', ...(p || {}) }),
+    list: () => call('payment', { action: 'afterSales.list' }),
+    detail: (caseId) => call('payment', { action: 'afterSales.detail', caseId }),
+    syncRights: (orderId) => call('payment', { action: 'afterSales.syncRights', orderId }),
+    adminStatus: () => call('payment', { action: 'afterSales.adminStatus' }),
+    adminList: (p) => call('payment', { action: 'afterSales.adminList', ...(p || {}) }),
+    adminDetail: (caseId) => call('payment', { action: 'afterSales.adminDetail', caseId }),
+    adminApproveRefund: (caseId) => call('payment', { action: 'afterSales.adminApproveRefund', caseId }),
+    adminReject: (p) => call('payment', { action: 'afterSales.adminReject', ...(p || {}) }),
+    adminSyncPayment: (caseId) => call('payment', { action: 'afterSales.adminSyncPayment', caseId }),
+    adminRetryGrant: (caseId) => call('payment', { action: 'afterSales.adminRetryGrant', caseId }),
+    adminSyncRefund: (caseId) => call('payment', { action: 'afterSales.adminSyncRefund', caseId }),
+    adminMigrateProtection: (cursor) => call('payment', {
+      action: 'afterSales.adminMigrateProtection', cursor: cursor || null,
+    }),
+  },
 };
 
 /* ===== ICS ===== */
@@ -163,11 +182,16 @@ function toastError(result) {
     1016: '行程项所在日期已结束',
     1017: '已过放票时间，提醒无法开启或取消',
     1020: '请填写反馈内容',
-    1022: '请先开通会员再加购任务位',
+    1022: '请先开通会员再加购提醒名额',
     1023: '支付通道准备中，请稍后再试',
     1024: '订单不存在或已失效',
     1025: '订单金额校验失败',
-    1026: '任务位不足，请先升级任务位',
+    1026: '提醒名额不足，请先开通会员或加购名额',
+    1027: '订单已过期，请重新下单',
+    1028: '该订单已有处理中的售后申请',
+    1029: '当前订单暂不符合退款条件',
+    1030: '售后记录不存在',
+    1040: '无权限执行此操作',
     1500: '服务异常，请稍后重试',
   };
   if (result && map[result.errorCode]) {

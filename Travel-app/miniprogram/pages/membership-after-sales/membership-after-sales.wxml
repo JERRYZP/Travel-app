@@ -1,0 +1,85 @@
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack"><svg-icon name="back-thick" size="18px" /></view>
+    <text class="navbar-title">申请售后</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view class="page-body">
+  <view wx:if="{{loading}}" class="loading-wrap"><van-loading size="36rpx" color="#B8904A" /></view>
+  <view wx:elif="{{loadFailed}}" class="load-failed">
+    <text class="load-failed-title">售后信息加载失败</text>
+    <view class="retry-btn" bindtap="onRetry">重新加载</view>
+  </view>
+  <block wx:else>
+    <view class="order-summary-card">
+      <view class="order-head"><text>{{order.title}}</text><text>{{order.amountText}}</text></view>
+      <text class="order-meta">订单 {{order.outTradeNo}}</text>
+      <text class="order-meta">支付时间 {{order.paidAtText || '尚未支付'}}</text>
+    </view>
+
+    <view wx:if="{{previousCase && !existingCase}}" class="existing-case rejected-case">
+      <text class="existing-title">上次申请未通过</text>
+      <text>处理说明：{{previousCase.decisionNote}}</text>
+      <text class="reapply-note">如补充了新证据，可以重新提交；请如实说明情况。</text>
+    </view>
+
+    <view wx:if="{{existingCase}}" class="existing-case">
+      <text class="existing-title">已有售后申请</text>
+      <text>{{existingCase.statusLabel}}</text>
+      <text>申请类型：{{existingCase.typeLabel}}</text>
+      <text wx:if="{{existingCase.decisionNote}}">处理说明：{{existingCase.decisionNote}}</text>
+      <view class="order-link" bindtap="onOrderDetail">查看订单与退款进度</view>
+    </view>
+
+    <view wx:elif="{{reasonOptions.length === 0}}" class="existing-case">
+      <text class="existing-title">当前订单无需提交售后</text>
+      <text>订单尚未支付或已经关闭；如微信已扣款，请先在订单详情同步支付结果。</text>
+      <view class="order-link" bindtap="onOrderDetail">返回订单详情</view>
+    </view>
+
+    <block wx:else>
+      <text class="section-title">选择问题类型</text>
+      <view class="reason-list">
+        <view
+          wx:for="{{reasonOptions}}"
+          wx:key="type"
+          class="reason-row {{selectedType === item.type ? 'selected' : ''}}"
+          bindtap="onTypeTap"
+          data-type="{{item.type}}"
+        >
+          <view class="reason-copy">
+            <text class="reason-label">{{item.label}}</text>
+            <text class="reason-desc">{{item.desc}}</text>
+          </view>
+          <view class="reason-radio {{selectedType === item.type ? 'checked' : ''}}">
+            <svg-icon wx:if="{{selectedType === item.type}}" name="check-white" size="11px" />
+          </view>
+        </view>
+      </view>
+
+      <text class="section-title">补充说明</text>
+      <textarea
+        class="description-input"
+        maxlength="1000"
+        placeholder="请描述发生了什么；选择“其他问题”时必填"
+        value="{{description}}"
+        bindinput="onDescriptionInput"
+      />
+      <text class="privacy-note">客服会查看本订单的支付查单结果、权益发放记录和支付后新增提醒数。所有敏感查看与审核操作都会记录审计日志。</text>
+
+      <view class="eligibility-card">
+        <text class="eligibility-title">系统已核验的证据</text>
+        <text>支付后是否新增提醒：{{order.refundEligibility.usedAfterPurchase ? '已新增' : '未新增'}}</text>
+        <text>距离支付：{{order.refundEligibility.hoursSincePaid}} 小时</text>
+        <text>当前是否可直接申请未使用退款：{{order.canRequestRefund ? '是' : '否'}}</text>
+      </view>
+
+      <view wx:if="{{resultMessage}}" class="result-message {{resultTone}}">{{resultMessage}}</view>
+      <view class="submit-btn {{submitting ? 'disabled' : ''}}" bindtap="onSubmit">{{submitting ? '正在提交...' : '提交售后申请'}}</view>
+      <text class="rule-note">未到账和重复支付会先自动修复。退款必须由客服审核；每个订单最多一次全额退款，不做部分退款。</text>
+    </block>
+  </block>
+</view>

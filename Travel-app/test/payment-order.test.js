@@ -4,9 +4,11 @@
  * 运行：node test/payment-order.test.js
  */
 const { createDb } = require('./mock-db');
-const { COLLECTIONS, MemberLevel, OrderStatus } = require('../cloudfunctions/payment/lib/schema');
 const {
-  findOrderById, fulfillOrder, isCallbackPaidResult, isQueryPaidResult,
+  COLLECTIONS, MemberLevel, OrderStatus, GrantStatus, RefundStatus,
+} = require('../cloudfunctions/payment/lib/schema');
+const {
+  findOrderById, fulfillOrder, markOrderClosed, isCallbackPaidResult, isQueryPaidResult,
 } = require('../cloudfunctions/payment/lib/order');
 
 const USER = 'openid_pay_001';
@@ -100,7 +102,35 @@ async function run() {
   eq(user.memberLevel, MemberLevel.NORMAL, '会员未发放');
   eq(order.status, OrderStatus.PENDING, '订单仍待支付');
 
-  console.log('\n=== 5. 回调与查单成功口径 ===');
+  console.log('\n=== 5. 本地关单不覆盖并发回调的支付结果 ===');
+  db = createDb();
+  seedUser(db);
+  added = await addOrder(db);
+  const stalePending = await findOrderById(db, added._id);
+  await db.collection(COLLECTIONS.ORDERS).doc(added._id).update({
+    data: { status: OrderStatus.PAID, grantStatus: GrantStatus.GRANTED },
+  });
+  const afterCloseAttempt = await markOrderClosed(db, stalePending, 'EXPIRED');
+  eq(afterCloseAttempt.status, OrderStatus.PAID, '条件关单未把已支付订单改回 CLOSED');
+
+  console.log('\n=== 6. 已退款订单的重复回调不重新发放权益 ===');
+  db = createDb();
+  seedUser(db);
+  added = await addOrder(db, {
+    status: OrderStatus.PAID,
+    grantStatus: GrantStatus.REVERTED,
+    refundStatus: RefundStatus.REFUNDED,
+  });
+  order = await findOrderById(db, added._id);
+  paid = await fulfillOrder(db, order, { totalFee: 200 });
+  eq(paid.success, true, '重复回调仍返回成功以停止微信重试');
+  eq(paid.entitlementStatus, 'REFUNDED', '明确返回已退款状态');
+  user = db._dump(COLLECTIONS.USERS)[0];
+  eq(new Date(user.memberExpiresAt || 0).getTime(), 0, '未重新增加会员时长');
+  order = await findOrderById(db, added._id);
+  eq(order.grantStatus, GrantStatus.REVERTED, '权益保持已回收');
+
+  console.log('\n=== 7. 回调与查单成功口径 ===');
   eq(isCallbackPaidResult({ returnCode: 'SUCCESS', resultCode: 'SUCCESS' }), true, '回调 SUCCESS 视为支付成功');
   eq(isCallbackPaidResult({ returnCode: 'SUCCESS', resultCode: 'FAIL' }), false, '回调 FAIL 不发放');
   eq(isQueryPaidResult({ resultCode: 'SUCCESS', tradeState: 'NOTPAY' }), false, '查单只认 tradeState=SUCCESS');

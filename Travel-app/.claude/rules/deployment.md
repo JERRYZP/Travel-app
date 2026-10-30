@@ -29,9 +29,11 @@ paths:
 
 - 先数据与索引，再业务云函数。
 - 同时影响 `reminder` 与 `notifier` 的改动必须分别确认。
-- 会员 / 任务位上线还需部署 `payment`，并使用微信支付 API v3 直连。云函数环境变量必须配置 `WECHAT_PAY_MCH_ID`、`WECHAT_PAY_SERIAL_NO`、`WECHAT_PAY_PRIVATE_KEY`、`WECHAT_PAY_API_V3_KEY`、`WECHAT_PAY_NOTIFY_URL`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID`；商户号只需绑定当前小程序并开通 JSAPI 支付，不再要求云开发服务商授权。
-- `payment` 的公网回调必须走 CloudBase HTTP 网关：路由指向云函数 `payment`，关闭身份认证、跨域和路径透传，并配置独立 HTTPS 域名；默认域名只能用于测试，正式回调使用备案自定义域名。
-- `reminder` 的会员限制由 `MEMBERSHIP_ENFORCEMENT_MODE` 控制：`off` 关闭、`test` 仅测试白名单、`all` 全量。默认 `test`，白名单在 `membership.js` 中，可用 `MEMBERSHIP_TEST_OPENIDS` 逗号分隔覆盖。正式发布前不得切 `all`。
+- 会员 / 提醒名额上线还需部署 `payment`，并使用微信支付 API v3 直连。云函数环境变量必须配置 `WECHAT_PAY_MCH_ID`、`WECHAT_PAY_SERIAL_NO`、`WECHAT_PAY_PRIVATE_KEY`、`WECHAT_PAY_API_V3_KEY`、`WECHAT_PAY_NOTIFY_URL`、`WECHAT_PAY_REFUND_NOTIFY_URL`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID`、`AFTER_SALES_ADMIN_OPENIDS`；商户号只需绑定当前小程序并开通 JSAPI 与 API 退款权限，不再要求云开发服务商授权。
+- `payment` 的公网回调必须走 CloudBase HTTP 网关：`/payment/notify` 与 `/payment/refund-notify` 分别指向云函数 `payment`，关闭身份认证、跨域和路径透传，并保留原始 body；默认域名只能用于测试，正式回调使用备案自定义域名。
+- `payment` 含每 2 分钟定时补偿触发器；部署前确认 `cloudfunctions/payment/config.json` 随函数生效。
+- 售后上线前必须创建 `after_sales_cases`、`admin_audit_logs` 及 `数据库索引.md` 第二节索引；管理员白名单变化后需重新部署或更新云函数环境变量。
+- 上线前先分批迁移老用户 `protectedTaskQuota`，迁移完成前不得切全量；`reminder` 的会员限制由 `MEMBERSHIP_ENFORCEMENT_MODE` 控制：`off` 关闭、`test` 仅测试白名单、`all` 全量。默认 `test`，白名单在 `membership.js` 中，可用 `MEMBERSHIP_TEST_OPENIDS` 逗号分隔覆盖。正式发布前不得切 `all`。
 - 只改小程序页面通常不需要部署云函数，但如果接口契约变化则必须部署。
 
 ## 状态纪律
