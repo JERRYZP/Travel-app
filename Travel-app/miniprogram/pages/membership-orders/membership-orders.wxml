@@ -30,6 +30,11 @@
       <text class="order-summary-count">共 {{count}} 笔</text>
     </view>
 
+    <view wx:if="{{autoRefreshHint}}" class="auto-refresh-hint">
+      <view class="auto-refresh-dot"></view>
+      <text>{{autoRefreshHint}}</text>
+    </view>
+
     <view class="order-list">
       <view
         wx:for="{{items}}"

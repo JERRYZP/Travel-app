@@ -142,3 +142,24 @@
 .confirm-amount { color: var(--color-primary); font-weight: 700; }
 .confirm-rule { display: flex; flex-direction: column; gap: 9rpx; margin-top: 18rpx; padding: 18rpx 20rpx; border-radius: 14rpx; background: var(--color-cream); color: var(--color-muted); font-size: 21rpx; line-height: 1.55; }
 .confirm-pay-btn { height: 82rpx; margin-top: 24rpx; border-radius: 18rpx; background: var(--color-primary); color: #FFFEFB; font-size: 28rpx; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+
+.auto-refresh-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 10rpx;
+  margin-top: 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 14rpx;
+  background: #F1F7FB;
+  color: #356A8A;
+  font-size: 21rpx;
+  line-height: 1.55;
+}
+.auto-refresh-dot {
+  flex-shrink: 0;
+  width: 10rpx;
+  height: 10rpx;
+  margin-top: 12rpx;
+  border-radius: 50%;
+  background: #5D93B2;
+}

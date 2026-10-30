@@ -1,21 +1,38 @@
 const app = getApp();
 const api = require('../../utils/api.js');
 const membershipPay = require('../../utils/membership-pay.js');
+const orderRefresh = require('../../utils/order-refresh.js');
+
+function entitlementReverted(order) {
+  return order.grantStatus === 'REVERTED'
+    || !!(order.entitlementGrant && order.entitlementGrant.revertedAt);
+}
 
 function stateOfOrder(order, latestCase) {
   if (!order) return null;
-  if (order.status === 'PAID' && order.grantStatus === 'FAILED') {
+  if (order.refundStatus === 'REFUNDED') {
+    if (order.grantStatus === 'GRANTED' && !entitlementReverted(order)) {
+      return {
+        tone: 'review',
+        title: '退款已到账，权益正在回收',
+        desc: '微信退款已完成；系统正在按本单快照回收会员时长和提醒名额，页面会自动更新，已有提醒不会被删除。',
+      };
+    }
     return {
-      tone: 'error',
-      title: '权益发放异常',
-      desc: '支付已完成但权益未成功写入，请勿重复支付。先同步支付结果；仍异常时联系售后补发。',
+      tone: 'refunded',
+      title: '退款已完成',
+      desc: '本订单新增的会员时长和提醒名额已按订单快照回收，已有提醒未被删除。',
     };
   }
-  if (order.refundStatus === 'REFUNDED') {
-    return { tone: 'refunded', title: '退款已完成', desc: '本订单新增的会员时长和提醒名额已按订单快照回收，已有提醒未被删除。' };
-  }
   if (['REQUESTED', 'UNDER_REVIEW', 'PROCESSING'].includes(order.refundStatus)) {
-    return { tone: 'review', title: order.refundStatusLabel || '售后处理中', desc: '客服会在 24 小时内完成审核；退款到账时间以微信支付处理结果为准。' };
+    const processing = order.refundStatus === 'PROCESSING';
+    return {
+      tone: 'review',
+      title: order.refundStatusLabel || (processing ? '退款处理中' : '售后处理中'),
+      desc: processing
+        ? '微信支付正在处理退款，页面会自动更新到账结果；权益回收完成后再显示最终状态。'
+        : '客服会在 24 小时内完成审核；页面会自动更新审核结果。',
+    };
   }
   if (order.refundStatus === 'REJECTED') {
     return {
@@ -26,10 +43,24 @@ function stateOfOrder(order, latestCase) {
         || '如有疑问，请联系在线客服复核。',
     };
   }
+  if (order.refundStatus === 'FAILED') {
+    return {
+      tone: 'error',
+      title: '退款暂时失败',
+      desc: '本次退款未完成，当前权益仍有效。请打开售后进度联系客服重试，不要重复申请。',
+    };
+  }
+  if (order.status === 'PAID' && order.grantStatus === 'FAILED') {
+    return {
+      tone: 'error',
+      title: '权益发放异常',
+      desc: '支付已完成但权益未成功写入，请勿重复支付。系统会自动补发，页面将更新结果；仍异常时联系售后处理。',
+    };
+  }
   if (order.status === 'PENDING') {
     return order.isExpired
       ? { tone: 'closed', title: '订单已过期', desc: '本次未确认到扣款，可重新购买。' }
-      : { tone: 'pending', title: '等待支付', desc: '请在 15 分钟内完成支付；重新进入时未过期订单会继续复用。' };
+      : { tone: 'pending', title: '等待支付', desc: '请在 15 分钟内完成支付；支付后页面会自动确认服务端结果。' };
   }
   if (order.status === 'CLOSED') {
     return { tone: 'closed', title: '订单已关闭', desc: '本次订单未完成，可以重新购买。' };
@@ -50,6 +81,7 @@ Page({
     memberExpiresAtText: '',
     acting: false,
     actionMessage: '',
+    autoRefreshHint: '',
   },
 
   onLoad(options) {
@@ -62,15 +94,34 @@ Page({
   },
 
   onShow() {
-    this.loadOrder();
+    this._pageVisible = true;
+    this.loadOrder({ silent: !!this.data.order });
   },
 
-  loadOrder() {
+  onHide() {
+    this._pageVisible = false;
+    this.stopAutoRefresh(false);
+  },
+
+  onUnload() {
+    this._pageVisible = false;
+    this.stopAutoRefresh(false);
+  },
+
+  onPullDownRefresh() {
+    return this.loadOrder({ silent: true }).then(
+      () => wx.stopPullDownRefresh(),
+      () => wx.stopPullDownRefresh()
+    );
+  },
+
+  loadOrder(options) {
+    const silent = !!(options && options.silent);
     if (!this.data.orderId) {
       this.setData({ loading: false, loadFailed: true });
       return Promise.resolve();
     }
-    this.setData({ loading: true, loadFailed: false });
+    if (!silent) this.setData({ loading: true, loadFailed: false });
     return Promise.all([
       api.reminder.membership.orderDetail(this.data.orderId),
       api.reminder.membership.status(),
@@ -81,15 +132,63 @@ Page({
       const latestCase = (caseRes.items || []).find(item => item.orderId === order._id) || null;
       this.setData({
         loading: false,
+        loadFailed: false,
         order,
         latestCase,
         state: stateOfOrder(order, latestCase),
         memberExpiresAtText: (statusRes.membership && statusRes.membership.memberExpiresAtText) || '',
       });
+      this.applyOrderRefresh(order);
     }).catch(err => {
+      if (silent) {
+        if (this._autoRefreshActive) this._scheduleAutoRefresh();
+        return;
+      }
       this.setData({ loading: false, loadFailed: true });
       api.toastError(err);
     });
+  },
+
+  applyOrderRefresh(order) {
+    if (!orderRefresh.isTransientOrder(order)) {
+      this.stopAutoRefresh();
+      return;
+    }
+    this.setData({ autoRefreshHint: orderRefresh.refreshHintOf([order]) });
+    this._beginAutoRefresh();
+  },
+
+  _beginAutoRefresh() {
+    if (!this._pageVisible) return;
+    if (!this._autoRefreshActive) {
+      this._autoRefreshActive = true;
+      this._autoRefreshAttempts = 0;
+    }
+    this._scheduleAutoRefresh();
+  },
+
+  _scheduleAutoRefresh() {
+    if (!this._pageVisible || !this._autoRefreshActive || this._autoRefreshTimer) return;
+    if (this._autoRefreshAttempts >= orderRefresh.REFRESH_MAX_ATTEMPTS) {
+      this.stopAutoRefresh(false);
+      this.setData({ autoRefreshHint: orderRefresh.REFRESH_EXHAUSTED_HINT });
+      return;
+    }
+    this._autoRefreshTimer = setTimeout(() => {
+      this._autoRefreshTimer = null;
+      this._autoRefreshAttempts += 1;
+      this.loadOrder({ silent: true });
+    }, orderRefresh.REFRESH_INTERVAL_MS);
+  },
+
+  stopAutoRefresh(clearHint = true) {
+    if (this._autoRefreshTimer) clearTimeout(this._autoRefreshTimer);
+    this._autoRefreshTimer = null;
+    this._autoRefreshActive = false;
+    this._autoRefreshAttempts = 0;
+    if (clearHint !== false && this.data.autoRefreshHint) {
+      this.setData({ autoRefreshHint: '' });
+    }
   },
 
   onRetry() { this.loadOrder(); },
@@ -113,7 +212,8 @@ Page({
         return this.loadOrder();
       }
       if (result.status === 'PENDING') {
-        this.setActionMessage('正在确认支付结果；系统会自动补偿，请稍后刷新。');
+        this.setActionMessage('正在确认支付结果；系统会自动补偿，页面将自动更新。');
+        this._beginAutoRefresh();
         return;
       }
       this.setActionMessage(result.message || '订单已关闭，可以重新购买。');

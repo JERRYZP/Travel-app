@@ -3,5 +3,7 @@
     "svg-icon": "/components/svg-icon/svg-icon",
     "van-loading": "@vant/weapp/loading/index"
   },
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark"
 }

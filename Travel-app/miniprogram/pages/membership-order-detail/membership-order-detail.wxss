@@ -28,3 +28,24 @@
 .action-list { display: flex; flex-direction: column; gap: 13rpx; margin-top: 22rpx; }
 .action { height: 76rpx; border: 1rpx solid var(--color-border); border-radius: 16rpx; background: var(--color-surface); color: var(--color-text); font-size: 25rpx; display: flex; align-items: center; justify-content: center; }
 .action.primary { border-color: var(--color-primary); background: var(--color-primary); color: #FFFEFB; font-weight: 600; }
+
+.auto-refresh-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 10rpx;
+  margin-top: 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 14rpx;
+  background: #F1F7FB;
+  color: #356A8A;
+  font-size: 21rpx;
+  line-height: 1.55;
+}
+.auto-refresh-dot {
+  flex-shrink: 0;
+  width: 10rpx;
+  height: 10rpx;
+  margin-top: 12rpx;
+  border-radius: 50%;
+  background: #5D93B2;
+}

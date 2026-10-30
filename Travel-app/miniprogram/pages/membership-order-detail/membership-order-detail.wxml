@@ -20,6 +20,11 @@
       <text wx:if="{{order.grantStatus === 'GRANTED' && memberExpiresAtText}}" class="state-expiry">当前会员有效期至 {{memberExpiresAtText}}</text>
     </view>
 
+    <view wx:if="{{autoRefreshHint}}" class="auto-refresh-hint">
+      <view class="auto-refresh-dot"></view>
+      <text>{{autoRefreshHint}}</text>
+    </view>
+
     <view wx:if="{{actionMessage}}" class="action-message">{{actionMessage}}</view>
 
     <view class="info-card">

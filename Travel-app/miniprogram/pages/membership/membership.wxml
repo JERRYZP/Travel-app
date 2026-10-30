@@ -55,6 +55,11 @@
       <text wx:if="{{membership.protectedTaskQuota > membership.entitlementTaskLimit}}" class="protected-note">已为老用户保留 {{membership.protectedTaskQuota}} 个保护名额，不额外收费，也不会删除已有提醒。</text>
     </view>
 
+    <view wx:if="{{autoRefreshHint}}" class="auto-refresh-hint">
+      <view class="auto-refresh-dot"></view>
+      <text>{{autoRefreshHint}}</text>
+    </view>
+
     <view wx:if="{{paymentState}}" class="payment-state {{paymentState.status}}">
       <text class="payment-state-title">{{paymentState.title}}</text>
       <text class="payment-state-desc">{{paymentState.description}}</text>

@@ -1,6 +1,7 @@
 const app = getApp();
 const api = require('../../utils/api.js');
 const membershipPay = require('../../utils/membership-pay.js');
+const orderRefresh = require('../../utils/order-refresh.js');
 
 function usagePercentOf(used, limit) {
   if (!limit) return 0;
@@ -47,6 +48,7 @@ Page({
     memberStateText: '免费版',
     expiryText: '',
     paymentState: null,
+    autoRefreshHint: '',
     showPayConfirm: false,
     confirmTitle: '',
     confirmAmount: '',
@@ -72,8 +74,26 @@ Page({
   },
 
   onShow() {
-    this.loadStatus();
+    this._pageVisible = true;
+    this.loadStatus(undefined, { silent: !!this.data.membership });
     this.restorePendingPayment();
+  },
+
+  onHide() {
+    this._pageVisible = false;
+    this.stopAutoRefresh(false);
+  },
+
+  onUnload() {
+    this._pageVisible = false;
+    this.stopAutoRefresh(false);
+  },
+
+  onPullDownRefresh() {
+    return this.loadStatus(this.data.selectedPackageId, { silent: true }).then(
+      () => wx.stopPullDownRefresh(),
+      () => wx.stopPullDownRefresh()
+    );
   },
 
   restorePendingPayment() {
@@ -97,6 +117,7 @@ Page({
           '本次订单仍在确认中，系统会继续自动补偿。',
           saved.orderId
         );
+        this._beginAutoRefresh();
         return;
       }
       membershipPay.clearPendingOrder(saved.orderId);
@@ -132,12 +153,17 @@ Page({
         '权益不会丢失；后台会自动补偿，也可打开订单详情手动同步。',
         saved.orderId
       );
+      this._beginAutoRefresh();
     });
   },
 
-  loadStatus(preferredId) {
-    this.setData({ loading: true, loadFailed: false });
-    return api.reminder.membership.status().then(res => {
+  loadStatus(preferredId, options) {
+    const silent = !!(options && options.silent);
+    if (!silent) this.setData({ loading: true, loadFailed: false });
+    return Promise.all([
+      api.reminder.membership.status(),
+      api.reminder.membership.orders().catch(() => null),
+    ]).then(([res, orderRes]) => {
       const membership = res.membership || {};
       const packages = (res.packages || []).map(item => ({ ...item }));
       const visible = packages.filter(item => membership.member || item.type === 'MEMBER');
@@ -172,10 +198,104 @@ Page({
           ? `本次要开启 ${this.data.requestedCount || '多'} 条提醒；${membership.member ? '当前' : '免费版'}还可使用 ${remaining} 个名额，还差 ${shortfall} 个`
           : '',
       });
+      if (orderRes) {
+        const orders = orderRes.items || [];
+        this.syncPaymentStateFromOrders(orders);
+        this.applyOrderRefresh(orders);
+      } else if (this._autoRefreshActive) {
+        this._scheduleAutoRefresh();
+      }
     }).catch(err => {
+      if (silent) {
+        if (this._autoRefreshActive) this._scheduleAutoRefresh();
+        return;
+      }
       this.setData({ loading: false, loadFailed: true });
       api.toastError(err);
     });
+  },
+
+  syncPaymentStateFromOrders(orders) {
+    const current = this.data.paymentState;
+    if (!current || !current.orderId) return;
+    const order = (orders || []).find(item => item._id === current.orderId);
+    if (!order || order.status === 'PENDING') return;
+    if (order.refundStatus === 'REFUNDED' || order.grantStatus === 'REVERTED') {
+      membershipPay.clearPendingOrder(order._id);
+      this.setPaymentState(
+        'REFUNDED',
+        '订单已退款',
+        order.grantStatus === 'REVERTED'
+          ? '退款已完成，本单新增权益已按快照回收。'
+          : '退款已到账，本单新增权益正在自动回收。',
+        order._id
+      );
+      return;
+    }
+    if (order.grantStatus === 'GRANTED' || order.entitlementStatus === 'PAID_GRANTED') {
+      membershipPay.clearPendingOrder(order._id);
+      this.setPaymentState(
+        'PAID_GRANTED',
+        '权益已到账',
+        '支付结果已由服务端确认，会员与提醒名额已更新。',
+        order._id
+      );
+      return;
+    }
+    if (order.grantStatus === 'FAILED' || order.entitlementStatus === 'PAID_GRANT_FAILED') {
+      this.setPaymentState(
+        'PAID_GRANT_FAILED',
+        '支付已完成，权益发放异常',
+        '请勿重复支付；系统正在自动补发，也可打开订单查看售后进度。',
+        order._id
+      );
+      return;
+    }
+    if (order.status === 'CLOSED') {
+      this.setPaymentState('CLOSED', '订单已关闭', '本次未完成支付，可以重新下单。', order._id);
+    }
+  },
+
+  applyOrderRefresh(orders) {
+    if (!orderRefresh.hasTransientOrder(orders)) {
+      this.stopAutoRefresh();
+      return;
+    }
+    this.setData({ autoRefreshHint: orderRefresh.refreshHintOf(orders) });
+    this._beginAutoRefresh();
+  },
+
+  _beginAutoRefresh() {
+    if (!this._pageVisible) return;
+    if (!this._autoRefreshActive) {
+      this._autoRefreshActive = true;
+      this._autoRefreshAttempts = 0;
+    }
+    this._scheduleAutoRefresh();
+  },
+
+  _scheduleAutoRefresh() {
+    if (!this._pageVisible || !this._autoRefreshActive || this._autoRefreshTimer) return;
+    if (this._autoRefreshAttempts >= orderRefresh.REFRESH_MAX_ATTEMPTS) {
+      this.stopAutoRefresh(false);
+      this.setData({ autoRefreshHint: orderRefresh.REFRESH_EXHAUSTED_HINT });
+      return;
+    }
+    this._autoRefreshTimer = setTimeout(() => {
+      this._autoRefreshTimer = null;
+      this._autoRefreshAttempts += 1;
+      this.loadStatus(this.data.selectedPackageId, { silent: true });
+    }, orderRefresh.REFRESH_INTERVAL_MS);
+  },
+
+  stopAutoRefresh(clearHint = true) {
+    if (this._autoRefreshTimer) clearTimeout(this._autoRefreshTimer);
+    this._autoRefreshTimer = null;
+    this._autoRefreshActive = false;
+    this._autoRefreshAttempts = 0;
+    if (clearHint !== false && this.data.autoRefreshHint) {
+      this.setData({ autoRefreshHint: '' });
+    }
   },
 
   onRetry() {
@@ -287,6 +407,7 @@ Page({
         '请勿重复支付。系统会自动查单并在到账后更新权益。',
         result.orderId
       );
+      this._beginAutoRefresh();
     }).catch(err => {
       wx.hideLoading();
       this.setData({ purchasing: false });
