@@ -155,7 +155,7 @@
     <view class="upgrade-row"><text>有效期</text><text>{{upgradeConfirmExpiry}}</text></view>
     <text class="upgrade-desc">{{upgradeConfirmDesc}}</text>
     <text class="upgrade-rule">24 小时内且未新增任何提醒，可申请退款并等待客服审核；不自动续费，不保证景点有票。</text>
-    <view class="upgrade-confirm-btn" bindtap="onConfirmUpgrade">支付 ¥2</view>
+    <view class="upgrade-confirm-btn" bindtap="onConfirmUpgrade">支付 {{upgradeConfirmAmount}}</view>
   </view>
 </view>
 

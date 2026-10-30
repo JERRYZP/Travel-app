@@ -379,6 +379,13 @@ async function listCasesForAdmin(db, status = '') {
   });
 }
 
+async function countActiveCases(db) {
+  const res = await db.collection(COLLECTIONS.AFTER_SALES_CASES)
+    .where({ status: db.command.in([...ACTIVE_CASE_STATUSES]) })
+    .count();
+  return Number(res.total) || 0;
+}
+
 async function getCaseById(db, caseId) {
   if (!caseId) return null;
   const res = await db.collection(COLLECTIONS.AFTER_SALES_CASES).where({ _id: caseId }).get();
@@ -447,6 +454,7 @@ module.exports = {
   listUserCases,
   getCaseForUser,
   listCasesForAdmin,
+  countActiveCases,
   userCaseHistory,
   getCaseById,
   updateCase,

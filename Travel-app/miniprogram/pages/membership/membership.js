@@ -41,10 +41,6 @@ Page({
     selectedPackage: null,
     payButtonText: '',
     usagePercent: 0,
-    reasonText: '',
-    requestedCount: 0,
-    requestedShortfall: 0,
-    reasonTaskLimit: false,
     memberStateText: '免费版',
     expiryText: '',
     paymentState: null,
@@ -56,20 +52,11 @@ Page({
     confirmExpiry: '',
   },
 
-  onLoad(options) {
+  onLoad() {
     const g = app.globalData;
-    const reason = options && options.reason;
-    const requested = Number(options && options.requested) || 0;
-    const shortfall = Number(options && options.shortfall) || 0;
     this.setData({
       statusBarHeight: g.statusBarHeight,
       navBarHeight: g.navBarHeight,
-      reasonTaskLimit: reason === 'task_limit',
-      requestedCount: requested,
-      requestedShortfall: shortfall,
-      reasonText: reason === 'task_limit'
-        ? `本次要开启 ${requested || '多'} 条提醒`
-        : '',
     });
   },
 
@@ -175,11 +162,7 @@ Page({
       const selectedPackage = visible.find(item => item.id === selectedId) || null;
       const used = Number(membership.taskUsed) || 0;
       const limit = Number(membership.taskLimit) || 0;
-      const remaining = Math.max(0, Number(membership.taskRemaining) || 0);
-      const shortfall = Math.max(
-        0,
-        this.data.requestedShortfall || this.data.requestedCount - remaining
-      );
+      const freeSlots = Math.max(1, Number(membership.freeTaskSlots) || 5);
       this.setData({
         loading: false,
         loadFailed: false,
@@ -193,10 +176,7 @@ Page({
         memberStateText: membership.member ? '会员生效中' : '免费版',
         expiryText: membership.member
           ? `有效期至 ${membership.memberExpiresAtText}`
-          : `免费版可使用 ${limit || 5} 个提醒名额`,
-        reasonText: this.data.reasonTaskLimit
-          ? `本次要开启 ${this.data.requestedCount || '多'} 条提醒；${membership.member ? '当前' : '免费版'}还可使用 ${remaining} 个名额，还差 ${shortfall} 个`
-          : '',
+          : `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额`,
       });
       if (orderRes) {
         const orders = orderRes.items || [];
@@ -363,8 +343,12 @@ Page({
   },
 
   setPaymentState(status, title, description, orderId) {
+    /* 会员状态卡已经展示到期日和名额，成功态不再重复一张“权益已到账”卡片。
+       只有支付中、失败、关闭等仍需用户处理的状态保留持久反馈。 */
     this.setData({
-      paymentState: { status, title, description, orderId: orderId || '' },
+      paymentState: status === 'PAID_GRANTED'
+        ? null
+        : { status, title, description, orderId: orderId || '' },
     });
   },
 

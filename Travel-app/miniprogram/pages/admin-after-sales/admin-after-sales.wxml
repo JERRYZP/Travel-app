@@ -14,14 +14,19 @@
   </view>
 
   <block wx:else>
-    <view class="migration-card">
+    <view wx:if="{{migrationEntryEnabled && !migrationCompleted}}" class="migration-card">
       <view class="migration-copy">
         <text class="migration-title">上线前数据迁移</text>
-        <text class="migration-desc">为老用户回填固定保护额度，单批最多 50 人。不会删除或改写已有提醒。</text>
+        <text class="migration-desc">为老用户回填固定保护额度，每批 50 人；自动模式会连续执行。不会删除或改写已有提醒。</text>
         <text wx:if="{{migrationMessage}}" class="migration-message">{{migrationMessage}}</text>
       </view>
-      <view class="migration-action {{migrating ? 'disabled' : ''}}" bindtap="onMigrateProtection">
-        {{migrating ? '迁移中...' : (migrationHasMore ? '继续下一批' : '迁移一批')}}
+      <view class="migration-actions">
+        <view class="migration-action primary {{migrating && !migrationAutoRunning ? 'disabled' : ''}}" bindtap="onMigrateAllProtection">
+          {{migrationAutoRunning ? '停止迁移' : '一键迁移全部'}}
+        </view>
+        <view class="migration-action secondary {{migrating ? 'disabled' : ''}}" bindtap="onMigrateProtection">
+          {{migrating && !migrationAutoRunning ? '迁移中...' : (migrationHasMore ? '仅迁移下一批' : '仅迁移一批')}}
+        </view>
       </view>
     </view>
 

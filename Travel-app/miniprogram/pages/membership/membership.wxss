@@ -26,21 +26,20 @@
 .retry-btn { padding: 16rpx 30rpx; border-radius: 14rpx; background: var(--color-cream); color: var(--color-text); font-size: 24rpx; }
 
 .explain-card {
-  padding: 28rpx;
-  border-radius: 22rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 20rpx;
   background: linear-gradient(145deg, #FFF9EB, #F7E9CE);
   border: 1rpx solid #E8D2AA;
 }
-.explain-kicker { display: block; color: #8A7257; font-size: 20rpx; letter-spacing: 1rpx; }
-.explain-title { display: block; margin-top: 10rpx; color: #4A2D23; font-size: 31rpx; font-weight: 700; line-height: 1.42; }
-.quota-pair { display: flex; align-items: center; gap: 22rpx; margin-top: 24rpx; }
-.quota-item { display: flex; flex: 1; flex-direction: column; gap: 4rpx; padding: 18rpx; border-radius: 15rpx; background: rgba(255,255,255,.68); }
+.explain-title { display: block; color: #4A2D23; font-size: 29rpx; font-weight: 700; line-height: 1.38; }
+.quota-pair { display: flex; align-items: center; gap: 18rpx; margin-top: 16rpx; }
+.quota-item { display: flex; flex: 1; flex-direction: column; gap: 3rpx; padding: 14rpx 16rpx; border-radius: 12rpx; background: rgba(255,255,255,.68); }
 .quota-item.highlight { background: #B8904A; }
-.quota-label { color: #8A7257; font-size: 20rpx; }
-.quota-value { color: #4A2D23; font-size: 32rpx; font-weight: 700; }
+.quota-label { color: #8A7257; font-size: 19rpx; }
+.quota-value { color: #4A2D23; font-size: 28rpx; font-weight: 700; }
 .quota-item.highlight .quota-label, .quota-item.highlight .quota-value { color: #FFFDF7; }
-.quota-arrow { color: #A98B5F; font-size: 30rpx; }
-.explain-foot { display: block; margin-top: 20rpx; color: #765F4B; font-size: 22rpx; line-height: 1.55; }
+.quota-arrow { color: #A98B5F; font-size: 26rpx; }
+.explain-foot { display: block; margin-top: 14rpx; color: #765F4B; font-size: 21rpx; line-height: 1.5; }
 
 .status-band {
   margin-top: 18rpx;
@@ -70,7 +69,6 @@
   border: 1rpx solid #E5D4B4;
   background: #FFF9EA;
 }
-.payment-state.PAID_GRANTED { border-color: #BFD8C2; background: #F1F8F1; }
 .payment-state.PAID_GRANT_FAILED, .payment-state.FAILED { border-color: #E6C0B3; background: #FFF4F0; }
 .payment-state-title { color: var(--color-ink); font-size: 26rpx; font-weight: 600; }
 .payment-state-desc { color: var(--color-muted); font-size: 22rpx; line-height: 1.55; }

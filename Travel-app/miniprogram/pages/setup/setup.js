@@ -36,7 +36,7 @@ Page({
     showUpgradeConfirm: false,
     upgradeConfirmTitle: '',
     upgradeConfirmDesc: '',
-    upgradeConfirmAmount: '¥2',
+    upgradeConfirmAmount: '¥3',
     upgradeConfirmExpiry: '',
     systemOk: false,
     accessReady: false,
@@ -110,32 +110,17 @@ Page({
         membershipGateTitle: `还差 ${gap} 个提醒名额`,
         membershipGateDesc: '加购 5 个提醒名额；名额永久记录，会员有效期内生效。',
         membershipGateNote: `会员到期：${current.memberExpiresAtText || '—'}`,
-        membershipActionText: '支付 ¥2，加购 5 个名额并继续',
+        membershipActionText: '支付 ¥3，加购 5 个名额并继续',
         upgradePackageId: 'task_pack_5',
       };
     }
 
-    /* 会员过期时 ownedTaskPackCount 仍然保留；续费后这些已购名额会一起恢复，
-       所以判断“开通会员是否足够”时不能只看会员基础的 10 个。 */
-    const memberBaseLimit = Math.max(
-      memberSlots,
-      Number(current.protectedTaskQuota) || freeSlots
-    );
-    const memberRemaining = Math.max(
-      0,
-      memberBaseLimit
-        + (current.ownedTaskPackCount || 0) * (current.taskPackSize || 5)
-        - current.taskUsed
-    );
-    const memberEnough = reminderCount <= memberRemaining;
     return {
       showMembershipGate: true,
       membershipGateTitle: `还差 ${gap} 个提醒名额`,
-      membershipGateDesc: memberEnough
-        ? `免费版最多可设置 ${freeSlots} 个提醒名额；开通会员后上限提升至 ${memberSlots} 个，有效期 ${memberDays} 天。`
-        : `本次需要 ${reminderCount} 个；开通会员后可继续加购名额。会员有效期 ${memberDays} 天。`,
-      membershipGateNote: `¥2 / ${memberDays} 天，不自动续费`,
-      membershipActionText: `支付 ¥2，开通 ${memberDays} 天会员并继续`,
+      membershipGateDesc: `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额；开通会员后上限提升至 ${memberSlots} 个，有效期 ${memberDays} 天。`,
+      membershipGateNote: `¥3 / ${memberDays} 天，不自动续费`,
+      membershipActionText: `支付 ¥3，开通 ${memberDays} 天会员并继续`,
       upgradePackageId: 'member',
     };
   },

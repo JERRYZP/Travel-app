@@ -1052,6 +1052,7 @@ const mockUser = {
   memberExpiresAt: null,
   taskPackCount: 0,
   protectedTaskQuota: 5,
+  protectionMigratedAt: new Date(),
   lastReminderCreatedAt: null,
   points: 0,
   subscribeQuota: 0,
@@ -1071,11 +1072,16 @@ function mockMembershipSnapshot(nowTs = new Date()) {
   const entitlementTaskLimit = FREE_TASK_SLOTS
     + (member ? MEMBER_TASK_SLOTS - FREE_TASK_SLOTS : 0)
     + taskPackCount * TASK_PACK_SIZE;
-  const taskLimit = Math.max(entitlementTaskLimit, protectedTaskQuota);
-  const taskUsed = Object.values(db.tasks).filter(t =>
+  const activeTasks = Object.values(db.tasks).filter(t =>
     t.backendStatus === 'WAITING'
     && Number.isFinite(new Date(t.releaseAt).getTime())
-    && new Date(t.releaseAt).getTime() > nowTs.getTime()).length;
+    && new Date(t.releaseAt).getTime() > nowTs.getTime());
+  const protectedTaskUsed = activeTasks.filter(t => {
+    if (t.quotaPool === 'PROTECTED') return true;
+    if (t.quotaPool === 'ENTITLEMENT') return false;
+    return true;
+  }).length;
+  const taskUsed = activeTasks.length - protectedTaskUsed;
   return {
     member,
     memberLevel: member ? 'MEMBER' : 'NORMAL',
@@ -1086,11 +1092,13 @@ function mockMembershipSnapshot(nowTs = new Date()) {
     memberDaysRemaining: member
       ? Math.max(1, Math.ceil((memberExpiresMs - nowTs.getTime()) / DAY_MS))
       : 0,
-    taskLimit,
+    taskLimit: entitlementTaskLimit,
     entitlementTaskLimit,
-    protectedTaskQuota,
+    protectedTaskQuota: Math.max(protectedTaskQuota, protectedTaskUsed),
     taskUsed,
-    taskRemaining: Math.max(0, taskLimit - taskUsed),
+    protectedTaskUsed,
+    entitlementTaskUsed: taskUsed,
+    taskRemaining: Math.max(0, entitlementTaskLimit - taskUsed),
     taskPackCount,
     ownedTaskPackCount: Math.max(0, Number(mockUser.taskPackCount) || 0),
     memberDurationDays: 30,
@@ -1106,29 +1114,29 @@ function mockMembershipPackages(snapshot) {
       id: 'member',
       type: 'MEMBER',
       title: '会员',
-      priceFen: 200,
-      priceText: '¥2',
+      priceFen: 300,
+      priceText: '¥3',
       taskSlots: 10,
       addedSlots: 5,
       memberDays: 30,
       description: '30 天内最多 10 个提醒名额',
       badge: '推荐',
       available: true,
-      actionText: snapshot.member ? '续费 30 天 ¥2' : '开通会员 ¥2',
+      actionText: snapshot.member ? '续费 30 天 ¥3' : '开通会员 ¥3',
     },
     {
       id: 'task_pack_5',
       type: 'TASK_PACK',
       title: '5 个提醒名额',
-      priceFen: 200,
-      priceText: '¥2',
+      priceFen: 300,
+      priceText: '¥3',
       taskSlots: 5,
       addedSlots: 5,
       memberDays: 0,
       description: '名额永久记录，会员有效期内生效',
       badge: '',
       available: snapshot.member,
-      actionText: snapshot.member ? '加购 5 个名额 ¥2' : '先开通会员',
+      actionText: snapshot.member ? '加购 5 个名额 ¥3' : '先开通会员',
     },
   ];
 }
@@ -1774,7 +1782,9 @@ const handlers = {
           offsets,
           channels,
           backendStatus: 'WAITING',
+          quotaPool: 'ENTITLEMENT',
           sentOffsets: [],
+          createdAt: new Date(),
         };
         created += 1;
       }
@@ -1974,12 +1984,13 @@ const handlers = {
         || String(cur.channels || []) !== String(channels);
       if (changed) {
         /* 只删未触发的，终态留着当历史（同 trip-item-actions） */
+        const quotaPool = curActive ? (cur.quotaPool || 'ENTITLEMENT') : 'ENTITLEMENT';
         activeKeys.forEach(k => { delete db.tasks[k]; });
         const taskId = 'mock-task-' + (++taskSeq);
         db.tasks[taskId] = {
           _id: taskId, templateId: 'mock-template', itemId: item._id, tripId: item.tripId, spotId: item.spotId,
           visitDate: item.visitDate, releaseAt, offsets, channels,
-          backendStatus: 'WAITING', sentOffsets: [],
+          backendStatus: 'WAITING', quotaPool, sentOffsets: [], createdAt: new Date(),
         };
         mockUser.lastReminderCreatedAt = new Date();
       }
@@ -2078,17 +2089,21 @@ const handlers = {
     if (isPack && !current.member) return { success: false, error: '请先开通会员再加购提醒名额', errorCode: 1022 };
 
     Object.values(db.orders).forEach(order => {
-      if (order.packageId === data.packageId && order.status === 'PENDING'
-        && order.expiresAt && new Date(order.expiresAt).getTime() <= Date.now()) {
+      if (order.packageId !== data.packageId || order.status !== 'PENDING') return;
+      const expired = order.expiresAt && new Date(order.expiresAt).getTime() <= Date.now();
+      if (expired || order.amountFen !== 300) {
         order.status = 'CLOSED';
-        order.closeReason = 'EXPIRED_LOCAL';
+        order.closeReason = expired ? 'EXPIRED_LOCAL' : 'PRICE_CHANGED';
+        order.closedAt = new Date();
+        order.updatedAt = new Date();
       }
     });
     const reusable = Object.values(db.orders).find(order =>
       order.packageId === data.packageId && order.status === 'PENDING'
+      && order.amountFen === 300
       && (!order.expiresAt || new Date(order.expiresAt).getTime() > Date.now()));
     if (reusable) {
-      return { success: true, orderId: reusable._id, outTradeNo: reusable.outTradeNo, amountFen: 200, packageId: reusable.packageId, reused: true };
+      return { success: true, orderId: reusable._id, outTradeNo: reusable.outTradeNo, amountFen: 300, packageId: reusable.packageId, reused: true };
     }
 
     const orderId = 'mock-order-' + (++orderSeq);
@@ -2101,7 +2116,7 @@ const handlers = {
       productType: isMemberPackage ? 'MEMBER' : 'TASK_PACK',
       title: isMemberPackage ? '会员 30 天' : '5 个提醒名额',
       body: isMemberPackage ? '智序准点游-会员 30 天' : '智序准点游-5 个提醒名额',
-      amountFen: 200,
+      amountFen: 300,
       addedSlots: 5,
       memberDays: isMemberPackage ? 30 : 0,
       memberFloorDays: isPack ? 30 : 0,
@@ -2111,7 +2126,7 @@ const handlers = {
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     };
-    return { success: true, orderId, outTradeNo, amountFen: 200, packageId: data.packageId };
+    return { success: true, orderId, outTradeNo, amountFen: 300, packageId: data.packageId };
   },
   'membership.orders': () => {
     const items = Object.values(db.orders)
@@ -2232,7 +2247,12 @@ const handlers = {
     if (!order) return { success: false, error: '订单不存在或已失效', errorCode: 1024 };
     return { success: true, ...mockOrderView(order), memberExpiresAt: mockUser.memberExpiresAt || null };
   },
-  'afterSales.adminStatus': () => ({ success: true, isAdmin: true }),
+  'afterSales.adminStatus': () => {
+    const activeStatuses = ['SUBMITTED', 'AUTO_CHECKING', 'UNDER_REVIEW', 'APPROVED', 'PROCESSING', 'REFUND_FAILED'];
+    const pendingCount = Object.values(db.afterSalesCases)
+      .filter(item => activeStatuses.includes(item.status)).length;
+    return { success: true, isAdmin: true, pendingCount };
+  },
   'afterSales.adminList': (data) => {
     let items = Object.values(db.afterSalesCases);
     if (data.status) items = items.filter(item => item.status === data.status);

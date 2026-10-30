@@ -402,6 +402,7 @@ async function getOrCreateUser(userId) {
     }
     return ok({ user: u });
   }
+  const createdAt = time.now();
   const data = {
     openId: userId,
     ...genAutoProfile(),
@@ -416,10 +417,11 @@ async function getOrCreateUser(userId) {
     points: 0,
     taskPackCount: 0,
     protectedTaskQuota: 5,
+    protectionMigratedAt: createdAt,
     lastReminderCreatedAt: null,
     memberSince: null,
     memberExpiresAt: null,
-    createdAt: time.now(),
+    createdAt,
   };
   const add = await db.collection(COLLECTIONS.USERS).add({ data });
   return ok({ user: { _id: add._id, ...data } });

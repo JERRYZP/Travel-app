@@ -36,7 +36,7 @@ const {
   reverseOrderEntitlement,
 } = require('./lib/order');
 const afterSales = require('./lib/after-sales');
-const { migrateProtectionBatch } = require('./lib/migration');
+const { migrateProtectionBatch, protectionMigrationCompleted } = require('./lib/migration');
 const wxpay = require('./lib/wxpay-v3');
 
 const TIMER_SCAN_LIMIT = 100;
@@ -1030,8 +1030,21 @@ exports.main = async (event = {}) => {
         return await afterSales.getCaseForUser(db, context.OPENID, event.caseId);
       case 'afterSales.syncRights':
         return await syncRights(context, event);
-      case 'afterSales.adminStatus':
-        return ok({ isAdmin: afterSales.isAfterSalesAdmin(context.OPENID) });
+      case 'afterSales.adminStatus': {
+        const isAdmin = afterSales.isAfterSalesAdmin(context.OPENID);
+        if (!isAdmin) {
+          return ok({ isAdmin: false, migrationCompleted: false, pendingCount: 0 });
+        }
+        const [migrationCompleted, pendingCount] = await Promise.all([
+          protectionMigrationCompleted(db),
+          afterSales.countActiveCases(db).catch(() => 0),
+        ]);
+        return ok({
+          isAdmin: true,
+          migrationCompleted,
+          pendingCount,
+        });
+      }
       case 'afterSales.adminList':
         return await adminList(context, event);
       case 'afterSales.adminDetail':
@@ -1049,7 +1062,10 @@ exports.main = async (event = {}) => {
       case 'afterSales.adminMigrateProtection': {
         const denied = adminRequired(context);
         if (denied) return denied;
-        return migrateProtectionBatch(db, { cursor: event.cursor || null });
+        return migrateProtectionBatch(db, {
+          cursor: event.cursor || null,
+          adminOpenId: context.OPENID,
+        });
       }
       default:
         return fail(ERRORS.UNKNOWN_ACTION);

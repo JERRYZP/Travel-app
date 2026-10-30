@@ -1,6 +1,15 @@
 const app = getApp();
 const api = require('../../utils/api.js');
 
+const MIGRATION_CURSOR_KEY = 'admin_protection_migration_cursor_v1';
+const MIGRATION_BATCH_DELAY_MS = 300;
+// 上线前迁移已经完成；保留服务端能力和本地实现，仅关闭正式工作台入口。
+const MIGRATION_ENTRY_ENABLED = false;
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 const FILTERS = [
   { key: '', label: '全部' },
   { key: 'SUBMITTED', label: '待审核' },
@@ -28,16 +37,38 @@ Page({
     actionMessage: '',
     migrationCursor: null,
     migrationHasMore: false,
+    migrationEntryEnabled: MIGRATION_ENTRY_ENABLED,
+    migrationCompleted: false,
     migrationMessage: '',
     migrating: false,
+    migrationAutoRunning: false,
+    migrationTotalScanned: 0,
+    migrationTotalUpdated: 0,
   },
 
   onLoad() {
     const g = app.globalData;
-    this.setData({ statusBarHeight: g.statusBarHeight, navBarHeight: g.navBarHeight });
+    let migrationCursor = null;
+    try { migrationCursor = wx.getStorageSync(MIGRATION_CURSOR_KEY) || null; } catch (e) {}
+    this.setData({
+      statusBarHeight: g.statusBarHeight,
+      navBarHeight: g.navBarHeight,
+      migrationCursor,
+      migrationHasMore: !!migrationCursor,
+      migrationMessage: migrationCursor ? '检测到上次未完成的迁移，可继续自动迁移。' : '',
+    });
+    if (MIGRATION_ENTRY_ENABLED) this.loadMigrationStatus();
   },
 
   onShow() { this.loadList(); },
+
+  onUnload() { this._migrationStopRequested = true; },
+
+  loadMigrationStatus() {
+    return api.payment.afterSales.adminStatus().then(res => {
+      this.setData({ migrationCompleted: !!res.migrationCompleted });
+    }).catch(() => {});
+  },
 
   loadList() {
     this.setData({ loading: true, loadFailed: false, forbidden: false });
@@ -54,24 +85,108 @@ Page({
   },
 
   onMigrateProtection() {
-    if (this.data.migrating) return;
+    if (this.data.migrating || this.data.migrationAutoRunning) return;
     wx.showModal({
       title: '迁移老用户保护额度',
       content: '每批最多处理 50 位用户，回填 max(5, 当前未来 WAITING 提醒数) 和最近提醒时间。不会删除或改写提醒，可重复执行。',
       success: res => {
         if (!res.confirm) return;
-        this.setData({ migrating: true, migrationMessage: '正在迁移本批用户...' });
-        api.payment.afterSales.adminMigrateProtection(this.data.migrationCursor).then(result => {
-          this.setData({
-            migrating: false,
-            migrationCursor: result.nextCursor || null,
-            migrationHasMore: !!result.hasMore,
-            migrationMessage: `已扫描 ${result.scanned || 0} 人，更新 ${result.updated || 0} 人${result.hasMore ? '；可继续下一批' : '；迁移批次已完成'}`,
-          });
-        }).catch(err => {
-          this.setData({ migrating: false, migrationMessage: (err && err.error) || '迁移失败，请稍后重试。' });
+        this.setData({
+          migrating: true,
+          migrationAutoRunning: false,
+          migrationTotalScanned: 0,
+          migrationTotalUpdated: 0,
+          migrationMessage: '正在迁移本批用户...',
         });
+        this.runMigrationBatch().catch(err => this.finishMigrationError(err));
       },
+    });
+  },
+
+  onMigrateAllProtection() {
+    if (this.data.migrationAutoRunning) {
+      this._migrationStopRequested = true;
+      this.setData({ migrationMessage: '正在停止，本批完成后会保存进度...' });
+      return;
+    }
+    if (this.data.migrating) return;
+    wx.showModal({
+      title: '自动迁移全部用户',
+      content: '将从当前进度开始，每批处理 50 人，自动继续到全部完成。进度保存在本机，可中途停止，不会删除或改写提醒。',
+      success: res => {
+        if (res.confirm) this.startMigrationAll();
+      },
+    });
+  },
+
+  runMigrationBatch() {
+    this.setData({ migrating: true });
+    return api.payment.afterSales.adminMigrateProtection(this.data.migrationCursor).then(result => {
+      const scanned = Math.max(0, Number(result.scanned) || 0);
+      const updated = Math.max(0, Number(result.updated) || 0);
+      const totalScanned = this.data.migrationTotalScanned + scanned;
+      const totalUpdated = this.data.migrationTotalUpdated + updated;
+      const hasMore = !!result.hasMore;
+      const migrationCursor = hasMore
+        ? (result.nextCursor || this.data.migrationCursor || null)
+        : null;
+      this.setData({
+        migrating: this.data.migrationAutoRunning,
+        migrationCursor,
+        migrationHasMore: hasMore,
+        migrationCompleted: !hasMore,
+        migrationTotalScanned: totalScanned,
+        migrationTotalUpdated: totalUpdated,
+        migrationMessage: `本次已扫描 ${totalScanned} 人，更新 ${totalUpdated} 人${hasMore ? '；继续下一批' : '；迁移已完成'}`,
+      });
+      if (!hasMore) wx.showToast({ title: '迁移已完成', icon: 'success' });
+      if (migrationCursor) {
+        try { wx.setStorageSync(MIGRATION_CURSOR_KEY, migrationCursor); } catch (e) {}
+      } else {
+        try { wx.removeStorageSync(MIGRATION_CURSOR_KEY); } catch (e) {}
+      }
+      return { ...result, totalScanned, totalUpdated };
+    });
+  },
+
+  startMigrationAll() {
+    if (this.data.migrating) return Promise.resolve();
+    this._migrationStopRequested = false;
+    this.setData({
+      migrating: true,
+      migrationAutoRunning: true,
+      migrationTotalScanned: 0,
+      migrationTotalUpdated: 0,
+      migrationMessage: '正在自动迁移，请保持页面打开...',
+    });
+    const delayMs = this._migrationBatchDelayMs == null
+      ? MIGRATION_BATCH_DELAY_MS
+      : this._migrationBatchDelayMs;
+    const step = () => {
+      if (this._migrationStopRequested) {
+        this.setData({
+          migrating: false,
+          migrationAutoRunning: false,
+          migrationMessage: '已停止自动迁移；下次会从当前进度继续。',
+        });
+        return Promise.resolve();
+      }
+      return this.runMigrationBatch().then(result => {
+        if (!result.hasMore) {
+          this.setData({ migrating: false, migrationAutoRunning: false });
+          return;
+        }
+        return wait(delayMs).then(step);
+      });
+    };
+    return step().catch(err => this.finishMigrationError(err));
+  },
+
+  finishMigrationError(err) {
+    this.setData({
+      migrating: false,
+      migrationAutoRunning: false,
+      migrationMessage: (err && err.error) || '迁移失败，请稍后重试。',
     });
   },
 

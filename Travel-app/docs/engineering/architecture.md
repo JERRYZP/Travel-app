@@ -93,9 +93,9 @@ reminder.membership.createOrder
   -> 按本单快照回收权益
 ```
 
-- 免费用户 5 个提醒名额；会员 ¥2/30 天上限 10；有效会员可 ¥2 加购 5 个提醒名额。
+- 免费用户 5 个提醒名额；当前新订单为会员 ¥3/30 天上限 10；有效会员可 ¥3 加购 5 个提醒名额，历史订单按快照金额处理。
 - 唯一规则在 `cloudfunctions/reminder/lib/membership.js`；`cart.commit` 与 `tripItem.updateReminder` 都必须过同一服务端闸门。
-- 老用户保护额度 `protectedTaskQuota=max(5, 当前未来 WAITING 提醒数)`，迁移由管理员分批触发。
+- 老用户历史保护池 `protectedTaskQuota=max(5, 迁移时未来 WAITING 提醒数)`，迁移由管理员分批触发。是否占用新增池由任务创建时的会员灰度决定：`off` / `test` 非白名单写入保护池，`test` 白名单 / `all` 才写新增池。
 - 订单只由 `payment` 云函数在微信支付 API v3 回调或主动查单确认后置为 `PAID`；客户端不能自行改会员。
 - 回调必须校验微信支付公钥 ID 和原始 body 签名，并解密资源；下单、查单、退款响应也必须验签。
 - `orders.status` 保持 `PENDING/PAID/CLOSED`；退款生命周期独立写入 `refundStatus`，历史 `REFUNDED` 只兼容展示。

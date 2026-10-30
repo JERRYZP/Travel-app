@@ -546,6 +546,7 @@ async function submit(db, userId, event) {
           offsets: [...offsets].sort((a, b) => b - a),
           channels,
           backendStatus: ReminderBackendStatus.WAITING,
+          quotaPool: membership.newTaskQuotaPoolOf(userId),
           triggeredAt: null,
           missedReason: null,
           cleanAt: null,

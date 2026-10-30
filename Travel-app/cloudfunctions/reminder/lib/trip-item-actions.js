@@ -297,6 +297,12 @@ async function updateReminder(db, userId, { itemId, remindOn, channels, offsets 
       /* 提前量变了 / 旧任务已终态 → 重建（不退还额度）。
          ⚠️ 只删**未触发**的：终态任务留着当历史，别为了重建静默丢掉
          「上次没送达」这条记录——那和上面取消分支要避免的是同一个错误。 */
+      const activeTask = activeTasks
+        .slice()
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
+      const quotaPool = activeTask
+        ? membership.quotaPoolOfExistingTask(activeTask)
+        : membership.newTaskQuotaPoolOf(userId);
       for (const t of activeTasks) {
         await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).remove();
       }
@@ -312,6 +318,7 @@ async function updateReminder(db, userId, { itemId, remindOn, channels, offsets 
           offsets: [...nextOffsets].sort((a, b) => b - a),
           channels: nextChannels,
           backendStatus: ReminderBackendStatus.WAITING,
+          quotaPool,
           triggeredAt: null,
           missedReason: null,
           cleanAt: null,

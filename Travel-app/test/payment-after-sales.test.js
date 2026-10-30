@@ -7,7 +7,10 @@ const {
 } = require('../cloudfunctions/payment/lib/schema');
 const afterSales = require('../cloudfunctions/payment/lib/after-sales');
 const { reverseOrderEntitlement, fulfillOrder } = require('../cloudfunctions/payment/lib/order');
-const { migrateProtectionBatch } = require('../cloudfunctions/payment/lib/migration');
+const {
+  migrateProtectionBatch,
+  protectionMigrationCompleted,
+} = require('../cloudfunctions/payment/lib/migration');
 
 let fail = 0;
 const eq = (a, b, m) => {
@@ -181,6 +184,22 @@ async function run() {
   eq(history.stats.active, 1, '售后历史统计处理中数量');
   eq(history.stats.sameOrder, 1, '售后历史统计本订单重复申请数');
 
+  console.log('\n=== 6b. 工作台待处理数只统计未结束售后 ===');
+  db = createDb();
+  db._seed(COLLECTIONS.AFTER_SALES_CASES, [
+    ...Object.values(CaseStatus)
+      .filter(status => afterSales.ACTIVE_CASE_STATUSES.has(status))
+      .map((status, index) => ({ _id: `active_${index}`, status })),
+    ...Object.values(CaseStatus)
+      .filter(status => !afterSales.ACTIVE_CASE_STATUSES.has(status))
+      .map((status, index) => ({ _id: `closed_${index}`, status })),
+  ]);
+  eq(
+    await afterSales.countActiveCases(db),
+    afterSales.ACTIVE_CASE_STATUSES.size,
+    '服务端待处理数覆盖全部未结束状态并排除终态'
+  );
+
   console.log('\n=== 7. 老用户保护额度迁移 ===');
   db = createDb();
   const now = new Date();
@@ -200,6 +219,7 @@ async function run() {
   ]);
   const migrated = await migrateProtectionBatch(db);
   eq(migrated.success, true, '迁移批次执行成功');
+  eq(await protectionMigrationCompleted(db), true, '迁移完成后写入全管理员共享的完成标记');
   eq(db._dump(COLLECTIONS.USERS).find(u => u._id === 'u12').protectedTaskQuota, 12, '12 条老任务保护 12 个额度');
   eq(db._dump(COLLECTIONS.USERS).find(u => u._id === 'u2').protectedTaskQuota, 5, '少量老任务仍保底 5 个额度');
   eq(!!db._dump(COLLECTIONS.USERS).find(u => u._id === 'u12').lastReminderCreatedAt, true, '回填最近提醒创建时间');
@@ -218,6 +238,9 @@ async function run() {
   eq(firstBatch.hasMore, true, '第一批提示继续');
   eq(secondBatch.scanned, 5, '第二批处理剩余 5 人');
   eq(secondBatch.hasMore, false, '迁移完成');
+  eq(await protectionMigrationCompleted(db), true, '最后一批完成时写入完成标记');
+  const repeated = await migrateProtectionBatch(db);
+  eq(repeated.alreadyCompleted, true, '完成后重复调用直接返回，不再改写用户额度');
   eq(
     db._dump(COLLECTIONS.USERS).filter(u => u.protectionMigratedAt).length,
     55,

@@ -119,12 +119,13 @@ https://unpay-d4gf8fyrt5523ca65-1487385918.ap-shanghai.app.tcloudbase.com
 
 1. 用户确认目标环境、集合与索引清单。
 2. 在目标环境创建 `after_sales_cases`、`admin_audit_logs` 和 `数据库索引.md` 第二节要求的索引。
-3. 配置 `payment` 环境变量，先保持 `MEMBERSHIP_ENFORCEMENT_MODE=test`。
-4. 部署 `payment`。
-5. 部署 `reminder`。
-6. 上传体验版小程序端；2026-10-30 已上传 `1.0.10`，正式版仍为 `1.0.9`。
-7. 在售后工作台手动分批执行老用户保护额度迁移，直到 `hasMore=false`。
-8. 完成体验版验收后，才允许切 `MEMBERSHIP_ENFORCEMENT_MODE=all`。
+3. 配置 `payment` 环境变量，包括微信支付凭证、回调地址和 `AFTER_SALES_ADMIN_OPENIDS`。
+4. 配置 `reminder` 的 `MEMBERSHIP_ENFORCEMENT_MODE=test`（不是 `payment` 环境变量）及可选测试 OpenID。
+5. 部署 `payment`。
+6. 部署 `reminder`。
+7. 上传体验版小程序端；2026-10-30 已上传 `1.0.10`，正式版仍为 `1.0.9`。
+8. 老用户保护额度迁移已于上线前完成；正式工作台不再展示迁移入口，不要重复执行。服务端接口仅保留应急使用，若重新开启入口会按 50 人一批执行直到 `hasMore=false`，中途可停止并从本机游标继续。
+9. 上传审核和等待发布期间保持 `MEMBERSHIP_ENFORCEMENT_MODE=test`；`off` / `test` 非白名单期间创建的任务会进入历史保护池。只有正式发布时，才在 `reminder` 云函数切为 `all`，从那一刻起新建任务才进入免费/会员新增池。
 
 任何一步失败都停在该步，不能用测试通过替代部署或真机验证。
 

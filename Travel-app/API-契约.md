@@ -3,7 +3,7 @@
 > 面向：前端（微信小程序页面开发）
 > 2026-10-30 更新：会员支付新增独立退款生命周期、订单详情、用户售后申请和小程序售后工作台；`membership.orders` 返回当前用户最近 50 笔会员 / 提醒名额订单及可执行动作，退款结果以微信支付回调或主动查单为准。
 > 2026-10-28 更新：`spots.list` / `detail` / `batch` 的景点卡新增 `aliases`，供 PAGE-003 在页面内做名称 / 简称 / 别名 / spotId 的本地模糊过滤。PAGE-003 与 PAGE-004 已合并为单页，页面不再调用 `spots.search`、`spots.searchHistory`、`spots.clearSearchHistory`；这三个接口保留兼容。
-> 2026-10-27 更新：新增会员与提醒名额 `membership.*`、`payment.*`；免费 5 个提醒名额，会员 ¥2/30 天提升至 10 个，加购 ¥2 记录 5 个名额并在会员有效期内生效。支付与权益只由服务端订单确认后发放，不承诺平台自动广告可被关闭。
+> 2026-10-27 更新：新增会员与提醒名额 `membership.*`、`payment.*`；该功能初始价格为会员 ¥2/30 天提升至 10 个，加购 ¥2 记录 5 个名额并在会员有效期内生效；2026-10-30 新订单价格调整为 ¥3，历史订单继续按原金额处理。支付与权益只由服务端订单确认后发放，不承诺平台自动广告可被关闭。
 > 更新：2026-10-28 新增景点字段 `strongReminder`；弱提醒口径改为“需预约、难度 ≤2 且未显式提升”，强提醒（含 `strongReminder=true`）在时间线与清单默认开启提醒。同日，无固定放票时刻的需预约景点（如环球影城）可加入行程和暂存清单，但不创建提醒任务；`timeline.preview` 增加 `NO_FIXED_RELEASE / 随买随用`，`cart.list` 增加 `noFixedRelease`；新增 `cart.pruneScope`，生成时间线后把暂存清单收敛到本次日期段 × 景点集合。2026-09-29 明确微信一次性订阅每次用户点击最多增加 1 条额度，禁止异步连发伪装批量授权。2026-09-25 `cart.commit` 新增 `cartId`（补录只提交本次项）与 `disableReminders`（仅加行程不提醒）；此前 2026-09-16 首页行程化 V2 契约定稿，新增 `trip_items`、`tripItem.*`、`cart.commit` 与新版 `home.bootstrap`；旧第 2.0 / 2.1 / 2.3 / 2.4 中面向“提醒任务列表 / 双 Tab 首页”的接口在 V2 实现时由第 8 节取代。此前 2026-08-26 spots `remindable` / `weak`、2026-08-19 feedback 管理端、2026-08-14 日历通道下线等变更继续有效。
 > 调用方式：`wx.cloud.callFunction({ name: '<函数名>', data: { action: '<域>.<动作>', ...params } })`
 
@@ -918,9 +918,9 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 唯一额度口径在 `cloudfunctions/reminder/lib/membership.js`，唯一支付/退款状态机在 `cloudfunctions/payment/lib/order.js` 与 `cloudfunctions/payment/lib/after-sales.js`。客户端只消费服务端返回的额度、价格、有效期、退款资格和可执行动作。
 
-- 用户侧统一使用「提醒名额」。免费版 5 个；会员 `¥2 / 30 天` 提升到 10 个；有效会员可 `¥2` 加购 5 个名额，名额永久记录但只在会员有效期内生效。
+- 用户侧统一使用「提醒名额」。免费版 5 个；当前新订单为会员 `¥3 / 30 天` 提升到 10 个；有效会员可 `¥3` 加购 5 个名额，名额永久记录但只在会员有效期内生效。历史订单以订单快照金额为准。
 - 加购名额包时，会员有效期至少延长到支付成功后 30 天。不自动续费，会员到期不删除已有提醒。
-- 老用户保护额度为 `protectedTaskQuota=max(5, 上线前未来 WAITING 提醒数)`；有效上限取会员权益额度与保护额度的较大值。
+- 老用户保护池与新增池彼此独立：任务创建时若用户尚未进入会员限制（`off`，或 `test` 模式下不在白名单），任务进入历史保护池；只有 `test` 白名单或 `all` 模式下新建的任务进入免费/会员/加购新增池。无 `quotaPool` 字段的旧任务一律兼容为保护池。`taskLimit / taskUsed / taskRemaining` 只描述新增池，`protectedTaskUsed` 单独返回保护池占用。
 - `reminder` 的会员限制受 `MEMBERSHIP_ENFORCEMENT_MODE=off|test|all` 控制，默认 `test`；`MEMBERSHIP_TEST_OPENIDS` 可覆盖白名单。正式发布前不得切 `all`。
 - 支付成功唯一依据是服务端取得微信支付 `trade_state=SUCCESS`；`wx.requestPayment.success` 只代表客户端流程结束。
 - 主订单状态固定 `PENDING / PAID / CLOSED`；退款生命周期独立存于 `refundStatus`，不混入主状态。
@@ -942,6 +942,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     taskRemaining: Number,
     entitlementTaskLimit: Number,
     protectedTaskQuota: Number,
+    protectedTaskUsed: Number,
+    entitlementTaskUsed: Number,
     taskPackCount: Number,
     ownedTaskPackCount: Number,
     freeTaskSlots: 5,
@@ -1087,11 +1089,13 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```
 
 - 仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用；未配置时工作台关闭，不存在代码内置兜底账号。
+- `adminStatus` 返回 `{ isAdmin, migrationCompleted, pendingCount }`。`pendingCount` 是未结束售后单数量，供「我的」页售后入口提示；非管理员固定返回 0。
+- 上线前迁移完成后正式工作台已关闭迁移入口；若未来重新开启，工作台可据 `migrationCompleted=true` 自动隐藏。
 - `adminDetail` 返回订单、用户权益、支付查单结果、权益发放快照、支付后新增提醒数、重复支付证据和历史售后记录。
 - 查看敏感信息、同步支付结果、补发权益、同意退款、驳回和同步退款均写 `admin_audit_logs`。
 - 驳回必须填写用户可见原因。退款使用确定性 `outRefundNo`，网络重试不会重复退款；退款结果只认微信回调或主动退款查询。
 - 退款成功后按本订单 `entitlementGrant` 快照回收本单新增会员时长和名额包，不影响其他订单，也不删除用户已有提醒。
-- `adminMigrateProtection` 按默认 `_id` 游标每批最多处理 50 位用户，可重复执行；迁移未完成前不得切 `MEMBERSHIP_ENFORCEMENT_MODE=all`。
+- `adminMigrateProtection` 按默认 `_id` 游标每批最多处理 50 位用户；最后一批完成后写入全局完成标记，之后重复调用返回 `alreadyCompleted=true` 且不再更新用户。迁移未完成前不得切 `MEMBERSHIP_ENFORCEMENT_MODE=all`。
 
 ---
 

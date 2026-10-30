@@ -37,7 +37,10 @@
 
   <view wx:if="{{showAfterSalesEntry}}" class="setting-card">
     <view class="setting-row" bindtap="onAfterSalesAdmin">
-      <text class="setting-row-label">售后管理</text>
+      <view class="setting-row-title">
+        <text class="setting-row-label">售后管理</text>
+        <text wx:if="{{afterSalesPendingCount > 0}}" class="setting-pending-badge">{{afterSalesPendingText}}</text>
+      </view>
       <view class="setting-row-right">
         <text class="setting-row-hint">退款审核与权益补偿</text>
         <svg-icon name="chevron-down" size="14px" rotate="270" />

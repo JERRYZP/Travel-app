@@ -51,13 +51,14 @@ function mkTask(id, extra = {}) {
     offsets: [5],
     channels: [ChannelType.OFFICIAL_ACCOUNT],
     backendStatus: ReminderBackendStatus.WAITING,
+    quotaPool: 'ENTITLEMENT',
     ...extra,
   };
 }
 
-function seedActiveTasks(db, count) {
+function seedActiveTasks(db, count, quotaPool = 'ENTITLEMENT', idPrefix = 'task') {
   const rows = [];
-  for (let i = 0; i < count; i += 1) rows.push(mkTask(`task_${i}`));
+  for (let i = 0; i < count; i += 1) rows.push(mkTask(`${idPrefix}_${i}`, { quotaPool }));
   db._seed(COLLECTIONS.REMINDER_TASKS, rows);
 }
 
@@ -80,14 +81,22 @@ async function run() {
   delete process.env.MEMBERSHIP_TEST_OPENIDS;
   eq(membership.enforcementModeOf(), 'test', '默认只对测试白名单生效');
   eq(membership.shouldEnforceFor(TEST_OPENID_A), true, '测试账号 A 在白名单');
-  eq(membership.shouldEnforceFor(TEST_OPENID_B), true, '测试账号 B 在白名单');
+  eq(membership.shouldEnforceFor(TEST_OPENID_B), false, '移出的测试账号 B 不再受限');
   eq(membership.shouldEnforceFor(TEST_OPENID_ANDROID), true, '安卓测试账号在白名单');
   eq(membership.shouldEnforceFor(USER), false, '其他线上用户不启用提醒名额限制');
+  eq(membership.newTaskQuotaPoolOf(TEST_OPENID_A), membership.TASK_QUOTA_POOL.ENTITLEMENT,
+    '测试白名单新任务进入新增池');
+  eq(membership.newTaskQuotaPoolOf(USER), membership.TASK_QUOTA_POOL.PROTECTED,
+    'test 模式下的普通用户新任务仍进入保护池');
 
   process.env.MEMBERSHIP_ENFORCEMENT_MODE = 'off';
   eq(membership.shouldEnforceFor(TEST_OPENID_A), false, 'off 模式关闭所有限制');
+  eq(membership.newTaskQuotaPoolOf(TEST_OPENID_A), membership.TASK_QUOTA_POOL.PROTECTED,
+    'off 模式新任务不占新增池');
   process.env.MEMBERSHIP_ENFORCEMENT_MODE = 'all';
   eq(membership.shouldEnforceFor(USER), true, 'all 模式对所有用户启用');
+  eq(membership.newTaskQuotaPoolOf(USER), membership.TASK_QUOTA_POOL.ENTITLEMENT,
+    'all 模式新任务才进入新增池');
   process.env.MEMBERSHIP_ENFORCEMENT_MODE = 'test';
   process.env.MEMBERSHIP_TEST_OPENIDS = `${USER}, extra-openid`;
   eq(membership.shouldEnforceFor(USER), true, '环境变量可覆盖测试白名单');
@@ -100,9 +109,34 @@ async function run() {
   eq(await membership.capacityError(whitelistDb, USER, 1), null,
     '非白名单用户即使超过 5 个任务也不会被新后端拦截');
 
+  let preCutoverDb = createDb();
+  seedUser(preCutoverDb);
+  preCutoverDb._seed(COLLECTIONS.REMINDER_CART, [mkCart('pre_cutover_1'), mkCart('pre_cutover_2')]);
+  const preCutoverSubmit = await task.submit(preCutoverDb, USER, {
+    channels: [ChannelType.OFFICIAL_ACCOUNT],
+    offsets: [5],
+  });
+  eq(preCutoverSubmit.success, true, 'test 模式下普通用户仍可正常新建提醒');
+  eq(preCutoverDb._dump(COLLECTIONS.REMINDER_TASKS).every(t => t.quotaPool === 'PROTECTED'), true,
+    '正式切 all 前创建的任务全部进入历史保护池');
+
   /* 后续业务用例统一在 all 模式下验证完整闸门。 */
   process.env.MEMBERSHIP_ENFORCEMENT_MODE = 'all';
   delete process.env.MEMBERSHIP_TEST_OPENIDS;
+  const afterCutoverStatus = await membership.status(preCutoverDb, USER);
+  eq(afterCutoverStatus.membership.taskUsed, 0, '切 all 前的 2 条任务不会追溯占用新增池');
+  eq(afterCutoverStatus.membership.protectedTaskUsed, 2, '切 all 前的任务转为历史保护池占用');
+  preCutoverDb._seed(COLLECTIONS.REMINDER_CART, [mkCart('post_cutover_1')]);
+  const postCutoverSubmit = await task.submit(preCutoverDb, USER, {
+    channels: [ChannelType.OFFICIAL_ACCOUNT],
+    offsets: [5],
+  });
+  eq(postCutoverSubmit.success, true, '切 all 后可正常新建任务');
+  const postCutoverTasks = preCutoverDb._dump(COLLECTIONS.REMINDER_TASKS);
+  eq(postCutoverTasks.filter(t => t.quotaPool === 'PROTECTED').length, 2,
+    '切 all 前任务继续保留在保护池');
+  eq(postCutoverTasks.filter(t => t.quotaPool === 'ENTITLEMENT').length, 1,
+    '切 all 后新任务写入新增池');
 
   console.log('=== 1. 免费 / 会员 / 加量包提醒名额 ===');
   let db = createDb();
@@ -113,6 +147,12 @@ async function run() {
   eq(current.membership.taskLimit, 5, '免费上限 5');
   eq(current.membership.taskUsed, 5, '未来 WAITING 占用 5');
   eq(current.membership.taskRemaining, 0, '剩余 0');
+  const memberPackage = current.packages.find(item => item.id === 'member');
+  const taskPack = current.packages.find(item => item.id === 'task_pack_5');
+  eq(memberPackage.priceFen, 300, '会员当前价格 300 分');
+  eq(memberPackage.priceText, '¥3', '会员价格展示为 3 元');
+  eq(taskPack.priceFen, 300, '提醒名额包当前价格 300 分');
+  eq(taskPack.priceText, '¥3', '提醒名额包价格展示为 3 元');
 
   const blocked = await membership.capacityError(db, USER, 1);
   eq(blocked.success, false, '超额被拒');
@@ -222,26 +262,89 @@ async function run() {
   eq(reopenedOk.success, true, '会员可重新开启');
   eq(db._size(COLLECTIONS.REMINDER_TASKS), 6, '会员新增 1 条任务');
 
-  console.log('\n=== 5. 会员过期保留已购任务包，但不能直接加购 ===');
+  console.log('\n=== 5. 历史保护池不挤占会员新增池 ===');
+  db = createDb();
+  const migrationCutoff = new Date(Date.now() - DAY_MS);
+  seedUser(db, {
+    memberLevel: MemberLevel.MEMBER,
+    memberExpiresAt: new Date(Date.now() + 30 * DAY_MS),
+    protectedTaskQuota: 9,
+    protectionMigratedAt: migrationCutoff,
+  });
+  seedActiveTasks(db, 9, 'PROTECTED', 'protected');
+  current = await membership.status(db, USER);
+  eq(current.membership.taskLimit, 10, '会员新增池仍为 10 个');
+  eq(current.membership.taskUsed, 0, '9 条历史保护任务不占新增池');
+  eq(current.membership.protectedTaskUsed, 9, '历史保护池准确记录 9 条');
+  eq(current.membership.taskRemaining, 10, '开通会员后完整保留 10 个新增名额');
+  eq(await membership.capacityError(db, USER, 3), null,
+    '历史 9 条时仍可一次新建 3 条提醒');
+
+  seedActiveTasks(db, 3, 'ENTITLEMENT', 'entitlement');
+  current = await membership.status(db, USER);
+  eq(current.membership.taskUsed, 3, '新建 3 条只占新增池');
+  eq(current.membership.protectedTaskUsed, 9, '历史池保持 9 条');
+  eq(current.membership.taskRemaining, 7, '会员新增池剩余 7 个');
+
+  const legacyPool = membership.quotaPoolOfTask({
+    createdAt: new Date(migrationCutoff.getTime() + 1000),
+  });
+  const explicitEntitlementPool = membership.quotaPoolOfTask({
+    quotaPool: membership.TASK_QUOTA_POOL.ENTITLEMENT,
+  });
+  eq(legacyPool, membership.TASK_QUOTA_POOL.PROTECTED, '没有池别字段的旧任务兼容为保护池');
+  eq(explicitEntitlementPool, membership.TASK_QUOTA_POOL.ENTITLEMENT, '显式新增池按新规则计数');
+
+  db = createDb();
+  seedUser(db, {
+    memberLevel: MemberLevel.MEMBER,
+    memberExpiresAt: new Date(Date.now() + 30 * DAY_MS),
+    protectedTaskQuota: 1,
+    protectionMigratedAt: migrationCutoff,
+  });
+  db._seed(COLLECTIONS.SPOTS, [{
+    spotId: 'gugong', name: '故宫博物院', reservationRequired: true, difficultyScore: 5,
+  }]);
+  db._seed(COLLECTIONS.RELEASE_RULES, [{
+    spotId: 'gugong', advanceDays: 7, releaseTime: '20:00', closedDays: ['monday'],
+  }]);
+  db._seed(COLLECTIONS.TRIP_ITEMS, [{
+    _id: 'legacy_item', userId: USER, tripId: 'legacy_trip', spotId: 'gugong',
+    visitDate: futureDate(12), remindOn: true,
+  }]);
+  db._seed(COLLECTIONS.REMINDER_TASKS, [mkTask('legacy_task', {
+    itemId: 'legacy_item', quotaPool: 'PROTECTED', createdAt: new Date(migrationCutoff.getTime() - 1000),
+  })]);
+  const reconfigured = await itemActions.updateReminder(db, USER, {
+    itemId: 'legacy_item', remindOn: true, channels: [ChannelType.OFFICIAL_ACCOUNT], offsets: [2],
+  });
+  eq(reconfigured.success, true, '历史保护任务可修改提醒配置');
+  eq(db._dump(COLLECTIONS.REMINDER_TASKS)[0].quotaPool, 'PROTECTED',
+    '重建后继续留在历史保护池');
+
+  console.log('\n=== 6. 会员过期保留已购任务包，但不能直接加购 ===');
   db = createDb();
   seedUser(db, {
     memberLevel: MemberLevel.MEMBER,
     memberExpiresAt: new Date(Date.now() - DAY_MS),
     taskPackCount: 1,
   });
-  seedActiveTasks(db, 12);
+  seedActiveTasks(db, 12, 'PROTECTED');
   current = await membership.status(db, USER);
   eq(current.membership.member, false, '已过有效期按普通用户处理');
-  eq(current.membership.taskLimit, 12, '老用户 12 条未来提醒被固定保护');
+  eq(current.membership.taskLimit, 5, '过期会员的新增池回到免费 5 个');
+  eq(current.membership.taskUsed, 0, '12 条历史保护任务不占免费新增池');
+  eq(current.membership.protectedTaskUsed, 12, '12 条历史任务继续固定保护');
   eq(current.membership.ownedTaskPackCount, 1, '已购任务包仍保留');
   const packOrder = await membership.createOrder(db, USER, { packageId: 'task_pack_5' });
   eq(packOrder.success, false, '非有效会员不能直接加购');
   eq(packOrder.errorCode, 1022, '返回先开通会员错误');
   const renewOrder = await membership.createOrder(db, USER, { packageId: 'member' });
   eq(renewOrder.success, true, '过期会员可续费');
+  eq(renewOrder.amountFen, 300, '新会员订单按 300 分创建');
   eq(db._dump(COLLECTIONS.ORDERS)[0].memberDays, 30, '会员订单快照为 30 天');
 
-  console.log('\n=== 6. 我的订单只返回展示字段并按时间倒序 ===');
+  console.log('\n=== 7. 我的订单只返回展示字段并按时间倒序 ===');
   db = createDb();
   db._seed(COLLECTIONS.ORDERS, [
     {
@@ -295,7 +398,7 @@ async function run() {
   eq(otherDetail.success, false, '不能读取他人订单详情');
   eq(otherDetail.errorCode, 1024, '他人订单按不存在处理');
 
-  console.log('\n=== 7. 过期待支付订单立即关闭并新建 ===');
+  console.log('\n=== 8. 过期待支付订单立即关闭并新建 ===');
   db = createDb();
   seedUser(db);
   db._seed(COLLECTIONS.ORDERS, [{
@@ -314,11 +417,39 @@ async function run() {
   const freshOrder = await membership.createOrder(db, USER, { packageId: 'member' });
   const orderRows = db._dump(COLLECTIONS.ORDERS);
   eq(freshOrder.success, true, '过期订单后仍可创建新订单');
+  eq(freshOrder.amountFen, 300, '新订单按当前 3 元价格创建');
   eq(orderRows.find(item => item._id === 'order_expired').status, 'CLOSED', '旧待支付订单立即关闭');
   eq(freshOrder.orderId === 'order_expired', false, '不会复用已过期待支付订单');
   eq(orderRows.filter(item => item.status === 'PENDING').length, 1, '只保留一笔有效待支付订单');
 
-  console.log('\n=== 8. 历史提醒也作为退款使用证据 ===');
+  console.log('\n=== 9. 未过期但价格不匹配的待支付订单立即关闭 ===');
+  db = createDb();
+  seedUser(db);
+  db._seed(COLLECTIONS.ORDERS, [{
+    _id: 'order_old_price',
+    userId: USER,
+    outTradeNo: 'TOLDPRICE',
+    packageId: 'member',
+    productType: 'MEMBER',
+    title: '会员 30 天',
+    amountFen: 200,
+    memberDays: 30,
+    status: 'PENDING',
+    createdAt: new Date(),
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+  }]);
+  const priceChangedOrder = await membership.createOrder(db, USER, { packageId: 'member' });
+  const priceChangedRows = db._dump(COLLECTIONS.ORDERS);
+  const oldPriceOrder = priceChangedRows.find(item => item._id === 'order_old_price');
+  eq(priceChangedOrder.success, true, '价格变更后仍可创建新订单');
+  eq(priceChangedOrder.amountFen, 300, '新订单使用当前 3 元价格');
+  eq(priceChangedOrder.orderId === 'order_old_price', false, '不会复用旧价格待支付订单');
+  eq(oldPriceOrder.status, 'CLOSED', '未过期的旧价格待支付订单也会关闭');
+  eq(oldPriceOrder.closeReason, 'PRICE_CHANGED', '旧价格订单记录价格变更关闭原因');
+  eq(priceChangedRows.filter(item => item.status === 'PENDING').length, 1,
+    '旧价格订单关闭后只保留当前价格待支付订单');
+
+  console.log('\n=== 10. 历史提醒也作为退款使用证据 ===');
   db = createDb();
   seedUser(db);
   const historicalCreatedAt = new Date(Date.now() - 60 * 60 * 1000);

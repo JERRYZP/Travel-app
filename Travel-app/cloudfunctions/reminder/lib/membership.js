@@ -3,12 +3,12 @@
  *
  * 这里是小程序端唯一可以消费的提醒名额口径：
  * - 免费用户最多保留 5 个未来待发送提醒任务；
- * - 2 元会员有效 30 天，会员期内任务上限变为 10 个；
- * - 会员每加购 1 个 2 元名额包，记录 5 个提醒名额，会员期内生效；
+ * - 3 元会员有效 30 天，会员期内任务上限变为 10 个；
+ * - 会员每加购 1 个 3 元名额包，记录 5 个提醒名额，会员期内生效；
  * - 会员到期后，已购名额记录不删除但不生效，已有提醒任务继续发送。
  *
- * “已用提醒名额”只统计仍会发送的 WAITING 任务。已触发、未送达和已关闭的
- * 任务不占新名额，避免历史记录长期阻止用户继续使用。
+ * “已用提醒名额”只统计仍会发送的 WAITING 新增任务。迁移前历史任务进入
+ * 独立保护池，不挤占免费/会员/加购名额；已触发、未送达和已关闭任务不占新名额。
  */
 
 const {
@@ -19,17 +19,20 @@ const time = require('./time');
 const FREE_TASK_SLOTS = 5;
 const MEMBER_TASK_SLOTS = 10;
 const TASK_PACK_SIZE = 5;
-const TASK_PACK_PRICE_FEN = 200;
-const MEMBER_PRICE_FEN = 200;
+const TASK_PACK_PRICE_FEN = 300;
+const MEMBER_PRICE_FEN = 300;
 const MEMBER_DURATION_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const TASK_QUOTA_POOL = Object.freeze({
+  PROTECTED: 'PROTECTED',
+  ENTITLEMENT: 'ENTITLEMENT',
+});
 const ENFORCEMENT_OFF = 'off';
 const ENFORCEMENT_TEST = 'test';
 const ENFORCEMENT_ALL = 'all';
 const DEFAULT_ENFORCEMENT_MODE = ENFORCEMENT_TEST;
 const DEFAULT_TEST_OPENIDS = Object.freeze([
   'oZ6IFxvYK1mKzBaehMcOPIl_CgN0',
-  'oZ6IFxmYI3grd17Aa2rEem2SMqNo',
   'oZ6IFxi1K98ihzn5DH6KP5Jx9_bs',
 ]);
 const ORDER_STATUS_LABEL = {
@@ -56,7 +59,7 @@ const PACKAGES = Object.freeze([
     type: 'MEMBER',
     title: '会员 30 天',
     priceFen: MEMBER_PRICE_FEN,
-    priceText: '¥2',
+    priceText: '¥3',
     taskSlots: MEMBER_TASK_SLOTS,
     addedSlots: MEMBER_TASK_SLOTS - FREE_TASK_SLOTS,
     memberDays: MEMBER_DURATION_DAYS,
@@ -68,7 +71,7 @@ const PACKAGES = Object.freeze([
     type: 'TASK_PACK',
     title: '5 个提醒名额',
     priceFen: TASK_PACK_PRICE_FEN,
-    priceText: '¥2',
+    priceText: '¥3',
     taskSlots: TASK_PACK_SIZE,
     addedSlots: TASK_PACK_SIZE,
     memberDays: 0,
@@ -120,6 +123,37 @@ function activeTaskOf(task, nowTs) {
 
 function countActiveTasks(tasks, nowTs = time.now()) {
   return (tasks || []).filter(task => activeTaskOf(task, nowTs)).length;
+}
+
+/**
+ * 历史保护池与免费/会员/加购池彼此独立。
+ * 新任务是否受会员限制，以创建时该用户是否已进入 test/all 灰度为准：
+ * - off，或 test 模式下不在白名单：任务进入历史保护池，不计新增额度；
+ * - test 白名单 / all：任务进入新增池，占用免费、会员或加购名额。
+ * 旧任务没有 quotaPool 字段，一律按历史保护池兼容，避免审核等待期误收费。
+ */
+function quotaPoolOfTask(task = {}) {
+  if (task.quotaPool === TASK_QUOTA_POOL.PROTECTED) return TASK_QUOTA_POOL.PROTECTED;
+  if (task.quotaPool === TASK_QUOTA_POOL.ENTITLEMENT) return TASK_QUOTA_POOL.ENTITLEMENT;
+  return TASK_QUOTA_POOL.PROTECTED;
+}
+
+/** 新建提醒时确定池别；只有真正进入会员限制的用户才占新增池。 */
+function newTaskQuotaPoolOf(userId) {
+  return shouldEnforceFor(userId)
+    ? TASK_QUOTA_POOL.ENTITLEMENT
+    : TASK_QUOTA_POOL.PROTECTED;
+}
+
+/**
+ * 改提醒配置会删除并重建任务。旧任务的池别必须显式继承，
+ * 否则历史保护任务会因新的 createdAt 被误算成会员新增任务。
+ */
+function quotaPoolOfExistingTask(task) {
+  if (!task) return TASK_QUOTA_POOL.ENTITLEMENT;
+  if (task.quotaPool === TASK_QUOTA_POOL.PROTECTED
+    || task.quotaPool === TASK_QUOTA_POOL.ENTITLEMENT) return task.quotaPool;
+  return quotaPoolOfTask(task);
 }
 
 function expiryMsOf(user = {}) {
@@ -287,7 +321,6 @@ function normalizeUser(user = {}, nowTs = time.now()) {
   const entitlementTaskLimit = FREE_TASK_SLOTS
     + (isMember ? MEMBER_TASK_SLOTS - FREE_TASK_SLOTS : 0)
     + taskPackCount * TASK_PACK_SIZE;
-  const taskLimit = Math.max(entitlementTaskLimit, protectedTaskQuota);
   return {
     member: isMember,
     memberLevel: isMember ? MemberLevel.MEMBER : MemberLevel.NORMAL,
@@ -296,7 +329,7 @@ function normalizeUser(user = {}, nowTs = time.now()) {
     memberDaysRemaining: isMember
       ? Math.max(1, Math.ceil((memberExpiresMs - nowMs) / DAY_MS))
       : 0,
-    taskLimit,
+    taskLimit: entitlementTaskLimit,
     entitlementTaskLimit,
     protectedTaskQuota,
     taskPackCount,
@@ -310,10 +343,17 @@ function normalizeUser(user = {}, nowTs = time.now()) {
 
 function snapshotFromTasks(user, tasks, nowTs = time.now()) {
   const base = normalizeUser(user, nowTs);
-  const taskUsed = countActiveTasks(tasks, nowTs);
+  const activeTasks = (tasks || []).filter(task => activeTaskOf(task, nowTs));
+  const protectedTaskUsed = activeTasks
+    .filter(task => quotaPoolOfTask(task) === TASK_QUOTA_POOL.PROTECTED)
+    .length;
+  const taskUsed = activeTasks.length - protectedTaskUsed;
   return {
     ...base,
     taskUsed,
+    protectedTaskUsed,
+    entitlementTaskUsed: taskUsed,
+    protectedTaskQuota: Math.max(base.protectedTaskQuota, protectedTaskUsed),
     taskRemaining: Math.max(0, base.taskLimit - taskUsed),
   };
 }
@@ -326,8 +366,8 @@ function packageViews(snapshot) {
       ...item,
       available,
       actionText: isMemberPackage
-        ? (snapshot.member ? '续费 30 天 ¥2' : '开通会员 ¥2')
-        : (snapshot.member ? '加购 5 个名额 ¥2' : '先开通会员'),
+        ? (snapshot.member ? '续费 30 天 ¥3' : '开通会员 ¥3')
+        : (snapshot.member ? '加购 5 个名额 ¥3' : '先开通会员'),
     };
   });
 }
@@ -364,6 +404,9 @@ async function status(db, userId, nowTs = time.now()) {
   const migrationPatch = {};
   if (user.protectedTaskQuota == null && user._id) {
     migrationPatch.protectedTaskQuota = Math.max(FREE_TASK_SLOTS, activeCount);
+  }
+  if (!user.protectionMigratedAt && user._id) {
+    migrationPatch.protectionMigratedAt = nowTs;
   }
   if (user.lastReminderCreatedAt == null && inferredLastCreated && user._id) {
     migrationPatch.lastReminderCreatedAt = new Date(inferredLastCreated);
@@ -427,7 +470,13 @@ async function createOrder(db, userId, { packageId } = {}) {
     .get();
   const pendingOrders = recentRes.data || [];
   const expiredPending = pendingOrders.filter(order => isExpiredOrder(order, nowTs));
-  await Promise.all(expiredPending.map(order =>
+  const stalePending = pendingOrders
+    .filter(order => isExpiredOrder(order, nowTs) || order.amountFen !== pkg.priceFen)
+    .map(order => ({
+      order,
+      closeReason: isExpiredOrder(order, nowTs) ? 'EXPIRED_LOCAL' : 'PRICE_CHANGED',
+    }));
+  await Promise.all(stalePending.map(({ order, closeReason }) =>
     // 只允许关闭仍为 PENDING 的订单；若支付回调已并发置为 PAID，不能覆盖支付结果。
     db.collection(COLLECTIONS.ORDERS).where({
       _id: order._id,
@@ -436,7 +485,7 @@ async function createOrder(db, userId, { packageId } = {}) {
       data: {
         status: OrderStatus.CLOSED,
         closedAt: nowTs,
-        closeReason: 'EXPIRED_LOCAL',
+        closeReason,
         updatedAt: nowTs,
       },
     })
@@ -569,6 +618,7 @@ module.exports = {
   MEMBER_PRICE_FEN,
   TASK_PACK_PRICE_FEN,
   MEMBER_DURATION_DAYS,
+  TASK_QUOTA_POOL,
   PACKAGES,
   packageOf,
   enforcementModeOf,
@@ -577,6 +627,9 @@ module.exports = {
   isMemberAt,
   normalizeUser,
   countActiveTasks,
+  quotaPoolOfTask,
+  newTaskQuotaPoolOf,
+  quotaPoolOfExistingTask,
   snapshotFromTasks,
   packageViews,
   status,

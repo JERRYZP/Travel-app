@@ -8,7 +8,10 @@
 .migration-title { color: var(--color-ink); font-size: 24rpx; font-weight: 600; }
 .migration-desc, .migration-message { color: var(--color-muted); font-size: 20rpx; line-height: 1.45; }
 .migration-message { color: #8A5A12; }
+.migration-actions { flex-shrink: 0; display: flex; flex-direction: column; gap: 10rpx; width: 176rpx; }
 .migration-action { flex-shrink: 0; padding: 14rpx 18rpx; border-radius: 13rpx; background: #B8904A; color: #FFFDF7; font-size: 21rpx; }
+.migration-action.primary { background: #8A5A12; text-align: center; }
+.migration-action.secondary { border: 1rpx solid #D7BD8E; background: transparent; color: #8A5A12; text-align: center; }
 .migration-action.disabled { opacity: .55; }
 .filter-scroll { width: 100%; white-space: nowrap; }
 .filter-row { display: inline-flex; gap: 12rpx; padding: 4rpx 2rpx 18rpx; }

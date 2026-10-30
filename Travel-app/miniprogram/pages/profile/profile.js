@@ -32,6 +32,8 @@ Page({
     oaRowHint: oa.ROW_HINT,
     showOaSheet: false,
     showAfterSalesEntry: false,
+    afterSalesPendingCount: 0,
+    afterSalesPendingText: '',
   },
 
   onLoad() {
@@ -98,10 +100,20 @@ Page({
   },
 
   loadAdminEntries() {
-    api.payment.afterSales.adminStatus().then(res => {
-      this.setData({ showAfterSalesEntry: !!(res && res.isAdmin) });
+    return api.payment.afterSales.adminStatus().then(res => {
+      this.applyAfterSalesAdminStatus(res);
     }).catch(() => {
-      this.setData({ showAfterSalesEntry: false });
+      this.applyAfterSalesAdminStatus(null);
+    });
+  },
+
+  applyAfterSalesAdminStatus(res) {
+    const isAdmin = !!(res && res.isAdmin);
+    const count = isAdmin ? Math.max(0, Number(res.pendingCount) || 0) : 0;
+    this.setData({
+      showAfterSalesEntry: isAdmin,
+      afterSalesPendingCount: count,
+      afterSalesPendingText: count > 99 ? '99+' : String(count || ''),
     });
   },
 
