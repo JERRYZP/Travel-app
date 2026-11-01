@@ -4,7 +4,7 @@
     "spot-popup": "/components/spot-popup/spot-popup",
     "date-picker-sheet": "/components/date-picker-sheet/date-picker-sheet",
     "reminder-auth-sheet": "/components/reminder-auth-sheet/reminder-auth-sheet",
-    "van-loading": "@vant/weapp/loading/index"
+    "van-loading": "/components/vendor/vant/loading/index"
   },
   "navigationStyle": "custom",
   "navigationBarTitleText": "北京景点放票清单"

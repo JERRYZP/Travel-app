@@ -11,7 +11,7 @@
     "date-picker-sheet": "/components/date-picker-sheet/date-picker-sheet",
     "reminder-auth-sheet": "/components/reminder-auth-sheet/reminder-auth-sheet",
     "snackbar": "/components/snackbar/snackbar",
-    "van-loading": "@vant/weapp/loading/index"
+    "van-loading": "/components/vendor/vant/loading/index"
   },
   "navigationStyle": "custom"
 }

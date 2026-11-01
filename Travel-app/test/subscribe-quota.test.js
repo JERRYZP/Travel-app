@@ -414,7 +414,6 @@ async function frontendGapFill() {
   eq(notify.reminderAccessCancelText({ action: 'cancelled', reason: 'request-failed' }), '授权未完成，本次未设置提醒');
   eq(notify.reminderAccessCancelText({ action: 'cancelled', reason: 'action-sheet-failed' }), '授权未完成，本次未设置提醒');
   eq(notify.reminderAccessCancelText({ action: 'cancelled' }), '', '用户主动关掉选择面板不追加 Toast');
-
   console.log('\n=== 3. ensureSubscribe：额度够就不调用，不够才按缺口补 ===');
 
   // 额度足够 → 既不弹也不调用

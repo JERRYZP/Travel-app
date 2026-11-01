@@ -1862,7 +1862,6 @@ const handlers = {
     }
     const limitError = mockTaskLimitError(reminderItems.length);
     if (limitError) return limitError;
-
     /* 各景点保留自己的日期段（提交时由 visitDate 集合推导），
        这样合并后「故宫 10.2-10.3 + 国博 10.4」不会互相膨胀成 10.2-10.4 */
     const segMap = {};

@@ -1,8 +1,8 @@
 {
   "usingComponents": {
-    "van-icon": "@vant/weapp/icon/index",
+    "van-icon": "/components/vendor/vant/icon/index",
     "svg-icon": "/components/svg-icon/svg-icon",
-    "van-loading": "@vant/weapp/loading/index"
+    "van-loading": "/components/vendor/vant/loading/index"
   },
   "navigationStyle": "custom"
 }

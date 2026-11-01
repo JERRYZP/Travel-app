@@ -242,7 +242,6 @@
   color: #8A6A43;
   font-size: 22rpx;
 }
-
 .gate-hint {
   display: block;
   margin-top: 14rpx;

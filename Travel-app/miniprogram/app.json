@@ -34,10 +34,10 @@
     "navigationStyle": "custom"
   },
   "usingComponents": {
-    "van-icon": "@vant/weapp/icon/index",
+    "van-icon": "/components/vendor/vant/icon/index",
     "svg-icon": "/components/svg-icon/svg-icon",
-    "van-dialog": "@vant/weapp/dialog/index",
-    "van-loading": "@vant/weapp/loading/index"
+    "van-dialog": "/components/vendor/vant/dialog/index",
+    "van-loading": "/components/vendor/vant/loading/index"
   },
   "sitemapLocation": "sitemap.json",
   "lazyCodeLoading": "requiredComponents"

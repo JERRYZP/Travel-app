@@ -83,7 +83,7 @@
 - 虚拟支付配置与验收步骤见 `docs/engineering/payment-virtual-runbook.md`；旧 API v3 Runbook 保留，切换前不得删除或覆盖。
 - 云函数：`reminder`（19 个文件）与 `payment`（15 个文件）已于 2026-11-01 重新部署到 `cloud1`；会员状态、首页 bootstrap 与管理员迁移入口已完成云端只读冒烟。`spots`、`feedback`、`notifier` 的其余未提交改动仍需按各自范围分别核对和授权部署。
 - 小程序：**2026-10-27 已发布**（用户上传工作区代码并提交发布，含当日三项客户端降本改动）。发布前的待办仍未闭环：新订阅模板真机曾出现 `20001 No template data return`；`cart.commit` 写路径、完整真机交互和多机型视觉仍未 live verified。**当前线上客户端与 git 任何提交都不严格对应**（发布源是未提交工作区），需要尽快补一个 tag 对齐。
-- 因此不得把“测试通过”“部分云函数已部署”写成“整体已上线”或“用户已看到新版本”。
+- 因此不得把“测试通过”“已提交”“部分云函数已部署”写成“整体已上线”或“用户已看到新版本”。
 
 ## 当前需要部署的范围
 
@@ -94,8 +94,8 @@
   同日最新工作区又新增 `cart.planDates / cart.addDates`、主流程提醒/仅行程拆分和 `cart.commit / tripItem.updateReminder` 服务端订阅额度复核；即使上一版已部署，也需要再次部署本轮 `reminder`。
   ⚠️ **`includeSpots` 默认值由 `true` 改为 `false` 是契约变更**（`API-契约.md` 8.2）：
   未部署时前端拿不到 `hotSpots`，但前端已有本地切片兜底，不会白屏。
-- `spots`：当前未提交的景点卡新增 `shortName` 透传需要部署；首页空态示例有全名回退，但未部署时拿不到简称。
-- `feedback`：当前未提交的管理员 openid 白名单与 `feedback.adminStatus` 入口校验需要部署；帮助与反馈、我的反馈页面依赖现有 `feedback.list` 契约。
+- `spots`：景点卡 `shortName` / `aliases` / `addable` / `strongReminder` 的新口径已提交，需重新部署后在真机确认。
+- `feedback`：管理员 openid 白名单与 `feedback.adminStatus` 入口校验已提交，待部署确认；帮助与反馈、我的反馈页面依赖现有 `feedback.list` 契约。
 - `notifier`：已兼容旧任务走旧「活动开始通知」、新任务走新「预约开始提醒」；按任务实际模板发送和核销额度。应先部署，使旧任务和随后产生的新模板任务都有正确分流；当前已确认 `status_release_idx = backendStatus + releaseAt` 已存在，但云端触发器、测试发送和真机模板授权仍未完成闭环核对。
 - `reminder`：新提醒任务会写入当前模板 `_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA`；`lib/quota.js` 已兼容旧任务按旧模板记账。应在 notifier 之后部署，最后再发布小程序端。
 - `payment`：2026-11-01 已分次部署本轮全链路加固和退款资金阻断修复。当前版本包含订单/售后幂等、权益账本快照、退款精确回收、虚拟支付商品复核、补偿队列隔离，以及基本账户余额不足的稳定错误码与售后告警；本次部署保留原有 21 个环境变量，未切换生产支付或会员灰度开关。`payment_reconcile_state` 若仍缺失，运行时会尝试自动创建并降级为无游标扫描，仍需继续观察退款补偿日志和真机复验。

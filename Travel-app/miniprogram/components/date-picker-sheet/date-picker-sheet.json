@@ -1,1 +1,1 @@
-{ "component": true, "usingComponents": { "van-loading": "@vant/weapp/loading/index" } }
+{ "component": true, "usingComponents": { "van-loading": "/components/vendor/vant/loading/index" } }

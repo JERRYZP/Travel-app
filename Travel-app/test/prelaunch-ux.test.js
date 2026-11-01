@@ -175,6 +175,19 @@ function resetWx(patch = {}) {
   eq(wxState.actionCalls[0].itemList.join('|'), '补 1 次并继续|取消', '仅保留补授权与取消两项');
 
   resetWx({ system: 'authorized', quota: 0, actionIndex: 0 });
+  apiStub.applyAdd = false;
+  access = await notify.confirmReminderAccess(1);
+  eq(access.action, 'cancelled', '云端回调成功但可用额度没增加时，不得假装补齐');
+  eq(access.reason, 'quota-unsynced', '额度未同步按真实缺口处理');
+  eq(access.shortfall, 1, '额度未同步时仍上报 1 条缺口');
+  apiStub.applyAdd = true;
+
+  resetWx({ system: 'authorized', quota: 1, pendingMessageCount: 1, actionIndex: 1 });
+  access = await notify.confirmReminderAccess(1, undefined, { allowTripOnly: false });
+  eq(access.action, 'cancelled', '行程内开启提醒不提供“仅加行程”假分支');
+  eq(wxState.actionCalls[0].itemList.join('|'), '补 1 次并继续|取消', '仅保留补授权与取消两项');
+
+  resetWx({ system: 'authorized', quota: 0, actionIndex: 0 });
   access = await notify.confirmReminderAccess(2);
   eq(access.action, 'ready', '补到第二次授权后才继续原提醒');
   eq(wxState.subscribeCalls, 2, '两次用户点击各申请 1 条授权');

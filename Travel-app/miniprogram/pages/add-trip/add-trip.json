@@ -5,7 +5,7 @@
     "spot-popup": "/components/spot-popup/spot-popup",
     "cart-popup": "/components/cart-popup/cart-popup",
     "date-range-picker": "/components/date-range-picker/index",
-    "van-loading": "@vant/weapp/loading/index"
+    "van-loading": "/components/vendor/vant/loading/index"
   },
   "navigationStyle": "custom"
 }

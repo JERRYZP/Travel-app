@@ -918,6 +918,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```
 
 > 未授权/未落库时 quota 为 0，发送侧仍会尝试（微信侧按真实授权校验，返回 43101 即表示无额度/未订阅）。
+> 客户端判断新提醒能否设置时使用 `availableQuota = max(0, quota - pendingMessageCount)`；`quota` 是台账剩余总量，不是可再次分配的数量。
 
 > 客户端在设置新提醒前必须按**可用额度**判断：`quota - pendingMessageCount`。`quota` 是本地台账剩余授权总数，`pendingMessageCount` 是未来 `WAITING` 任务尚未发送的消息数（每条任务每个未发送 offset 计 1）。只看 `quota` 会把已经预留给待发送提醒的次数重复承诺给新提醒。
 

@@ -2,7 +2,7 @@
   "component": true,
   "usingComponents": {
     "svg-icon": "/components/svg-icon/svg-icon",
-    "van-loading": "@vant/weapp/loading/index",
-    "van-dialog": "@vant/weapp/dialog/index"
+    "van-loading": "/components/vendor/vant/loading/index",
+    "van-dialog": "/components/vendor/vant/dialog/index"
   }
 }

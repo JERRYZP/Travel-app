@@ -1,10 +1,10 @@
 {
   "usingComponents": {
     "spot-popup": "/components/spot-popup/spot-popup",
-    "van-icon": "@vant/weapp/icon/index",
+    "van-icon": "/components/vendor/vant/icon/index",
     "svg-icon": "/components/svg-icon/svg-icon",
-    "van-loading": "@vant/weapp/loading/index",
-    "van-dialog": "@vant/weapp/dialog/index"
+    "van-loading": "/components/vendor/vant/loading/index",
+    "van-dialog": "/components/vendor/vant/dialog/index"
   },
   "navigationStyle": "custom",
   "navigationBarTitleText": "北京景点门票预约·放票时间"

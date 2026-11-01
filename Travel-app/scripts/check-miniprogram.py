@@ -176,6 +176,10 @@ def check_handlers(files):
     for wxml in files:
         if not wxml.endswith(".wxml"):
             continue
+        # Vendored third-party components declare handlers inside framework
+        # helpers, so this project-local static check cannot resolve them.
+        if os.path.normpath(wxml).startswith(os.path.join(ROOT, "components", "vendor")):
+            continue
         js = wxml[:-5] + ".js"
         if not os.path.exists(js):
             continue
