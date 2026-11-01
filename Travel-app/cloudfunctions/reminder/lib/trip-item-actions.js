@@ -17,6 +17,7 @@ const item = require('./item');
 const tripItem = require('./trip-item');
 const cart = require('./cart');
 const membership = require('./membership');
+const taskDomain = require('./task');
 const { DEFAULT_SUBSCRIBE_TEMPLATE_ID } = require('./quota');
 
 /* ============ 内部工具 ============ */
@@ -216,7 +217,9 @@ async function undoResult(db, userId, { itemId, expectedResultAt }) {
  *   而且微信那次的额度已经花掉了，删掉也退不回来）。
  * - 改提前量 → 重建未触发任务（每条任务按 offsets 发多条消息，offset 变了必须重建）。
  */
-async function updateReminder(db, userId, { itemId, remindOn, channels, offsets }) {
+async function updateReminder(db, userId, {
+  itemId, remindOn, channels, offsets, requireSubscription = false,
+}) {
   if (!itemId) return fail(ERRORS.BAD_PARAM);
 
   const it = await findItem(db, userId, itemId);
@@ -242,105 +245,146 @@ async function updateReminder(db, userId, { itemId, remindOn, channels, offsets 
   }
 
   const nextRemindOn = remindOn === true;
-  const tasks = ctx.tasks || [];
-  const activeTasks = tasks.filter(t =>
-    t.backendStatus === ReminderBackendStatus.WAITING);
+  if (!nextRemindOn) return turnReminderOff(db, userId, itemId, it, ctx, nowTs);
 
-  /* 从“未设提醒 / 终态任务”重新开启时，会真正新增一条待发任务。
-     已有 WAITING 任务时只是改配置，不重复占提醒名额。 */
-  if (nextRemindOn && activeTasks.length === 0) {
-    const capacityError = await membership.capacityError(db, userId, 1, nowTs);
-    if (capacityError) return capacityError;
-  }
+  /* 先完整校验，再进入写路径。历史实现把 remindOn 写在参数校验之前，
+     非法通道/提前量会留下“开关已开、任务没建”的半成品。 */
+  const nextChannels = Array.isArray(channels) && channels.length
+    ? channels : (ctx.task && ctx.task.channels) || [];
+  const nextOffsets = Array.isArray(offsets) && offsets.length
+    ? offsets : (ctx.task && ctx.task.offsets) || [];
+  if (!taskDomain.validateSubmit(nextChannels, nextOffsets)) return fail(ERRORS.BAD_PARAM);
 
-  /* ⚠️ **只在真正发生状态迁移时才写 remindOn**（2026-09-23 修）。
-     原实现无条件落 `remindOn: nextRemindOn`，于是对一条 MISSED 的项点「取消提醒」
-     会把 chip 从「未送达」改成「未设提醒」——**抹掉静默失败的信号**，而那条
-     MISSED 任务还躺在库里（决策文档 §五 明文禁止这种静默）。
-     口径：放票前用户手动关掉的项该显示「未设提醒」；关掉时若还留着
-     已触发/已失败的记录，状态继续由任务自己说话，不被开关覆盖。
-     已关过的项重复点「取消」保持幂等（不重复给提示、不重复写库）。 */
-  const turningOff = !nextRemindOn && it.remindOn === true;
-  const keepEndedRecord = !nextRemindOn
-    && tasks.some(t => t.backendStatus !== ReminderBackendStatus.WAITING);
-  const nextStoredRemindOn = nextRemindOn
-    ? true
-    : (turningOff ? keepEndedRecord : it.remindOn === true);
-  if (nextStoredRemindOn !== (it.remindOn === true)) {
-    await db.collection(COLLECTIONS.TRIP_ITEMS).doc(itemId).update({
-      data: { remindOn: nextStoredRemindOn, updatedAt: nowTs },
-    });
-  }
+  return membership.withQuotaLock(db, userId, async lock => {
+    // 锁内重读，避免两个并发“重新开启”都基于旧的空任务列表通过额度检查。
+    const freshItem = await findItem(db, userId, itemId);
+    if (!freshItem) return fail(ERRORS.ITEM_NOT_FOUND);
+    const freshCtx = await contextOf(db, userId, freshItem);
+    const freshReservationRequired = !freshCtx.spot || freshCtx.spot.reservationRequired !== false;
+    const freshReleaseAt = item.deriveReleaseAt(freshCtx.spot, freshCtx.rule, freshItem.visitDate);
+    const lockNowTs = time.now();
+    if (!item.canSetReminder({
+      reservationRequired: freshReservationRequired,
+      releaseAt: freshReleaseAt,
+      nowTs: lockNowTs,
+    })) return fail(ERRORS.REMINDER_WINDOW_CLOSED);
 
-  if (!nextRemindOn) {
-    // ⚠️ 只删未触发的。已触发的是历史记录，且微信额度不退。
-    for (const t of activeTasks) {
-      await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).remove();
-    }
-  } else {
-    const nextChannels = Array.isArray(channels) && channels.length
-      ? channels : (ctx.task && ctx.task.channels) || [];
-    const nextOffsets = Array.isArray(offsets) && offsets.length
-      ? offsets : (ctx.task && ctx.task.offsets) || [];
-    if (nextChannels.length === 0 || nextOffsets.length === 0) return fail(ERRORS.BAD_PARAM);
+    const tasks = freshCtx.tasks || [];
+    const activeTasks = tasks.filter(t => t.backendStatus === ReminderBackendStatus.WAITING);
+    const currentTask = activeTasks
+      .slice()
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
 
-    /* 「当前任务可用吗」= 它还得是**待发**的。终态（已触发/已失败）的残留任务
-       不能当成「已有提醒」——判据只看 offsets/channels 会让它一直挂在那儿，
-       用户开了半天提醒看到的却是「未送达」。 */
-    const cur = ctx.task;
-    const curActive = !!cur && cur.backendStatus === ReminderBackendStatus.WAITING;
-    const changed = !curActive
-      || String(cur.offsets || []) !== String(nextOffsets)
-      || String(cur.channels || []) !== String(nextChannels);
-
-    if (changed) {
-      /* 提前量变了 / 旧任务已终态 → 重建（不退还额度）。
-         ⚠️ 只删**未触发**的：终态任务留着当历史，别为了重建静默丢掉
-         「上次没送达」这条记录——那和上面取消分支要避免的是同一个错误。 */
-      const activeTask = activeTasks
-        .slice()
-        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
-      const quotaPool = activeTask
-        ? membership.quotaPoolOfExistingTask(activeTask)
-        : membership.newTaskQuotaPoolOf(userId);
-      for (const t of activeTasks) {
-        await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).remove();
+    if (!currentTask) {
+      if (requireSubscription === true) {
+        const subscriptionError = await taskDomain.subscriptionAccessError(
+          db,
+          userId,
+          nextOffsets.length,
+          DEFAULT_SUBSCRIBE_TEMPLATE_ID
+        );
+        if (subscriptionError) return subscriptionError;
       }
-      await db.collection(COLLECTIONS.REMINDER_TASKS).add({
+      const capacityError = await membership.capacityError(db, userId, 1, lockNowTs);
+      if (capacityError) return capacityError;
+    }
+
+    const changed = !currentTask
+      || String(currentTask.offsets || []) !== String(nextOffsets)
+      || String(currentTask.channels || []) !== String(nextChannels);
+    if (!changed && freshItem.remindOn === true) {
+      return reminderUpdateResult(db, userId, freshItem, freshCtx, true, tasks, lockNowTs);
+    }
+
+    const quotaPool = currentTask
+      ? membership.quotaPoolOfExistingTask(currentTask)
+      : membership.newTaskQuotaPoolOf(userId);
+    const transaction = await db.startTransaction();
+    try {
+      if (freshItem.remindOn !== true) {
+        await transaction.collection(COLLECTIONS.TRIP_ITEMS).doc(itemId).update({
+          data: { remindOn: true, updatedAt: lockNowTs },
+        });
+      }
+      for (const task of activeTasks) {
+        await transaction.collection(COLLECTIONS.REMINDER_TASKS).doc(task._id).remove();
+      }
+      await transaction.collection(COLLECTIONS.REMINDER_TASKS).add({
         data: {
           userId,
           templateId: DEFAULT_SUBSCRIBE_TEMPLATE_ID,
           itemId,
-          tripId: it.tripId,
-          spotId: it.spotId,
-          visitDate: it.visitDate,
-          releaseAt,
+          tripId: freshItem.tripId,
+          spotId: freshItem.spotId,
+          visitDate: freshItem.visitDate,
+          releaseAt: freshReleaseAt,
           offsets: [...nextOffsets].sort((a, b) => b - a),
-          channels: nextChannels,
+          channels: [...nextChannels],
           backendStatus: ReminderBackendStatus.WAITING,
           quotaPool,
           triggeredAt: null,
           missedReason: null,
           cleanAt: null,
           sentOffsets: [],
-          createdAt: nowTs,
+          createdAt: lockNowTs,
         },
       });
-      await membership.markReminderCreated(db, userId, nowTs);
+      await membership.markReminderCreated(db, userId, lockNowTs, {
+        transaction,
+        user: lock && lock.user,
+        strict: true,
+      });
+      await transaction.commit();
+    } catch (err) {
+      try { await transaction.rollback(); } catch (rollbackErr) { /* 事务可能已结束 */ }
+      return fail({ code: 1011, message: `提醒更新失败：${err.message}` });
+    }
+
+    return reminderUpdateResult(db, userId, freshItem, freshCtx, true, tasks, lockNowTs);
+  });
+}
+
+async function turnReminderOff(db, userId, itemId, it, ctx, nowTs) {
+  const tasks = ctx.tasks || [];
+  const activeTasks = tasks.filter(t => t.backendStatus === ReminderBackendStatus.WAITING);
+  const turningOff = it.remindOn === true;
+  const keepEndedRecord = tasks.some(t => t.backendStatus !== ReminderBackendStatus.WAITING);
+  const nextStoredRemindOn = turningOff ? keepEndedRecord : it.remindOn === true;
+
+  if (nextStoredRemindOn !== (it.remindOn === true) || activeTasks.length > 0) {
+    const transaction = await db.startTransaction();
+    try {
+      if (nextStoredRemindOn !== (it.remindOn === true)) {
+        await transaction.collection(COLLECTIONS.TRIP_ITEMS).doc(itemId).update({
+          data: { remindOn: nextStoredRemindOn, updatedAt: nowTs },
+        });
+      }
+      for (const task of activeTasks) {
+        await transaction.collection(COLLECTIONS.REMINDER_TASKS).doc(task._id).remove();
+      }
+      await transaction.commit();
+    } catch (err) {
+      try { await transaction.rollback(); } catch (rollbackErr) { /* 事务可能已结束 */ }
+      return fail({ code: 1011, message: `提醒取消失败：${err.message}` });
     }
   }
 
-  /* 展示用状态：任务自己说话。关掉且没留任何终态记录时才是「未设提醒」，
-     其余情况保持原值——否则就会回到「取消一下，未送达就没了」。 */
+  return reminderUpdateResult(
+    db, userId, { ...it, remindOn: nextStoredRemindOn }, ctx, nextStoredRemindOn, tasks, nowTs
+  );
+}
+
+async function reminderUpdateResult(db, userId, it, ctx, nextStoredRemindOn, tasks, nowTs) {
   const after = await contextOf(db, userId, it);
   return ok({
     item: item.decorateItem({
       item: { ...it, remindOn: nextStoredRemindOn },
-      spot: ctx.spot, rule: ctx.rule, task: after.task, nowTs,
+      spot: ctx.spot,
+      rule: ctx.rule,
+      task: after.task,
+      nowTs,
     }),
-    quotaRefunded: false, // 显式写明：微信侧额度已消耗，不退还
-    /* 没送达的提醒不会因为「取消」而消失（原因见上）。前端据此给一句说明，
-       否则用户点完取消会以为这条失败记录已经清干净了。 */
+    quotaRefunded: false,
     missedKept: !!(nextStoredRemindOn
       && tasks.some(t => t.backendStatus === ReminderBackendStatus.MISSED)),
   });

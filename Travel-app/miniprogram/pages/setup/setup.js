@@ -4,6 +4,7 @@ const notify = require('../../utils/notify.js');
 const oa = require('../../utils/official-account.js');
 const membershipEntry = require('../../utils/membership-entry.js');
 const membershipPay = require('../../utils/membership-pay.js');
+const orderRefresh = require('../../utils/order-refresh.js');
 
 /** 成功卡片自动返回首页的秒数；倒计时文案同步走弱化提示 */
 const AUTO_BACK_SECONDS = 4;
@@ -26,17 +27,23 @@ Page({
     reservedQuota: 0,
     shortfall: 0,
     membership: null,
+    packages: [],
     showMembershipGate: false,
     membershipGateTitle: '',
     membershipGateDesc: '',
     membershipGateNote: '',
     membershipActionText: '',
+    membershipQuotaLimit: 0,
+    membershipQuotaUsed: 0,
+    membershipQuotaRemaining: 0,
+    membershipQuotaRequested: 0,
+    membershipQuotaGap: 0,
     upgradePackageId: '',
     paymentState: null,
     showUpgradeConfirm: false,
     upgradeConfirmTitle: '',
     upgradeConfirmDesc: '',
-    upgradeConfirmAmount: '¥3',
+    upgradeConfirmAmount: '',
     upgradeConfirmExpiry: '',
     systemOk: false,
     accessReady: false,
@@ -67,61 +74,100 @@ Page({
   },
 
   onShow() {
+    this._pageVisible = true;
     /* 授权反馈必须留到下一次用户动作再覆盖。WeChat 授权窗/设置页返回时
        也可能触发 onShow；在这里清空会让“拒绝授权”只剩一个转瞬即逝的 Toast，
        页面数字又恰好没变化，用户会以为点击没生效。 */
     this.loadCartAndAccess().then(() => this.restorePendingPayment());
   },
 
+  onHide() {
+    this._pageVisible = false;
+    this.stopPaymentAutoRefresh(false);
+  },
+
   loadCartAndAccess() {
     return api.reminder.cart.list(null, { includeMembership: true }).then(res => {
       const reminderCount = (res && res.summary && res.summary.reminderCount) || 0;
       const quotaNeeded = reminderCount * this.data.offsets.length;
-      const gate = this.membershipGateOf(reminderCount, res && res.membership);
+      const packages = (res && Array.isArray(res.packages) ? res.packages : []).map(item => ({ ...item }));
+      const gate = this.membershipGateOf(reminderCount, res && res.membership, packages);
       this.setData({
         reminderCount,
         quotaNeeded,
         membership: (res && res.membership) || null,
+        packages,
         ...gate,
       });
       return this.refreshAccessState(quotaNeeded);
     }).catch(() => this.refreshAccessState(this.data.quotaNeeded));
   },
 
-  membershipGateOf(reminderCount, current) {
-    if (!current || reminderCount <= current.taskRemaining) {
+  membershipGateOf(reminderCount, current, availablePackages) {
+    const requested = Math.max(0, Math.floor(Number(reminderCount) || 0));
+    const taskLimit = Math.max(0, Math.floor(Number(current && current.taskLimit) || 0));
+    const taskUsed = Math.max(0, Math.floor(Number(current && current.taskUsed) || 0));
+    const rawRemaining = current && Number(current.taskRemaining);
+    const taskRemaining = Number.isFinite(rawRemaining)
+      ? Math.max(0, Math.floor(rawRemaining))
+      : Math.max(0, taskLimit - taskUsed);
+    const quotaFields = {
+      membershipQuotaLimit: taskLimit,
+      membershipQuotaUsed: taskUsed,
+      membershipQuotaRemaining: taskRemaining,
+      membershipQuotaRequested: requested,
+      membershipQuotaGap: Math.max(0, requested - taskRemaining),
+    };
+
+    if (!current || requested <= taskRemaining) {
       return {
         showMembershipGate: false,
         membershipGateTitle: '',
         membershipGateDesc: '',
         membershipGateNote: '',
         membershipActionText: '',
+        ...quotaFields,
         upgradePackageId: '',
       };
     }
 
-    const gap = Math.max(0, reminderCount - current.taskRemaining);
-    const freeSlots = Math.max(1, Number(current.freeTaskSlots) || 5);
-    const memberSlots = Math.max(freeSlots, Number(current.memberTaskSlots) || 10);
-    const memberDays = Math.max(1, Number(current.memberDurationDays) || 30);
+    const gap = quotaFields.membershipQuotaGap;
+    const packages = Array.isArray(availablePackages) ? availablePackages : [];
+    const freeSlots = Math.max(0, Number(current.freeTaskSlots) || 0);
+    const memberSlots = Math.max(freeSlots, Number(current.memberTaskSlots) || 0);
+    const taskPackSize = Math.max(0, Number(current.taskPackSize) || 0);
+    const memberDays = Math.max(0, Number(current.memberDurationDays) || 0);
+    const preferredType = current.member ? 'TASK_PACK' : 'MEMBER';
+    const pkg = packages.find(item => item && item.type === preferredType) || null;
+    const priceText = (pkg && pkg.priceText) || '';
+    const displayPackSize = taskPackSize || Number(pkg && pkg.addedSlots) || 0;
+    const displayMemberDays = memberDays || Number(pkg && pkg.memberDays) || 0;
     if (current.member) {
       return {
         showMembershipGate: true,
         membershipGateTitle: `还差 ${gap} 个提醒名额`,
-        membershipGateDesc: '加购 5 个提醒名额；名额永久记录，会员有效期内生效。',
+        membershipGateDesc: displayPackSize
+          ? `加购 ${displayPackSize} 个提醒名额；名额永久记录，会员有效期内生效。`
+          : '可在会员有效期内加购提醒名额。',
         membershipGateNote: `会员到期：${current.memberExpiresAtText || '—'}`,
-        membershipActionText: '支付 ¥3，加购 5 个名额并继续',
-        upgradePackageId: 'task_pack_5',
+        membershipActionText: pkg
+          ? `支付 ${priceText}，加购 ${displayPackSize} 个名额并继续`
+          : '暂无可购买的名额包',
+        ...quotaFields,
+        upgradePackageId: pkg ? pkg.id : '',
       };
     }
 
     return {
       showMembershipGate: true,
       membershipGateTitle: `还差 ${gap} 个提醒名额`,
-      membershipGateDesc: `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额；开通会员后上限提升至 ${memberSlots} 个，有效期 ${memberDays} 天。`,
-      membershipGateNote: `¥3 / ${memberDays} 天，不自动续费`,
-      membershipActionText: `支付 ¥3，开通 ${memberDays} 天会员并继续`,
-      upgradePackageId: 'member',
+      membershipGateDesc: `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额；开通会员后上限提升至 ${memberSlots} 个${displayMemberDays ? `，有效期 ${displayMemberDays} 天` : ''}。`,
+      membershipGateNote: pkg ? `${priceText} / ${displayMemberDays} 天，不自动续费` : '会员商品暂不可购买',
+      membershipActionText: pkg
+        ? `支付 ${priceText}，开通 ${displayMemberDays} 天会员并继续`
+        : '暂无可购买的会员商品',
+      ...quotaFields,
+      upgradePackageId: pkg ? pkg.id : '',
     };
   },
 
@@ -286,13 +332,18 @@ Page({
     if (this._upgrading || this._restoringPayment) return Promise.resolve();
     const saved = membershipPay.pendingOrder();
     if (!saved || !saved.orderId) return Promise.resolve();
-    this._restoringPayment = true;
     this.setPaymentState(
       'PENDING',
       '正在确认支付结果',
       '请勿重复支付；系统会自动查单并在到账后更新权益。',
       saved.orderId
     );
+    return this.queryPendingPayment(saved, true);
+  },
+
+  queryPendingPayment(saved, initial = false) {
+    if (!saved || !saved.orderId || !this._pageVisible) return Promise.resolve();
+    if (!initial) this._restoringPayment = true;
     return api.payment.query({ orderId: saved.orderId }).then(result => {
       this._restoringPayment = false;
       const restored = membershipPay.paidResultOf(result, saved.orderId);
@@ -303,8 +354,20 @@ Page({
           '本次清单和提醒设置已保留，系统会继续自动补偿。',
           saved.orderId
         );
+        this._beginPaymentAutoRefresh();
         return;
       }
+      if (restored.status === 'PAID_GRANT_UNKNOWN') {
+        this.setPaymentState(
+          'PENDING',
+          '支付已确认，权益待核验',
+          '请勿重复支付；系统正在核验权益发放状态，本页会自动刷新。',
+          saved.orderId
+        );
+        this._beginPaymentAutoRefresh();
+        return;
+      }
+      this.stopPaymentAutoRefresh();
       membershipPay.clearPendingOrder(saved.orderId);
       if (restored.status === 'PAID_GRANTED') {
         return this.loadCartAndAccess().then(() => {
@@ -341,15 +404,61 @@ Page({
         '权益不会丢失；后台会自动补偿，也可打开订单详情手动同步。',
         saved.orderId
       );
+      this._beginPaymentAutoRefresh();
     });
+  },
+
+  _beginPaymentAutoRefresh() {
+    if (!this._pageVisible || !membershipPay.pendingOrder()) return;
+    if (!this._paymentRefreshActive) {
+      this._paymentRefreshActive = true;
+      this._paymentRefreshAttempts = 0;
+    }
+    this._schedulePaymentAutoRefresh();
+  },
+
+  _schedulePaymentAutoRefresh() {
+    if (!this._pageVisible || !this._paymentRefreshActive || this._paymentRefreshTimer) return;
+    if (this._paymentRefreshAttempts >= orderRefresh.REFRESH_MAX_ATTEMPTS) {
+      this.stopPaymentAutoRefresh(false);
+      const id = membershipPay.pendingOrder();
+      if (id && id.orderId) {
+        this.setPaymentState(
+          'PENDING',
+          '支付结果仍待确认',
+          orderRefresh.REFRESH_EXHAUSTED_HINT,
+          id.orderId
+        );
+      }
+      return;
+    }
+    this._paymentRefreshTimer = setTimeout(() => {
+      this._paymentRefreshTimer = null;
+      this._paymentRefreshAttempts += 1;
+      const saved = membershipPay.pendingOrder();
+      if (!saved) return this.stopPaymentAutoRefresh();
+      return this.queryPendingPayment(saved, false);
+    }, orderRefresh.REFRESH_INTERVAL_MS);
+  },
+
+  stopPaymentAutoRefresh() {
+    if (this._paymentRefreshTimer) clearTimeout(this._paymentRefreshTimer);
+    this._paymentRefreshTimer = null;
+    this._paymentRefreshActive = false;
+    this._paymentRefreshAttempts = 0;
   },
 
   onMembership() {
     const current = this.data.membership || {};
     const requested = Math.max(0, Number(this.data.reminderCount) || 0);
     const remaining = Math.max(0, Number(current.taskRemaining) || 0);
+    const preferredType = current.member ? 'TASK_PACK' : 'MEMBER';
+    const preferredPackage = (this.data.packages || []).find(item =>
+      item && item.type === preferredType) || null;
+    const packageId = this.data.upgradePackageId || (preferredPackage && preferredPackage.id) || '';
     const query = [
       'reason=task_limit',
+      `packageId=${encodeURIComponent(packageId)}`,
       `used=${encodeURIComponent(Number(current.taskUsed) || 0)}`,
       `limit=${encodeURIComponent(Number(current.taskLimit) || 0)}`,
       `requested=${encodeURIComponent(requested)}`,
@@ -362,21 +471,33 @@ Page({
     if (this._upgrading || this.data.submitting) return;
     const packageId = this.data.upgradePackageId;
     if (!packageId) return;
-    const isMember = packageId === 'member';
+    const pkg = (this.data.packages || []).find(item => item && item.id === packageId);
+    if (!pkg) return;
+    const isMember = pkg.type === 'MEMBER';
     const currentExpiry = new Date(this.data.membership && this.data.membership.memberExpiresAt || 0).getTime();
-    const expiry = isMember
-      ? new Date(Math.max(Date.now(), currentExpiry) + 30 * 86400000)
-      : new Date(Math.max(
-        Number.isFinite(currentExpiry) ? currentExpiry : 0,
-        Date.now() + 30 * 86400000
-      ));
+    const validCurrent = Number.isFinite(currentExpiry) && currentExpiry > Date.now()
+      ? currentExpiry
+      : Date.now();
+    const memberDays = Math.max(0, Number(pkg.memberDays) || 0);
+    const memberFloorDays = Math.max(0, Number(pkg.memberFloorDays) || 0);
+    const expiry = new Date(Math.max(
+      memberDays ? validCurrent + memberDays * 86400000 : 0,
+      memberFloorDays ? Date.now() + memberFloorDays * 86400000 : 0,
+      Number.isFinite(currentExpiry) ? currentExpiry : 0
+    ));
     const p = new Date(expiry.getTime() + 8 * 60 * 60 * 1000);
+    const current = this.data.membership || {};
+    const memberSlots = Math.max(0, Number(current.memberTaskSlots) || 0);
+    const taskPackSize = Math.max(0, Number(pkg.addedSlots) || Number(current.taskPackSize) || 0);
     this.setData({
       showUpgradeConfirm: true,
-      upgradeConfirmTitle: isMember ? '30 天会员' : '5 个提醒名额',
+      upgradeConfirmTitle: isMember
+        ? `${Number(pkg.memberDays) || 0} 天会员`
+        : `${taskPackSize} 个提醒名额`,
+      upgradeConfirmAmount: pkg.priceText || '',
       upgradeConfirmDesc: isMember
-        ? '支付成功后立即生效，提醒名额提升到 10 个，并继续完成本次提醒。'
-        : '支付成功后立即记录 5 个名额，并继续完成本次提醒。',
+        ? `支付成功后立即生效，提醒名额提升到 ${memberSlots} 个，并继续完成本次提醒。`
+        : `支付成功后立即记录 ${taskPackSize} 个名额，并继续完成本次提醒。`,
       upgradeConfirmExpiry: `会员有效期至 ${p.getUTCFullYear()}年${p.getUTCMonth() + 1}月${p.getUTCDate()}日`,
     });
   },
@@ -425,9 +546,13 @@ Page({
         this.setPaymentState('PAID_GRANT_FAILED', '支付已完成，权益发放异常', '请勿重复支付；请到订单详情同步或联系售后处理。', result.orderId);
         return;
       }
+      if (result.status === 'PAID_GRANT_UNKNOWN') {
+        this.setPaymentState('PENDING', '支付已确认，权益待核验', '请勿重复支付；系统正在核验权益发放状态，本页会自动刷新。', result.orderId);
+        return this.restorePendingPayment();
+      }
       if (result.status === 'PENDING') {
         this.setPaymentState('PENDING', '正在确认支付结果', '本次清单和提醒设置已保留，请勿重复支付。', result.orderId);
-        return;
+        return this.restorePendingPayment();
       }
       this.setPaymentState('CLOSED', '订单已关闭', '本次未扣款，可以重新发起支付。', result.orderId);
     }).catch(err => {
@@ -486,6 +611,8 @@ Page({
       let title;
       if (disableReminders) {
         title = '已加入行程，未设置提醒';
+      } else if ((res.createdTasks || 0) > 0 && (res.expiredReminder || 0) > 0) {
+        title = `已加入行程 · 已设置 ${res.createdTasks} 个提醒，${res.expiredReminder} 项已过期`;
       } else if ((res.expiredReminder || 0) > 0) {
         /* 勾了提醒、但放票时刻在提交前已经过去 —— 服务端这类项照常落行程项、
            不再建任务（见 lib/task.js）。文案由前端生成，服务端那句同义的 toast
@@ -526,7 +653,23 @@ Page({
     }).catch(err => {
       wx.hideLoading();
       this.setData({ submitting: false });
-      if (membershipEntry.openTaskLimit(err)) return;
+      if (err && err.errorCode === 1008) {
+        const s = err.subscription || {};
+        return this.refreshAccessState(this.data.quotaNeeded).then(() => {
+          const left = Math.max(0, Number(s.shortfall) || this.data.shortfall || 0);
+          this.setData({
+            authFeedback: `提交前授权额度发生变化，当前还差 ${left} 次授权，请补齐后重试。`,
+            authFeedbackTone: 'warn',
+          });
+          wx.showToast({ title: '授权额度已变化，请补齐后重试', icon: 'none' });
+        });
+      }
+      const limit = membershipEntry.viewOf(err);
+      if (limit) {
+        return this.loadCartAndAccess().then(() => {
+          wx.showToast({ title: '提醒名额已变化，请确认后继续', icon: 'none' });
+        });
+      }
       api.toastError(err);
     });
   },
@@ -578,6 +721,8 @@ Page({
   noop() {},
 
   onUnload() {
+    this._pageVisible = false;
+    this.stopPaymentAutoRefresh();
     this.clearAutoBack();
   },
 });

@@ -8,6 +8,22 @@ function entitlementReverted(order) {
     || !!(order.entitlementGrant && order.entitlementGrant.revertedAt);
 }
 
+function isAppleOrder(order) {
+  return !!order && order.paymentChannel === 'APPLE';
+}
+
+function refundChannelName(order) {
+  return isAppleOrder(order) ? 'Apple' : '微信支付';
+}
+
+function afterSalesActionLabelOf(order) {
+  if (!order) return '';
+  if (isAppleOrder(order)) {
+    return '如何申请APP退款';
+  }
+  return (order.actionFlags && order.actionFlags.afterSalesLabel) || '未到账/申请售后';
+}
+
 function stateOfOrder(order, latestCase) {
   if (!order) return null;
   if (order.refundStatus === 'REFUNDED') {
@@ -15,7 +31,7 @@ function stateOfOrder(order, latestCase) {
       return {
         tone: 'review',
         title: '退款已到账，权益正在回收',
-        desc: '微信退款已完成；系统正在按本单快照回收会员时长和提醒名额，页面会自动更新，已有提醒不会被删除。',
+        desc: `${refundChannelName(order)}退款已完成；系统正在按本单快照回收会员时长和提醒名额，页面会自动更新，已有提醒不会被删除。`,
       };
     }
     return {
@@ -28,9 +44,9 @@ function stateOfOrder(order, latestCase) {
     const processing = order.refundStatus === 'PROCESSING';
     return {
       tone: 'review',
-      title: order.refundStatusLabel || (processing ? '退款处理中' : '售后处理中'),
+      title: order.refundStatusLabel || (processing || isAppleOrder(order) ? '退款处理中' : '售后处理中'),
       desc: processing
-        ? '微信支付正在处理退款，页面会自动更新到账结果；权益回收完成后再显示最终状态。'
+        ? `${refundChannelName(order)}正在处理退款，页面会自动更新到账结果；权益回收完成后再显示最终状态。`
         : '客服会在 24 小时内完成审核；页面会自动更新审核结果。',
     };
   }
@@ -47,14 +63,26 @@ function stateOfOrder(order, latestCase) {
     return {
       tone: 'error',
       title: '退款暂时失败',
-      desc: '本次退款未完成，当前权益仍有效。请打开售后进度联系客服重试，不要重复申请。',
+      desc: isAppleOrder(order)
+        ? '本次退款未完成，当前权益仍有效。请以 Apple 最终处理结果为准，不要重复申请。'
+        : '本次退款未完成，当前权益仍有效。请打开售后进度联系客服重试，不要重复申请。',
     };
   }
   if (order.status === 'PAID' && order.grantStatus === 'FAILED') {
     return {
       tone: 'error',
       title: '权益发放异常',
-      desc: '支付已完成但权益未成功写入，请勿重复支付。系统会自动补发，页面将更新结果；仍异常时联系售后处理。',
+      desc: isAppleOrder(order)
+        ? '支付已完成但权益未成功写入，请勿重复支付。系统会自动补发，页面将更新结果。'
+        : '支付已完成但权益未成功写入，请勿重复支付。系统会自动补发，页面将更新结果；仍异常时联系售后处理。',
+    };
+  }
+  if (order.status === 'PAID'
+    && (order.grantStatus === 'UNKNOWN' || order.entitlementStatus === 'PAID_GRANT_UNKNOWN')) {
+    return {
+      tone: 'review',
+      title: '支付已确认，权益待核验',
+      desc: '支付结果已经确认，但权益发放状态尚不明确。系统会自动核验，请勿重复支付或重复下单。',
     };
   }
   if (order.status === 'PENDING') {
@@ -65,7 +93,7 @@ function stateOfOrder(order, latestCase) {
   if (order.status === 'CLOSED') {
     return { tone: 'closed', title: '订单已关闭', desc: '本次订单未完成，可以重新购买。' };
   }
-  return { tone: 'success', title: '权益已到账', desc: '支付结果已由服务端确认，权益已写入。' };
+  return { tone: 'review', title: '状态待核验', desc: '请稍后重新进入订单页确认最终状态。' };
 }
 
 Page({
@@ -78,10 +106,12 @@ Page({
     order: null,
     latestCase: null,
     state: null,
+    afterSalesActionLabel: '',
     memberExpiresAtText: '',
     acting: false,
     actionMessage: '',
     autoRefreshHint: '',
+    showIosRefundGuide: false,
   },
 
   onLoad(options) {
@@ -136,6 +166,7 @@ Page({
         order,
         latestCase,
         state: stateOfOrder(order, latestCase),
+        afterSalesActionLabel: afterSalesActionLabelOf(order),
         memberExpiresAtText: (statusRes.membership && statusRes.membership.memberExpiresAtText) || '',
       });
       this.applyOrderRefresh(order);
@@ -236,7 +267,9 @@ Page({
       const message = result.entitlementStatus === 'PAID_GRANTED'
         ? '支付与权益状态已同步。'
         : (result.entitlementStatus === 'PAID_GRANT_FAILED'
-          ? '支付已完成，权益发放仍异常，请联系售后补发。'
+          ? (isAppleOrder(this.data.order)
+            ? '支付已完成，权益发放仍异常，系统会继续自动补偿。'
+            : '支付已完成，权益发放仍异常，请联系售后补发。')
           : '微信暂未确认支付成功，系统会继续自动补偿。');
       this.setActionMessage(message);
       return this.loadOrder();
@@ -269,7 +302,21 @@ Page({
 
   onAfterSales() {
     if (!this.data.order) return;
+    if (isAppleOrder(this.data.order)) {
+      this.setData({ showIosRefundGuide: true });
+      return;
+    }
+    this.onOpenAfterSales();
+  },
+
+  onOpenAfterSales() {
+    if (!this.data.order) return;
+    this.setData({ showIosRefundGuide: false });
     wx.navigateTo({ url: `/pages/membership-after-sales/membership-after-sales?orderId=${this.data.order._id}` });
+  },
+
+  onCloseIosRefundGuide() {
+    this.setData({ showIosRefundGuide: false });
   },
 
   onRebuy() {
@@ -295,6 +342,8 @@ Page({
       success: () => wx.showToast({ title: '订单号已复制', icon: 'none' }),
     });
   },
+
+  noop() {},
 
   onBack() { wx.navigateBack(); },
 });

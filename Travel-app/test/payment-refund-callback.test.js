@@ -100,7 +100,11 @@ async function run() {
     productType: 'MEMBER', title: '会员 30 天', amountFen: 200,
     status: OrderStatus.PAID, grantStatus: GrantStatus.GRANTED, refundStatus: RefundStatus.PROCESSING,
     paidAt: new Date(), entitlementGrant: {
-      memberDaysAddedMs: 30 * 86400000, taskPackDelta: 1, appliedAt: new Date(),
+      memberDaysAddedMs: 30 * 86400000,
+      taskPackDelta: 0,
+      taskPackCountAdded: 0,
+      taskPackSlotsAdded: 0,
+      appliedAt: new Date(),
     },
   }]);
   db._seed(COLLECTIONS.AFTER_SALES_CASES, [{
@@ -153,14 +157,14 @@ async function run() {
     eq(order.status, OrderStatus.PAID, '订单主状态不改为 REFUNDED');
     eq(order.grantStatus, GrantStatus.REVERTED, '本单权益标记已回收');
     eq(item.status, CaseStatus.REFUNDED, '售后单标记已退款');
-    eq(user.taskPackCount, 0, '回收本单任务包');
+    eq(user.taskPackCount, 1, '会员退款不回收无关的任务包');
 
     const again = await payment.main(request);
     eq(again.statusCode, 200, '重复退款回调仍返回 200');
     order = db._dump(COLLECTIONS.ORDERS)[0];
     user = db._dump(COLLECTIONS.USERS)[0];
     eq(order.grantStatus, GrantStatus.REVERTED, '重复回调不改变已回收状态');
-    eq(user.taskPackCount, 0, '重复回调不会再次扣减权益');
+    eq(user.taskPackCount, 1, '重复回调不会再次扣减无关任务包');
 
     const tampered = { ...request, path: '/unknown/refund-notify', body: request.body.replace('SUCCESS', 'ABNORMAL') };
     const notFound = await payment.main(tampered);

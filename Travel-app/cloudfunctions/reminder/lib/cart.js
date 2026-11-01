@@ -21,6 +21,7 @@ const time = require('./time');
 const item = require('./item');
 const tripItem = require('./trip-item');
 const membership = require('./membership');
+const datePlan = require('./date-plan');
 
 
 /**
@@ -94,6 +95,115 @@ function groupByVisitDate(items) {
   }));
 }
 
+function validVisitDates(values) {
+  const dates = datePlan.normalizeVisitDates(values);
+  if (!dates.length || dates.length > 31) return [];
+  return dates.every(d => /^\d{4}-\d{2}-\d{2}$/.test(d)) ? dates : [];
+}
+
+async function loadDatePlanContext(db, userId, { spotId, visitDates }) {
+  const dates = validVisitDates(visitDates);
+  if (!spotId || !dates.length) return fail(ERRORS.BAD_PARAM);
+
+  const [spotRes, ruleRes] = await Promise.all([
+    db.collection(COLLECTIONS.SPOTS).where({ spotId }).get(),
+    db.collection(COLLECTIONS.RELEASE_RULES).where({ spotId }).get(),
+  ]);
+  const spot = (spotRes.data || [])[0];
+  if (!spot) return fail(ERRORS.SPOT_NOT_FOUND);
+  const rule = (ruleRes.data || [])[0] || null;
+
+  const [cartRes, itemRes] = await Promise.all([
+    db.collection(COLLECTIONS.REMINDER_CART).where({
+      userId,
+      spotId,
+      visitDate: db.command.in(dates),
+    }).get(),
+    db.collection(COLLECTIONS.TRIP_ITEMS).where({
+      userId,
+      spotId,
+      visitDate: db.command.in(dates),
+    }).get(),
+  ]);
+  const cartDates = new Set((cartRes.data || []).map(row => row.visitDate));
+  const tripDates = new Set((itemRes.data || []).map(row => row.visitDate));
+  const plan = datePlan.build({
+    spot,
+    rule,
+    visitDates: dates,
+    nowTs: time.now(),
+    cartDates,
+    tripDates,
+  });
+  return { spot, rule, dates, plan };
+}
+
+/** 只读预检：一次返回所有日期的提醒资格、重复项和汇总。 */
+async function planDates(db, userId, payload) {
+  const context = await loadDatePlanContext(db, userId, payload || {});
+  if (context.success === false) return context;
+  return ok({
+    spotId: context.spot.spotId,
+    spotName: context.spot.name,
+    dates: context.plan.dates,
+    summary: context.plan.summary,
+  });
+}
+
+/**
+ * 景点页多日期原子入清单。
+ *
+ * 先完整查重和资格判断，再只写 addable 项；任何写入失败都会清理本批新增，
+ * 不再让客户端逐条 cart.add 后遇到重复项再猜哪些成功了。
+ */
+async function addDates(db, userId, payload) {
+  const context = await loadDatePlanContext(db, userId, payload || {});
+  if (context.success === false) return context;
+  const { spot, plan } = context;
+  const addable = plan.dates.filter(row => row.addable);
+  const added = [];
+  const transaction = await db.startTransaction();
+  try {
+    for (const row of addable) {
+      const res = await transaction.collection(COLLECTIONS.REMINDER_CART).add({
+        data: {
+          userId,
+          tripId: PENDING_CART_TRIP_ID,
+          spotId: spot.spotId,
+          visitDate: row.visitDate,
+          releaseAt: row.releaseAt,
+          remindOn: row.reminderAllowed,
+          reservationRequired: spot.reservationRequired !== false,
+          createdAt: time.now(),
+        },
+      });
+      added.push({
+        cartId: res._id,
+        visitDate: row.visitDate,
+        remindOn: row.reminderAllowed,
+        status: row.status,
+        reason: row.reason,
+      });
+    }
+    await transaction.commit();
+  } catch (err) {
+    await transaction.rollback();
+    throw err;
+  }
+
+  return ok({
+    spotId: spot.spotId,
+    spotName: spot.name,
+    dates: plan.dates,
+    summary: plan.summary,
+    items: added,
+    addedCartIds: added.map(row => row.cartId),
+    added: added.length,
+    addedReminders: added.filter(row => row.remindOn).length,
+    addedTripOnly: added.filter(row => !row.remindOn).length,
+  });
+}
+
 /** CART-RULE-001 加入清单（单条） */
 async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn }) {
   if (!spotId || !visitDate) return fail(ERRORS.BAD_PARAM);
@@ -111,6 +221,7 @@ async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn 
 
   let resolvedReleaseAt = null;
   let resolvedRemindOn = false;
+  let remindBlockedReason = '';
   if (reservationRequired) {
     /* ⚠️ **放票时刻服务端自己推**，不信任调用方传的那个（2026-09-24）：
        它由 `visitDate − advanceDays` 在 `lib/item.js` 里唯一推出，调用方再传一遍
@@ -130,9 +241,13 @@ async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn 
       resolvedRemindOn = releasePassed
         ? false
         : (typeof remindOn === 'boolean' ? remindOn : tripItem.defaultRemindOn(spot));
+      if (releasePassed) remindBlockedReason = datePlan.DATE_PLAN_REASON.RELEASE_PASSED;
     }
     /* derived=null = 需预约但没有固定放票时刻（如环球影城）。
        这类景点仍可加入行程管理安排，只是永远不设提醒。 */
+    if (!resolvedReleaseAt) remindBlockedReason = datePlan.DATE_PLAN_REASON.NO_FIXED_RELEASE;
+  } else {
+    remindBlockedReason = datePlan.DATE_PLAN_REASON.NO_RESERVATION;
   }
 
   // 逻辑唯一约束 (userId, tripId, spotId, visitDate) —— 在暂存区里就是 (userId, spotId, visitDate)
@@ -159,7 +274,7 @@ async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn 
       createdAt: nowTs,
     },
   });
-  return ok({ cartId: res._id, remindOn: resolvedRemindOn });
+  return ok({ cartId: res._id, remindOn: resolvedRemindOn, remindBlockedReason });
 }
 
 /** CART-RULE-004 批量加入：仅作用于当前选中的 Tab */
@@ -172,6 +287,8 @@ async function addBatch(db, userId, tripId, events, scope, scopeKey) {
 
   const selectable = events.filter(e => e.status === EventSelectStatus.SELECTABLE && inScope(e));
   let added = 0;
+  let addedReminders = 0;
+  let addedTripOnly = 0;
   const skipped = [];
   for (const e of selectable) {
     const r = await add(db, userId, {
@@ -181,10 +298,22 @@ async function addBatch(db, userId, tripId, events, scope, scopeKey) {
       releaseAt: e.releaseAt,
       remindOn: e.remindOnDefault,
     });
-    if (r.success) added += 1;
+    if (r.success) {
+      added += 1;
+      if (r.remindOn) addedReminders += 1;
+      else addedTripOnly += 1;
+    }
     else skipped.push({ spotId: e.spotId, visitDate: e.visitDate, reason: r.error });
   }
-  return ok({ added, skipped, total: selectable.length, scope, scopeKey });
+  return ok({
+    added,
+    addedReminders,
+    addedTripOnly,
+    skipped,
+    total: selectable.length,
+    scope,
+    scopeKey,
+  });
 }
 
 /** 修改某项是否设置提醒 */
@@ -349,6 +478,7 @@ async function list(db, userId, tripId = null, { includeMembership = false } = {
     groups: groupByVisitDate(enriched),
     summary: summarize(enriched),
     membership: membershipRes ? membershipRes.membership : null,
+    packages: membershipRes && Array.isArray(membershipRes.packages) ? membershipRes.packages : [],
   });
 }
 
@@ -358,6 +488,8 @@ module.exports = {
   summarize,
   groupByVisitDate,
   add,
+  planDates,
+  addDates,
   addBatch,
   updateRemindOn,
   remove,

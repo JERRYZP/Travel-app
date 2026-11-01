@@ -232,6 +232,7 @@
         menu-date="{{menuDate}}"
         dismissed="{{dismissed}}"
         recoverable-ids="{{recoverableIds}}"
+        recovery-prompt-ids="{{recoveryPromptIds}}"
         weak="{{trip._weak}}"
         bind:menutoggle="onCardMenuToggle"
         bind:missedreason="onMissedReason"
@@ -319,6 +320,32 @@
   min-date="{{dateMinDate}}"
   bind:confirm="onRecoverConfirm"
   bind:close="onDateSheetClose"
+/>
+
+<reminder-auth-sheet
+  show="{{showReminderAuth}}"
+  auth="{{reminderAuth}}"
+  date-plan="{{datePlan}}"
+  membership="{{membershipLimit}}"
+  checkout-ready="{{reminderCheckoutReady}}"
+  continue-text="{{reminderContinueText}}"
+  busy="{{reminderAuthBusy}}"
+  feedback="{{reminderAuthFeedback}}"
+  pay-confirm="{{taskLimitPayConfirm}}"
+  pay-button-text="{{taskLimitPayButtonText}}"
+  paying="{{taskLimitPaying}}"
+  pay-disabled="{{taskLimitPayDisabled}}"
+  pay-feedback="{{taskLimitPayFeedback}}"
+  bind:primary="onReminderAuthPrimary"
+  bind:settings="onReminderAuthSettings"
+  bind:triponly="onReminderAuthTripOnly"
+  bind:close="onReminderAuthClose"
+  bind:pay="onReminderAuthPay"
+  bind:benefits="onReminderAuthBenefits"
+  bind:payclose="onReminderAuthPayClose"
+  bind:payconfirm="onReminderAuthPayConfirm"
+  bind:continue="onReminderAuthContinue"
+  bind:reselect="onReminderAuthReselect"
 />
 
 <!-- 撤销条（4 秒，非系统 Toast）。文案是**分段**的：只有结果词按 tone 着色 -->

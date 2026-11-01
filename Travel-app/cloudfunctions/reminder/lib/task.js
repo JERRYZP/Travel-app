@@ -14,7 +14,8 @@ const cart = require('./cart');
 const trip = require('./trip');
 const membership = require('./membership');
 const {
-  shouldHealQuota, healSubscribeQuota, taskTemplateIdOf, DEFAULT_SUBSCRIBE_TEMPLATE_ID,
+  shouldHealQuota, healSubscribeQuota, taskTemplateIdOf, subscribeQuotaOf, totalSubscribeQuota,
+  DEFAULT_SUBSCRIBE_TEMPLATE_ID,
 } = require('./quota');
 
 /* ============ 纯函数区 ============ */
@@ -113,6 +114,67 @@ function worstReminderHealthOf(tasks, quotaOf, nowTs = time.now()) {
   });
 
   return worst || reminderHealthOf([], 0, nowTs);
+}
+
+/** 当前模板的订阅授权状态：台账、待发送占用、可用额度与健康度。 */
+async function subscriptionStatus(db, userId, templateId) {
+  const tpl = templateId || DEFAULT_SUBSCRIBE_TEMPLATE_ID;
+  const nowTs = time.now();
+  const [userRes, taskRes] = await Promise.all([
+    db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
+    db.collection(COLLECTIONS.REMINDER_TASKS).where({
+      userId,
+      backendStatus: ReminderBackendStatus.WAITING,
+      releaseAt: db.command.gt(new Date(nowTs)),
+    }).get(),
+  ]);
+  const user = (userRes.data || [])[0] || {};
+  const quota = subscribeQuotaOf(user, tpl);
+  const liveTasks = (taskRes.data || []).filter(t => t
+    && t.backendStatus === ReminderBackendStatus.WAITING
+    && Number.isFinite(new Date(t.releaseAt).getTime()));
+  const health = reminderHealthOf(liveTasks, quota, nowTs, tpl);
+  return ok({
+    quota,
+    totalQuota: totalSubscribeQuota(user.subscribeQuotas || {}, user.subscribeQuota),
+    quotas: user.subscribeQuotas || {},
+    templateId: tpl,
+    pendingMessageCount: health.pendingMessageCount,
+    nearestRemindAt: health.nearestRemindAt,
+    level: health.level,
+    shortfall: health.shortfall,
+    replenishNeeded: health.replenishNeeded,
+    availableQuota: Math.max(0, quota - health.pendingMessageCount),
+  });
+}
+
+/**
+ * 提交前的服务端授权余额闸门。
+ *
+ * 客户端预检之后再发生授权消耗、另一台设备创建任务或额度同步延迟时，
+ * 不能让 cart.commit 继续创建注定 MISSED 的任务。这里按当前模板重新计算
+ * “已有待发送 + 本次新增”是否超过本地台账额度。
+ */
+async function subscriptionAccessError(db, userId, requiredMessages, templateId) {
+  const required = Math.max(0, Number(requiredMessages) || 0);
+  if (required <= 0) return null;
+  const tpl = templateId || DEFAULT_SUBSCRIBE_TEMPLATE_ID;
+  const current = await subscriptionStatus(db, userId, tpl);
+  const quota = current.quota;
+  const available = current.availableQuota;
+  if (available >= required) return null;
+  const shortfall = required - available;
+  return fail(ERRORS.SUBSCRIBE_QUOTA, {
+    templateId: tpl,
+    subscription: {
+      required,
+      quota,
+      pendingMessageCount: current.pendingMessageCount,
+      availableQuota: available,
+      shortfall,
+      messageCount: required,
+    },
+  });
 }
 
 /**
@@ -447,12 +509,23 @@ async function sweepOverdue(db, tasks, nowTs = time.now(), userId, resolveReleas
  * 云开发事务要求所有读写都在事务内，且不支持 where 批量删除，
  * 因此这里逐条 doc() 操作。
  */
-async function submit(db, userId, event) {
+async function submit(db, userId, event = {}) {
+  return membership.withQuotaLock(db, userId, lock =>
+    submitLocked(db, userId, event, lock)
+  );
+}
+
+async function submitLocked(db, userId, event, lock) {
   const tripId = event.tripId || '';
   const cartId = event.cartId || '';
+  const cartIds = Array.isArray(event.cartIds)
+    ? [...new Set(event.cartIds.filter(Boolean).map(String))]
+    : [];
   const channels = event.channels || [];
   const offsets = event.offsets || [];
   const disableReminders = event.disableReminders === true;
+
+  if (cartId && cartIds.length) return fail(ERRORS.BAD_PARAM);
 
   /* 「仅加行程」是一次性的降级提交，只服务于尚未落库的暂存清单。
      老链路的真实 tripId 已可能有待发任务，不能用一个批量参数把它们的提醒一起关掉。 */
@@ -464,6 +537,7 @@ async function submit(db, userId, event) {
      传了真实 tripId = 读那一个行程的清单（老链路兼容）。 */
   const cartWhere = { userId, tripId: cart.cartTripIdOf(tripId) };
   if (cartId) cartWhere._id = cartId;
+  else if (cartIds.length) cartWhere._id = db.command.in(cartIds);
   const cartRes = await db.collection(COLLECTIONS.REMINDER_CART).where(cartWhere).get();
   const cartItems = cartRes.data || [];
   if (cartItems.length === 0) return fail(ERRORS.CART_EMPTY);
@@ -476,6 +550,15 @@ async function submit(db, userId, event) {
      这一步必须与 cart.list 的 remindLocked 同源，否则界面说“无需提醒”，提交却要通道。 */
   const remindable = wantedReminderItems.filter(i => !pastRelease(i));
   if (!disableReminders && remindable.length > 0 && !validateSubmit(channels, offsets)) return fail(ERRORS.BAD_PARAM);
+  if (!disableReminders && remindable.length > 0 && event.requireSubscription === true) {
+    const subscriptionError = await subscriptionAccessError(
+      db,
+      userId,
+      remindable.length * offsets.length,
+      DEFAULT_SUBSCRIBE_TEMPLATE_ID
+    );
+    if (subscriptionError) return subscriptionError;
+  }
 
   /* ⚠️ **放票时刻已过的清单项不建任务**（2026-09-23 定规）。
      任务一生出来就会被 notifier/读取时兜底收敛成 MISSED「未送达」，
@@ -559,14 +642,17 @@ async function submit(db, userId, event) {
 
       await transaction.collection(COLLECTIONS.REMINDER_CART).doc(cartItem._id).remove();
     }
+    if (createdTasks.length > 0) {
+      await membership.markReminderCreated(db, userId, nowTs, {
+        transaction,
+        user: lock && lock.user,
+        strict: true,
+      });
+    }
     await transaction.commit();
   } catch (err) {
-    await transaction.rollback();
+    try { await transaction.rollback(); } catch (rollbackErr) { /* 事务可能已结束 */ }
     return fail({ code: 1011, message: `提交失败：${err.message}` });
-  }
-
-  if (createdTasks.length > 0) {
-    await membership.markReminderCreated(db, userId, nowTs);
   }
 
   const noReminder = disableReminders ? cartItems.length : cartItems.length - reminderItems.length;
@@ -787,6 +873,8 @@ module.exports = {
   remindAtOf,
   reminderHealthOf,
   worstReminderHealthOf,
+  subscriptionStatus,
+  subscriptionAccessError,
   buildReminderQuotaWarning,
   QUOTA_SAFE_BUFFER,
   QUOTA_WARNING_WINDOW_HOURS,

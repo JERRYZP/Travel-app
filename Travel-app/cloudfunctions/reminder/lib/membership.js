@@ -3,26 +3,38 @@
  *
  * 这里是小程序端唯一可以消费的提醒名额口径：
  * - 免费用户最多保留 5 个未来待发送提醒任务；
- * - 3 元会员有效 30 天，会员期内任务上限变为 10 个；
- * - 会员每加购 1 个 3 元名额包，记录 5 个提醒名额，会员期内生效；
+ * - 3 元会员有效 30 天，会员期内任务上限变为 15 个；
+ * - 会员每加购 1 个 3 元名额包，记录 10 个提醒名额，会员期内生效；
  * - 会员到期后，已购名额记录不删除但不生效，已有提醒任务继续发送。
  *
  * “已用提醒名额”只统计仍会发送的 WAITING 新增任务。迁移前历史任务进入
  * 独立保护池，不挤占免费/会员/加购名额；已触发、未送达和已关闭任务不占新名额。
  */
 
+const crypto = require('crypto');
 const {
   COLLECTIONS, ERRORS, MemberLevel, OrderStatus, ReminderBackendStatus, ok, fail,
 } = require('./schema');
 const time = require('./time');
+const userDomain = require('./user');
+const quotaLock = require('./quota-lock');
 
 const FREE_TASK_SLOTS = 5;
-const MEMBER_TASK_SLOTS = 10;
-const TASK_PACK_SIZE = 5;
+const MEMBER_TASK_SLOTS = 15;
+const TASK_PACK_SIZE = 10;
 const TASK_PACK_PRICE_FEN = 300;
 const MEMBER_PRICE_FEN = 300;
 const MEMBER_DURATION_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const LEGACY_TASK_PACK_SIZE = 5;
+const ORDER_GRANT_SCHEMA_VERSION = 2;
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
+const PaymentChannel = Object.freeze({
+  APPLE: 'APPLE',
+  WECHAT_VIRTUAL: 'WECHAT_VIRTUAL',
+  WECHAT_PAY: 'WECHAT_PAY',
+});
+const APPLE_VIRTUAL_ORDER_TYPES = Object.freeze([7, 8]);
 const TASK_QUOTA_POOL = Object.freeze({
   PROTECTED: 'PROTECTED',
   ENTITLEMENT: 'ENTITLEMENT',
@@ -63,20 +75,25 @@ const PACKAGES = Object.freeze([
     taskSlots: MEMBER_TASK_SLOTS,
     addedSlots: MEMBER_TASK_SLOTS - FREE_TASK_SLOTS,
     memberDays: MEMBER_DURATION_DAYS,
-    description: '30 天内最多 10 个提醒名额',
+    memberFloorDays: MEMBER_DURATION_DAYS,
+    description: `30 天内最多 ${MEMBER_TASK_SLOTS} 个提醒名额`,
     badge: '推荐',
+    specVersion: 'member-30d-v2',
   },
   {
+    // 历史稳定 SKU 标识；套餐数量统一由 TASK_PACK_SIZE 控制。
     id: 'task_pack_5',
     type: 'TASK_PACK',
-    title: '5 个提醒名额',
+    title: `${TASK_PACK_SIZE} 个提醒名额`,
     priceFen: TASK_PACK_PRICE_FEN,
     priceText: '¥3',
     taskSlots: TASK_PACK_SIZE,
     addedSlots: TASK_PACK_SIZE,
     memberDays: 0,
+    memberFloorDays: MEMBER_DURATION_DAYS,
     description: '名额永久记录，会员有效期内生效',
     badge: '',
+    specVersion: 'task-pack-10-v2',
   },
 ]);
 
@@ -214,7 +231,7 @@ function refundEligibilityOf(order = {}, user = {}, nowTs = time.now()) {
 
 function orderDisplayTitleOf(order = {}) {
   if (order.productType === 'TASK_PACK') {
-    const slots = Math.max(0, Number(order.addedSlots) || TASK_PACK_SIZE);
+    const slots = Math.max(0, Number(order.addedSlots) || LEGACY_TASK_PACK_SIZE);
     return `${slots} 个提醒名额`;
   }
   if (order.productType === 'MEMBER') return '会员 30 天';
@@ -258,9 +275,34 @@ function isExpiredOrder(order = {}, nowTs = time.now()) {
   return !!created && created + SAME_PACKAGE_PENDING_REUSE_MS <= new Date(nowTs).getTime();
 }
 
+function paymentChannelOf(order = {}) {
+  const provider = String(order.paymentProvider || '').toUpperCase();
+  const rawOrderType = order.channelOrderType != null
+    ? order.channelOrderType
+    : (order.paymentResult && order.paymentResult.channelOrderType);
+  const channelOrderType = Number(rawOrderType);
+  if (APPLE_VIRTUAL_ORDER_TYPES.includes(channelOrderType)) {
+    return PaymentChannel.APPLE;
+  }
+  if (provider === 'VIRTUAL_PAY' || order.virtualEnv != null || Number.isFinite(channelOrderType)) {
+    return PaymentChannel.WECHAT_VIRTUAL;
+  }
+  return PaymentChannel.WECHAT_PAY;
+}
+
 function orderViewOf(order = {}, user = {}, nowTs = time.now()) {
   const refundStatus = order.refundStatus || (order.status === OrderStatus.REFUNDED
     ? 'REFUNDED' : 'NONE');
+  const refunded = refundStatus === 'REFUNDED'
+    || order.grantStatus === 'REVERTED'
+    || order.status === OrderStatus.REFUNDED;
+  const entitlementStatus = refunded
+    ? 'REFUNDED'
+    : (order.status === OrderStatus.PAID
+      ? (order.grantStatus === 'FAILED'
+        ? 'PAID_GRANT_FAILED'
+        : (order.grantStatus === 'GRANTED' ? 'PAID_GRANTED' : 'PAID_GRANT_UNKNOWN'))
+      : (order.status === OrderStatus.CLOSED ? 'CLOSED' : 'PENDING'));
   const eligibility = refundEligibilityOf(order, user, nowTs);
   const actionState = orderActionsOf(order, eligibility, nowTs);
   return {
@@ -279,12 +321,9 @@ function orderViewOf(order = {}, user = {}, nowTs = time.now()) {
     refundStatusLabel: ORDER_REFUND_STATUS_LABEL[refundStatus] || '',
     refundAmountFen: Math.max(0, Number(order.refundedAmountFen) || 0),
     refundedAtText: orderTimeText(order.refundedAt),
-    grantStatus: order.grantStatus || (order.status === OrderStatus.PAID ? 'GRANTED' : 'NONE'),
-    entitlementStatus: order.refundStatus === 'REFUNDED' || order.grantStatus === 'REVERTED'
-      ? 'REFUNDED'
-      : (order.status === OrderStatus.PAID
-        ? (order.grantStatus === 'FAILED' ? 'PAID_GRANT_FAILED' : 'PAID_GRANTED')
-        : (order.status === OrderStatus.CLOSED ? 'CLOSED' : 'PENDING')),
+    paymentChannel: paymentChannelOf(order),
+    grantStatus: order.grantStatus || (order.status === OrderStatus.PAID ? 'UNKNOWN' : 'NONE'),
+    entitlementStatus,
     entitlementGrant: order.entitlementGrant ? {
       beforeExpiresAt: order.entitlementGrant.beforeExpiresAt || null,
       afterExpiresAt: order.entitlementGrant.afterExpiresAt || null,
@@ -310,7 +349,11 @@ function orderViewOf(order = {}, user = {}, nowTs = time.now()) {
 function normalizeUser(user = {}, nowTs = time.now()) {
   const isMember = isMemberAt(user, nowTs);
   const purchasedPackCount = Math.max(0, parseInt(user.taskPackCount, 10) || 0);
+  const purchasedPackSlots = user.taskPackSlots != null
+    ? Math.max(0, parseInt(user.taskPackSlots, 10) || 0)
+    : purchasedPackCount * LEGACY_TASK_PACK_SIZE;
   const taskPackCount = isMember ? purchasedPackCount : 0;
+  const taskPackSlots = isMember ? purchasedPackSlots : 0;
   const memberExpiresAt = user.memberExpiresAt || null;
   const memberExpiresMs = expiryMsOf(user);
   const nowMs = new Date(nowTs).getTime();
@@ -320,7 +363,7 @@ function normalizeUser(user = {}, nowTs = time.now()) {
   );
   const entitlementTaskLimit = FREE_TASK_SLOTS
     + (isMember ? MEMBER_TASK_SLOTS - FREE_TASK_SLOTS : 0)
-    + taskPackCount * TASK_PACK_SIZE;
+    + taskPackSlots;
   return {
     member: isMember,
     memberLevel: isMember ? MemberLevel.MEMBER : MemberLevel.NORMAL,
@@ -333,7 +376,9 @@ function normalizeUser(user = {}, nowTs = time.now()) {
     entitlementTaskLimit,
     protectedTaskQuota,
     taskPackCount,
+    taskPackSlots,
     ownedTaskPackCount: purchasedPackCount,
+    ownedTaskPackSlots: purchasedPackSlots,
     memberDurationDays: MEMBER_DURATION_DAYS,
     freeTaskSlots: FREE_TASK_SLOTS,
     memberTaskSlots: MEMBER_TASK_SLOTS,
@@ -366,8 +411,12 @@ function packageViews(snapshot) {
       ...item,
       available,
       actionText: isMemberPackage
-        ? (snapshot.member ? '续费 30 天 ¥3' : '开通会员 ¥3')
-        : (snapshot.member ? '加购 5 个名额 ¥3' : '先开通会员'),
+        ? (snapshot.member
+          ? `续费 ${item.memberDays} 天 ${item.priceText}`
+          : `开通会员 ${item.priceText}`)
+        : (snapshot.member
+          ? `加购 ${item.addedSlots} 个名额 ${item.priceText}`
+          : '先开通会员'),
     };
   });
 }
@@ -419,6 +468,7 @@ async function status(db, userId, nowTs = time.now()) {
   return ok({
     membership: snapshot,
     packages: packageViews(snapshot),
+    enforced: shouldEnforceFor(userId),
   });
 }
 
@@ -454,95 +504,159 @@ function makeOutTradeNo(nowTs = time.now()) {
   return `T${stamp}${random}`.slice(0, 32);
 }
 
-async function createOrder(db, userId, { packageId } = {}) {
-  const pkg = packageOf(packageId);
-  if (!pkg) return fail(ERRORS.BAD_PARAM);
+function requestIdHashOf(userId, requestId) {
+  return crypto.createHash('sha256')
+    .update(`${userId}:${requestId}`, 'utf8')
+    .digest('hex');
+}
 
-  const current = await status(db, userId);
-  const membership = current.membership;
-  if (pkg.type === 'TASK_PACK' && !membership.member) return fail(ERRORS.MEMBERSHIP_REQUIRED);
+function orderIdOfRequest(hash) {
+  return `ord_${String(hash).slice(0, 28)}`;
+}
 
-  const nowTs = time.now();
-  const recentRes = await db.collection(COLLECTIONS.ORDERS)
-    .where({ userId, packageId: pkg.id, status: OrderStatus.PENDING })
-    .orderBy('createdAt', 'desc')
-    .limit(20)
-    .get();
-  const pendingOrders = recentRes.data || [];
-  const expiredPending = pendingOrders.filter(order => isExpiredOrder(order, nowTs));
-  const stalePending = pendingOrders
-    .filter(order => isExpiredOrder(order, nowTs) || order.amountFen !== pkg.priceFen)
-    .map(order => ({
-      order,
-      closeReason: isExpiredOrder(order, nowTs) ? 'EXPIRED_LOCAL' : 'PRICE_CHANGED',
-    }));
-  await Promise.all(stalePending.map(({ order, closeReason }) =>
-    // 只允许关闭仍为 PENDING 的订单；若支付回调已并发置为 PAID，不能覆盖支付结果。
-    db.collection(COLLECTIONS.ORDERS).where({
-      _id: order._id,
-      status: OrderStatus.PENDING,
-    }).update({
-      data: {
-        status: OrderStatus.CLOSED,
-        closedAt: nowTs,
-        closeReason,
-        updatedAt: nowTs,
-      },
-    })
-  ));
-  const reusable = pendingOrders.find(order =>
-    !isExpiredOrder(order, nowTs)
-    && order.amountFen === pkg.priceFen
-  );
-  if (reusable) {
-    return ok({
-      orderId: reusable._id,
-      outTradeNo: reusable.outTradeNo,
-      amountFen: reusable.amountFen,
-      packageId: reusable.packageId,
-      title: reusable.title,
-      reused: true,
-    });
-  }
+function orderSpecMatches(order, pkg) {
+  return order
+    && order.productType === pkg.type
+    && order.packageId === pkg.id
+    && Number(order.amountFen) === pkg.priceFen
+    && Number(order.addedSlots) === pkg.addedSlots
+    && Number(order.memberDays) === pkg.memberDays
+    && order.specVersion === pkg.specVersion;
+}
 
-  const outTradeNo = makeOutTradeNo(nowTs);
-  const order = {
-    userId,
-    outTradeNo,
-    packageId: pkg.id,
-    productType: pkg.type,
-    title: pkg.title,
-    body: `智序准点游-${pkg.title}`,
-    amountFen: pkg.priceFen,
-    addedSlots: pkg.addedSlots,
-    memberDays: pkg.memberDays,
-    memberFloorDays: pkg.type === 'TASK_PACK' ? MEMBER_DURATION_DAYS : 0,
-    status: OrderStatus.PENDING,
-    refundStatus: 'NONE',
-    grantStatus: 'NONE',
-    createdAt: nowTs,
-    expiresAt: new Date(nowTs.getTime() + SAME_PACKAGE_PENDING_REUSE_MS),
-    paidAt: null,
-  };
-  const added = await db.collection(COLLECTIONS.ORDERS).add({ data: order });
+function staleOrderCloseReasonOf(order, pkg) {
+  return Number(order.amountFen) !== pkg.priceFen ? 'PRICE_CHANGED' : 'SPEC_CHANGED';
+}
+
+function docDataOf(result) {
+  const data = result && result.data;
+  if (Array.isArray(data)) return data[0] || null;
+  return data || null;
+}
+
+function orderResponseOf(order, reused = false) {
   return ok({
-    orderId: added._id,
-    outTradeNo,
-    amountFen: pkg.priceFen,
-    packageId: pkg.id,
-    title: pkg.title,
+    orderId: order._id,
+    outTradeNo: order.outTradeNo,
+    amountFen: order.amountFen,
+    packageId: order.packageId,
+    title: order.title,
+    ...(reused ? { reused: true } : {}),
+  });
+}
+
+async function createOrder(db, userId, { packageId, requestId } = {}) {
+  const pkg = packageOf(packageId);
+  if (!pkg || !REQUEST_ID_PATTERN.test(String(requestId || ''))) return fail(ERRORS.BAD_PARAM);
+  const requestHash = requestIdHashOf(userId, requestId);
+  const deterministicOrderId = orderIdOfRequest(requestHash);
+
+  return quotaLock.withQuotaLock(db, userId, async () => {
+    const current = await status(db, userId);
+    if (pkg.type === 'TASK_PACK' && !current.membership.member) return fail(ERRORS.MEMBERSHIP_REQUIRED);
+
+    // 同一 requestId 的重试也可能早于用户资料首次落库，先确保支付成功后能找到同一用户。
+    const user = await userDomain.ensureUser(db, userId);
+
+    // 云数据库对不存在文档的 doc.get() 会抛错，而且真实错误码会被入口层统一
+    // 包装成 1500。按 _id 查询可稳定得到空数组，避免把“首单”误判成服务异常。
+    const requestOrderRes = await db.collection(COLLECTIONS.ORDERS)
+      .where({ _id: deterministicOrderId })
+      .limit(1)
+      .get();
+    const requestOrder = docDataOf(requestOrderRes);
+    if (requestOrder) {
+      if (requestOrder.userId !== userId || requestOrder.requestIdHash !== requestHash) {
+        return fail(ERRORS.BAD_PARAM);
+      }
+      if (!orderSpecMatches(requestOrder, pkg)) {
+        return fail({ code: ERRORS.BAD_PARAM.code, message: '同一支付请求不能变更商品规格' });
+      }
+      return orderResponseOf(requestOrder, true);
+    }
+
+    const nowTs = time.now();
+    const recentRes = await db.collection(COLLECTIONS.ORDERS)
+      .where({ userId, packageId: pkg.id, status: OrderStatus.PENDING })
+      .orderBy('createdAt', 'desc')
+      .limit(20)
+      .get();
+    const pendingOrders = recentRes.data || [];
+    const stalePending = pendingOrders
+      .filter(order => isExpiredOrder(order, nowTs) || !orderSpecMatches(order, pkg))
+      .map(order => ({
+        order,
+        closeReason: isExpiredOrder(order, nowTs)
+          ? 'EXPIRED_LOCAL'
+          : staleOrderCloseReasonOf(order, pkg),
+      }));
+    await Promise.all(stalePending.map(({ order, closeReason }) =>
+      db.collection(COLLECTIONS.ORDERS).where({
+        _id: order._id,
+        status: OrderStatus.PENDING,
+      }).update({
+        data: {
+          status: OrderStatus.CLOSED,
+          closedAt: nowTs,
+          closeReason,
+          updatedAt: nowTs,
+        },
+      })
+    ));
+    const reusable = pendingOrders.find(order =>
+      !isExpiredOrder(order, nowTs) && orderSpecMatches(order, pkg)
+    );
+    if (reusable) return orderResponseOf(reusable, true);
+
+    const outTradeNo = `T${requestHash.slice(0, 31)}`;
+    const order = {
+      userId,
+      userDocumentId: user._id,
+      requestIdHash: requestHash,
+      outTradeNo,
+      packageId: pkg.id,
+      productType: pkg.type,
+      specVersion: pkg.specVersion,
+      title: pkg.title,
+      body: `智序准点游-${pkg.title}`,
+      amountFen: pkg.priceFen,
+      addedSlots: pkg.addedSlots,
+      memberDays: pkg.memberDays,
+      memberFloorDays: pkg.memberFloorDays || 0,
+      status: OrderStatus.PENDING,
+      refundStatus: 'NONE',
+      grantStatus: 'NONE',
+      grantSchemaVersion: ORDER_GRANT_SCHEMA_VERSION,
+      createdAt: nowTs,
+      expiresAt: new Date(nowTs.getTime() + SAME_PACKAGE_PENDING_REUSE_MS),
+      paidAt: null,
+    };
+    await db.collection(COLLECTIONS.ORDERS).doc(deterministicOrderId).set({ data: order });
+    return orderResponseOf({ _id: deterministicOrderId, ...order });
   });
 }
 
 /** 当前用户的会员 / 提醒名额订单，最多 50 条，按创建时间倒序。 */
 /** 在真正新建提醒任务后写入，作为“支付后是否已使用新增权益”的唯一事实。 */
-async function markReminderCreated(db, userId, nowTs = time.now()) {
+async function markReminderCreated(
+  db,
+  userId,
+  nowTs = time.now(),
+  { transaction = null, user = null, strict = false } = {}
+) {
   if (!userId) return;
   try {
+    if (transaction && user && user._id) {
+      await transaction.collection(COLLECTIONS.USERS).doc(user._id).update({
+        data: { lastReminderCreatedAt: nowTs },
+      });
+      return;
+    }
     await db.collection(COLLECTIONS.USERS).where({ openId: userId }).update({
       data: { lastReminderCreatedAt: nowTs },
     });
   } catch (err) {
+    if (strict) throw err;
     // 提醒任务已提交，不能用一次证据时间回填失败把用户操作判成整体失败。
     // 支付售后侧还会从 reminder_tasks.createdAt 复核，避免漏掉真实使用记录。
     console.error('[membership] lastReminderCreatedAt update failed', {
@@ -615,6 +729,8 @@ module.exports = {
   FREE_TASK_SLOTS,
   MEMBER_TASK_SLOTS,
   TASK_PACK_SIZE,
+  LEGACY_TASK_PACK_SIZE,
+  ORDER_GRANT_SCHEMA_VERSION,
   MEMBER_PRICE_FEN,
   TASK_PACK_PRICE_FEN,
   MEMBER_DURATION_DAYS,
@@ -643,6 +759,9 @@ module.exports = {
   orderDisplayTitleOf,
   orderActionsOf,
   isExpiredOrder,
+  requestIdHashOf,
+  orderSpecMatches,
+  withQuotaLock: quotaLock.withQuotaLock,
   SAME_PACKAGE_PENDING_REUSE_MS,
   REFUND_WINDOW_MS,
 };

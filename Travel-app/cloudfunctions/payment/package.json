@@ -4,6 +4,7 @@
   "description": "会员与提醒名额微信支付及售后退款",
   "main": "index.js",
   "dependencies": {
+    "fast-xml-parser": "^4.5.7",
     "wx-server-sdk": "latest"
   }
 }

@@ -103,7 +103,7 @@
       <!-- 预约方式（B 层免预约 → 购票 / 入园方式） -->
       <view class="popup-section-title">{{spot.reservationRequired ? '预约方式' : '购票 / 入园方式'}}</view>
       <view wx:if="{{spot.reservationRequired && spot.entries.length}}" class="popup-channel-tip">
-        <text>提前录入游客姓名和证件，抢票更快</text>
+        <text>请在景点官方小程序内提前添加好游客信息，抢票更快</text>
       </view>
       <view class="popup-entries">
         <view

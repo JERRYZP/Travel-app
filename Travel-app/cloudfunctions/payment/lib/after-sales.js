@@ -4,11 +4,12 @@
  * 用户只能提交售后单；审核、退款和权益回收都必须走服务端。
  */
 
+const crypto = require('crypto');
 const {
   COLLECTIONS, ERRORS, OrderStatus, RefundStatus, CaseType, CaseStatus, ok, fail,
 } = require('./schema');
 const {
-  REFUND_WINDOW_MS, DUPLICATE_WINDOW_MS, dateMs,
+  REFUND_WINDOW_MS, DUPLICATE_WINDOW_MS, dateMs, isLiveEntitlement,
 } = require('./order');
 
 // 售后权限只能由部署环境显式配置。未配置时关闭工作台，避免代码里的测试
@@ -44,6 +45,7 @@ const ACTIVE_CASE_STATUSES = new Set([
   CaseStatus.PROCESSING,
   CaseStatus.REFUND_FAILED,
 ]);
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
 
 function adminOpenIdsOf(env = process.env) {
   const raw = String(env.AFTER_SALES_ADMIN_OPENIDS || '').trim();
@@ -61,10 +63,77 @@ function outRefundNoOf(order) {
   return `RF${String((order && order.outTradeNo) || '')}`.slice(0, 64);
 }
 
+function paymentChannelOf(order = {}) {
+  const rawOrderType = order.channelOrderType != null
+    ? order.channelOrderType
+    : (order.paymentResult && order.paymentResult.channelOrderType);
+  const channelOrderType = Number(rawOrderType);
+  if (channelOrderType === 7 || channelOrderType === 8) return 'APPLE';
+  if (String(order.paymentProvider || '').toUpperCase() === 'VIRTUAL_PAY'
+    || order.virtualEnv != null
+    || Number.isFinite(channelOrderType)) {
+    return 'WECHAT_VIRTUAL';
+  }
+  return 'WECHAT_PAY';
+}
+
+function platformRefundCaseIdOf(outRefundNo) {
+  const digest = crypto.createHash('sha256')
+    .update(String(outRefundNo || ''), 'utf8')
+    .digest('hex')
+    .slice(0, 24);
+  return `prf_${digest}`;
+}
+
 function makeCaseNo(now = new Date()) {
   const stamp = new Date(now).getTime().toString(36).toUpperCase();
   const random = Math.random().toString(36).slice(2, 8).toUpperCase();
   return `AS${stamp}${random}`.slice(0, 32);
+}
+
+function requestHashOf(userId, orderId, requestId) {
+  return crypto.createHash('sha256')
+    .update(`${userId}:${orderId}:${requestId}`, 'utf8')
+    .digest('hex');
+}
+
+function caseIdOfRequest(hash) {
+  return `asc_${String(hash || '').slice(0, 28)}`;
+}
+
+function docDataOf(result) {
+  const data = result && result.data;
+  if (Array.isArray(data)) return data[0] || null;
+  return data || null;
+}
+
+function isDocumentNotFoundError(err) {
+  const message = String((err && (err.errMsg || err.message)) || err || '');
+  return /document\.get:fail document with _id .* does not exist/i.test(message);
+}
+
+async function documentDataOrNull(documentRef) {
+  try {
+    return docDataOf(await documentRef.get());
+  } catch (err) {
+    if (isDocumentNotFoundError(err)) return null;
+    throw err;
+  }
+}
+
+function requestIdOf(event = {}) {
+  const raw = String(event.requestId || '').trim();
+  return REQUEST_ID_PATTERN.test(raw) ? raw : '';
+}
+
+function systemRequestIdOf(kind, resourceId) {
+  return crypto.createHash('sha256')
+    .update(`system:${String(kind || '')}:${String(resourceId || '')}`, 'utf8')
+    .digest('hex');
+}
+
+function isTerminalCaseStatus(status) {
+  return !!status && !ACTIVE_CASE_STATUSES.has(status);
 }
 
 function timeText(value) {
@@ -106,6 +175,11 @@ function refundEligibilityOf(order = {}, user = {}, now = new Date()) {
 function caseViewOf(item = {}) {
   const status = item.status || CaseStatus.SUBMITTED;
   const refundStatus = item.refundStatus || RefundStatus.NONE;
+  const evidence = item.evidence || {};
+  const systemGenerated = item.systemGenerated === true || evidence.systemGenerated === true;
+  const typeLabel = item.reasonCode === 'PLATFORM_REFUND_NOTIFY'
+    ? '平台退款'
+    : (CASE_TYPE_LABEL[item.type] || '其他问题');
   const priority = item.priority || (
     [CaseType.RIGHTS_NOT_RECEIVED, CaseType.DUPLICATE_CHARGE].includes(item.type) ? 'HIGH' : 'NORMAL'
   );
@@ -118,7 +192,8 @@ function caseViewOf(item = {}) {
     amountFen: Number(item.amountFen) || 0,
     amountText: `¥${((Number(item.amountFen) || 0) / 100).toFixed(2).replace(/\.00$/, '')}`,
     type: item.type || CaseType.OTHER,
-    typeLabel: CASE_TYPE_LABEL[item.type] || '其他问题',
+    typeLabel,
+    systemGenerated,
     priority,
     priorityLabel: priority === 'HIGH' ? '高优先级' : '普通',
     reasonCode: item.reasonCode || '',
@@ -131,7 +206,7 @@ function caseViewOf(item = {}) {
     outRefundNo: item.outRefundNo || '',
     refundAmountFen: Number(item.refundAmountFen) || 0,
     refundAmountText: `¥${((Number(item.refundAmountFen) || Number(item.amountFen) || 0) / 100).toFixed(2).replace(/\.00$/, '')}`,
-    evidence: item.evidence || {},
+    evidence,
     createdAt: item.createdAt || null,
     createdAtText: timeText(item.createdAt),
     reviewedAt: item.reviewedAt || null,
@@ -187,6 +262,13 @@ async function casesForOrder(db, userId, orderId) {
 }
 
 async function existingActiveCase(db, userId, orderId) {
+  const order = await findOrderForUser(db, userId, orderId);
+  if (order && order.activeAfterSalesCaseId) {
+    const res = await db.collection(COLLECTIONS.AFTER_SALES_CASES)
+      .where({ _id: order.activeAfterSalesCaseId, userId, orderId }).get();
+    const bound = (res.data || [])[0];
+    if (bound && ACTIVE_CASE_STATUSES.has(bound.status)) return bound;
+  }
   return (await casesForOrder(db, userId, orderId))
     .find(item => ACTIVE_CASE_STATUSES.has(item.status)) || null;
 }
@@ -197,7 +279,9 @@ async function hasAnyCaseForOrder(db, userId, orderId) {
 
 function duplicateTargetOf(orders = []) {
   const paid = orders
-    .filter(item => item && item._id && dateMs(item.paidAt || item.createdAt))
+    .filter(item => item && item._id
+      && isLiveEntitlement(item)
+      && dateMs(item.paidAt || item.createdAt))
     .sort((a, b) => dateMs(b.paidAt || b.createdAt) - dateMs(a.paidAt || a.createdAt));
   for (const candidate of paid) {
     const candidateMs = dateMs(candidate.paidAt || candidate.createdAt);
@@ -224,7 +308,7 @@ async function duplicateEvidence(db, order) {
   const res = await db.collection(COLLECTIONS.ORDERS)
     .where({ userId: order.userId, packageId: order.packageId, status: OrderStatus.PAID })
     .get();
-  const target = duplicateTargetOf(res.data || []);
+  const target = duplicateTargetOf((res.data || []).filter(isLiveEntitlement));
   return target.targetOrderId === order._id
     ? target
     : { ...target, duplicate: false, currentOrderIsNewest: false };
@@ -239,25 +323,37 @@ async function duplicateChargeTarget(db, seedOrder) {
   const res = await db.collection(COLLECTIONS.ORDERS)
     .where({ userId: seedOrder.userId, packageId: seedOrder.packageId, status: OrderStatus.PAID })
     .get();
-  return duplicateTargetOf(res.data || []);
+  return duplicateTargetOf((res.data || []).filter(isLiveEntitlement));
 }
 
 async function createCaseRecord(db, userId, event = {}, evidence = {}) {
   const type = event.type;
   if (!Object.values(CaseType).includes(type)) return fail(ERRORS.BAD_PARAM);
+  const requestId = requestIdOf(event);
+  if (!requestId) return fail(ERRORS.BAD_PARAM);
   const order = await findOrderForUser(db, userId, event.orderId);
   if (!order) return fail(ERRORS.ORDER_NOT_FOUND);
-  if (order.refundStatus === RefundStatus.REFUNDED || order.status === OrderStatus.REFUNDED) {
-    return fail(ERRORS.AFTER_SALES_EXISTS);
-  }
   if (type !== CaseType.RIGHTS_NOT_RECEIVED && order.status !== OrderStatus.PAID) {
     return fail({
       code: ERRORS.REFUND_NOT_ELIGIBLE.code,
       message: '订单尚未确认支付，请先同步支付结果或提交权益未到账申请',
     });
   }
+  const requestHash = requestHashOf(userId, order._id, requestId);
+  const caseId = caseIdOfRequest(requestHash);
+  const existingRequest = await documentDataOrNull(
+    db.collection(COLLECTIONS.AFTER_SALES_CASES).doc(caseId)
+  );
+  if (existingRequest) {
+    if (existingRequest.userId !== userId
+      || existingRequest.orderId !== order._id
+      || existingRequest.type !== type) {
+      return fail(ERRORS.BAD_PARAM);
+    }
+    return ok({ case: caseViewOf(existingRequest), idempotent: true });
+  }
   const active = await existingActiveCase(db, userId, order._id);
-  if (active) return fail(ERRORS.AFTER_SALES_EXISTS);
+  if (active && active._id !== caseId) return fail(ERRORS.AFTER_SALES_EXISTS);
 
   const user = await refundEvidenceUser(db, userId);
   if (!user) return fail(ERRORS.UNAUTHORIZED);
@@ -276,6 +372,7 @@ async function createCaseRecord(db, userId, event = {}, evidence = {}) {
     ? CaseStatus.AUTO_CHECKING
     : CaseStatus.UNDER_REVIEW;
   const doc = {
+    _id: caseId,
     caseNo: makeCaseNo(nowTs),
     userId,
     orderId: order._id,
@@ -284,6 +381,7 @@ async function createCaseRecord(db, userId, event = {}, evidence = {}) {
     amountFen: Number(order.amountFen) || 0,
     productType: order.productType || '',
     packageId: order.packageId || '',
+    requestIdHash: requestHash,
     type,
     priority: String(evidence.priority || (
       [CaseType.RIGHTS_NOT_RECEIVED, CaseType.DUPLICATE_CHARGE].includes(type) ? 'HIGH' : 'NORMAL'
@@ -302,16 +400,184 @@ async function createCaseRecord(db, userId, event = {}, evidence = {}) {
     createdAt: nowTs,
     updatedAt: nowTs,
   };
-  const add = await db.collection(COLLECTIONS.AFTER_SALES_CASES).add({ data: doc });
   const refundStatus = type === CaseType.UNUSED_REFUND
     ? RefundStatus.UNDER_REVIEW
     : (type === CaseType.DUPLICATE_CHARGE ? RefundStatus.REQUESTED : null);
-  if (refundStatus) {
-    await db.collection(COLLECTIONS.ORDERS).doc(order._id).update({
-      data: { refundStatus, updatedAt: nowTs },
-    });
+  let outcome = null;
+  await db.runTransaction(async transaction => {
+    const sameRequest = await documentDataOrNull(
+      transaction.collection(COLLECTIONS.AFTER_SALES_CASES).doc(caseId)
+    );
+    if (sameRequest) {
+      if (sameRequest.userId !== userId
+        || sameRequest.orderId !== order._id
+        || sameRequest.type !== type) {
+        outcome = fail(ERRORS.BAD_PARAM);
+        return;
+      }
+      outcome = ok({ case: caseViewOf(sameRequest), idempotent: true });
+      return;
+    }
+
+    const currentOrder = docDataOf(await transaction.collection(COLLECTIONS.ORDERS)
+      .doc(order._id).get());
+    if (!currentOrder || currentOrder.userId !== userId) {
+      outcome = fail(ERRORS.ORDER_NOT_FOUND);
+      return;
+    }
+    if (currentOrder.refundStatus === RefundStatus.REFUNDED
+      || currentOrder.status === OrderStatus.REFUNDED
+      || currentOrder.grantStatus === 'REVERTED') {
+      outcome = fail(ERRORS.AFTER_SALES_EXISTS);
+      return;
+    }
+    if (type !== CaseType.RIGHTS_NOT_RECEIVED && currentOrder.status !== OrderStatus.PAID) {
+      outcome = fail({
+        code: ERRORS.REFUND_NOT_ELIGIBLE.code,
+        message: '订单当前不可申请退款',
+      });
+      return;
+    }
+    if (currentOrder.activeAfterSalesCaseId) {
+      const bound = await documentDataOrNull(
+        transaction.collection(COLLECTIONS.AFTER_SALES_CASES)
+          .doc(currentOrder.activeAfterSalesCaseId)
+      );
+      if (bound && ACTIVE_CASE_STATUSES.has(bound.status)) {
+        outcome = fail(ERRORS.AFTER_SALES_EXISTS);
+        return;
+      }
+    }
+
+    // _id 由 doc(id) 指定，不能再作为文档内容传给 set。
+    const { _id: caseDocumentId, ...caseData } = doc;
+    await transaction.collection(COLLECTIONS.AFTER_SALES_CASES)
+      .doc(caseDocumentId)
+      .set({ data: caseData });
+    const orderPatch = {
+      activeAfterSalesCaseId: caseId,
+      updatedAt: nowTs,
+    };
+    if (refundStatus && ![
+      RefundStatus.REFUNDED,
+      RefundStatus.PROCESSING,
+      RefundStatus.UNDER_REVIEW,
+    ].includes(currentOrder.refundStatus)) {
+      orderPatch.refundStatus = refundStatus;
+    }
+    await transaction.collection(COLLECTIONS.ORDERS).doc(order._id).update({ data: orderPatch });
+    outcome = ok({ case: caseViewOf(doc) });
+  }, 3);
+  return outcome || fail({ code: 1500, message: '售后申请提交失败' });
+}
+
+/**
+ * Apple 退款由用户在 App Store 发起，系统可能先收到最终退款结果而没有用户售后单。
+ * 使用退款单号派生稳定 _id，重复或在途推送都落到同一条记录。
+ */
+async function createPlatformRefundCase(db, order = {}, outRefundNo = '', details = {}) {
+  if (!order._id || !order.userId || !outRefundNo) {
+    throw new Error('平台退款售后记录缺少订单或退款单号');
   }
-  return ok({ case: caseViewOf({ _id: add._id, ...doc }) });
+  const nowTs = new Date();
+  const alreadyRefunded = order.refundStatus === RefundStatus.REFUNDED
+    || order.status === OrderStatus.REFUNDED;
+  const existingRes = await db.collection(COLLECTIONS.AFTER_SALES_CASES)
+    .where({ outRefundNo })
+    .get();
+  const existing = (existingRes.data || [])[0];
+  if (existing) {
+    await db.collection(COLLECTIONS.ORDERS).doc(order._id).update({
+      data: {
+        ...(!alreadyRefunded ? { refundStatus: RefundStatus.PROCESSING } : {}),
+        ...(ACTIVE_CASE_STATUSES.has(existing.status)
+          ? { activeAfterSalesCaseId: existing._id }
+          : {}),
+        outRefundNo,
+        updatedAt: nowTs,
+      },
+    });
+    return existing;
+  }
+
+  const requestedChannel = String(details.paymentChannel || '').toUpperCase();
+  const paymentChannel = ['APPLE', 'WECHAT_VIRTUAL', 'WECHAT_PAY'].includes(requestedChannel)
+    ? requestedChannel
+    : paymentChannelOf(order);
+  const doc = {
+    _id: platformRefundCaseIdOf(outRefundNo),
+    caseNo: makeCaseNo(nowTs),
+    userId: order.userId,
+    orderId: order._id,
+    outTradeNo: order.outTradeNo || '',
+    title: order.title || '会员提醒名额',
+    amountFen: Number(order.amountFen) || 0,
+    productType: order.productType || '',
+    packageId: order.packageId || '',
+    requestIdHash: '',
+    type: CaseType.OTHER,
+    priority: 'HIGH',
+    reasonCode: 'PLATFORM_REFUND_NOTIFY',
+    description: '平台退款结果已确认，系统自动补建售后记录。',
+    status: CaseStatus.PROCESSING,
+    refundStatus: RefundStatus.PROCESSING,
+    outRefundNo,
+    decisionNote: '',
+    reviewerOpenId: '',
+    systemGenerated: true,
+    evidence: {
+      ...details,
+      systemGenerated: true,
+      paymentProvider: String(order.paymentProvider || ''),
+      paymentChannel,
+    },
+    createdAt: nowTs,
+    updatedAt: nowTs,
+  };
+  let result = doc;
+  await db.runTransaction(async transaction => {
+    const currentOrder = docDataOf(await transaction.collection(COLLECTIONS.ORDERS)
+      .doc(order._id).get());
+    if (!currentOrder) throw new Error('平台退款订单不存在');
+    const same = await documentDataOrNull(
+      transaction.collection(COLLECTIONS.AFTER_SALES_CASES).doc(doc._id)
+    );
+    if (same) {
+      result = same;
+      if (ACTIVE_CASE_STATUSES.has(same.status)) {
+        await transaction.collection(COLLECTIONS.ORDERS).doc(order._id).update({
+          data: { activeAfterSalesCaseId: same._id, outRefundNo, updatedAt: nowTs },
+        });
+      }
+      return;
+    }
+    if (currentOrder.activeAfterSalesCaseId) {
+      const bound = await documentDataOrNull(
+        transaction.collection(COLLECTIONS.AFTER_SALES_CASES)
+          .doc(currentOrder.activeAfterSalesCaseId)
+      );
+      if (bound && ACTIVE_CASE_STATUSES.has(bound.status)) {
+        result = bound;
+        await transaction.collection(COLLECTIONS.ORDERS).doc(order._id).update({
+          data: { outRefundNo, updatedAt: nowTs },
+        });
+        return;
+      }
+    }
+    const { _id: platformCaseId, ...platformCaseData } = doc;
+    await transaction.collection(COLLECTIONS.AFTER_SALES_CASES)
+      .doc(platformCaseId)
+      .set({ data: platformCaseData });
+    await transaction.collection(COLLECTIONS.ORDERS).doc(order._id).update({
+      data: {
+        ...(!alreadyRefunded ? { refundStatus: RefundStatus.PROCESSING } : {}),
+        activeAfterSalesCaseId: doc._id,
+        outRefundNo,
+        updatedAt: nowTs,
+      },
+    });
+  }, 3);
+  return result;
 }
 
 async function listUserCases(db, userId) {
@@ -397,7 +663,16 @@ async function updateCase(db, caseId, patch = {}) {
   await db.collection(COLLECTIONS.AFTER_SALES_CASES).doc(caseId).update({
     data: { ...patch, updatedAt: nowTs },
   });
-  return getCaseById(db, caseId);
+  const fresh = await getCaseById(db, caseId);
+  if (fresh && fresh.orderId && isTerminalCaseStatus(fresh.status)) {
+    await db.collection(COLLECTIONS.ORDERS).where({
+      _id: fresh.orderId,
+      activeAfterSalesCaseId: caseId,
+    }).update({
+      data: { activeAfterSalesCaseId: '', updatedAt: nowTs },
+    });
+  }
+  return fresh;
 }
 
 async function logAdminAction(db, adminId, action, caseItem, details = {}) {
@@ -425,6 +700,7 @@ async function markRefundProcessing(db, caseItem, outRefundNo, refundStatus = 'P
     data: {
       refundStatus: RefundStatus.PROCESSING,
       outRefundNo,
+      activeAfterSalesCaseId: caseItem._id,
       updatedAt: new Date(),
     },
   });
@@ -438,6 +714,9 @@ module.exports = {
   adminOpenIdsOf,
   isAfterSalesAdmin,
   outRefundNoOf,
+  paymentChannelOf,
+  systemRequestIdOf,
+  platformRefundCaseIdOf,
   makeCaseNo,
   timeText,
   refundEligibilityOf,
@@ -451,6 +730,7 @@ module.exports = {
   duplicateEvidence,
   duplicateChargeTarget,
   createCaseRecord,
+  createPlatformRefundCase,
   listUserCases,
   getCaseForUser,
   listCasesForAdmin,

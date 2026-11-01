@@ -245,6 +245,41 @@ function freshDb() {
   eq(db._size(COLLECTIONS.REMINDER_CART), 1, '其他草稿仍保留在暂存清单');
   eq(db._dump(COLLECTIONS.REMINDER_CART)[0].spotId, 'guobo', '保留的是未指定项');
 
+  console.log('\n=== 5. 指定 cartIds：景点页多日期一次提交 ===');
+  db = freshDb();
+  const multiFirstDate = time.addDays(time.todayStr(), 40);
+  const multiSecondDate = time.addDays(time.todayStr(), 42);
+  const multiOtherDate = time.addDays(time.todayStr(), 43);
+  const multiFirst = await cart.add(db, USER, {
+    spotId: 'gugong', visitDate: multiFirstDate, remindOn: false,
+  });
+  const multiSecond = await cart.add(db, USER, {
+    spotId: 'gugong', visitDate: multiSecondDate, remindOn: false,
+  });
+  const multiOther = await cart.add(db, USER, {
+    spotId: 'guobo', visitDate: multiOtherDate, remindOn: false,
+  });
+  const multiCommit = await task.submit(db, USER, {
+    cartIds: [multiFirst.cartId, multiSecond.cartId],
+    disableReminders: true,
+  });
+  eq(multiCommit.success, true, '多 cartId 提交成功');
+  eq(multiCommit.createdItems, 2, '一次创建两个行程项');
+  eq(multiCommit.addedTripItemCount, 2, '本次提交只计两个选中日期');
+  eq(db._size(COLLECTIONS.TRIP_ITEMS), 2, '未选日期不落行程');
+  eq(db._size(COLLECTIONS.REMINDER_CART), 1, '未选草稿继续保留');
+  eq(db._dump(COLLECTIONS.REMINDER_CART)[0]._id, multiOther.cartId, '保留未选中的 cartId');
+  eq(new Set(db._dump(COLLECTIONS.TRIP_ITEMS).map(i => i.tripId)).size, 1,
+    '同一景点多个日期合并到同一趟行程');
+  eq(db._dump(COLLECTIONS.TRIPS)[0].spotIds.join(','), 'gugong', '行程只包含本次提交的景点');
+
+  const ambiguousScope = await task.submit(db, USER, {
+    cartId: multiOther.cartId,
+    cartIds: [multiOther.cartId],
+    disableReminders: true,
+  });
+  eq(ambiguousScope.errorCode, 1010, 'cartId 与 cartIds 不允许同时传');
+
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);
 })().catch(err => { console.error('测试异常:', err); process.exit(1); });

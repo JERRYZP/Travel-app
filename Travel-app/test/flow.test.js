@@ -193,6 +193,8 @@ function freshDb() {
   const batch = await cart.addBatch(db, USER, tr.tripId, tl2.events, 'departure', dayKey.key);
   const expectInDay = dayKey.events.filter(e => e.status === EventSelectStatus.SELECTABLE).length;
   eq(batch.added, expectInDay, `本日全部提醒只加当天 ${expectInDay} 条`);
+  eq(batch.addedReminders + batch.addedTripOnly, batch.added,
+    '批量加入结果拆分为提醒项与仅行程项');
   eq(batch.added < tl2.events.length, true, '未加入整条时间线（不跨 Tab）');
 
   const noScope = await cart.addBatch(db, USER, tr.tripId, tl2.events, null, null);

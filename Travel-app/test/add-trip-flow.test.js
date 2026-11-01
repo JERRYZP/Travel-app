@@ -13,6 +13,16 @@ const Module = require('module');
 const ROOT = path.join(__dirname, '..');
 const util = require(path.join(ROOT, 'miniprogram/utils/util.js'));
 
+function beijingDateAfter(days) {
+  const now = new Date(Date.now() + 8 * 3600000);
+  const target = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + days));
+  return [
+    target.getUTCFullYear(),
+    String(target.getUTCMonth() + 1).padStart(2, '0'),
+    String(target.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+}
+
 let fail = 0;
 const eq = (a, b, m) => {
   const ok = String(a) === String(b);
@@ -146,6 +156,25 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   eq(logs.some(l => /已加清单|已加入行程/.test(l)), true, '点按钮有成功反馈');
   eq(page.data.cartCount, 1, '清单条计数更新');
   eq(Number.isInteger(page.data.cartReminderCount), true, '清单条提醒数更新为可渲染数字');
+
+  console.log('=== 3.1 放票已过的事件必须如实提示仅加入行程 ===');
+  logs.length = 0;
+  page.onInlineAddReminder({
+    currentTarget: {
+      dataset: {
+        event: {
+          spotId: 'gongwangfu',
+          visitDate: beijingDateAfter(2),
+          reservationRequired: true,
+          remindable: true,
+          remindOnDefault: true,
+        },
+      },
+    },
+  });
+  await wait(120);
+  eq(logs[logs.length - 1], 'toast:已加入行程，提醒未开启',
+    '服务端强制 remindOn=false 时不再谎报已加提醒清单');
 
   console.log('=== 4. 一键加入清单 ===');
   page.onInlineAddAll();

@@ -74,7 +74,7 @@
 }
 .submit-btn.disabled { background: #DBCDBB; opacity: 1; color: #FFFEFB; }
 
-.auth-card { padding-bottom: 24rpx; }
+.auth-card { margin-top: 32rpx; padding-bottom: 24rpx; }
 .auth-title-row { border-bottom: none; }
 .auth-divider { height: 1rpx; background: #EDE5D2; }
 .auth-row {
@@ -180,6 +180,31 @@
   color: var(--color-ink);
   font-size: 28rpx;
   font-weight: 700;
+}
+.membership-quota {
+  display: flex;
+  flex-direction: column;
+  gap: 5rpx;
+  margin: 4rpx 0 2rpx;
+  padding: 14rpx 0;
+  border-top: 1rpx solid #E8D6B8;
+  border-bottom: 1rpx solid #E8D6B8;
+}
+.membership-quota-label {
+  color: #9B7F6F;
+  font-size: 21rpx;
+  font-weight: 600;
+}
+.membership-quota-formula {
+  color: #5E3D32;
+  font-size: 23rpx;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.membership-quota-requested {
+  color: #B05C3C;
+  font-size: 22rpx;
+  line-height: 1.5;
 }
 .membership-gate-desc {
   color: #7A5540;

@@ -15,16 +15,37 @@ function formatBeijingDate(value) {
   return `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`;
 }
 
+function isIosDevice() {
+  try {
+    const info = typeof wx !== 'undefined' && wx.getDeviceInfo
+      ? wx.getDeviceInfo()
+      : (typeof wx !== 'undefined' && wx.getSystemInfoSync ? wx.getSystemInfoSync() : {});
+    return String((info && info.platform) || '').toLowerCase() === 'ios';
+  } catch (err) {
+    return false;
+  }
+}
+
 function expectedExpiryOf(pkg, membership, now = Date.now()) {
   const currentMs = new Date((membership && membership.memberExpiresAt) || 0).getTime();
   const validCurrent = Number.isFinite(currentMs) && currentMs > now ? currentMs : now;
   const memberDays = Math.max(0, Number(pkg && pkg.memberDays) || 0);
-  const floorDays = pkg && pkg.type === 'TASK_PACK' ? 30 : 0;
+  const floorDays = pkg && pkg.type === 'TASK_PACK'
+    ? Math.max(0, Number(pkg.memberFloorDays) || 0)
+    : 0;
   return new Date(Math.max(
     memberDays ? validCurrent + memberDays * 86400000 : 0,
     floorDays ? now + floorDays * 86400000 : 0,
     Number.isFinite(currentMs) ? currentMs : 0
   ));
+}
+
+function defaultPackageIdOf(membership, available) {
+  const preferredType = membership && membership.member ? 'TASK_PACK' : 'MEMBER';
+  const packages = available || [];
+  const preferred = packages.find(item => item && item.type === preferredType)
+    || packages[0];
+  return preferred ? preferred.id : '';
 }
 
 Page({
@@ -34,6 +55,7 @@ Page({
     loading: true,
     loadFailed: false,
     purchasing: false,
+    isIosDevice: false,
     membership: null,
     packages: [],
     visiblePackages: [],
@@ -50,19 +72,24 @@ Page({
     confirmAmount: '',
     confirmEffect: '',
     confirmExpiry: '',
+    confirmPayButtonText: '',
   },
 
-  onLoad() {
+  onLoad(options) {
     const g = app.globalData;
+    const requestedPackageId = String((options && options.packageId) || '');
+    this._preferredPackageId = requestedPackageId;
     this.setData({
       statusBarHeight: g.statusBarHeight,
       navBarHeight: g.navBarHeight,
+      isIosDevice: isIosDevice(),
     });
   },
 
   onShow() {
     this._pageVisible = true;
-    this.loadStatus(undefined, { silent: !!this.data.membership });
+    const preferredId = this.data.selectedPackageId || this._preferredPackageId || undefined;
+    this.loadStatus(preferredId, { silent: !!this.data.membership });
     this.restorePendingPayment();
   },
 
@@ -102,6 +129,16 @@ Page({
           'PENDING',
           '正在确认支付结果',
           '本次订单仍在确认中，系统会继续自动补偿。',
+          saved.orderId
+        );
+        this._beginAutoRefresh();
+        return;
+      }
+      if (restored.status === 'PAID_GRANT_UNKNOWN') {
+        this.setPaymentState(
+          'PENDING',
+          '支付已确认，权益待核验',
+          '请勿重复支付；系统正在核验权益发放状态，本页会自动刷新。',
           saved.orderId
         );
         this._beginAutoRefresh();
@@ -153,20 +190,27 @@ Page({
     ]).then(([res, orderRes]) => {
       const membership = res.membership || {};
       const packages = (res.packages || []).map(item => ({ ...item }));
+      const memberPackage = packages.find(item => item && item.type === 'MEMBER') || null;
+      const taskPackPackage = packages.find(item => item && item.type === 'TASK_PACK') || null;
+      const membershipView = {
+        ...membership,
+        memberPackagePriceText: (memberPackage && memberPackage.priceText) || '',
+        taskPackPriceText: (taskPackPackage && taskPackPackage.priceText) || '',
+      };
       const visible = packages.filter(item => membership.member || item.type === 'MEMBER');
       const available = visible.filter(item => item.available);
       let selectedId = preferredId;
       if (!selectedId || !available.some(item => item.id === selectedId)) {
-        selectedId = available.length ? available[0].id : '';
+        selectedId = this.defaultPackageIdOf(membership, available);
       }
       const selectedPackage = visible.find(item => item.id === selectedId) || null;
       const used = Number(membership.taskUsed) || 0;
       const limit = Number(membership.taskLimit) || 0;
-      const freeSlots = Math.max(1, Number(membership.freeTaskSlots) || 5);
+      const freeSlots = Math.max(0, Number(membership.freeTaskSlots) || 0);
       this.setData({
         loading: false,
         loadFailed: false,
-        membership,
+        membership: membershipView,
         packages: this.markPackages(packages, selectedId),
         visiblePackages: this.markPackages(visible, selectedId),
         selectedPackageId: selectedId,
@@ -231,6 +275,16 @@ Page({
       );
       return;
     }
+    if (order.entitlementStatus === 'PAID_GRANT_UNKNOWN'
+      || (order.status === 'PAID' && order.grantStatus === 'UNKNOWN')) {
+      this.setPaymentState(
+        'PENDING',
+        '支付已确认，权益待核验',
+        '请勿重复支付；系统正在核验权益发放状态，本页会自动刷新。',
+        order._id
+      );
+      return;
+    }
     if (order.status === 'CLOSED') {
       this.setPaymentState('CLOSED', '订单已关闭', '本次未完成支付，可以重新下单。', order._id);
     }
@@ -290,13 +344,16 @@ Page({
     }));
   },
 
+  defaultPackageIdOf,
+
   payButtonOf(pkg, membership) {
     if (!pkg) return '暂无可购买项';
     const current = membership || this.data.membership || {};
     if (pkg.type === 'MEMBER') {
-      return `支付 ${pkg.priceText}，${current.member ? '续费 30 天会员' : '开通 30 天会员并继续'}`;
+      const days = Math.max(0, Number(pkg.memberDays) || 0);
+      return `支付 ${pkg.priceText}，${current.member ? `续费 ${days} 天会员` : `开通 ${days} 天会员并继续`}`;
     }
-    return `支付 ${pkg.priceText}，加购 5 个提醒名额`;
+    return `支付 ${pkg.priceText}，加购 ${pkg.addedSlots} 个提醒名额`;
   },
 
   onPackageTap(e) {
@@ -326,14 +383,16 @@ Page({
     const pkg = this.data.selectedPackage;
     if (!pkg) return;
     const expiry = expectedExpiryOf(pkg, this.data.membership);
+    const memberSlots = Math.max(0, Number(this.data.membership && this.data.membership.memberTaskSlots) || 0);
     this.setData({
       showPayConfirm: true,
-      confirmTitle: pkg.type === 'MEMBER' ? '30 天会员' : '5 个提醒名额',
+      confirmTitle: pkg.type === 'MEMBER' ? `${Number(pkg.memberDays) || 0} 天会员` : `${pkg.addedSlots} 个提醒名额`,
       confirmAmount: pkg.priceText,
       confirmEffect: pkg.type === 'MEMBER'
-        ? '支付成功后立即生效，提醒名额提升到 10 个'
-        : '支付成功后立即记录 5 个名额，会员有效期内生效',
+        ? `支付成功后立即生效，提醒名额提升到 ${memberSlots} 个`
+        : `支付成功后立即记录 ${pkg.addedSlots} 个名额，会员有效期内生效`,
       confirmExpiry: `会员有效期至 ${formatBeijingDate(expiry)}`,
+      confirmPayButtonText: `支付 ${pkg.priceText}`,
     });
   },
 
@@ -381,6 +440,20 @@ Page({
         );
         return;
       }
+      if (result.status === 'PAID_GRANT_UNKNOWN') {
+        this.setPaymentState(
+          'PENDING',
+          '支付已确认，权益待核验',
+          '请勿重复支付。系统会继续核验权益发放状态并自动刷新。',
+          result.orderId
+        );
+        this._beginAutoRefresh();
+        return;
+      }
+      if (result.status === 'REFUNDED') {
+        this.setPaymentState('REFUNDED', '订单已退款', '本单权益已按订单快照回收。', result.orderId);
+        return this.loadStatus();
+      }
       if (result.status === 'CLOSED') {
         this.setPaymentState('CLOSED', '订单已关闭', '本次未扣款，可以重新下单。', result.orderId);
         return;
@@ -418,8 +491,6 @@ Page({
     if (!orderId) return this.onOrders();
     wx.navigateTo({ url: `/pages/membership-order-detail/membership-order-detail?orderId=${orderId}` });
   },
-
-  noop() {},
 
   onBack() {
     wx.navigateBack();

@@ -12,6 +12,7 @@ const COLLECTIONS = {
   AFTER_SALES_CASES: 'after_sales_cases',
   ADMIN_AUDIT_LOGS: 'admin_audit_logs',
   REMINDER_TASKS: 'reminder_tasks',
+  PAYMENT_RECONCILE_STATE: 'payment_reconcile_state',
 };
 
 const MemberLevel = {
@@ -75,7 +76,9 @@ const ERRORS = {
   AFTER_SALES_EXISTS: { code: 1028, message: '该订单已有处理中或已完成的售后申请' },
   REFUND_NOT_ELIGIBLE: { code: 1029, message: '当前订单暂不符合退款申请条件' },
   CASE_NOT_FOUND: { code: 1030, message: '售后记录不存在' },
+  TASK_QUOTA_BUSY: { code: 1031, message: '提醒名额正在更新，请稍后重试' },
   FORBIDDEN: { code: 1040, message: '无权限' },
+  SERVER_ERROR: { code: 1500, message: '服务异常，请稍后重试' },
   UNKNOWN_ACTION: { code: 1099, message: 'unknown action' },
 };
 

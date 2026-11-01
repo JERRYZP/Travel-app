@@ -35,6 +35,7 @@ console.log('=== 1. 只有仍会变化的状态才自动刷新 ===');
   [{ status: 'PAID', grantStatus: 'REVERTED', refundStatus: 'REFUNDED' }, false, '退款与权益回收均完成'],
   [{ status: 'PAID', grantStatus: 'GRANTED', refundStatus: 'REJECTED' }, false, '退款已驳回'],
   [{ status: 'PAID', grantStatus: 'GRANTED', refundStatus: 'FAILED' }, false, '退款失败待人工处理'],
+  [{ status: 'PAID', grantStatus: 'FAILED', refundStatus: 'REFUNDED' }, false, '发放失败订单退款后不再等待权益回收'],
   [{ status: 'CLOSED', grantStatus: 'NONE', refundStatus: 'NONE' }, false, '订单已关闭'],
 ].forEach(([order, want, name]) => {
   eq(refresh.isTransientOrder(order, now), want, name);

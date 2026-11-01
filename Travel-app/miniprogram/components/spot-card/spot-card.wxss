@@ -74,10 +74,17 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8rpx;
+  min-width: 100rpx;
+  min-height: 72rpx;
+  margin: -20rpx -8rpx -20rpx 0;
+  padding: 20rpx 8rpx;
+  box-sizing: border-box;
   color: var(--diff-normal-text);
   font-size: 22rpx;
   line-height: 1.2;
+  white-space: nowrap;
 }
 .spot-card-remind-arrow {
   width: 10rpx;

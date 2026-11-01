@@ -168,6 +168,20 @@ Page({
     dateBookedDates: [],
     dateMinDate: '',
     dateAction: null,
+    dateMultiple: false,
+    showReminderAuth: false,
+    reminderAuth: null,
+    datePlan: null,
+    reminderAuthBusy: false,
+    reminderAuthFeedback: '',
+    reminderCheckoutReady: false,
+    reminderContinueText: '开启行程放票提醒',
+    membershipLimit: null,
+    taskLimitPayConfirm: null,
+    taskLimitPayButtonText: '',
+    taskLimitPaying: false,
+    taskLimitPayDisabled: false,
+    taskLimitPayFeedback: '',
   },
 
   onLoad(options) {
@@ -179,6 +193,7 @@ Page({
   },
 
   onShow() {
+    if (this._reminderAuthResolve) reminderFlow.refreshReminderAuth(this);
     /* 小程序已打开时再次从分享卡片进入，App.onShow 会把 query 暂存到这里。 */
     const pending = shareEntry.peekPending(app);
     if (pending && (pending.spotId || (!pending.sceneId && pending.source === 'home_share'))) {
@@ -367,7 +382,7 @@ Page({
 
   /* ===== 景点详情浮窗（卡片 / 今日放票 Banner 共用） =====
    * 全站统一为浮窗形态；内页 spot-rule 保留文件与路由，已无入口。
-   * 浮窗底部行动栏（加入提醒 / 加入行程）维持视觉占位，交互待首页改版后统一接。 */
+   * 浮窗底部行动栏提供设置提醒与仅加行程入口。 */
   onCardTap(e) {
     this.openDetail(e.detail.spotId);
   },
@@ -381,6 +396,7 @@ Page({
       spotName: d.spotName,
       title: '设置提醒',
       remindOn: true,
+      multiple: true,
     });
   },
 
@@ -414,6 +430,7 @@ Page({
       spotName: d.spotName,
       title: '设置提醒',
       remindOn: true,
+      multiple: true,
     });
   },
 
@@ -424,11 +441,15 @@ Page({
       spotName: d.spotName,
       title: '加入行程',
       remindOn: false,
+      multiple: true,
     });
   },
 
-  openDateSheet(spotId, spotName, title, remindOn) {
-    return reminderFlow.openDateSheet(this, { spotId, spotName, title, remindOn });
+  openDateSheet(spotId, spotName, title, remindOn, options) {
+    return reminderFlow.openDateSheet(this, Object.assign(
+      { spotId, spotName, title, remindOn },
+      options || {}
+    ));
   },
 
   onDateConfirm(e) {
@@ -437,6 +458,46 @@ Page({
 
   onDateClose() {
     reminderFlow.onDateClose(this);
+  },
+
+  onReminderAuthPrimary() {
+    return reminderFlow.requestReminderAuthOnce(this);
+  },
+
+  onReminderAuthSettings() {
+    return reminderFlow.openReminderAuthSettings(this);
+  },
+
+  onReminderAuthTripOnly() {
+    return reminderFlow.tripOnlyReminderCheckout(this);
+  },
+
+  onReminderAuthClose() {
+    return reminderFlow.closeReminderCheckout(this);
+  },
+
+  onReminderAuthContinue() {
+    return reminderFlow.continueReminderCheckout(this);
+  },
+
+  onReminderAuthReselect() {
+    return reminderFlow.reselectReminderDates(this);
+  },
+
+  onReminderAuthPay() {
+    return reminderFlow.openTaskLimitPayment(this);
+  },
+
+  onReminderAuthBenefits() {
+    return reminderFlow.openTaskLimitBenefitsPage(this);
+  },
+
+  onReminderAuthPayClose() {
+    return reminderFlow.closeTaskLimitPayment(this);
+  },
+
+  onReminderAuthPayConfirm() {
+    return reminderFlow.confirmTaskLimitPayment(this);
   },
 
 });

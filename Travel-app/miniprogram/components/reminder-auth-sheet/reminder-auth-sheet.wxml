@@ -1,0 +1,101 @@
+<view wx:if="{{show && (auth || datePlan)}}" class="ras-mask" bindtap="onClose" catchtouchmove="noop">
+  <view class="ras-sheet" catchtap="noop">
+    <view class="ras-head">
+      <view class="ras-icon">
+        <svg-icon name="bell-fill4" size="22px" />
+      </view>
+      <text class="ras-title">设置提醒</text>
+      <view class="ras-close" bindtap="onClose">
+        <svg-icon name="close" size="16px" />
+      </view>
+    </view>
+
+    <view wx:if="{{datePlan}}" class="ras-date-card {{datePlan.tone}}">
+      <text class="ras-date-title">{{datePlan.title}}</text>
+      <view class="ras-date-lines">
+        <view
+          wx:for="{{datePlan.lines}}"
+          wx:key="index"
+          class="ras-date-line {{item.tone}}"
+        >
+          <text class="ras-date-label">{{item.label}}：</text>
+          <text class="ras-date-value">{{item.text}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{auth}}" class="ras-auth-card">
+      <view class="ras-auth-row">
+        <text class="ras-auth-label">放票提醒授权：</text>
+        <text class="ras-auth-status {{auth.authReady ? 'ok' : 'warn'}}">{{auth.statusText}}</text>
+      </view>
+      <view class="ras-divider"></view>
+      <view class="ras-quota-line">
+        <view class="ras-quota-copy">
+          <text>本次 {{auth.needed}} 条提醒 · 当前可用 {{auth.availableQuota}} 次</text>
+          <text wx:if="{{auth.reservedQuota > 0}}" class="ras-reserved">
+            已授权 {{auth.ledgerQuota}} 次，其中 {{auth.reservedQuota}} 次已被待发送提醒占用
+          </text>
+        </view>
+        <view wx:if="{{!auth.authReady}}" class="ras-fill {{busy ? 'disabled' : ''}}" bindtap="onPrimary">
+          {{busy ? '正在处理...' : auth.primaryText}}
+        </view>
+      </view>
+
+      <view wx:if="{{feedback}}" class="ras-feedback">{{feedback}}</view>
+
+      <view wx:if="{{!auth.authReady}}" class="ras-auth-tips">
+        <text>1、微信通知提醒需要主动授权，1次授权可发送1条提醒</text>
+        <text>2、每次点击最多增加1次授权，需要几次请重复点</text>
+        <text>3、“总是保持以上选择”可免去后续弹窗</text>
+      </view>
+
+      <view class="ras-sample" bindtap="onSample">
+        <text>查看提醒样式示例</text>
+        <svg-icon name="chevron-right" size="12px" />
+      </view>
+    </view>
+
+    <view wx:if="{{membership}}" class="ras-limit-card">
+      <view class="ras-limit-copy">
+        <text class="ras-limit-title">{{membership.title}}</text>
+        <view class="ras-limit-detail">
+          <text class="ras-limit-label">提醒名额明细</text>
+          <text class="ras-limit-formula">当前额度 {{membership.limit}} 个 − 已占 {{membership.used}} 个 = 剩余 {{membership.remaining}} 个</text>
+          <text class="ras-limit-requested">本次新建 {{membership.requested}} 个，还差 {{membership.shortfall}} 个</text>
+        </view>
+        <text class="ras-limit-desc">{{membership.description}}</text>
+        <text wx:if="{{membership.note}}" class="ras-limit-note">{{membership.note}}</text>
+      </view>
+      <view class="ras-pay {{payDisabled ? 'disabled' : ''}}" bindtap="onPay">
+        {{membership.payText}}
+      </view>
+      <view class="ras-benefits" bindtap="onBenefits">
+        <text>查看会员权益与退款说明</text>
+        <svg-icon name="chevron-right" size="12px" />
+      </view>
+    </view>
+
+    <view class="ras-continue {{checkoutReady ? '' : 'disabled'}}" bindtap="onContinue">{{continueText}}</view>
+    <view wx:if="{{datePlan && !auth && datePlan.primaryAction !== 'reselect'}}" class="ras-trip-only" bindtap="onReselect">重新选择日期</view>
+    <view wx:elif="{{datePlan && !auth}}" class="ras-trip-only" bindtap="onClose">取消</view>
+    <block wx:else>
+      <view wx:if="{{datePlan && auth}}" class="ras-trip-only" bindtap="onReselect">重新选择日期</view>
+      <view class="ras-trip-only" bindtap="onTripOnly">仅加行程·不提醒</view>
+    </block>
+
+    <reminder-sample-sheet show="{{showSample}}" bind:close="onCloseSample" />
+    <payment-confirm-sheet
+      show="{{payConfirm}}"
+      title="{{payConfirm.title}}"
+      amount="{{payConfirm.amount}}"
+      expiry="{{payConfirm.expiry}}"
+      button-text="{{payButtonText}}"
+      paying="{{paying}}"
+      disabled="{{payDisabled}}"
+      feedback="{{payFeedback}}"
+      bind:close="onPayClose"
+      bind:confirm="onPayConfirm"
+    />
+  </view>
+</view>

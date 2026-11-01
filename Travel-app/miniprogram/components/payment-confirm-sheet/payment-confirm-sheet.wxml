@@ -1,0 +1,21 @@
+<view wx:if="{{show}}" class="pcs-mask" bindtap="onClose" catchtouchmove="noop">
+  <view class="pcs-sheet" catchtap="noop">
+    <view class="pcs-head">
+      <text class="pcs-title">确认支付</text>
+      <view class="pcs-close {{paying ? 'disabled' : ''}}" bindtap="onClose">×</view>
+    </view>
+    <view class="pcs-row"><text>商品</text><text>{{title}}</text></view>
+    <view class="pcs-row"><text>金额</text><text class="pcs-amount">{{amount}}</text></view>
+    <view class="pcs-row"><text>生效</text><text>支付成功后立即生效</text></view>
+    <view class="pcs-row"><text>有效期</text><text>{{expiry}}</text></view>
+    <view class="pcs-rule">
+      <text wx:if="{{isIosDevice}}">iOS 购买由 Apple 处理，支付成功后权益立即生效。退款申请与审核以 Apple 为准，小程序客服无法决定；如需申请，可在 App Store 购买记录中操作。</text>
+      <text wx:else>24 小时内且未新增任何提醒，可申请退款并等待客服审核；已使用、超时或无正当理由不支持。</text>
+      <text>不自动续费，不会删除已有提醒，不保证景点有票。</text>
+    </view>
+    <text wx:if="{{feedback}}" class="pcs-feedback">{{feedback}}</text>
+    <view class="pcs-pay-btn {{paying || disabled ? 'disabled' : ''}}" bindtap="onConfirm">
+      {{paying ? '处理中...' : buttonText}}
+    </view>
+  </view>
+</view>

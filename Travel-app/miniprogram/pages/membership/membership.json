@@ -1,6 +1,7 @@
 {
   "usingComponents": {
     "svg-icon": "/components/svg-icon/svg-icon",
+    "payment-confirm-sheet": "/components/payment-confirm-sheet/payment-confirm-sheet",
     "van-loading": "@vant/weapp/loading/index"
   },
   "navigationStyle": "custom",

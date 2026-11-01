@@ -25,6 +25,8 @@ const { COLLECTIONS, ChannelType } = require('../cloudfunctions/reminder/lib/sch
 const trip = require('../cloudfunctions/reminder/lib/trip');
 const cart = require('../cloudfunctions/reminder/lib/cart');
 const task = require('../cloudfunctions/reminder/lib/task');
+const tripItem = require('../cloudfunctions/reminder/lib/trip-item');
+const itemActions = require('../cloudfunctions/reminder/lib/trip-item-actions');
 const time = require('../cloudfunctions/reminder/lib/time');
 
 const spotsSeed = require('../data/spots.json').spots;
@@ -238,6 +240,94 @@ async function cloudConsumption() {
   console.log('   → 结论：本次提交必须备足', listed.summary.reminderCount * OFFSETS.length, '条订阅额度');
 }
 
+async function serverCommitGate() {
+  console.log('\n=== 1.1 最终提交再次校验订阅额度，阻止预检后竞态 ===');
+  const db = createDb();
+  db._seed(COLLECTIONS.SPOTS, spotsSeed);
+  db._seed(COLLECTIONS.RELEASE_RULES, rulesSeed);
+  const USER = 'openid_commit_subscription_gate';
+  const visitDate = time.addDays(time.todayStr(), 30);
+  const t = await trip.create(db, USER, {
+    startDate: visitDate,
+    endDate: visitDate,
+    spotIds: ['gugong'],
+  });
+  await cart.add(db, USER, {
+    tripId: t.tripId,
+    spotId: 'gugong',
+    visitDate,
+    remindOn: true,
+  });
+
+  const blocked = await task.submit(db, USER, {
+    tripId: t.tripId,
+    channels: [ChannelType.OFFICIAL_ACCOUNT],
+    offsets: [5],
+    requireSubscription: true,
+  });
+  eq(blocked.success, false, '客户端预检后额度被占用时整体拒绝');
+  eq(blocked.errorCode, 1008, '返回订阅额度不足错误码');
+  eq(blocked.subscription && blocked.subscription.required, 1, '返回服务端重新计算的需求数');
+  eq(db._dump(COLLECTIONS.REMINDER_CART).length, 1, '失败时清单原样保留');
+  eq(db._dump(COLLECTIONS.TRIP_ITEMS).length, 0, '失败时不创建行程项');
+  eq(db._dump(COLLECTIONS.REMINDER_TASKS).length, 0, '失败时不创建提醒任务');
+
+  const existingUser = db._dump(COLLECTIONS.USERS).find(row => row.openId === USER);
+  await db.collection(COLLECTIONS.USERS).doc(existingUser._id).update({
+    data: {
+      subscribeTemplateId: TPL,
+      subscribeQuota: 1,
+      subscribeQuotas: { [TPL]: 1 },
+    },
+  });
+  const committed = await task.submit(db, USER, {
+    tripId: t.tripId,
+    channels: [ChannelType.OFFICIAL_ACCOUNT],
+    offsets: [5],
+    requireSubscription: true,
+  });
+  eq(committed.success, true, '额度真实到账后才允许提交');
+  eq(committed.createdTasks, 1, '有额度时正常创建任务');
+
+  const secondVisit = time.addDays(visitDate, 1);
+  const secondItem = tripItem.makeItemData({
+    userId: USER,
+    tripId: t.tripId,
+    spotId: 'gugong',
+    visitDate: secondVisit,
+    remindOn: false,
+    nowTs: new Date(),
+  });
+  const secondItemRes = await db.collection(COLLECTIONS.TRIP_ITEMS).add({ data: secondItem });
+  const itemBlocked = await itemActions.updateReminder(db, USER, {
+    itemId: secondItemRes._id,
+    remindOn: true,
+    channels: [ChannelType.OFFICIAL_ACCOUNT],
+    offsets: [5],
+    requireSubscription: true,
+  });
+  eq(itemBlocked.success, false, '行程项开启提醒同样执行服务端额度闸门');
+  eq(itemBlocked.errorCode, 1008, '行程项额度竞态返回 1008');
+  const secondStored = db._dump(COLLECTIONS.TRIP_ITEMS).find(row => row._id === secondItemRes._id);
+  eq(secondStored.remindOn, false, '失败时不提前写 remindOn');
+
+  const userDoc = db._dump(COLLECTIONS.USERS).find(row => row.openId === USER);
+  await db.collection(COLLECTIONS.USERS).doc(userDoc._id).update({
+    data: {
+      subscribeQuota: 2,
+      subscribeQuotas: { [TPL]: 2 },
+    },
+  });
+  const itemOpened = await itemActions.updateReminder(db, USER, {
+    itemId: secondItemRes._id,
+    remindOn: true,
+    channels: [ChannelType.OFFICIAL_ACCOUNT],
+    offsets: [5],
+    requireSubscription: true,
+  });
+  eq(itemOpened.success, true, '额度到账后行程项可开启提醒');
+}
+
 /* ============================================================
  * 2. 前端按缺口补齐（公式的左半边）
  * ============================================================ */
@@ -320,6 +410,7 @@ async function frontendGapFill() {
   eq(notify.reminderAccessCancelText({ action: 'cancelled', reason: 'user-cancelled' }), '已取消，本次未设置提醒');
   eq(notify.reminderAccessCancelText({ action: 'cancelled', reason: 'rejected' }), '已取消，本次未设置提醒');
   eq(notify.reminderAccessCancelText({ action: 'cancelled', reason: 'quota-shortfall' }), '授权还未补齐，本次未设置提醒');
+  eq(notify.reminderAccessCancelText({ action: 'cancelled', reason: 'quota-unsynced' }), '授权已提交，但可用次数未增加，本次未设置提醒');
   eq(notify.reminderAccessCancelText({ action: 'cancelled', reason: 'request-failed' }), '授权未完成，本次未设置提醒');
   eq(notify.reminderAccessCancelText({ action: 'cancelled', reason: 'action-sheet-failed' }), '授权未完成，本次未设置提醒');
   eq(notify.reminderAccessCancelText({ action: 'cancelled' }), '', '用户主动关掉选择面板不追加 Toast');
@@ -489,6 +580,7 @@ function keepChoiceHint() {
 
 (async () => {
   await cloudConsumption();
+  await serverCommitGate();
   await frontendGapFill();
   crossCheck();
   keepChoiceHint();

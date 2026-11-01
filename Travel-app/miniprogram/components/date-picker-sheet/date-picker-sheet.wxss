@@ -78,11 +78,12 @@
   background: #F0E2C4;
 }
 .dp-cell.in-trip.trip-start::before {
-  left: 50%;
+  /* 端点日期的数字位于格中心，半格条带会裁掉数字的一部分；端点也铺满整格。 */
+  left: 0;
   border-radius: 32rpx 0 0 32rpx;
 }
 .dp-cell.in-trip.trip-end::before {
-  right: 50%;
+  right: 0;
   border-radius: 0 32rpx 32rpx 0;
 }
 .dp-cell.in-trip.trip-start.trip-end::before {
@@ -97,6 +98,18 @@
   font-weight: 600;
 }
 
+.dp-selection {
+  min-height: 38rpx;
+  margin-top: 22rpx;
+  text-align: center;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #8B7355;
+}
+.dp-selection.has-selection {
+  color: var(--color-primary);
+}
+
 /* 底部按钮 */
 .dp-acts {
   display: flex; gap: 20rpx; margin-top: 32rpx;
@@ -108,7 +121,7 @@
   color: #FDF6EE;
   border-radius: 40rpx;
   padding: 24rpx 0;
-  font-size: 30rpx; font-weight: 600;
+  font-size: 28rpx; font-weight: 600;
 }
 .dp-confirm.disabled {
   background: var(--color-placeholder);

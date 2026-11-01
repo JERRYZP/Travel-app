@@ -126,12 +126,40 @@
 
 <!-- 选日期：设置提醒 / 仅加行程不提醒 共用 -->
 <date-picker-sheet
+  id="spot-date-picker"
   show="{{showDateSheet}}"
   spot-name="{{dateSpotName}}"
   title="{{dateTitle}}"
   trip-dates="{{dateTripDates}}"
   booked-dates="{{dateBookedDates}}"
   min-date="{{dateMinDate}}"
+  multiple="{{dateMultiple}}"
   bind:confirm="onDateConfirm"
   bind:close="onDateClose"
+/>
+
+<reminder-auth-sheet
+  show="{{showReminderAuth}}"
+  auth="{{reminderAuth}}"
+  date-plan="{{datePlan}}"
+  membership="{{membershipLimit}}"
+  checkout-ready="{{reminderCheckoutReady}}"
+  continue-text="{{reminderContinueText}}"
+  busy="{{reminderAuthBusy}}"
+  feedback="{{reminderAuthFeedback}}"
+  pay-confirm="{{taskLimitPayConfirm}}"
+  pay-button-text="{{taskLimitPayButtonText}}"
+  paying="{{taskLimitPaying}}"
+  pay-disabled="{{taskLimitPayDisabled}}"
+  pay-feedback="{{taskLimitPayFeedback}}"
+  bind:primary="onReminderAuthPrimary"
+  bind:settings="onReminderAuthSettings"
+  bind:triponly="onReminderAuthTripOnly"
+  bind:close="onReminderAuthClose"
+  bind:pay="onReminderAuthPay"
+  bind:benefits="onReminderAuthBenefits"
+  bind:payclose="onReminderAuthPayClose"
+  bind:payconfirm="onReminderAuthPayConfirm"
+  bind:continue="onReminderAuthContinue"
+  bind:reselect="onReminderAuthReselect"
 />

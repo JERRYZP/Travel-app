@@ -54,7 +54,13 @@
 
     <view wx:else class="case-list">
       <view wx:for="{{items}}" wx:key="_id" class="case-card" bindtap="onCaseTap" data-id="{{item._id}}">
-        <view class="case-head"><text class="case-no">{{item.caseNo}}</text><text class="case-status">{{item.statusLabel}}</text></view>
+        <view class="case-head">
+          <text class="case-no">{{item.caseNo}}</text>
+          <view class="case-head-right">
+            <text wx:if="{{item.systemGenerated}}" class="case-auto">系统自动</text>
+            <text class="case-status">{{item.statusLabel}}</text>
+          </view>
+        </view>
         <text class="case-title">{{item.typeLabel}} · {{item.title}}</text>
         <text class="case-meta">订单 {{item.outTradeNo}}</text>
         <text class="case-meta">申请时间 {{item.createdAtText}}</text>
@@ -73,14 +79,18 @@
     <scroll-view class="detail-scroll" scroll-y>
       <view class="detail-status">{{detail.case.statusLabel}}</view>
       <view class="detail-section">
-        <text class="detail-section-title">用户申请</text>
+        <text class="detail-section-title">售后信息</text>
+        <text wx:if="{{detail.case.systemGenerated}}">生成方式：系统自动创建</text>
         <text>类型：{{detail.case.typeLabel}}</text>
         <text>说明：{{detail.case.description || '未填写'}}</text>
         <text>金额：{{detail.case.amountText}}</text>
+        <text wx:if="{{detail.case.outRefundNo}}">退款单号：{{detail.case.outRefundNo}}</text>
+        <text wx:if="{{detail.case.refundAmountFen}}">退款金额：{{detail.case.refundAmountText}}</text>
       </view>
       <view class="detail-section">
         <text class="detail-section-title">订单与权益证据</text>
         <text>优先级：{{detail.case.priorityLabel}}</text>
+        <text wx:if="{{detail.order.paymentChannelLabel}}">支付渠道：{{detail.order.paymentChannelLabel}}</text>
         <text>订单状态：{{detail.order.status}} / 退款 {{detail.order.refundStatus}}</text>
         <text>权益发放：{{detail.order.grantStatus}} / {{detail.order.entitlementStatus}}</text>
         <text wx:if="{{detail.order.paymentResult.tradeState}}">最近查单：{{detail.order.paymentResult.tradeState}}，金额 {{detail.order.paymentResult.amountFen}} 分</text>

@@ -23,7 +23,7 @@ Page({
     isMember: false,
     memberTagText: '普通用户',
     memberCardTitle: '会员',
-    memberCardDesc: '免费版 5 个提醒名额；会员 30 天内最多 10 个',
+    memberCardDesc: '免费版 5 个提醒名额；会员 30 天内最多 15 个',
     memberCardAction: '开通',
     notifyHint: '未开启',
     notifyState: 'none',
@@ -66,6 +66,8 @@ Page({
     const expiryDate = expiryMatch
       ? `${expiryMatch[1]}-${String(expiryMatch[2]).padStart(2, '0')}-${String(expiryMatch[3]).padStart(2, '0')}`
       : '';
+    const freeSlots = Math.max(0, Number(current.freeTaskSlots) || 0);
+    const memberSlots = Math.max(freeSlots, Number(current.memberTaskSlots) || 0);
     this.setData({
       user,
       isMember: current.member === true,
@@ -73,7 +75,7 @@ Page({
       memberCardTitle: current.member ? '尊贵会员' : '非会员',
       memberCardDesc: current.member
         ? `${expiryDate || current.memberExpiresAtText || '—'} 到期｜提醒名额 ${current.taskUsed}/${current.taskLimit}`
-        : '免费版可用 5 个提醒名额；开通后最多 10 个',
+        : `免费版可用 ${freeSlots} 个提醒名额；开通后最多 ${memberSlots} 个`,
       memberCardAction: current.member ? '升级' : '开通',
     });
   },

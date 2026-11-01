@@ -50,6 +50,7 @@ const wxState = {
   subscribeValue: 'accept',
   subscribeCalls: 0,
   actionIndex: 0,
+  actionIndices: [],
   actionFail: null,
   actionCalls: [],
   storage: {},
@@ -78,7 +79,10 @@ global.wx = {
   showActionSheet(opts) {
     wxState.actionCalls.push(opts);
     if (wxState.actionFail) opts.fail(wxState.actionFail);
-    else opts.success({ tapIndex: wxState.actionIndex });
+    else {
+      const tapIndex = wxState.actionIndices.length ? wxState.actionIndices.shift() : wxState.actionIndex;
+      opts.success({ tapIndex });
+    }
   },
   openSetting() {},
   openAppAuthorizeSetting() {},
@@ -104,6 +108,7 @@ function resetWx(patch = {}) {
   wxState.remembered = patch.remembered || null;
   wxState.subscribeCalls = 0;
   wxState.actionIndex = Number.isFinite(patch.actionIndex) ? patch.actionIndex : 0;
+  wxState.actionIndices = Array.isArray(patch.actionIndices) ? patch.actionIndices.slice() : [];
   wxState.actionFail = patch.actionFail || null;
   wxState.actionCalls = [];
 }
@@ -151,29 +156,42 @@ function resetWx(patch = {}) {
 
   resetWx({ system: 'authorized', quota: 0, actionIndex: 0 });
   access = await notify.confirmReminderAccess(1);
-  eq(wxState.subscribeCalls, 1, '用户点“补授权并继续”后才发起微信授权');
+  eq(wxState.subscribeCalls, 1, '用户点“补 1 次并继续”后才发起微信授权');
   eq(access.action, 'ready', '补授权成功后原地继续本次提醒');
   eq(access.shortfall, 0, '补授权成功后缺口清零');
-  eq(wxState.actionCalls[0].itemList[0], '补授权并继续', '选择面板首项明确说明会继续原流程');
+  eq(wxState.actionCalls[0].itemList[0], '补 1 次并继续', '选择面板首项明确说明一次只补 1 次');
 
   resetWx({ system: 'authorized', quota: 0, actionIndex: 0 });
   apiStub.applyAdd = false;
   access = await notify.confirmReminderAccess(1);
   eq(access.action, 'cancelled', '云端回调成功但可用额度没增加时，不得假装补齐');
-  eq(access.reason, 'quota-shortfall', '额度未同步按真实缺口处理');
+  eq(access.reason, 'quota-unsynced', '额度未同步时停止继续授权，避免重复消耗用户授权');
   eq(access.shortfall, 1, '额度未同步时仍上报 1 条缺口');
   apiStub.applyAdd = true;
 
   resetWx({ system: 'authorized', quota: 1, pendingMessageCount: 1, actionIndex: 1 });
   access = await notify.confirmReminderAccess(1, undefined, { allowTripOnly: false });
   eq(access.action, 'cancelled', '行程内开启提醒不提供“仅加行程”假分支');
-  eq(wxState.actionCalls[0].itemList.join('|'), '补授权并继续|取消', '仅保留补授权与取消两项');
+  eq(wxState.actionCalls[0].itemList.join('|'), '补 1 次并继续|取消', '仅保留补授权与取消两项');
 
   resetWx({ system: 'authorized', quota: 0, actionIndex: 0 });
   access = await notify.confirmReminderAccess(2);
-  eq(access.action, 'cancelled', '一次手势只补到 1 条时不能假装全部补齐');
-  eq(access.reason, 'quota-shortfall', '部分补齐返回明确原因');
-  eq(access.shortfall, 1, '部分补齐返回真实缺口');
+  eq(access.action, 'ready', '补到第二次授权后才继续原提醒');
+  eq(wxState.subscribeCalls, 2, '两次用户点击各申请 1 条授权');
+  eq(wxState.actionCalls.length, 2, '第一次仍不足时重新展示同一授权面板');
+  eq(wxState.actionCalls[1].itemList[0], '继续补 1 次', '后续面板继续明确一次只补 1 次');
+  eq(/还差 1 次微信授权/.test(wxState.actionCalls[1].alertText), true, '后续面板显示最新缺口');
+
+  resetWx({ system: 'authorized', quota: 0, actionIndices: [0, 2] });
+  access = await notify.confirmReminderAccess(2);
+  eq(access.action, 'cancelled', '用户补齐一次后仍可选择取消');
+  eq(access.reason, 'user-cancelled', '第二次主动取消保留明确原因');
+  eq(wxState.subscribeCalls, 1, '用户取消后不再自动申请下一次授权');
+
+  resetWx({ system: 'authorized', quota: 0, actionIndices: [0, 1] });
+  access = await notify.confirmReminderAccess(2);
+  eq(access.action, 'trip-only', '用户补齐一次后仍可改为仅加行程');
+  eq(wxState.subscribeCalls, 1, '仅加行程后停止补授权');
 
   resetWx({ system: 'denied', actionIndex: 0 });
   access = await notify.confirmReminderAccess(1);
@@ -206,12 +224,20 @@ function resetWx(patch = {}) {
   eq(/requestSubscribeBurst\(1(?:,\s*this\.data\.templateId)?\)/.test(setupSrc), true,
     'setup 每次用户点击只申请 1 条授权');
   eq(/confirmReminderAccess/.test(setupSrc), false, 'setup 不再提供仅加行程旁路');
-  eq(/confirmReminderAccess\(1\)/.test(homeSrc), true, '挽回路径只按本次 1 条提醒校验授权');
+  eq(/reminderFlow\.onDateConfirm/.test(homeSrc), true, '首页挽回复用景点页的单一日期提醒流程');
   eq(/notify\.confirmReminderAccess\(1, undefined, \{ allowTripOnly: false \}\)/.test(homeSrc), true,
     '首页开启提醒也走授权闸门（不提供仅加行程假分支）');
-  eq(/disableReminders: true/.test(homeSrc), true, '挽回路径支持仅加行程');
+  const homeRecoverSrc = homeSrc.slice(
+    homeSrc.indexOf('onRecoverConfirm(e)'),
+    homeSrc.indexOf('onDateSheetClose()')
+  );
+  eq(/membershipEntry\.openTaskLimit/.test(homeRecoverSrc), false,
+    '首页挽回不再因提醒名额错误直接跳会员页');
   eq(/reminderFlow\.onDateConfirm/.test(hubSrc), true, '景点页使用共享提醒流程');
-  eq(/confirmReminderAccess\(1\)/.test(reminderFlowSrc), true, '共享提醒流程统一处理授权闸门');
+  eq(/openReminderAuth\(page, addRes\.summary\.reminder/.test(reminderFlowSrc), true,
+    '共享提醒流程按本次实际待建提醒数打开固定授权浮层');
+  eq(/notify\.confirmReminderAccess/.test(reminderFlowSrc), false,
+    '景点轻量入口不再循环弹出系统 ActionSheet');
   eq(/disableReminders: true/.test(reminderFlowSrc), true, '共享提醒流程支持仅加行程');
   eq(/ensureSubscribe/.test(reminderFlowSrc), false, '共享提醒流程不保留旁路授权实现');
 

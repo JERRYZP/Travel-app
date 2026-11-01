@@ -510,9 +510,32 @@ console.log('=== 8. 行程项卡的提醒状态（四态上卡）与菜单显示
     '「设置提醒 / 修改提醒」两个旧名字不得复活');
   eq(/ticketState === 'PENDING'/.test(CARD_WXML.replace(/<!--[\s\S]*?-->/g, '')), false,
     '提醒入口不得按 ticketState 判定（会漏掉「清单先加、放票后才提交」那一档）');
-  eq(/item\.result === 'FAILED' && recoverable/.test(CARD_WXML), true,
-    '「约其他日」要求没抢到 **且** 服务端确实算出候选（无候选时是空转建议）');
+  eq(/item\.result === 'FAILED' && recoveryPrompt && !recoverDismissed/.test(CARD_WXML), true,
+    '本次刚标记没抢到后，「约其他日」立即出现在卡片上');
+  eq(/item\.result === 'FAILED' && recoverable/.test(CARD_WXML), false,
+    '候选不得再决定入口是否出现；它只用于切换提示语');
+  eq(/item\.result === 'FAILED' && !recoverDismissed/.test(CARD_WXML), false,
+    '已有 FAILED 状态不得默认出现即时气泡');
+  eq(/\{\{recoverable \? '还有其他日期可约' : '换个日期再约\?'\}\}/.test(CARD_WXML), true,
+    '有候选时提示候选，无候选时仍提示换日期');
   eq(/删除这天/.test(CARD_WXML), true, '删除项文案是「删除这天」而非「删除行程」');
+  const HOME_JS = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.js'), 'utf8');
+  eq(/const itemPatch = this\.tripItemPatch\(item\);\s*this\.setData\(Object\.assign\(/.test(HOME_JS), true,
+    'markResult 返回后先局部刷新当前卡片，不等第二次 bootstrap 才出现挽回入口');
+  eq(/recoveryPromptIds[\s\S]*?\.filter\(id => id !== itemId\)[\s\S]*?\.concat\(isSuccess \? \[\] : \[itemId\]\)/.test(HOME_JS), true,
+    '只有本次标记 FAILED 才写入即时挽回提示');
+  eq(/onHide\(\) \{[\s\S]*?recoveryPromptIds: \[\]/.test(HOME_JS), true,
+    '重新进入首页时清空即时挽回提示，已有 FAILED 不默认上卡');
+  eq(/return found \? \{ trips \} : \{\};/.test(HOME_JS), true,
+    '局部刷新只提交新 trips 引用');
+  const HOME_WXML = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxml'), 'utf8');
+  const SECTION_JS = fs.readFileSync(path.join(ROOT, 'miniprogram/components/trip-section/trip-section.js'), 'utf8');
+  eq(/recovery-prompt-ids="\{\{recoveryPromptIds\}\}"/.test(HOME_WXML), true,
+    '首页把本次即时挽回集合下发给行程分段');
+  eq(/recoveryPromptIds: \{ type: Array, value: \[\] \}/.test(SECTION_JS), true,
+    'trip-section 显式声明即时挽回集合');
+  eq(/recoveryPrompt: !!recoveryPromptSet\[it\.itemId\]/.test(SECTION_JS), true,
+    '只有本次点过没约到的 itemId 才得到 recoveryPrompt');
 
   /* ⑤ 反向锁：旧实现与死代码不得复活 */
   eq(/tc-recover/.test(codeOf(CARD_WXSS)), false, '独立挽回行已删（并入气泡），不留孤儿');

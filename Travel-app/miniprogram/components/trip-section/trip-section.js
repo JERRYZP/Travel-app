@@ -38,6 +38,8 @@ Component({
     dismissed: { type: Array, value: [] },
     /* 有候选可挽回的 itemId 集合（服务端三层规则判定后回传） */
     recoverableIds: { type: Array, value: [] },
+    /* 本次刚由用户标记 FAILED 的 itemId；只触发一次即时挽回气泡 */
+    recoveryPromptIds: { type: Array, value: [] },
     /* ⚠️ 由页面决定（`trips.length === 1`）：**只有一趟行程**时该段与摘要卡完全重复，
        连标题行一起弱化不渲染。单行程是最常见形态，这一条撑住了「首页是一堵干净的墙」
        的观感；两趟以上时每段都得靠标题行表明自己是哪一趟。 */
@@ -56,14 +58,16 @@ Component({
   },
 
   observers: {
-    'trip, menuDate, dismissed, recoverableIds, history': function (
-      trip, menuDate, dismissed, recoverableIds, history
+    'trip, menuDate, dismissed, recoverableIds, recoveryPromptIds, history': function (
+      trip, menuDate, dismissed, recoverableIds, recoveryPromptIds, history
     ) {
       if (!trip) return;
       const dismissedSet = {};
       (dismissed || []).forEach(id => { dismissedSet[id] = true; });
       const recoverSet = {};
       (recoverableIds || []).forEach(id => { recoverSet[id] = true; });
+      const recoveryPromptSet = {};
+      (recoveryPromptIds || []).forEach(id => { recoveryPromptSet[id] = true; });
 
       /* 按出行日分组。⚠️ wx:key 必须用 itemId——
          同一景点可以有多个备选日期，用 spotId 会重键（backendup 组正是为此存在） */
@@ -78,6 +82,7 @@ Component({
           bubbleDismissed: !!dismissedSet[it.itemId],
           recoverDismissed: !!dismissedSet[it.itemId + ':recover'],
           recoverable: !!recoverSet[it.itemId],
+          recoveryPrompt: !!recoveryPromptSet[it.itemId],
         }));
       });
 

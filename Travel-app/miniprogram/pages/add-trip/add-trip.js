@@ -640,7 +640,15 @@ Page({
          （配合首页预填，这是常见路径，且 addBatch 是按 SELECTABLE 过滤的，
          已在行程/已在清单的项根本进不了 selectable）；② 当前出游日确实没得加。 */
       if (res.added > 0) {
-        wx.showToast({ title: '已加入 ' + res.added + ' 项', icon: 'none' });
+        let title = '已加入 ' + res.added + ' 项';
+        if (res.addedReminders > 0 && res.addedTripOnly > 0) {
+          title = '已加入 ' + res.added + ' 项，' + res.addedReminders + ' 项将提醒';
+        } else if (res.addedReminders === 0) {
+          title = '已加入 ' + res.added + ' 项，均仅行程';
+        } else {
+          title = '已加入 ' + res.added + ' 项，均将提醒';
+        }
+        wx.showToast({ title, icon: 'none' });
       } else if (res.skipped.length > 0) {
         wx.showToast({ title: '这 ' + res.skipped.length + ' 项已在清单或行程里', icon: 'none' });
       } else {
@@ -675,15 +683,14 @@ Page({
       releaseAt: event.releaseAt,
       remindOn: event.remindOnDefault,
     }).then(res => {
-      /* ⚠️ 必须等**确认加成功**再弹成功 toast。原来不看返回值一律弹「已加入」，
-         于是当这项已在行程里（配合首页预填，这是常见路径）时，用户看到「已加入」
-         却发现清单和预览都没变——正是「按钮像坏的」那类投诉的来源。
-         文案跟着按钮走：按钮已统一成「加入清单 / 加入行程」（32.png），
-         toast 再写「提醒清单」会和用户刚点的那个按钮对不上。 */
+      /* 服务端可能因为放票时刻刚过而把提醒降级为 false。
+         这时必须明确说“已加入行程、未设提醒”，不能继续假装加入的是提醒清单。 */
+      const reminderAdded = !!(res && res.remindOn === true);
+      const tripOnlyReason = res && res.remindBlockedReason;
       wx.showToast({
-        title: (res && res.success === false)
-          ? '这一项已经在行程里了'
-          : ((event.reservationRequired === false || event.remindable === false) ? '已加入行程' : '已加清单'),
+        title: reminderAdded
+          ? '已加清单'
+          : (tripOnlyReason ? '已加入行程，提醒未开启' : '已加入清单，提醒未开启'),
         icon: 'none',
       });
       this.setData({ submitting: false });

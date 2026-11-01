@@ -12,6 +12,7 @@ const refreshWindow = require('../../utils/home-refresh-window.js');
 const homeTiming = require('../../utils/home-timing.js');
 const homeCache = require('../../utils/home-cache.js');
 const emptyPreview = require('../../utils/empty-preview.js');
+const reminderFlow = require('../../utils/reminder-flow.js');
 
 /* 导航块高度（rpx）= `.navbar-content` 的 height，两处必须一致。 */
 const NAV_BAR_RPX = 88;
@@ -165,6 +166,9 @@ Page({
     dismissed: [],
     /* 有候选可挽回的 itemId：由服务端三层规则判定后回填 */
     recoverableIds: [],
+    /* 仅本次刚点「没抢到」的 itemId：触发一次即时挽回气泡。
+       普通加载不会填充；已有 FAILED 状态只在右侧菜单保留入口。 */
+    recoveryPromptIds: [],
 
     showSpotPopup: false,
     popupSpotId: '',
@@ -179,6 +183,22 @@ Page({
     dateTripDates: [],
     dateBookedDates: [],
     dateMinDate: '',
+    dateAction: null,
+    dateMultiple: false,
+    entryContext: null,
+    showReminderAuth: false,
+    reminderAuth: null,
+    datePlan: null,
+    reminderAuthBusy: false,
+    reminderAuthFeedback: '',
+    reminderCheckoutReady: false,
+    reminderContinueText: '开启行程放票提醒',
+    membershipLimit: null,
+    taskLimitPayConfirm: null,
+    taskLimitPayButtonText: '',
+    taskLimitPaying: false,
+    taskLimitPayDisabled: false,
+    taskLimitPayFeedback: '',
 
     snackbar: { show: false, lead: '', highlight: '', tail: '', tone: '' },
     undoSeconds: 4,
@@ -198,6 +218,7 @@ Page({
       statusBarHeight: g.statusBarHeight || 20,
       navBarHeight: g.navBarHeight || 44,
       pageTop: pageTopOf(g.statusBarHeight),
+      entryContext,
     });
     /* 从订阅消息点进来：先落到对应景点的详情浮窗（预约直达 + 倒计时）。
        标记入口**不在浮窗里**——等用户回到首页才在行程卡片上看到（决策文档 4.1）。 */
@@ -211,6 +232,12 @@ Page({
        写入后的刷新一律走 `loadHome({ silent: true })`，不经过这条路径 —— 它们是刷新后
        新状态的唯一来源，永远要发请求。这里省掉的只是「用户什么都没干、切出去又切回来」。 */
     this.loadHome({ allowTtlReuse: true });
+    if (this._reminderAuthResolve) reminderFlow.refreshReminderAuth(this);
+  },
+
+  onHide() {
+    /* 即时挽回气泡只属于刚才那次「没抢到」操作，不在页面重新进入时复活。 */
+    if (this.data.recoveryPromptIds.length) this.setData({ recoveryPromptIds: [] });
   },
 
   onShareAppMessage(options) {
@@ -640,14 +667,22 @@ Page({
       this._marking = false;
       const item = res.item;
       const isSuccess = result === 'SUCCESS';
-      this.setData({
+      const recoveryPromptIds = this.data.recoveryPromptIds
+        .filter(id => id !== itemId)
+        .concat(isSuccess ? [] : [itemId]);
+      /* 标记接口返回的 item 已经是服务端装饰结果。先合并回当前列表，
+         让「没抢到 → 约其他日」在当前卡片上立即出现；随后静默 bootstrap
+         只负责补齐进度、提示等其余聚合字段，不再决定这个入口何时出现。 */
+      const itemPatch = this.tripItemPatch(item);
+      this.setData(Object.assign({
         _undoItemId: itemId,
         _undoResultAt: item.resultAt,
         /* 分段文案（撤销条要按结果给「抢到了」上绿、「没抢到」上朱砂）。
            拼法收在 util.snackbarPartsOf —— 这里与 onUndo 的清空结构必须同形。 */
         snackbar: Object.assign({ show: true }, util.snackbarPartsOf(item.spotName, isSuccess)),
         undoSeconds: 4,
-      });
+        recoveryPromptIds,
+      }, itemPatch));
       this.loadHome({ silent: true });
       /* 抢到了且还有备选 → 内联追问（永不静默自动删除备选） */
       if (isSuccess && res.backupPrompt) this.promptBackup(res.backupPrompt);
@@ -690,6 +725,9 @@ Page({
       expectedResultAt: this.data._undoResultAt,
     }).then(() => {
       wx.showToast({ title: '已撤销', icon: 'none' });
+      this.setData({
+        recoveryPromptIds: this.data.recoveryPromptIds.filter(id => id !== itemId),
+      });
       this.loadHome({ silent: true });
     }).catch(err => {
       api.toastError(err);
@@ -720,7 +758,10 @@ Page({
 
   onDismissRecover(e) {
     const id = e.detail.itemId;
-    this.setData({ dismissed: this.data.dismissed.concat(id + ':recover') });
+    this.setData({
+      dismissed: this.data.dismissed.concat(id + ':recover'),
+      recoveryPromptIds: this.data.recoveryPromptIds.filter(promptId => promptId !== id),
+    });
   },
 
   /* ===== 标记结果的次入口（Sheet） ===== */
@@ -774,102 +815,68 @@ Page({
       dateTripDates: calendar.tripDates,
       dateBookedDates: calendar.bookedDates,
       dateMinDate: minDate,
+      dateAction: { spotId, remindOn: true },
+      dateMultiple: false,
     });
   },
 
-  /* 挽回（约其他日）
-     ⚠️ 这里**只传 spotId + visitDate + remindOn**，不传 releaseAt：
-     放票时刻由服务端按 `visitDate − advanceDays` 推（`lib/cart.add`），
-     页面再算一遍就是第二套口径。原先服务端强制要求传 releaseAt，
-     于是点「确定」只回一句「请检查输入」——挽回线点得开、走不通（2026-09-24 修）。
-
-     ⚠️ **授权必须在 commit 之前，但不能在 cart.add 之前**：这条动线落的是一个
-     提醒任务，而微信订阅消息是「一次授权 = 能发 1 条」。先让服务端按真实放票时刻
-     决定 `remindOn`，再决定要不要授权；否则日期对应的放票时刻已过、或 cart.add
-     失败时，用户会白授权一次，最后只得到一条没有提醒的行程。
-     额度已经拿到过就不重复弹；额度不足时先就地解释，用户点“补授权并继续”后再弹微信授权。 */
+  /*
+   * 首页挽回只选择一个日期，其余授权、名额、支付、回滚和续提交流程
+   * 全部复用景点页同一个 reminderFlow，不在首页维护第二套状态机。
+   */
   onRecoverConfirm(e) {
-    const { visitDate } = e.detail || {};
-    if (!visitDate || !this.data.sheetSpotId) return;
-    this.setData({ showDateSheet: false });
-    if (this._recovering) return;
-    this._recovering = true;
-    wx.showLoading({ title: '正在添加...' });
-
-    const spotId = this.data.sheetSpotId;
-    const rollbackAdded = cartId => (cartId
-      ? api.reminder.cart.remove(cartId).catch(() => {})
-      : Promise.resolve());
-
-    /* 这次只提交新增的 1 条 cartId，不把其他暂存草稿的提醒额度一起算进来。 */
-    return api.reminder.cart.add({
-      spotId,
-      visitDate,
-      remindOn: true,
-    }).then(added => {
-      const cartId = added && added.cartId;
-      /* 服务端按真实放票时刻决定这一项还能不能设提醒。勾了提醒但放票时刻
-         已过时，cart.add 会把 remindOn 落成 false；此时不能再申请授权。 */
-      const reminderDowngraded = added && added.remindOn === false;
-      if (reminderDowngraded) {
-        return api.reminder.cart.commit({ cartId, disableReminders: true })
-          .then(res => ({ res, tripOnly: true, expired: true }));
-      }
-      return notify.confirmReminderAccess(1)
-        .catch(err => rollbackAdded(cartId).then(() => { throw err; }))
-        .then(access => {
-          if (access.action === 'settings' || access.action === 'cancelled') {
-            return rollbackAdded(cartId).then(() => ({ aborted: true, access }));
-          }
-          const tripOnly = access.action === 'trip-only';
-          return api.reminder.cart.commit(
-            tripOnly
-              ? { cartId, disableReminders: true }
-              : { cartId, channels: ['OFFICIAL_ACCOUNT'], offsets: [5] }
-          ).then(res => ({ res, tripOnly }));
-        });
-    }).then(result => {
-      this._recovering = false;
-      wx.hideLoading();
-      if (result && result.aborted) {
-        if (result.access.action === 'settings') notify.openReminderAccessSettings(result.access);
-        else notify.showReminderAccessCancelled(result.access);
-        return false;
-      }
-      if (!result || !result.res) return false;
-
-      const dateLabel = util.formatDate(visitDate);
-      /* ⚠️ 文案必须看 `expiredReminder` / `createdTasks`：选中的日期放票时刻
-         可能已经过去，提交后一个提醒都没建。无条件写「提醒已设置」就是在骗用户。 */
-      let title;
-      if (result.expired) {
-        title = `已加入 ${dateLabel}行程 · 已过放票时间，提醒无法设置`;
-      } else if (result.tripOnly) {
-        title = `已加入 ${dateLabel}行程，未设置提醒`;
-      } else if ((result.res.expiredReminder || 0) > 0) {
-        title = `已加入 ${dateLabel}行程 · 已过放票时间，提醒无法设置`;
-      } else if (result.res.createdTasks > 0) {
-        title = `已加入 ${dateLabel}行程，提醒已设置`;
-      } else {
-        title = `已加入 ${dateLabel}行程，未设置提醒`;
-      }
-      if (!result.tripOnly && result.res.createdTasks > 0 && notify.consumeFirstReminderSuccessTip()) {
-        title = '提醒已设置，先备好游客信息';
-      }
-      wx.showToast({ title, icon: 'none', duration: 2000 });
-      this.loadHome({ silent: true });
-      return true;
-    }).catch(err => {
-      this._recovering = false;
-      wx.hideLoading();
-      if (membershipEntry.openTaskLimit(err)) return false;
-      api.toastError(err);
-      return false;
-    });
+    return reminderFlow.onDateConfirm(this, e);
   },
 
   onDateSheetClose() {
-    this.setData({ showDateSheet: false });
+    reminderFlow.onDateClose(this);
+  },
+
+  onReminderFlowFinished() {
+    this.setData({
+      recoveryPromptIds: this.data.recoveryPromptIds.filter(id => id !== this.data.sheetItemId),
+    });
+    this.loadHome({ silent: true });
+  },
+
+  onReminderAuthPrimary() {
+    return reminderFlow.requestReminderAuthOnce(this);
+  },
+
+  onReminderAuthSettings() {
+    return reminderFlow.openReminderAuthSettings(this);
+  },
+
+  onReminderAuthTripOnly() {
+    return reminderFlow.tripOnlyReminderCheckout(this);
+  },
+
+  onReminderAuthClose() {
+    return reminderFlow.closeReminderCheckout(this);
+  },
+
+  onReminderAuthContinue() {
+    return reminderFlow.continueReminderCheckout(this);
+  },
+
+  onReminderAuthReselect() {
+    return reminderFlow.reselectReminderDates(this);
+  },
+
+  onReminderAuthPay() {
+    return reminderFlow.openTaskLimitPayment(this);
+  },
+
+  onReminderAuthBenefits() {
+    return reminderFlow.openTaskLimitBenefitsPage(this);
+  },
+
+  onReminderAuthPayClose() {
+    return reminderFlow.closeTaskLimitPayment(this);
+  },
+
+  onReminderAuthPayConfirm() {
+    return reminderFlow.confirmTaskLimitPayment(this);
   },
 
   /* ===== 删除动线（两层，每层都二次确认） =====
@@ -976,6 +983,10 @@ Page({
       }
       this.loadHome({ silent: true });
     }).catch(err => {
+      if (err && err.errorCode === 1008) {
+        wx.showToast({ title: '授权额度已变化，请重新点击开启', icon: 'none' });
+        return;
+      }
       if (membershipEntry.openTaskLimit(err)) return;
       api.toastError(err);
     }).then(releaseToggle);
@@ -1019,6 +1030,26 @@ Page({
   },
 
   /* ===== 工具 ===== */
+
+  /*
+   * 用 markResult 的服务端返回项做局部替换。只替换 itemId 命中的那一条，
+   * 且总是生成新的 trip / items 引用，避免原数组原地修改导致卡片不刷新。
+   */
+  tripItemPatch(item) {
+    if (!item || !item.itemId) return {};
+    let found = false;
+    const trips = this.data.trips.map(trip => {
+      const items = trip.items || [];
+      if (!items.some(it => it.itemId === item.itemId)) return trip;
+      found = true;
+      return Object.assign({}, trip, {
+        items: items.map(it => (it.itemId === item.itemId
+          ? Object.assign({}, it, item)
+          : it)),
+      });
+    });
+    return found ? { trips } : {};
+  },
 
   findItem(itemId) {
     for (const t of this.data.trips.concat(this.data.history)) {

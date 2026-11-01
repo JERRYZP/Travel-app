@@ -1,7 +1,9 @@
 /**
  * 会员与提醒名额支付 / 售后入口。
  *
- * 支付协议：微信支付 API v3 直连，不依赖 cloud.cloudPay 或云开发服务商。
+ * 支付协议保留两条并行通道：
+ * - WECHAT_PAY_V3：微信支付 API v3 直连，缺省通道；
+ * - VIRTUAL_PAY：小程序虚拟支付，显式设置 PAYMENT_PROVIDER=VIRTUAL_PAY 后启用。
  * 普通调用：wx.cloud.callFunction({
  *   name: 'payment',
  *   data: { action: 'create' | 'query' | 'cancel' | 'afterSales.submit' | ... }
@@ -10,7 +12,8 @@
  * HTTP 回调：
  * - /payment/notify         支付结果
  * - /payment/refund-notify  退款结果
- * 两种回调都必须先使用微信支付公钥验证原始 body，再解密 resource。
+ * - /payment/virtual-notify 虚拟支付兼容入口（推荐改用云开发消息推送）
+ * API v3 回调必须先验签再解密；虚拟支付发货和退款事件必须重新查单确认。
  */
 
 const crypto = require('crypto');
@@ -28,6 +31,7 @@ const {
   findCaseByOutRefundNo,
   fulfillOrder,
   markOrderClosed,
+  markGrantFailed,
   isOrderExpired,
   isQueryPaidResult,
   isQueryClosedResult,
@@ -36,10 +40,20 @@ const {
   reverseOrderEntitlement,
 } = require('./lib/order');
 const afterSales = require('./lib/after-sales');
-const { migrateProtectionBatch, protectionMigrationCompleted } = require('./lib/migration');
+const {
+  migrateProtectionBatch,
+  protectionMigrationCompleted,
+  migrateEntitlementLedgerBatch,
+} = require('./lib/migration');
 const wxpay = require('./lib/wxpay-v3');
+const paymentProvider = require('./lib/payment-provider');
+const virtualPay = require('./lib/virtual-pay');
+const virtualNotify = require('./lib/virtual-notify');
+const wechatAuth = require('./lib/wechat-auth');
 
-const TIMER_SCAN_LIMIT = 100;
+const RECONCILE_BATCH_SIZE = 50;
+const RECONCILE_TOTAL_BUDGET_MS = 45 * 1000;
+const RECONCILE_QUEUE_BUDGET_MS = 10 * 1000;
 
 /* ============================== HTTP 回调 ============================== */
 
@@ -74,9 +88,14 @@ function requestPathOf(event = {}) {
 function callbackKindOf(event = {}) {
   const path = requestPathOf(event).replace(/\/+$/, '');
   if (!path) return 'payment'; // 兼容旧网关和单测事件；显式路径存在时必须精确匹配
+  if (path === '/payment/virtual-notify' || path === '/virtual-notify') return 'virtual';
   if (path === '/payment/refund-notify' || path === '/refund-notify') return 'refund';
   if (path === '/payment/notify' || path === '/notify') return 'payment';
   return 'unknown';
+}
+
+function isVirtualMessageEvent(event = {}) {
+  return String(event.Event || event.event || '').trim().startsWith('xpay_');
 }
 
 function rawBodyOf(event = {}) {
@@ -256,7 +275,9 @@ async function applyRefundResult(caseItem, result, source = 'queries') {
     });
     await db.collection(COLLECTIONS.ORDERS).doc(order._id).update({
       data: {
+        refundStatus: RefundStatus.REFUNDED,
         refundId: result.refund_id || order.refundId || '',
+        refundedAmountFen: refundFen == null ? Number(caseItem.amountFen) : refundFen,
         refundedAt: nowTs,
         updatedAt: new Date(),
       },
@@ -323,6 +344,7 @@ async function handleRefundCallback(event, body, notification, config) {
 async function handleHttpCallback(event) {
   const route = callbackKindOf(event);
   if (route === 'unknown') return callbackFailure('回调路由不存在', 404);
+  if (route === 'virtual') return handleVirtualHttpCallback(event);
 
   const config = wxpay.configOf();
   if (!wxpay.hasCallbackPublicKey(config) || !config.apiV3Key) {
@@ -380,6 +402,7 @@ async function ensureGrantFailureCase(order, message = '') {
     const created = await afterSales.createCaseRecord(db, fresh.userId, {
       orderId: fresh._id,
       type: CaseType.RIGHTS_NOT_RECEIVED,
+      requestId: afterSales.systemRequestIdOf('GRANT_FAILED', fresh._id),
       reasonCode: 'SYSTEM_GRANT_FAILED',
       description: '支付已确认但权益发放失败，系统已进入补发队列。',
     }, {
@@ -397,6 +420,31 @@ async function ensureGrantFailureCase(order, message = '') {
     return created;
   } catch (err) {
     console.error('[payment] create grant failure case failed', { orderId: fresh._id, message: err.message });
+    return null;
+  }
+}
+
+async function ensureGrantUnknownCase(order) {
+  if (!order || !order._id || order.status !== OrderStatus.PAID
+    || order.grantStatus) return null;
+  try {
+    return await afterSales.createCaseRecord(db, order.userId, {
+      orderId: order._id,
+      type: CaseType.RIGHTS_NOT_RECEIVED,
+      requestId: afterSales.systemRequestIdOf('GRANT_UNKNOWN', order._id),
+      reasonCode: 'SYSTEM_GRANT_LEGACY_UNKNOWN',
+      description: '历史订单缺少明确的权益发放状态，系统已转人工核验。',
+    }, {
+      priority: 'HIGH',
+      systemGenerated: true,
+      grantSchemaVersion: order.grantSchemaVersion || 0,
+    });
+  } catch (err) {
+    if (err && err.errorCode === ERRORS.AFTER_SALES_EXISTS.code) return null;
+    console.error('[payment] create unknown grant case failed', {
+      orderId: order._id,
+      message: err.message,
+    });
     return null;
   }
 }
@@ -445,6 +493,7 @@ async function queueDuplicateChargeCase(order) {
   const created = await afterSales.createCaseRecord(db, targetOrder.userId, {
     orderId: targetOrder._id,
     type: CaseType.DUPLICATE_CHARGE,
+    requestId: afterSales.systemRequestIdOf('DUPLICATE_CHARGE', targetOrder._id),
     reasonCode: 'SYSTEM_DUPLICATE_CHARGE',
     description: '系统检测到同商品 10 分钟内存在重复支付。',
   }, {
@@ -466,6 +515,10 @@ async function paymentSideEffects(order) {
   if (order.status === OrderStatus.PAID && order.grantStatus === GrantStatus.GRANTED) {
     await resolveGrantCasesForOrder(order);
     await queueDuplicateChargeCase(order);
+    return;
+  }
+  if (order.status === OrderStatus.PAID && !order.grantStatus) {
+    await ensureGrantUnknownCase(order);
   }
 }
 
@@ -475,12 +528,17 @@ async function paymentResultView(order) {
     ...paymentViewOf(order),
     memberExpiresAt: user ? user.memberExpiresAt || null : null,
     taskPackCount: user ? Math.max(0, parseInt(user.taskPackCount, 10) || 0) : 0,
+    taskPackSlots: user ? Math.max(0, parseInt(user.taskPackSlots, 10) || 0) : 0,
   };
 }
 
-async function syncOrder(order, config = wxpay.configOf()) {
+async function syncLegacyOrder(order, config = wxpay.configOf()) {
   if (!order) return fail(ERRORS.ORDER_NOT_FOUND);
   if (order.status === OrderStatus.PAID) {
+    if (order.grantStatus === GrantStatus.GRANTED) {
+      await paymentSideEffects(order);
+      return ok(await paymentResultView(order));
+    }
     if (order.grantStatus !== GrantStatus.FAILED) {
       await paymentSideEffects(order);
       return ok(await paymentResultView(order));
@@ -563,27 +621,247 @@ async function syncOrder(order, config = wxpay.configOf()) {
   return ok(await paymentResultView(order));
 }
 
-async function createPayment(context, event) {
-  const config = wxpay.configOf();
-  if (!wxpay.hasApiConfig(config)) return fail(ERRORS.PAYMENT_NOT_READY);
+async function persistVirtualQuery(order, queried) {
+  const nowTs = new Date();
+  const status = virtualPay.statusOf(queried);
+  const orderType = virtualPay.orderTypeOf(queried);
+  const patch = {
+    paymentProvider: paymentProvider.PaymentProvider.VIRTUAL_PAY,
+    virtualEnv: virtualPay.environmentOf(queried) == null
+      ? Number(order.virtualEnv) || 0
+      : virtualPay.environmentOf(queried),
+    virtualOrderStatus: status,
+    channelOrderType: orderType,
+    wxOrderId: queried.wx_order_id || '',
+    wxPayOrderId: queried.wxpay_order_id || '',
+    channelOrderId: queried.channel_order_id || '',
+    updatedAt: nowTs,
+  };
+  const orderFee = virtualPay.orderFeeOf(queried);
+  const paidFee = virtualPay.paidAmountOf(queried);
+  if (orderFee != null) patch.orderFee = orderFee;
+  if (paidFee != null) patch.paidFee = paidFee;
+  if (status === virtualPay.VirtualOrderStatus.DELIVERED) patch.deliveredAt = nowTs;
+  await db.collection(COLLECTIONS.ORDERS).doc(order._id).update({ data: patch });
+}
 
+async function grantVirtualOrder(order, queried) {
+  let grantError = '';
+  try {
+    if (!virtualPay.bizMetaMatchesOrder(queried, order)) {
+      grantError = '虚拟支付订单附加标识不一致';
+    }
+  } catch (err) {
+    grantError = err.message;
+  }
+  if (!grantError) {
+    try {
+      virtualPay.assertGrantProduct(order, virtualPay.configForOrder(order));
+    } catch (err) {
+      grantError = err.message;
+    }
+  }
+  if (grantError) {
+    try {
+      await persistVirtualQuery(order, queried);
+    } catch (err) {
+      console.error('[payment] persist rejected virtual grant failed', {
+        orderId: order._id,
+        message: err.message,
+      });
+    }
+    await markGrantFailed(db, order, grantError);
+    const failed = await findOrderById(db, order._id);
+    await ensureGrantFailureCase(failed || order, grantError);
+    return fail({ code: ERRORS.PAYMENT_NOT_READY.code, message: grantError });
+  }
+  await persistVirtualQuery(order, queried);
+  const fulfilled = await fulfillOrder(db, order, {
+    totalFee: Number(order.amountFen),
+    transactionId: queried.wxpay_order_id || queried.wx_order_id || queried.channel_order_id || '',
+    paymentProvider: paymentProvider.PaymentProvider.VIRTUAL_PAY,
+    channelOrderType: virtualPay.orderTypeOf(queried),
+    tradeState: 'SUCCESS',
+    outTradeNo: order.outTradeNo,
+  });
+  if (!fulfilled.success) {
+    await ensureGrantFailureCase(await findOrderById(db, order._id), fulfilled.error || '');
+    return fulfilled;
+  }
+  const fresh = await findOrderById(db, order._id);
+  await paymentSideEffects(fresh || { ...order, status: OrderStatus.PAID });
+  return ok(await paymentResultView(fresh || { ...order, status: OrderStatus.PAID }));
+}
+
+async function syncVirtualOrder(order, config = virtualPay.configOf()) {
+  if (!order) return fail(ERRORS.ORDER_NOT_FOUND);
+  if (order.status === OrderStatus.PAID) {
+    if (order.grantStatus === GrantStatus.GRANTED) {
+      await paymentSideEffects(order);
+      return ok(await paymentResultView(order));
+    }
+    if (order.grantStatus !== GrantStatus.FAILED) {
+      await paymentSideEffects(order);
+      return ok(await paymentResultView(order));
+    }
+    try {
+      virtualPay.assertGrantProduct(order, config);
+    } catch (err) {
+      await ensureGrantFailureCase(order, err.message);
+      return fail({ code: ERRORS.PAYMENT_NOT_READY.code, message: err.message });
+    }
+    const retried = await fulfillOrder(db, order, {
+      totalFee: Number(order.amountFen),
+      transactionId: order.transactionId || '',
+      paymentProvider: paymentProvider.PaymentProvider.VIRTUAL_PAY,
+      channelOrderType: order.channelOrderType,
+      tradeState: 'SUCCESS',
+      outTradeNo: order.outTradeNo,
+    });
+    if (!retried.success) {
+      await ensureGrantFailureCase(await findOrderById(db, order._id), retried.error || '');
+      return retried;
+    }
+    const fresh = await findOrderById(db, order._id);
+    await paymentSideEffects(fresh || order);
+    return ok(await paymentResultView(fresh || order));
+  }
+  if (order.status === OrderStatus.CLOSED && !isOrderExpired(order)) {
+    return ok(await paymentResultView(order));
+  }
+  if (!virtualPay.hasApiConfig(config)) return ok(await paymentResultView(order));
+
+  const queried = await virtualPay.queryPaymentOrder({ order, config });
+  if (queried.order_id && queried.order_id !== order.outTradeNo) {
+    return fail({ code: ERRORS.ORDER_NOT_FOUND.code, message: '虚拟支付查单订单号不一致' });
+  }
+  const queriedEnv = virtualPay.environmentOf(queried);
+  if (queriedEnv != null && queriedEnv !== Number(config.env)) {
+    return fail({ code: ERRORS.PAYMENT_NOT_READY.code, message: '虚拟支付查单环境不一致' });
+  }
+  if (virtualPay.isPaidResult(queried)) {
+    const orderFee = virtualPay.orderFeeOf(queried);
+    if (orderFee == null || orderFee !== Number(order.amountFen)) {
+      return fail(ERRORS.ORDER_AMOUNT_MISMATCH);
+    }
+    return grantVirtualOrder(order, queried);
+  }
+  if (virtualPay.isClosedResult(queried)) {
+    await persistVirtualQuery(order, queried);
+    const closed = await markOrderClosed(db, order, 'VIRTUAL_PAY_CLOSED');
+    return ok(await paymentResultView(closed));
+  }
+
+  await persistVirtualQuery(order, queried).catch(err => {
+    console.error('[payment] persist virtual query failed', { orderId: order._id, message: err.message });
+  });
+  return ok(await paymentResultView(order));
+}
+
+async function syncOrder(order, legacyConfig = wxpay.configOf()) {
+  if (!order) return fail(ERRORS.ORDER_NOT_FOUND);
+  if (paymentProvider.isVirtualPay(order)) {
+    return syncVirtualOrder(order, virtualPay.configForOrder(order));
+  }
+  return syncLegacyOrder(order, legacyConfig);
+}
+
+async function createVirtualPayment(context, event, order) {
+  const config = virtualPay.configForOrder(order);
+  if (!virtualPay.hasApiConfig(config)) return fail(ERRORS.PAYMENT_NOT_READY);
+  let virtualProductId = '';
+  try {
+    virtualProductId = virtualPay.validateOrderSku(order, config);
+    if (order.virtualProductId && String(order.virtualProductId) !== virtualProductId) {
+      return fail({ code: ERRORS.PAYMENT_NOT_READY.code, message: '订单商品快照与配置不一致' });
+    }
+  } catch (err) {
+    return fail({ code: ERRORS.PAYMENT_NOT_READY.code, message: err.message });
+  }
+  if (!event.loginCode) {
+    return fail({ code: ERRORS.BAD_PARAM.code, message: '请重新登录后发起支付' });
+  }
+
+  const login = await wechatAuth.exchangeLoginCode({
+    code: event.loginCode,
+    config: { appId: config.appId, appSecret: config.appSecret },
+  });
+  if (login.openId !== context.OPENID) {
+    return fail({ code: ERRORS.UNAUTHORIZED.code, message: '微信登录态与当前用户不一致' });
+  }
+
+  const virtualPayment = virtualPay.createClientPayment({
+    order,
+    sessionKey: login.sessionKey,
+    config,
+  });
+  await db.collection(COLLECTIONS.ORDERS).doc(order._id).update({
+    data: {
+      paymentProvider: paymentProvider.PaymentProvider.VIRTUAL_PAY,
+      virtualProductId,
+      virtualEnv: config.env,
+      updatedAt: new Date(),
+    },
+  });
+  return ok({
+    ...(await paymentResultView(order)),
+    outTradeNo: order.outTradeNo,
+    paymentProvider: paymentProvider.PaymentProvider.VIRTUAL_PAY,
+    virtualPayment,
+    expiresAt: order.expiresAt || null,
+  });
+}
+
+async function createPayment(context, event) {
   let order = await findOrderById(db, event.orderId);
   if (!order || order.userId !== context.OPENID) return fail(ERRORS.ORDER_NOT_FOUND);
 
   if (order.status === OrderStatus.PENDING && isOrderExpired(order)) {
-    const synced = await syncOrder(order, config);
+    const synced = await syncOrder(order);
     if (!synced.success) return synced;
     order = await findOrderById(db, order._id);
     if (order.status === OrderStatus.CLOSED) return fail(ERRORS.ORDER_EXPIRED);
   }
   if (order.status === OrderStatus.PAID) {
     if (order.grantStatus === GrantStatus.FAILED) {
-      const retried = await syncOrder(order, config);
+      const retried = await syncOrder(order);
       if (!retried.success) return retried;
+    } else if (order.grantStatus !== GrantStatus.GRANTED) {
+      await paymentSideEffects(order);
     }
     return ok({ ...(await paymentResultView(await findOrderById(db, order._id) || order)), alreadyPaid: true });
   }
   if (order.status !== OrderStatus.PENDING) return fail(ERRORS.ORDER_EXPIRED);
+
+  if (paymentProvider.isVirtualPay(
+    order,
+    process.env,
+    context.OPENID,
+    event.clientSupportsVirtualPay === true
+  )) {
+    return createVirtualPayment(context, event, order);
+  }
+
+  const config = wxpay.configOf();
+  if (!wxpay.hasApiConfig(config)) return fail(ERRORS.PAYMENT_NOT_READY);
+
+  // 首次拉起旧通道时固化渠道。这样部署切换 PAYMENT_PROVIDER 时，已经
+  // 进入支付窗口的订单仍会用原渠道查单、关单和退款。
+  const pinnedAt = new Date();
+  await db.collection(COLLECTIONS.ORDERS).where({
+    _id: order._id,
+    status: OrderStatus.PENDING,
+  }).update({
+    data: {
+      paymentProvider: paymentProvider.PaymentProvider.WECHAT_PAY_V3,
+      updatedAt: pinnedAt,
+    },
+  });
+  order = {
+    ...order,
+    paymentProvider: paymentProvider.PaymentProvider.WECHAT_PAY_V3,
+    updatedAt: pinnedAt,
+  };
 
   const result = await wxpay.createJsapiOrder({ order, openid: context.OPENID, config });
   if (!result.prepay_id) throw new wxpay.WxPayApiError('微信支付未返回 prepay_id');
@@ -596,6 +874,7 @@ async function createPayment(context, event) {
     ...(await paymentResultView(order)),
     outTradeNo: order.outTradeNo,
     payment,
+    paymentProvider: paymentProvider.PaymentProvider.WECHAT_PAY_V3,
     expiresAt: order.expiresAt || null,
   });
 }
@@ -603,6 +882,10 @@ async function createPayment(context, event) {
 async function queryPayment(context, event) {
   let order = await findOrderById(db, event.orderId);
   if (!order || order.userId !== context.OPENID) return fail(ERRORS.ORDER_NOT_FOUND);
+  if (order.status === OrderStatus.PAID && order.grantStatus === GrantStatus.GRANTED) {
+    await paymentSideEffects(order);
+    return ok(await paymentResultView(order));
+  }
   if (order.status === OrderStatus.PAID && order.grantStatus !== GrantStatus.FAILED) {
     await paymentSideEffects(order);
     return ok(await paymentResultView(order));
@@ -615,18 +898,23 @@ async function queryPayment(context, event) {
 }
 
 async function cancelPayment(context, event) {
-  const config = wxpay.configOf();
-  if (!wxpay.hasApiConfig(config)) return fail(ERRORS.PAYMENT_NOT_READY);
   let order = await findOrderById(db, event.orderId);
   if (!order || order.userId !== context.OPENID) return fail(ERRORS.ORDER_NOT_FOUND);
   if (order.status === OrderStatus.CLOSED) return ok(await paymentResultView(order));
   if (order.status !== OrderStatus.PENDING) return fail(ERRORS.ORDER_NOT_FOUND);
 
-  const synced = await syncOrder(order, config);
+  const synced = await syncOrder(order);
   if (!synced.success) return synced;
   order = await findOrderById(db, order._id);
   if (order.status !== OrderStatus.PENDING) return ok(await paymentResultView(order));
 
+  if (paymentProvider.isVirtualPay(order, process.env, context.OPENID)) {
+    const closed = await markOrderClosed(db, order, 'USER_CANCEL_VIRTUAL_PAY');
+    return ok(await paymentResultView(closed));
+  }
+
+  const config = wxpay.configOf();
+  if (!wxpay.hasApiConfig(config)) return fail(ERRORS.PAYMENT_NOT_READY);
   await wxpay.closeOrder({ outTradeNo: order.outTradeNo, config });
   const closed = await markOrderClosed(db, order, 'USER_CANCEL');
   return ok(await paymentResultView(closed));
@@ -651,6 +939,7 @@ async function adminCaseBundle(caseItem) {
     .includes(caseItem.status);
   const rejectableCase = [CaseStatus.AUTO_CHECKING, CaseStatus.UNDER_REVIEW]
     .includes(caseItem.status);
+  const paymentChannel = order ? afterSales.paymentChannelOf(order) : '';
   return {
     case: afterSales.caseViewOf(caseItem),
     order: order ? {
@@ -662,6 +951,10 @@ async function adminCaseBundle(caseItem) {
       entitlementStatus: grantStateOf(order),
       refundStatus: order.refundStatus || RefundStatus.NONE,
       grantStatus: order.grantStatus || GrantStatus.NONE,
+      paymentChannel,
+      paymentChannelLabel: paymentChannel === 'APPLE'
+        ? 'Apple 应用内购买'
+        : (paymentChannel === 'WECHAT_VIRTUAL' ? '微信虚拟支付' : '微信支付'),
       entitlementGrant: order.entitlementGrant || {},
       paymentResult: order.paymentResult || {},
       paidAt: order.paidAt || null,
@@ -750,7 +1043,305 @@ async function syncRights(context, event) {
   return synced;
 }
 
+function virtualRefundResultOf(caseItem, order, result = {}) {
+  const status = virtualPay.statusOf(result);
+  const refundStatus = status === virtualPay.VirtualOrderStatus.REFUNDED
+    ? 'SUCCESS'
+    : (status === virtualPay.VirtualOrderStatus.REFUND_FAILED ? 'REFUND_FAILED' : 'PROCESSING');
+  const refundFen = Number(result.refund_fee != null ? result.refund_fee : caseItem.amountFen);
+  return {
+    status: refundStatus,
+    out_trade_no: order.outTradeNo,
+    out_refund_no: result.order_id || caseItem.outRefundNo,
+    refund_id: result.wx_order_id || '',
+    amount: {
+      refund: Number.isFinite(refundFen) ? refundFen : Number(caseItem.amountFen),
+      total: Number(order.amountFen),
+    },
+    success_time: result.paid_time
+      ? new Date(Number(result.paid_time) * 1000).toISOString()
+      : '',
+    failure_reason: status === virtualPay.VirtualOrderStatus.REFUND_FAILED ? '虚拟支付退款失败' : '',
+  };
+}
+
+function logVirtualEvent(message) {
+  console.log('[payment] virtual event', {
+    event: message.event || '',
+    outTradeNo: message.outTradeNo || '',
+    outRefundNo: message.outRefundNo || '',
+    env: message.env,
+  });
+}
+
+async function handleVirtualDelivery(message) {
+  if (!message.outTradeNo) return virtualNotify.cloudFailure('缺少商户订单号');
+  const order = await findOrderByOutTradeNo(db, message.outTradeNo);
+  if (!order) return virtualNotify.cloudFailure('订单不存在');
+  if (!paymentProvider.isVirtualPay(order)) return virtualNotify.cloudFailure('订单支付渠道不匹配');
+  if (message.openId !== order.userId) return virtualNotify.cloudFailure('用户与订单不匹配');
+
+  const config = virtualPay.configForOrder(order, process.env, message.env);
+  if (!virtualPay.hasApiConfig(config)) return virtualNotify.cloudFailure('虚拟支付配置未完成');
+  if (message.env != null && Number(message.env) !== Number(config.env)) {
+    return virtualNotify.cloudFailure('虚拟支付环境不匹配');
+  }
+  if (order.virtualEnv != null && Number(order.virtualEnv) !== Number(config.env)) {
+    return virtualNotify.cloudFailure('订单保存的虚拟支付环境不匹配');
+  }
+
+  if (order.status === OrderStatus.PAID && order.grantStatus === GrantStatus.GRANTED) {
+    return virtualNotify.cloudSuccess();
+  }
+  if (order.grantStatus === GrantStatus.REVERTED
+    || order.refundStatus === RefundStatus.REFUNDED
+    || order.status === OrderStatus.REFUNDED) {
+    return virtualNotify.cloudSuccess();
+  }
+
+  const result = await syncVirtualOrder(order, config);
+  if (!result.success) return virtualNotify.cloudFailure(result.error || '权益发放失败');
+  const fresh = await findOrderById(db, order._id);
+  if (fresh && fresh.status === OrderStatus.PAID && fresh.grantStatus === GrantStatus.GRANTED) {
+    return virtualNotify.cloudSuccess();
+  }
+  if (fresh && fresh.status === OrderStatus.PAID && fresh.grantStatus !== GrantStatus.FAILED) {
+    await paymentSideEffects(fresh);
+    return virtualNotify.cloudSuccess();
+  }
+  if (fresh && (fresh.grantStatus === GrantStatus.REVERTED
+    || fresh.refundStatus === RefundStatus.REFUNDED
+    || fresh.status === OrderStatus.REFUNDED)) {
+    return virtualNotify.cloudSuccess();
+  }
+  return virtualNotify.cloudFailure('微信尚未确认支付成功');
+}
+
+async function virtualRefundCaseOf(message, order, outRefundNo, refundResult = {}) {
+  let caseItem = await findCaseByOutRefundNo(db, outRefundNo);
+  if (caseItem) return caseItem;
+
+  const cases = await afterSales.casesForOrder(db, order.userId, order._id);
+  caseItem = cases.find(item => item.outRefundNo === outRefundNo) || cases.find(item => [
+    CaseStatus.AUTO_CHECKING,
+    CaseStatus.UNDER_REVIEW,
+    CaseStatus.APPROVED,
+    CaseStatus.PROCESSING,
+    CaseStatus.REFUND_FAILED,
+  ].includes(item.status));
+  if (caseItem && caseItem.outRefundNo !== outRefundNo) {
+    await afterSales.markRefundProcessing(db, caseItem, outRefundNo);
+    caseItem = await afterSales.getCaseById(db, caseItem._id);
+  }
+  if (caseItem) return caseItem;
+
+  return afterSales.createPlatformRefundCase(db, order, outRefundNo, {
+    systemGenerated: true,
+    paymentProvider: paymentProvider.PaymentProvider.VIRTUAL_PAY,
+    paymentChannel: virtualPay.isAppleOrder(refundResult) ? 'APPLE' : '',
+  });
+}
+
+async function handleVirtualRefund(message) {
+  if (!message.outRefundNo) return virtualNotify.cloudFailure('缺少商户退款单号');
+  const orderNo = message.mchOrderId || message.outTradeNo;
+  if (!orderNo) return virtualNotify.cloudFailure('缺少商户订单号');
+  const order = await findOrderByOutTradeNo(db, orderNo);
+  if (!order) return virtualNotify.cloudFailure('订单不存在');
+  if (!paymentProvider.isVirtualPay(order)) return virtualNotify.cloudFailure('订单支付渠道不匹配');
+  if (message.openId !== order.userId) return virtualNotify.cloudFailure('用户与订单不匹配');
+
+  const config = virtualPay.configForOrder(order, process.env, message.env);
+  if (!virtualPay.hasApiConfig(config)) return virtualNotify.cloudFailure('虚拟支付配置未完成');
+  if (message.env != null && Number(message.env) !== Number(config.env)) {
+    return virtualNotify.cloudFailure('虚拟支付环境不匹配');
+  }
+  if (order.virtualEnv != null && Number(order.virtualEnv) !== Number(config.env)) {
+    return virtualNotify.cloudFailure('订单保存的虚拟支付环境不匹配');
+  }
+
+  const queried = await virtualPay.queryRefund({
+    outRefundNo: message.outRefundNo,
+    order,
+    config,
+  });
+  if (queried.order_id && queried.order_id !== message.outRefundNo) {
+    return virtualNotify.cloudFailure('虚拟支付退款单号不一致');
+  }
+  const refundFee = Number(queried.refund_fee != null ? queried.refund_fee : message.refundFee);
+  if (Number.isFinite(refundFee) && refundFee !== Number(order.amountFen)) {
+    return virtualNotify.cloudFailure('退款金额与订单不一致');
+  }
+  if (!virtualPay.isRefundedResult(queried) && !virtualPay.isRefundFailedResult(queried)) {
+    return virtualNotify.cloudFailure('退款尚未完成');
+  }
+
+  const caseItem = await virtualRefundCaseOf(message, order, message.outRefundNo, queried);
+  if (!caseItem) {
+    if (order.refundStatus === RefundStatus.REFUNDED || order.status === OrderStatus.REFUNDED) {
+      return virtualNotify.cloudSuccess();
+    }
+    return virtualNotify.cloudFailure('退款售后记录不存在');
+  }
+  const applied = await applyRefundResult(
+    caseItem,
+    virtualRefundResultOf(caseItem, order, queried),
+    'virtual_refund_notify'
+  );
+  if (!applied.success) return virtualNotify.cloudFailure(applied.error || '退款状态更新失败');
+  return virtualNotify.cloudSuccess();
+}
+
+async function iosRefundDecision(message) {
+  const orderNo = message.payOrderId || message.mchOrderId || message.outTradeNo;
+  if (!orderNo) {
+    return {
+      result_code: 0,
+      result_info: '建议退款',
+      evidence: '退款问询缺少支付订单号，无法确认已发放权益，建议退款。',
+    };
+  }
+  const order = await findOrderByOutTradeNo(db, orderNo);
+  if (!order) {
+    return {
+      result_code: 0,
+      result_info: '建议退款',
+      evidence: '系统未找到对应支付订单或权益发放记录，建议退款。',
+    };
+  }
+  if (message.openId && order.userId !== message.openId) {
+    return {
+      result_code: 1,
+      result_info: '拒绝退款',
+      evidence: '退款问询中的用户与订单归属不一致，需人工核验。',
+    };
+  }
+  if (order.refundStatus === RefundStatus.REFUNDED || order.status === OrderStatus.REFUNDED) {
+    return {
+      result_code: 0,
+      result_info: '建议退款',
+      evidence: '该订单已经完成退款或权益回收，建议退款。',
+    };
+  }
+  if (order.refundStatus === RefundStatus.PROCESSING) {
+    return {
+      result_code: 0,
+      result_info: '建议退款',
+      evidence: '该订单退款正在处理中，建议退款。',
+    };
+  }
+  if (order.status !== OrderStatus.PAID || order.grantStatus !== GrantStatus.GRANTED) {
+    return {
+      result_code: 0,
+      result_info: '建议退款',
+      evidence: '订单尚未确认发放会员或提醒名额权益，建议退款。',
+    };
+  }
+
+  const user = await afterSales.refundEvidenceUser(db, order.userId);
+  const eligibility = afterSales.refundEligibilityOf(order, user || {});
+  if (eligibility.eligibleForReview) {
+    return {
+      result_code: 0,
+      result_info: '建议退款',
+      evidence: `订单支付后尚未新增提醒，且仍在 24 小时退款窗口内，建议退款。订单支付时间：${order.paidAt || ''}。`,
+    };
+  }
+  if (eligibility.usedAfterPurchase) {
+    return {
+      result_code: 1,
+      result_info: '拒绝退款',
+      evidence: '用户已在本单支付后新增提醒，本单新增会员或提醒名额权益已实际使用，不建议退款。',
+    };
+  }
+  if (!eligibility.withinWindow) {
+    return {
+      result_code: 1,
+      result_info: '拒绝退款',
+      evidence: '订单已超过 24 小时退款窗口，权益已发放，不建议退款。',
+    };
+  }
+  return {
+    result_code: 1,
+    result_info: '拒绝退款',
+    evidence: '订单权益已经发放且当前不满足未使用退款条件，不建议退款。',
+  };
+}
+
+async function handleIosRefundQuery(message) {
+  let decision;
+  try {
+    decision = await iosRefundDecision(message);
+  } catch (err) {
+    console.error('[payment] ios refund decision failed', { message: err.message });
+    decision = {
+      result_code: 0,
+      result_info: '建议退款',
+      evidence: '系统暂时无法核验权益使用情况，为保障用户权益建议退款。',
+    };
+  }
+  return virtualNotify.cloudSuccess({ IosRefundQueryResponse: decision });
+}
+
+async function handleVirtualMessage(payload = {}) {
+  const message = virtualNotify.messageOf(payload);
+  logVirtualEvent(message);
+  switch (message.event) {
+    case 'xpay_goods_deliver_notify':
+      return handleVirtualDelivery(message);
+    case 'xpay_refund_notify':
+      return handleVirtualRefund(message);
+    case 'xpay_subscribe_ios_refund_query_notify':
+      return handleIosRefundQuery(message);
+    default:
+      // 未订阅的事件直接确认，避免微信无意义重试；新增事件时必须在这里显式处理。
+      return virtualNotify.cloudSuccess();
+  }
+}
+
+async function handleVirtualHttpCallback(event) {
+  let payload;
+  try {
+    payload = virtualNotify.parseBody(rawBodyOf(event));
+  } catch (err) {
+    return virtualNotify.failureResponse(err.message, 400);
+  }
+  try {
+    const result = await handleVirtualMessage(payload);
+    if (result.ErrCode === 0) {
+      const extra = result.IosRefundQueryResponse
+        ? { IosRefundQueryResponse: result.IosRefundQueryResponse }
+        : {};
+      return virtualNotify.successResponse(extra);
+    }
+    return virtualNotify.failureResponse(result.ErrMsg || '虚拟支付消息处理失败');
+  } catch (err) {
+    console.error('[payment] virtual http callback failed', {
+      name: err.name,
+      message: err.message,
+      errcode: err.errcode || 0,
+    });
+    return virtualNotify.failureResponse(err.message || '虚拟支付消息处理失败');
+  }
+}
+
 async function syncRefundCase(caseItem) {
+  const order = await findOrderById(db, caseItem.orderId);
+  if (!order) return fail(ERRORS.ORDER_NOT_FOUND);
+  if (paymentProvider.isVirtualPay(order)) {
+    const config = virtualPay.configForOrder(order);
+    if (!virtualPay.hasApiConfig(config)) return fail(ERRORS.PAYMENT_NOT_READY);
+    if (!caseItem.outRefundNo) {
+      return fail({ code: ERRORS.REFUND_NOT_ELIGIBLE.code, message: '退款单尚未发起' });
+    }
+    const result = await virtualPay.queryRefund({
+      outRefundNo: caseItem.outRefundNo,
+      order,
+      config,
+    });
+    return applyRefundResult(caseItem, virtualRefundResultOf(caseItem, order, result), 'refund_query');
+  }
+
   const config = wxpay.configOf();
   if (!wxpay.hasRefundConfig(config)) return fail(ERRORS.PAYMENT_NOT_READY);
   if (!caseItem.outRefundNo) return fail({ code: ERRORS.REFUND_NOT_ELIGIBLE.code, message: '退款单尚未发起' });
@@ -770,10 +1361,78 @@ async function approveRefund(context, event, operatorOverride = '') {
   if (order.refundStatus === RefundStatus.REFUNDED || order.grantStatus === GrantStatus.REVERTED) {
     return fail(ERRORS.AFTER_SALES_EXISTS);
   }
+  const outRefundNo = caseItem.outRefundNo || afterSales.outRefundNoOf(order);
+
+  if (paymentProvider.isVirtualPay(order)) {
+    const config = virtualPay.configForOrder(order);
+    if (!virtualPay.hasApiConfig(config)) return fail(ERRORS.PAYMENT_NOT_READY);
+    let current;
+    try {
+      current = await virtualPay.queryPaymentOrder({ order, config });
+    } catch (err) {
+      return fail({ code: ERRORS.PAYMENT_NOT_READY.code, message: '退款前查单失败，请稍后重试' });
+    }
+    if (virtualPay.isAppleOrder(current)) {
+      return fail({
+        code: ERRORS.REFUND_NOT_ELIGIBLE.code,
+        message: 'iOS 订单需用户通过 App Store 发起退款，不能由服务端直接退款',
+      });
+    }
+    if (!virtualPay.isPaidResult(current)) {
+      return fail({ code: ERRORS.REFUND_NOT_ELIGIBLE.code, message: '订单当前不是可退款状态' });
+    }
+    await afterSales.markRefundProcessing(db, caseItem, outRefundNo);
+    try {
+      const created = await virtualPay.createRefund({
+        order,
+        outRefundNo,
+        reason: caseItem.decisionNote || caseItem.description || '会员提醒名额退款',
+        queryResult: current,
+        config,
+      });
+      let result = created;
+      try {
+        result = await virtualPay.queryRefund({ outRefundNo, order, config });
+      } catch (queryErr) {
+        // 退款任务已成功创建；查询短暂失败只能保持处理中，不能再次发起或误判失败。
+        console.error('[payment] virtual refund query after create failed', {
+          caseId: caseItem._id,
+          message: queryErr.message,
+        });
+      }
+      const applied = await applyRefundResult(
+        { ...caseItem, outRefundNo, amountFen: order.amountFen },
+        virtualRefundResultOf(caseItem, order, result),
+        'refund_create'
+      );
+      if (!applied.success) return applied;
+      await afterSales.logAdminAction(db, operator, 'APPROVE_REFUND', caseItem, {
+        outRefundNo,
+        paymentProvider: paymentProvider.PaymentProvider.VIRTUAL_PAY,
+        resultStatus: virtualPay.statusOf(result),
+      });
+      return applied;
+    } catch (err) {
+      await afterSales.updateCase(db, caseItem._id, {
+        status: CaseStatus.REFUND_FAILED,
+        refundStatus: RefundStatus.FAILED,
+        failureReason: String(err.message || '虚拟支付退款请求失败').slice(0, 500),
+        outRefundNo,
+      });
+      await db.collection(COLLECTIONS.ORDERS).doc(order._id).update({
+        data: { refundStatus: RefundStatus.FAILED, updatedAt: new Date() },
+      });
+      await afterSales.logAdminAction(db, operator, 'REFUND_ATTEMPT_FAILED', caseItem, {
+        outRefundNo,
+        error: String(err.message || '').slice(0, 300),
+        statusCode: err.statusCode || 0,
+      });
+      return fail({ code: ERRORS.PAYMENT_NOT_READY.code, message: '退款发起失败，可稍后重试' });
+    }
+  }
+
   const config = wxpay.configOf();
   if (!wxpay.hasRefundConfig(config)) return fail(ERRORS.PAYMENT_NOT_READY);
-
-  const outRefundNo = caseItem.outRefundNo || afterSales.outRefundNoOf(order);
   await afterSales.markRefundProcessing(db, caseItem, outRefundNo);
   try {
     const result = await wxpay.createRefund({
@@ -905,61 +1564,285 @@ function isTimerEvent(event = {}) {
   return type === 'timer';
 }
 
-async function reconcile() {
-  const config = wxpay.configOf();
-  if (!wxpay.hasApiConfig(config)) return ok({ skipped: true, reason: 'PAYMENT_NOT_READY' });
-  const summary = { paymentScanned: 0, paymentUpdated: 0, refundScanned: 0, refundUpdated: 0, errors: 0 };
+function reconcileDocDataOf(result) {
+  const data = result && result.data;
+  if (Array.isArray(data)) return data[0] || null;
+  return data || null;
+}
 
-  const pendingRes = await db.collection(COLLECTIONS.ORDERS)
-    .where({ status: OrderStatus.PENDING })
-    .limit(TIMER_SCAN_LIMIT)
-    .get();
-  for (const order of (pendingRes.data || [])) {
-    summary.paymentScanned += 1;
-    try {
-      const before = order.status;
-      const result = await syncOrder(order, config);
-      if (result.success && result.status !== before) summary.paymentUpdated += 1;
-      if (!result.success) summary.errors += 1;
-    } catch (err) {
-      summary.errors += 1;
-      console.error('[payment] reconcile order failed', { orderId: order._id, message: err.message });
-    }
+function isMissingCollectionError(err) {
+  const message = String((err && (err.errMsg || err.message)) || err || '');
+  return /-502005|database collection not exists|Db or Table not exist/i.test(message);
+}
+
+async function ensureReconcileStateCollection() {
+  if (typeof db.createCollection !== 'function') {
+    console.error('[payment] createCollection API unavailable; reconcile state is optional', {
+      collection: COLLECTIONS.PAYMENT_RECONCILE_STATE,
+    });
+    return false;
   }
-
-  const failedGrantRes = await db.collection(COLLECTIONS.ORDERS)
-    .where({ status: OrderStatus.PAID, grantStatus: GrantStatus.FAILED })
-    .limit(TIMER_SCAN_LIMIT)
-    .get();
-  for (const order of (failedGrantRes.data || [])) {
-    summary.paymentScanned += 1;
-    try {
-      const result = await syncOrder(order, config);
-      if (result.success && result.entitlementStatus === 'PAID_GRANTED') summary.paymentUpdated += 1;
-      if (!result.success) summary.errors += 1;
-    } catch (err) {
-      summary.errors += 1;
-      console.error('[payment] retry grant failed', { orderId: order._id, message: err.message });
-    }
+  try {
+    await db.createCollection(COLLECTIONS.PAYMENT_RECONCILE_STATE);
+    return true;
+  } catch (err) {
+    const message = String((err && (err.errMsg || err.message)) || err || '');
+    if (/already exists|collection exists|ResourceExists/i.test(message)) return true;
+    console.error('[payment] ensure reconcile state collection failed', { message });
+    return false;
   }
+}
 
-  const autoCheckingRes = await db.collection(COLLECTIONS.AFTER_SALES_CASES)
-    .where({ status: CaseStatus.AUTO_CHECKING })
-    .limit(TIMER_SCAN_LIMIT)
+async function readReconcileState(queue) {
+  const res = await db.collection(COLLECTIONS.PAYMENT_RECONCILE_STATE)
+    .where({ _id: queue })
+    .limit(1)
     .get();
-  for (const caseItem of (autoCheckingRes.data || [])) {
-    summary.refundScanned += 1;
-    try {
-      const order = await findOrderById(db, caseItem.orderId);
-      if (!order) {
-        summary.errors += 1;
-        continue;
+  const state = reconcileDocDataOf(res);
+  return {
+    cursor: state && state.cursor ? String(state.cursor) : null,
+    round: Math.max(0, Number(state && state.round) || 0),
+  };
+}
+
+async function reconcileStateOf(queue) {
+  try {
+    return await readReconcileState(queue);
+  } catch (err) {
+    if (isMissingCollectionError(err)) {
+      await ensureReconcileStateCollection();
+      try {
+        return await readReconcileState(queue);
+      } catch (retryErr) {
+        err = retryErr;
       }
+    }
+    console.error('[payment] reconcile state unavailable; continuing without cursor', {
+      collection: COLLECTIONS.PAYMENT_RECONCILE_STATE,
+      queue,
+      message: err && (err.errMsg || err.message),
+    });
+    return { cursor: null, round: 0, storageAvailable: false };
+  }
+}
+
+async function saveReconcileState(queue, state, details = {}) {
+  const nowTs = new Date();
+  const data = {
+    queue,
+    cursor: state.cursor || null,
+    round: Math.max(0, Number(state.round) || 0),
+    lastProcessedId: details.lastProcessedId || '',
+    lastRunAt: nowTs,
+    updatedAt: nowTs,
+  };
+  const writeState = () => db.collection(COLLECTIONS.PAYMENT_RECONCILE_STATE)
+    .doc(queue)
+    .set({ data });
+  try {
+    await writeState();
+  } catch (err) {
+    if (isMissingCollectionError(err)) {
+      await ensureReconcileStateCollection();
+      try {
+        await writeState();
+        return true;
+      } catch (retryErr) {
+        err = retryErr;
+      }
+    }
+    console.error('[payment] reconcile cursor not persisted; processing continues', {
+      collection: COLLECTIONS.PAYMENT_RECONCILE_STATE,
+      queue,
+      message: err && (err.errMsg || err.message),
+    });
+    return false;
+  }
+  return true;
+}
+
+async function runReconcileQueue({
+  queue,
+  where,
+  handle,
+  deadline,
+  queueBudgetMs,
+  batchSize,
+  now,
+}) {
+  const summary = { scanned: 0, updated: 0, errors: 0 };
+  let state = await reconcileStateOf(queue);
+  const baseWhere = { ...(where || {}) };
+  let page = null;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const scopedWhere = state.cursor
+      ? { ...baseWhere, _id: db.command.gt(state.cursor) }
+      : baseWhere;
+    const res = await db.collection(queue === 'failedGrants' || queue === 'pendingPayments'
+      ? COLLECTIONS.ORDERS
+      : COLLECTIONS.AFTER_SALES_CASES)
+      .where(scopedWhere)
+      .orderBy('_id', 'asc')
+      .limit(batchSize + 1)
+      .get();
+    page = res.data || [];
+    if (page.length || !state.cursor) break;
+    // 游标之后已无记录：本轮回到队首，下一轮从最早积压开始。
+    state = { ...state, cursor: null };
+  }
+
+  const rows = page || [];
+  const candidates = rows.slice(0, batchSize);
+  const moreFetched = rows.length > batchSize;
+  const queueDeadline = Math.min(deadline, now() + queueBudgetMs);
+  let processed = 0;
+  let lastProcessedId = '';
+
+  for (const item of candidates) {
+    if (now() >= queueDeadline) break;
+    processed += 1;
+    lastProcessedId = item._id;
+    summary.scanned += 1;
+    try {
+      const result = await handle(item);
+      if (!result || result.success !== false) {
+        if (result && result.updated === true) summary.updated += 1;
+      } else {
+        summary.errors += 1;
+      }
+    } catch (err) {
+      summary.errors += 1;
+      console.error('[payment] reconcile queue item failed', {
+        queue,
+        itemId: item._id,
+        message: err.message,
+      });
+    }
+  }
+
+  const fullyScanned = processed === candidates.length && !moreFetched;
+  state = {
+    cursor: fullyScanned ? null : (lastProcessedId || state.cursor),
+    round: state.round + (fullyScanned ? 1 : 0),
+  };
+  const cursorSaved = await saveReconcileState(queue, state, { lastProcessedId });
+  return {
+    ...summary,
+    cursorSaved,
+    remainingInPage: Math.max(0, candidates.length - processed) + (moreFetched ? 1 : 0),
+  };
+}
+
+async function reconcile(options = {}) {
+  const config = wxpay.configOf();
+  const legacyReady = wxpay.hasApiConfig(config);
+  const virtualReady = virtualPay.hasApiConfig(virtualPay.configOf());
+  if (!legacyReady && !virtualReady) return ok({ skipped: true, reason: 'PAYMENT_NOT_READY' });
+  const now = typeof options.now === 'function' ? options.now : Date.now;
+  const batchSize = Math.max(1, Math.min(100, Number(options.batchSize) || RECONCILE_BATCH_SIZE));
+  const totalBudgetMs = Math.max(1, Number(options.totalBudgetMs) || RECONCILE_TOTAL_BUDGET_MS);
+  const queueBudgetMs = Math.max(1, Number(options.queueBudgetMs) || RECONCILE_QUEUE_BUDGET_MS);
+  const deadline = now() + totalBudgetMs;
+  const summary = {
+    paymentScanned: 0,
+    paymentUpdated: 0,
+    refundScanned: 0,
+    refundUpdated: 0,
+    errors: 0,
+    queues: {},
+  };
+  const addQueueSummary = (name, result, kind) => {
+    summary.queues[name] = result;
+    summary.errors += result.errors;
+    if (kind === 'payment') {
+      summary.paymentScanned += result.scanned;
+      summary.paymentUpdated += result.updated;
+    } else {
+      summary.refundScanned += result.scanned;
+      summary.refundUpdated += result.updated;
+    }
+  };
+
+  const runQueueIsolated = async (name, kind, runner) => {
+    if (now() >= deadline) return;
+    try {
+      const result = await runner();
+      addQueueSummary(name, result, kind);
+    } catch (err) {
+      summary.errors += 1;
+      summary.queues[name] = {
+        scanned: 0,
+        updated: 0,
+        errors: 1,
+        error: String((err && (err.errMsg || err.message)) || err || 'unknown error'),
+      };
+      console.error('[payment] reconcile queue skipped after unexpected failure', {
+        queue: name,
+        message: err && (err.errMsg || err.message),
+      });
+    }
+  };
+
+  await runQueueIsolated('failedGrants', 'payment', () => runReconcileQueue({
+    queue: 'failedGrants',
+    where: { status: OrderStatus.PAID, grantStatus: GrantStatus.FAILED },
+    deadline,
+    queueBudgetMs,
+    batchSize,
+    now,
+    handle: async order => {
+      const synced = await syncOrder(order, config);
+      return { ...synced, updated: !!(synced.success && synced.entitlementStatus === 'PAID_GRANTED') };
+    },
+  }));
+
+  await runQueueIsolated('pendingPayments', 'payment', () => runReconcileQueue({
+    queue: 'pendingPayments',
+    where: { status: OrderStatus.PENDING },
+    deadline,
+    queueBudgetMs,
+    batchSize,
+    now,
+    handle: async order => {
+      const before = order.status;
+      const synced = await syncOrder(order, config);
+      return { ...synced, updated: !!(synced.success && synced.status !== before) };
+    },
+  }));
+
+  await runQueueIsolated('refundProcessing', 'refund', () => runReconcileQueue({
+    queue: 'refundProcessing',
+    where: { status: db.command.in([CaseStatus.PROCESSING, CaseStatus.REFUND_FAILED]) },
+    deadline,
+    queueBudgetMs,
+    batchSize,
+    now,
+    handle: async caseItem => {
+      const synced = await syncRefundCase(caseItem);
+      return {
+        ...synced,
+        updated: !!(synced.success && synced.refundStatus !== RefundStatus.PROCESSING),
+      };
+    },
+  }));
+
+  await runQueueIsolated('autoChecking', 'refund', () => runReconcileQueue({
+    queue: 'autoChecking',
+    where: { status: CaseStatus.AUTO_CHECKING },
+    deadline,
+    queueBudgetMs,
+    batchSize,
+    now,
+    handle: async caseItem => {
+      const order = await findOrderById(db, caseItem.orderId);
+      if (!order) return { success: false };
       if (caseItem.type === CaseType.RIGHTS_NOT_RECEIVED) {
         const retried = await syncOrder(order, config);
-        if (!retried.success) summary.errors += 1;
-        else if (retried.entitlementStatus === 'PAID_GRANTED') summary.refundUpdated += 1;
-        continue;
+        return {
+          ...retried,
+          updated: !!(retried.success && retried.entitlementStatus === 'PAID_GRANTED'),
+        };
       }
       if (caseItem.type === CaseType.DUPLICATE_CHARGE) {
         const target = await afterSales.duplicateChargeTarget(db, order);
@@ -970,48 +1853,55 @@ async function reconcile() {
             status: CaseStatus.UNDER_REVIEW,
             decisionNote: '自动核验未能满足未使用条件，转客服审核。',
           });
-          continue;
+          return { success: true, updated: true };
         }
         const applied = await approveRefund(
           { OPENID: '' },
           { caseId: caseItem._id },
           'SYSTEM_DUPLICATE_CHARGE'
         );
-        if (applied.success) summary.refundUpdated += 1;
-        else summary.errors += 1;
+        return { ...applied, updated: applied.success === true };
       }
-    } catch (err) {
-      summary.errors += 1;
-      console.error('[payment] auto checking case failed', { caseId: caseItem._id, message: err.message });
-    }
-  }
-
-  const processingRes = await db.collection(COLLECTIONS.AFTER_SALES_CASES)
-    .where({ status: db.command.in([CaseStatus.PROCESSING, CaseStatus.REFUND_FAILED]) })
-    .limit(TIMER_SCAN_LIMIT)
-    .get();
-  for (const caseItem of (processingRes.data || [])) {
-    summary.refundScanned += 1;
-    try {
-      const before = caseItem.status;
-      const result = await syncRefundCase(caseItem);
-      if (result.success && result.refundStatus !== RefundStatus.PROCESSING) summary.refundUpdated += 1;
-      if (!result.success) summary.errors += 1;
-    } catch (err) {
-      summary.errors += 1;
-      console.error('[payment] reconcile refund failed', { caseId: caseItem._id, message: err.message });
-    }
-  }
+      return { success: true, updated: false };
+    },
+  }));
   return ok(summary);
 }
 
 /* ============================== 路由 ============================== */
 
 exports.main = async (event = {}) => {
-  if (httpEventOf(event)) return handleHttpCallback(event);
+  const context = cloud.getWXContext() || {};
+  if (isVirtualMessageEvent(event)) {
+    if (context.OPENID) {
+      console.warn('[payment] rejected client virtual message event', {
+        event: event.Event || event.event || '',
+      });
+      return virtualNotify.cloudFailure('虚拟支付消息只接受平台推送');
+    }
+    try {
+      return await handleVirtualMessage(event);
+    } catch (err) {
+      console.error('[payment] virtual message push failed', {
+        event: event.Event || event.event || '',
+        name: err.name,
+        message: err.message,
+        errcode: err.errcode || 0,
+      });
+      return virtualNotify.cloudFailure(err.message || '虚拟支付消息处理失败');
+    }
+  }
+  if (httpEventOf(event)) {
+    if (context.OPENID) {
+      console.warn('[payment] rejected client-shaped callback event', {
+        path: requestPathOf(event),
+      });
+      return callbackFailure('客户端不能调用支付回调入口', 403);
+    }
+    return handleHttpCallback(event);
+  }
   if (isTimerEvent(event)) return reconcile();
 
-  const context = cloud.getWXContext();
   if (!context.OPENID) return fail(ERRORS.UNAUTHORIZED);
 
   try {
@@ -1067,6 +1957,15 @@ exports.main = async (event = {}) => {
           adminOpenId: context.OPENID,
         });
       }
+      case 'afterSales.adminMigrateEntitlementLedger': {
+        const denied = adminRequired(context);
+        if (denied) return denied;
+        return migrateEntitlementLedgerBatch(db, {
+          cursor: event.cursor || null,
+          adminOpenId: context.OPENID,
+          dryRun: event.dryRun === true,
+        });
+      }
       default:
         return fail(ERRORS.UNKNOWN_ACTION);
     }
@@ -1075,13 +1974,11 @@ exports.main = async (event = {}) => {
       action: event.action,
       name: err.name,
       code: err.code,
+      errCode: err.errCode,
       statusCode: err.statusCode,
-      message: err.message,
+      message: err.errMsg || err.message,
     });
-    return fail({
-      code: ERRORS.PAYMENT_NOT_READY.code,
-      message: err.code || '支付通道准备中，请稍后再试',
-    });
+    return fail(ERRORS.SERVER_ERROR);
   }
 };
 
@@ -1090,6 +1987,9 @@ exports._test = {
   applyRefundResult,
   approveRefund,
   reconcile,
+  runReconcileQueue,
   syncOrder,
   handleHttpCallback,
+  handleVirtualMessage,
+  iosRefundDecision,
 };

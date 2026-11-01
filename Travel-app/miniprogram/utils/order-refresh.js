@@ -20,10 +20,13 @@ function isTransientOrder(order, nowMs = Date.now()) {
   if (!order) return false;
   const refundStatus = order.refundStatus || 'NONE';
   if (REFUND_PROGRESS.includes(refundStatus)) return true;
+  /* 发放失败订单退款完成后已经没有权益可回收，退款结果即为终态。 */
+  if (refundStatus === 'REFUNDED' && order.grantStatus !== 'GRANTED') return false;
   /* 微信已退款，但本单新增权益可能还在回收队列里。 */
   const revertedAt = order.entitlementGrant && order.entitlementGrant.revertedAt;
   if (refundStatus === 'REFUNDED' && order.grantStatus === 'GRANTED' && !revertedAt) return true;
   if (order.status === 'PAID' && order.grantStatus === 'FAILED') return true;
+  if (order.status === 'PAID' && order.grantStatus === 'UNKNOWN') return true;
   if (order.status === 'PENDING') return !isExpiredPendingOrder(order, nowMs);
   return false;
 }
@@ -40,7 +43,9 @@ function refreshHintOf(orders, nowMs = Date.now()) {
   if (items.some(order => order.refundStatus === 'REFUNDED' && order.grantStatus === 'GRANTED')) {
     return '退款已到账，正在回收本单权益，页面会自动更新';
   }
-  if (items.some(order => order.status === 'PAID' && order.grantStatus === 'FAILED')) {
+  if (items.some(order => order.status === 'PAID'
+    && order.grantStatus === 'FAILED'
+    && (order.refundStatus || 'NONE') !== 'REFUNDED')) {
     return '支付已完成，权益正在自动补发，请勿重复支付';
   }
   if (items.some(order => isTransientOrder(order, nowMs))) {

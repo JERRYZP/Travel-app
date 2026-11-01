@@ -68,6 +68,7 @@ trips
         └── reminder_tasks
 
 reminder_cart 是提交前的暂存区，不属于正式行程。
+景点页多日期先由 `cart.planDates` 只读预检，再由 `cart.addDates` 原子写入可新增项；最终 `cart.commit` 统一校验订阅额度、提醒名额并创建行程项与任务。
 ```
 
 - `trip_items`：行程 + 景点 + 出行日的最小执行单元。
@@ -80,26 +81,33 @@ reminder_cart 是提交前的暂存区，不属于正式行程。
 reminder.membership.createOrder
   -> orders (PENDING)
   -> payment.create
-  -> 微信支付 API v3
-  -> /payment/notify 或 payment.query/2 分钟补偿
+  -> PAYMENT_PROVIDER 选择渠道
+     -> 缺省：微信支付 API v3
+     -> 显式：小程序虚拟支付
+  -> 对应支付回调/查单/2 分钟补偿
   -> 订单与 users 权益事务提交
   -> orders (PAID, entitlementGrant 快照)
 
 用户售后
   -> after_sales_cases
   -> 自动核验 / 客服审核
-  -> 微信退款 API
-  -> /payment/refund-notify 或退款查询
+  -> 原订单所属渠道的退款 API
+  -> 对应退款回调或退款查询
   -> 按本单快照回收权益
 ```
 
-- 免费用户 5 个提醒名额；当前新订单为会员 ¥3/30 天上限 10；有效会员可 ¥3 加购 5 个提醒名额，历史订单按快照金额处理。
+- 免费用户 5 个提醒名额；当前新订单为会员 ¥3/30 天上限 15；有效会员可 ¥3 加购 10 个提醒名额。历史名额包永久按每包 5 个保护，新包按每包 10 个记录，可混合累计；历史订单金额也按快照处理。
+- 用户权益账本保存 `taskPackCount` 与 `taskPackSlots`；创建订单、提醒提交、行程项重新开启提醒、权益发放和退款回收共用用户级短期额度锁，锁内重读容量后事务提交。
 - 唯一规则在 `cloudfunctions/reminder/lib/membership.js`；`cart.commit` 与 `tripItem.updateReminder` 都必须过同一服务端闸门。
 - 老用户历史保护池 `protectedTaskQuota=max(5, 迁移时未来 WAITING 提醒数)`，迁移由管理员分批触发。是否占用新增池由任务创建时的会员灰度决定：`off` / `test` 非白名单写入保护池，`test` 白名单 / `all` 才写新增池。
-- 订单只由 `payment` 云函数在微信支付 API v3 回调或主动查单确认后置为 `PAID`；客户端不能自行改会员。
-- 回调必须校验微信支付公钥 ID 和原始 body 签名，并解密资源；下单、查单、退款响应也必须验签。
+- 支付渠道按环境开关选择；缺省为微信支付 API v3，`PAYMENT_PROVIDER=VIRTUAL_PAY` 才启用虚拟支付。历史订单保存渠道后继续走原渠道，避免切环境后错误查单或退款。订单展示接口返回派生后的 `paymentChannel=APPLE|WECHAT_VIRTUAL|WECHAT_PAY`，供客户端稳定识别 iOS 退款路径，不暴露原始支付结果。
+- 订单只由 `payment` 云函数在渠道回调或主动查单确认后置为 `PAID`；客户端不能自行改会员。虚拟支付发货和退款推送必须再次查询微信订单，不信任客户端或推送正文直接发权益。
+- 订单创建必须带 `requestId`，以 OpenID + 请求号生成确定性订单 ID；待支付复用严格匹配完整规格，同请求改商品拒绝。售后同样以请求号幂等，并在订单上维护唯一 `activeAfterSalesCaseId`。
+- API v3 回调必须校验微信支付公钥 ID 和原始 body 签名并解密；虚拟支付使用云开发消息推送事件，回包使用 `ErrCode/ErrMsg`，iOS 退款问询额外返回 `IosRefundQueryResponse`。
 - `orders.status` 保持 `PENDING/PAID/CLOSED`；退款生命周期独立写入 `refundStatus`，历史 `REFUNDED` 只兼容展示。
-- 每笔订单保存权益发放快照；退款成功只回收本单新增时长和名额包，不删除已有提醒。
+- 每笔订单保存权益发放快照；退款成功只回收本单确认发放过的时长和名额包，不删除已有提醒。发放失败订单只记录退款结果，不修改用户权益。
+- 虚拟支付 `/xpay/query_order` 没有商品 ID/数量字段；商品身份在下单签名前按套餐配置校验，发放前按订单固化 `virtualProductId` 复核。
+- 2 分钟补偿使用 `payment_reconcile_state` 的 `failedGrants / pendingPayments / refundProcessing / autoChecking` 四条独立游标，每队列有批量与时间预算，避免固定前 100 条造成尾部饥饿。
 - 售后证据、审核结果和退款单号存 `after_sales_cases`；敏感查看与审核操作写 `admin_audit_logs`。
 - 售后工作台仅对 `AFTER_SALES_ADMIN_OPENIDS` 开放，所有操作服务端二次鉴权。
 

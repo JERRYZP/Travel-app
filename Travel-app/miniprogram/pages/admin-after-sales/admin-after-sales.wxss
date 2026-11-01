@@ -25,7 +25,9 @@
 .case-list { display: flex; flex-direction: column; gap: 14rpx; }
 .case-card { display: flex; flex-direction: column; gap: 8rpx; padding: 20rpx 22rpx; border: 1rpx solid var(--color-border); border-radius: 17rpx; background: var(--color-surface); box-shadow: var(--shadow-card); }
 .case-head { display: flex; justify-content: space-between; gap: 18rpx; }
+.case-head-right { display: flex; align-items: center; gap: 12rpx; }
 .case-no { color: var(--color-muted); font-size: 20rpx; }
+.case-auto { padding: 3rpx 9rpx; border-radius: 7rpx; background: #EEF4FF; color: #396BAF; font-size: 18rpx; }
 .case-status { color: #8A5A12; font-size: 21rpx; font-weight: 600; }
 .case-title { color: var(--color-ink); font-size: 25rpx; font-weight: 600; }
 .case-meta { color: var(--color-muted); font-size: 20rpx; }

@@ -64,10 +64,28 @@ function matchDoc(doc, where) {
 }
 
 /* ---- 主体 ---- */
-function createDb() {
+function createDb(options = {}) {
   const store = new Map(); // collectionName -> Map(id -> doc)
+  const cloudGetOnMissing = options.cloudGetOnMissing === true;
+  const cloudSetRejectsId = options.cloudSetRejectsId === true;
+  const missingCollections = new Set(options.missingCollections || []);
+
+  function assertSetDataIsWritable(data) {
+    if (cloudSetRejectsId && data && Object.prototype.hasOwnProperty.call(data, '_id')) {
+      const err = new Error('document.set:fail -501007 invalid parameters. 不能更新_id的值');
+      err.errCode = -501007;
+      throw err;
+    }
+  }
 
   function coll(name) {
+    if (missingCollections.has(name)) {
+      const err = new Error(
+        `collection.get:fail -502005 database collection not exists. Db or Table not exist: ${name}`
+      );
+      err.errCode = -502005;
+      throw err;
+    }
     if (!store.has(name)) store.set(name, new Map());
     return store.get(name);
   }
@@ -120,7 +138,17 @@ function createDb() {
       doc: (id) => ({
         get: async () => {
           const d = coll(name).get(id);
+          if (!d && cloudGetOnMissing) {
+            const err = new Error(`document.get:fail document with _id ${id} does not exist`);
+            err.errCode = 1500;
+            throw err;
+          }
           return { data: d ? [{ ...d }] : [] };
+        },
+        set: async ({ data }) => {
+          assertSetDataIsWritable(data);
+          coll(name).set(id, { _id: id, ...data });
+          return { _id: id, stats: { updated: 1 } };
         },
         update: async ({ data }) => {
           const d = coll(name).get(id);
@@ -137,6 +165,11 @@ function createDb() {
 
   const db = {
     collection: collectionApi,
+    createCollection: async (name) => {
+      missingCollections.delete(name);
+      coll(name);
+      return { errMsg: 'ok' };
+    },
     command: {
       in: (v) => attachAnd(cmdIn(v)),
       gt: (v) => attachAnd(cmdGt(v)),
@@ -158,11 +191,30 @@ function createDb() {
           doc: (id) => ({
             get: async () => {
               const d = coll(name).get(id);
+              if (!d && cloudGetOnMissing) {
+                const err = new Error(`document.get:fail document with _id ${id} does not exist`);
+                err.errCode = 1500;
+                throw err;
+              }
               return { data: d ? [{ ...d }] : [] };
             },
+            set: async ({ data }) => {
+              assertSetDataIsWritable(data);
+              const before = coll(name).get(id);
+              undo.push(() => {
+                if (before) coll(name).set(id, { ...before });
+                else coll(name).delete(id);
+              });
+              coll(name).set(id, { _id: id, ...data });
+              return { _id: id, stats: { updated: 1 } };
+            },
             update: async ({ data }) => {
-              const before = { ...coll(name).get(id) };
-              undo.push(() => coll(name).set(id, before));
+              const existing = coll(name).get(id);
+              const before = existing ? { ...existing } : null;
+              undo.push(() => {
+                if (before) coll(name).set(id, before);
+                else coll(name).delete(id);
+              });
               return collectionApi(name).doc(id).update({ data });
             },
             remove: async () => {
@@ -180,6 +232,22 @@ function createDb() {
           return { errMsg: 'rollback ok' };
         },
       };
+    },
+    runTransaction: async (run, retryTimes = 3) => {
+      let lastError = null;
+      const attempts = Math.max(1, Number(retryTimes) || 1);
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const transaction = await db.startTransaction();
+        try {
+          const result = await run(transaction);
+          await transaction.commit();
+          return result;
+        } catch (err) {
+          lastError = err;
+          try { await transaction.rollback(); } catch (rollbackErr) { /* ended */ }
+        }
+      }
+      throw lastError;
     },
     /** 测试辅助 */
     _dump: (name) => [...coll(name).values()].map(d => ({ ...d })),

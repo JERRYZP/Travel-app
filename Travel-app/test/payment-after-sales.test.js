@@ -1,6 +1,8 @@
 /**
  * 售后资格、退款回收和老用户保护额度迁移。
  */
+const Module = require('module');
+const path = require('path');
 const { createDb } = require('./mock-db');
 const {
   COLLECTIONS, CaseStatus, RefundStatus, GrantStatus, OrderStatus,
@@ -10,6 +12,8 @@ const { reverseOrderEntitlement, fulfillOrder } = require('../cloudfunctions/pay
 const {
   migrateProtectionBatch,
   protectionMigrationCompleted,
+  migrateEntitlementLedgerBatch,
+  entitlementMigrationCompleted,
 } = require('../cloudfunctions/payment/lib/migration');
 
 let fail = 0;
@@ -59,6 +63,29 @@ function seedPaidOrder(db, patch = {}) {
   }]);
 }
 
+function loadPayment(db) {
+  const originalLoad = Module._load;
+  Module._load = function(request, parent) {
+    if (request === 'wx-server-sdk'
+      && parent
+      && parent.filename.endsWith(`${path.sep}payment${path.sep}index.js`)) {
+      return {
+        DYNAMIC_CURRENT_ENV: 'dynamic',
+        init() {},
+        database() { return db; },
+        getWXContext() { return { OPENID: USER }; },
+      };
+    }
+    return originalLoad.apply(this, arguments);
+  };
+  try {
+    delete require.cache[require.resolve('../cloudfunctions/payment/index.js')];
+    return require('../cloudfunctions/payment/index.js');
+  } finally {
+    Module._load = originalLoad;
+  }
+}
+
 async function run() {
   console.log('=== 0. 售后管理员只认显式环境变量 ===');
   eq(afterSales.isAfterSalesAdmin('admin_openid', {}), false, '未配置白名单时售后工作台关闭');
@@ -83,16 +110,185 @@ async function run() {
   eq(eligible.eligibleForReview, false, '支付后新增提醒不可按未使用退款');
 
   console.log('\n=== 2. 售后单幂等与驳回原因约束 ===');
+  const missingRequest = await afterSales.createCaseRecord(db, USER, {
+    orderId: order._id, type: 'UNUSED_REFUND', description: '缺少请求号',
+  }, { eligibility: eligible });
+  eq(missingRequest.success, false, '用户售后缺少 requestId 时拒绝');
+  eq(missingRequest.errorCode, 1010, '缺少 requestId 返回参数错误');
   const created = await afterSales.createCaseRecord(db, USER, {
-    orderId: order._id, type: 'UNUSED_REFUND', description: '买错了',
+    orderId: order._id, type: 'UNUSED_REFUND', requestId: 'req_after_sales_original_001', description: '买错了',
   }, { eligibility: eligible });
   eq(created.success, true, '创建售后单');
   eq(created.case.status, CaseStatus.UNDER_REVIEW, '未使用退款进入客服审核');
   const duplicate = await afterSales.createCaseRecord(db, USER, {
-    orderId: order._id, type: 'UNUSED_REFUND',
+    orderId: order._id, type: 'UNUSED_REFUND', requestId: 'req_after_sales_duplicate_001',
   }, { eligibility: eligible });
   eq(duplicate.success, false, '同一订单不能重复创建处理中售后');
   eq(duplicate.errorCode, 1028, '返回售后已存在错误码');
+
+  console.log('\n=== 2a. 首次售后兼容真实云数据库 document-not-found 与不可写 _id ===');
+  db = createDb({ cloudGetOnMissing: true, cloudSetRejectsId: true });
+  seedUser(db);
+  seedPaidOrder(db);
+  const cloudMissingCreated = await afterSales.createCaseRecord(db, USER, {
+    orderId: 'order_paid_001',
+    type: 'ENTITLEMENT_MISMATCH',
+    requestId: 'req_after_sales_cloud_missing_001',
+  }, { eligibility: afterSales.refundEligibilityOf(
+    db._dump(COLLECTIONS.ORDERS)[0], db._dump(COLLECTIONS.USERS)[0]
+  ) });
+  eq(cloudMissingCreated.success, true, '确定性售后单不存在时仍可首次创建');
+  eq(cloudMissingCreated.case.type, 'ENTITLEMENT_MISMATCH', '首次创建的售后类型正确');
+  const cloudMissingRetry = await afterSales.createCaseRecord(db, USER, {
+    orderId: 'order_paid_001',
+    type: 'ENTITLEMENT_MISMATCH',
+    requestId: 'req_after_sales_cloud_missing_001',
+  }, { eligibility: {} });
+  eq(cloudMissingRetry.success, true, '同一 requestId 重试返回成功');
+  eq(cloudMissingRetry.idempotent, true, '真实缺失语义下重试仍保持幂等');
+
+  console.log('\n=== 2aa. 云函数入口真实写入和异常错误码契约 ===');
+  db = createDb({ cloudGetOnMissing: true, cloudSetRejectsId: true });
+  seedUser(db);
+  seedPaidOrder(db);
+  const payment = loadPayment(db);
+  const mainCreated = await payment.main({
+    action: 'afterSales.submit',
+    orderId: 'order_paid_001',
+    type: 'ENTITLEMENT_MISMATCH',
+    requestId: 'req_after_sales_main_strict_001',
+  }, { OPENID: USER });
+  eq(mainCreated.success, true, '严格云数据库语义下售后入口可完成首次写入');
+  const originalCreateCaseRecord = afterSales.createCaseRecord;
+  try {
+    afterSales.createCaseRecord = async () => { throw new Error('synthetic database failure'); };
+    const unexpected = await payment.main({
+      action: 'afterSales.submit',
+      orderId: 'order_paid_001',
+      type: 'ENTITLEMENT_MISMATCH',
+      requestId: 'req_after_sales_main_unexpected_001',
+    }, { OPENID: USER });
+    eq(unexpected.errorCode, 1500, '未分类异常返回通用服务错误码');
+    eq(unexpected.error, '服务异常，请稍后重试', '未分类异常不再伪装成支付通道未就绪');
+  } finally {
+    afterSales.createCaseRecord = originalCreateCaseRecord;
+  }
+
+  console.log('\n=== 2b. requestId 幂等、并发唯一与终态解绑 ===');
+  db = createDb();
+  seedUser(db);
+  seedPaidOrder(db);
+  const concurrentRequestId = 'req_after_sales_concurrent_001';
+  const concurrentResults = await Promise.all([
+    afterSales.createCaseRecord(db, USER, {
+      orderId: 'order_paid_001',
+      type: 'UNUSED_REFUND',
+      requestId: concurrentRequestId,
+    }, { eligibility: afterSales.refundEligibilityOf(
+      db._dump(COLLECTIONS.ORDERS)[0], db._dump(COLLECTIONS.USERS)[0]
+    ) }),
+    afterSales.createCaseRecord(db, USER, {
+      orderId: 'order_paid_001',
+      type: 'UNUSED_REFUND',
+      requestId: concurrentRequestId,
+    }, { eligibility: afterSales.refundEligibilityOf(
+      db._dump(COLLECTIONS.ORDERS)[0], db._dump(COLLECTIONS.USERS)[0]
+    ) }),
+  ]);
+  eq(concurrentResults.every(result => result.success === true), true,
+    '同一 requestId 并发提交均返回成功');
+  eq(concurrentResults[0].case._id, concurrentResults[1].case._id, '同一 requestId 返回同一售后单');
+  eq(db._dump(COLLECTIONS.AFTER_SALES_CASES).length, 1, '并发提交只写入一条售后单');
+  const activeCaseId = db._dump(COLLECTIONS.ORDERS)[0].activeAfterSalesCaseId;
+  eq(activeCaseId, concurrentResults[0].case._id, '订单事务内绑定唯一活动售后单');
+  const blocked = await afterSales.createCaseRecord(db, USER, {
+    orderId: 'order_paid_001',
+    type: 'UNUSED_REFUND',
+    requestId: 'req_after_sales_concurrent_002',
+  }, { eligibility: afterSales.refundEligibilityOf(
+    db._dump(COLLECTIONS.ORDERS)[0], db._dump(COLLECTIONS.USERS)[0]
+  ) });
+  eq(blocked.success, false, '存在活动售后时新请求被拒绝');
+  eq(blocked.errorCode, 1028, '并发唯一冲突返回售后已存在');
+  await afterSales.updateCase(db, activeCaseId, {
+    status: CaseStatus.REJECTED,
+    decisionNote: '测试终态解绑',
+  });
+  eq(db._dump(COLLECTIONS.ORDERS)[0].activeAfterSalesCaseId, '',
+    '售后进入终态后清空订单活动指针');
+  const sameAfterTerminal = await afterSales.createCaseRecord(db, USER, {
+    orderId: 'order_paid_001',
+    type: 'UNUSED_REFUND',
+    requestId: concurrentRequestId,
+  }, { eligibility: afterSales.refundEligibilityOf(
+    db._dump(COLLECTIONS.ORDERS)[0], db._dump(COLLECTIONS.USERS)[0]
+  ) });
+  eq(sameAfterTerminal.success && sameAfterTerminal.case._id === activeCaseId, true,
+    '同一 requestId 在售后终态后仍返回原售后单');
+  await db.collection(COLLECTIONS.ORDERS).doc('order_paid_001').update({
+    data: { refundStatus: RefundStatus.REFUNDED, grantStatus: GrantStatus.REVERTED },
+  });
+  const sameAfterRefund = await afterSales.createCaseRecord(db, USER, {
+    orderId: 'order_paid_001',
+    type: 'UNUSED_REFUND',
+    requestId: concurrentRequestId,
+  }, { eligibility: {} });
+  eq(sameAfterRefund.success && sameAfterRefund.case._id === activeCaseId, true,
+    '订单退款完成后同一 requestId 仍保持幂等');
+  const newAfterRefund = await afterSales.createCaseRecord(db, USER, {
+    orderId: 'order_paid_001',
+    type: 'RIGHTS_NOT_RECEIVED',
+    requestId: 'req_after_sales_after_refund_001',
+  }, { eligibility: {} });
+  eq(newAfterRefund.success, false, '订单退款完成后拒绝新建售后');
+  eq(newAfterRefund.errorCode, 1028, '退款完成后的新售后返回已存在');
+
+  console.log('\n=== 2d. 平台退款首次补建售后兼容真实云数据库写入 ===');
+  db = createDb({ cloudGetOnMissing: true, cloudSetRejectsId: true });
+  seedUser(db);
+  seedPaidOrder(db);
+  const platformOrder = db._dump(COLLECTIONS.ORDERS)[0];
+  const platformCase = await afterSales.createPlatformRefundCase(
+    db,
+    platformOrder,
+    'RF_CLOUD_MISSING_001',
+    { paymentChannel: 'WECHAT_VIRTUAL' }
+  );
+  eq(!!platformCase._id, true, '平台退款可首次补建售后记录');
+  eq(platformCase.systemGenerated, true, '平台退款售后标记为系统自动生成');
+  const platformReplay = await afterSales.createPlatformRefundCase(
+    db,
+    platformOrder,
+    'RF_CLOUD_MISSING_001',
+    { paymentChannel: 'WECHAT_VIRTUAL' }
+  );
+  eq(platformReplay._id, platformCase._id, '平台退款重复推送复用同一售后记录');
+
+  console.log('\n=== 2e. 售后终态不能误清另一条新活动售后 ===');
+  db = createDb();
+  seedUser(db);
+  seedPaidOrder(db);
+  const olderCase = await afterSales.createCaseRecord(db, USER, {
+    orderId: 'order_paid_001',
+    type: 'UNUSED_REFUND',
+    requestId: 'req_after_sales_older_case_001',
+  }, { eligibility: afterSales.refundEligibilityOf(
+    db._dump(COLLECTIONS.ORDERS)[0], db._dump(COLLECTIONS.USERS)[0]
+  ) });
+  db._seed(COLLECTIONS.AFTER_SALES_CASES, [{
+    _id: 'case_newer_active',
+    userId: USER,
+    orderId: 'order_paid_001',
+    type: 'RIGHTS_NOT_RECEIVED',
+    status: CaseStatus.AUTO_CHECKING,
+    createdAt: new Date(),
+  }]);
+  await db.collection(COLLECTIONS.ORDERS).doc('order_paid_001').update({
+    data: { activeAfterSalesCaseId: 'case_newer_active' },
+  });
+  await afterSales.updateCase(db, olderCase.case._id, { status: CaseStatus.REJECTED });
+  eq(db._dump(COLLECTIONS.ORDERS)[0].activeAfterSalesCaseId, 'case_newer_active',
+    '旧售后终态只清自己的指针，不覆盖新活动售后');
 
   console.log('\n=== 3. 重复支付证据与确定性退款单号 ===');
   db = createDb();
@@ -114,10 +310,25 @@ async function run() {
 
   console.log('\n=== 4. 退款按本单快照回收，不删除提醒 ===');
   db = createDb();
-  seedUser(db);
+  seedUser(db, {
+    memberExpiresAt: new Date(Date.now() + 40 * DAY),
+    taskPackCount: 1,
+    taskPackSlots: 10,
+  });
   seedPaidOrder(db, {
+    packageId: 'task_pack_5',
+    productType: 'TASK_PACK',
+    amountFen: 300,
+    addedSlots: 10,
+    memberDays: 0,
+    memberFloorDays: 30,
     grantStatus: GrantStatus.GRANTED,
-    entitlementGrant: { memberDaysAddedMs: 30 * DAY, taskPackDelta: 1 },
+    entitlementGrant: {
+      memberDaysAddedMs: 0,
+      taskPackDelta: 1,
+      taskPackCountAdded: 1,
+      taskPackSlotsAdded: 10,
+    },
   });
   const beforeUser = db._dump(COLLECTIONS.USERS)[0];
   const beforeExpiry = new Date(beforeUser.memberExpiresAt).getTime();
@@ -126,13 +337,24 @@ async function run() {
   const afterUser = db._dump(COLLECTIONS.USERS)[0];
   const afterOrder = db._dump(COLLECTIONS.ORDERS)[0];
   eq(afterUser.taskPackCount, 0, '只回收本单新增任务包');
-  eq(new Date(afterUser.memberExpiresAt).getTime() <= beforeExpiry - 29 * DAY, true, '只回收本单新增会员时长');
+  eq(afterUser.taskPackSlots, 0, '只回收本单新增名额数');
+  eq(new Date(afterUser.memberExpiresAt).getTime(), beforeExpiry, '无会员时长增量时不误扣有效期');
   eq(afterOrder.refundStatus, RefundStatus.REFUNDED, '退款状态独立写入');
   eq(afterOrder.grantStatus, GrantStatus.REVERTED, '权益标记已回收');
   eq(afterOrder.status, OrderStatus.PAID, '订单主状态不混入退款生命周期');
   const expiryAfterRefund = new Date(afterUser.memberExpiresAt).getTime();
-  const replay = await fulfillOrder(db, afterOrder, { totalFee: 200 });
+  const replay = await fulfillOrder(db, afterOrder, { totalFee: 300 });
   eq(replay.entitlementStatus, 'REFUNDED', '退款后重复支付回调不重新发权益');
+  const stillGrantedSnapshot = { ...afterOrder, grantStatus: GrantStatus.GRANTED };
+  const replayGrantedSnapshot = await fulfillOrder(db, stillGrantedSnapshot, { totalFee: 300 });
+  eq(replayGrantedSnapshot.entitlementStatus, 'REFUNDED',
+    '已退款订单即使残留 GRANTED 快照也不能重新当作已到账');
+  const refundedStatusReplay = await reverseOrderEntitlement(db, {
+    ...afterOrder,
+    status: OrderStatus.REFUNDED,
+  }, 300);
+  eq(refundedStatusReplay.success && refundedStatusReplay.alreadyReverted, true,
+    '历史订单主状态已退款时重复回调保持幂等');
   eq(
     new Date(db._dump(COLLECTIONS.USERS)[0].memberExpiresAt).getTime(),
     expiryAfterRefund,
@@ -172,6 +394,7 @@ async function run() {
   const rightsCase = await afterSales.createCaseRecord(db, USER, {
     orderId: failedOrder._id,
     type: 'RIGHTS_NOT_RECEIVED',
+    requestId: afterSales.systemRequestIdOf('GRANT_FAILED', failedOrder._id),
     reasonCode: 'SYSTEM_GRANT_FAILED',
     description: '系统自动转补发队列',
   }, { priority: 'HIGH', systemGenerated: true });
@@ -246,6 +469,95 @@ async function run() {
     55,
     '同一 createdAt 的 55 人全部被迁移'
   );
+
+  console.log('\n=== 9. 名额账本迁移 dryRun、历史 5 个与新 10 个混算 ===');
+  db = createDb();
+  db._seed(COLLECTIONS.USERS, [
+    {
+      _id: 'ledger_u1', openId: 'ledger_openid_1',
+      taskPackCount: 2, taskPackSlots: null,
+    },
+    {
+      _id: 'ledger_u2', openId: 'ledger_openid_2',
+      taskPackCount: 1,
+    },
+    {
+      _id: 'ledger_u3', openId: 'ledger_openid_3',
+      taskPackCount: 0, taskPackSlots: 0,
+    },
+  ]);
+  db._seed(COLLECTIONS.ORDERS, [
+    {
+      _id: 'ledger_old_pack', userId: 'ledger_openid_1', packageId: 'task_pack_5',
+      productType: 'TASK_PACK', status: OrderStatus.PAID, grantStatus: GrantStatus.GRANTED,
+      refundStatus: RefundStatus.NONE, amountFen: 300,
+      entitlementGrant: { taskPackDelta: 1, taskPackCountAdded: 1, appliedAt: new Date() },
+    },
+    {
+      _id: 'ledger_new_pack', userId: 'ledger_openid_1', packageId: 'task_pack_5',
+      productType: 'TASK_PACK', status: OrderStatus.PAID, grantStatus: GrantStatus.GRANTED,
+      refundStatus: RefundStatus.NONE, amountFen: 300, addedSlots: 10,
+      entitlementGrant: { taskPackDelta: 1, taskPackCountAdded: 1, taskPackSlotsAdded: 10, appliedAt: new Date() },
+    },
+    {
+      _id: 'ledger_unknown_member', userId: 'ledger_openid_3', packageId: 'member',
+      productType: 'MEMBER', status: OrderStatus.PAID, grantStatus: null,
+      refundStatus: RefundStatus.NONE, amountFen: 300, memberDays: 30,
+      entitlementGrant: null,
+    },
+  ]);
+  const dryRun = await migrateEntitlementLedgerBatch(db, { dryRun: true });
+  eq(dryRun.success, true, '名额账本 dryRun 执行成功');
+  eq(dryRun.updated, 0, 'dryRun 不写用户');
+  const dryDiff = dryRun.diffs.find(item => item.userDocumentId === 'ledger_u1');
+  eq(JSON.stringify(dryDiff.after), JSON.stringify({ taskPackCount: 2, taskPackSlots: 15 }),
+    '历史包按 5 个、新包按 10 个混合累计');
+  eq(db._dump(COLLECTIONS.USERS).find(item => item._id === 'ledger_u1').taskPackSlots == null,
+    true, 'dryRun 不修改用户账本字段');
+  eq(db._dump(COLLECTIONS.AFTER_SALES_CASES).length, 0, 'dryRun 不创建人工售后');
+
+  const ledgerMigrated = await migrateEntitlementLedgerBatch(db);
+  eq(ledgerMigrated.updated, 3, '正式迁移更新全部批次用户');
+  const ledgerUser1 = db._dump(COLLECTIONS.USERS).find(item => item._id === 'ledger_u1');
+  const ledgerUser2 = db._dump(COLLECTIONS.USERS).find(item => item._id === 'ledger_u2');
+  eq(ledgerUser1.taskPackCount, 2, '迁移保留包数');
+  eq(ledgerUser1.taskPackSlots, 15, '迁移写入混合名额总数');
+  eq(ledgerUser2.taskPackCount, 1, '缺订单的历史用户保留原包数');
+  eq(ledgerUser2.taskPackSlots, 5, '历史包最低按每包 5 个保护');
+  eq(!!ledgerUser1.entitlementLedgerMigratedAt, true, '用户写入迁移版本时间');
+  const oldPack = db._dump(COLLECTIONS.ORDERS).find(item => item._id === 'ledger_old_pack');
+  eq(oldPack.entitlementGrant.legacyBackfill, true, '可确认的历史发放订单标记 legacyBackfill');
+  const unknownOrder = db._dump(COLLECTIONS.ORDERS).find(item => item._id === 'ledger_unknown_member');
+  eq(unknownOrder.grantReviewRequired, true, '无法确认发放状态的历史订单进入人工核查');
+  eq(db._dump(COLLECTIONS.AFTER_SALES_CASES).some(item => item.orderId === 'ledger_unknown_member'),
+    true, '人工核查订单生成售后工作台记录');
+  eq(await entitlementMigrationCompleted(db), true, '最后一批写入名额账本迁移完成标记');
+
+  const repeatedLedger = await migrateEntitlementLedgerBatch(db);
+  eq(repeatedLedger.alreadyCompleted, true, '名额账本迁移完成后重复调用不改写数据');
+
+  console.log('\n=== 10. 名额账本 dryRun 游标覆盖超过 100 人 ===');
+  db = createDb();
+  db._seed(COLLECTIONS.USERS, Array.from({ length: 105 }, (_, i) => ({
+    _id: `ledger_batch_${String(i).padStart(3, '0')}`,
+    openId: `ledger_batch_openid_${i}`,
+    taskPackCount: 0,
+    taskPackSlots: 0,
+  })));
+  const ledgerBatch1 = await migrateEntitlementLedgerBatch(db, { dryRun: true });
+  const ledgerBatch2 = await migrateEntitlementLedgerBatch(db, {
+    cursor: ledgerBatch1.nextCursor,
+    dryRun: true,
+  });
+  const ledgerBatch3 = await migrateEntitlementLedgerBatch(db, {
+    cursor: ledgerBatch2.nextCursor,
+    dryRun: true,
+  });
+  eq(ledgerBatch1.scanned, 50, 'dryRun 第一批扫描 50 人');
+  eq(ledgerBatch2.scanned, 50, 'dryRun 第二批扫描 50 人');
+  eq(ledgerBatch3.scanned, 5, 'dryRun 第三批扫描剩余 5 人');
+  eq(ledgerBatch3.hasMore, false, 'dryRun 游标完整覆盖尾部用户');
+  eq(await entitlementMigrationCompleted(db), false, 'dryRun 不写完成标记');
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);

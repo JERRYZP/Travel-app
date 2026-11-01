@@ -8,11 +8,15 @@
 const {
   COLLECTIONS, ERRORS, MemberLevel, OrderStatus, RefundStatus, GrantStatus, ok, fail,
 } = require('./schema');
+const userDomain = require('./user');
+const quotaLock = require('./quota-lock');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ORDER_TTL_MS = 15 * 60 * 1000;
 const REFUND_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DUPLICATE_WINDOW_MS = 10 * 60 * 1000;
+const LEGACY_TASK_PACK_SIZE = 5;
+const GRANT_SCHEMA_VERSION = 2;
 
 function amountOf(payment = {}) {
   const raw = payment.amount && typeof payment.amount === 'object'
@@ -68,14 +72,39 @@ async function findCaseByOutRefundNo(db, outRefundNo) {
 }
 
 function grantStateOf(order = {}) {
+  if (order.grantStatus === GrantStatus.REVERTED
+    || order.refundStatus === RefundStatus.REFUNDED
+    || order.status === OrderStatus.REFUNDED) {
+    return 'REFUNDED';
+  }
   if (order.status !== OrderStatus.PAID) {
     return order.status === OrderStatus.CLOSED ? 'CLOSED' : 'PENDING';
   }
-  if (order.grantStatus === GrantStatus.REVERTED || order.refundStatus === RefundStatus.REFUNDED) {
-    return 'REFUNDED';
-  }
   if (order.grantStatus === GrantStatus.FAILED) return 'PAID_GRANT_FAILED';
-  return 'PAID_GRANTED';
+  if (order.grantStatus === GrantStatus.GRANTED) return 'PAID_GRANTED';
+  return 'PAID_GRANT_UNKNOWN';
+}
+
+function taskPackCountAddedOf(order = {}) {
+  if (order.productType !== 'TASK_PACK') return 0;
+  const grant = order.entitlementGrant || {};
+  if (grant.taskPackCountAdded != null) return Math.max(0, Number(grant.taskPackCountAdded) || 0);
+  if (grant.taskPackDelta != null) return Math.max(0, Number(grant.taskPackDelta) || 0);
+  return 1;
+}
+
+function taskPackSlotsAddedOf(order = {}) {
+  if (order.productType !== 'TASK_PACK') return 0;
+  const grant = order.entitlementGrant || {};
+  if (grant.taskPackSlotsAdded != null) return Math.max(0, Number(grant.taskPackSlotsAdded) || 0);
+  const perPack = Math.max(0, Number(order.addedSlots) || LEGACY_TASK_PACK_SIZE);
+  return taskPackCountAddedOf(order) * perPack;
+}
+
+function isLiveEntitlement(order = {}) {
+  return order.status === OrderStatus.PAID
+    && order.grantStatus === GrantStatus.GRANTED
+    && order.refundStatus !== RefundStatus.REFUNDED;
 }
 
 function paymentViewOf(order = {}) {
@@ -84,6 +113,9 @@ function paymentViewOf(order = {}) {
     status: order.status,
     entitlementStatus: grantStateOf(order),
     refundStatus: order.refundStatus || RefundStatus.NONE,
+    paymentProvider: order.paymentProvider || '',
+    taskPackCount: Math.max(0, Number(order.taskPackCount) || 0),
+    taskPackSlots: Math.max(0, Number(order.taskPackSlots) || 0),
     isExpired: isOrderExpired(order),
   };
 }
@@ -140,17 +172,6 @@ async function fulfillOrder(db, order, payment = {}) {
     return fail(ERRORS.ORDER_AMOUNT_MISMATCH);
   }
 
-  const alreadyGranted = order.status === OrderStatus.PAID
-    && order.grantStatus !== GrantStatus.FAILED
-    && order.grantStatus !== GrantStatus.REVERTED;
-  if (alreadyGranted) {
-    return ok({
-      orderId: order._id,
-      status: OrderStatus.PAID,
-      entitlementStatus: 'PAID_GRANTED',
-      alreadyPaid: true,
-    });
-  }
   if (order.grantStatus === GrantStatus.REVERTED
     || order.refundStatus === RefundStatus.REFUNDED
     || order.status === OrderStatus.REFUNDED) {
@@ -161,17 +182,36 @@ async function fulfillOrder(db, order, payment = {}) {
       alreadyReverted: true,
     });
   }
+  const alreadyGranted = order.status === OrderStatus.PAID
+    && order.grantStatus === GrantStatus.GRANTED;
+  if (alreadyGranted) {
+    return ok({
+      orderId: order._id,
+      status: OrderStatus.PAID,
+      entitlementStatus: 'PAID_GRANTED',
+      alreadyPaid: true,
+    });
+  }
   if (order.status !== OrderStatus.PENDING
     && order.status !== OrderStatus.PAID
     && order.status !== OrderStatus.CLOSED) {
     return fail(ERRORS.ORDER_NOT_FOUND);
   }
+  if (order.status === OrderStatus.PAID
+    && order.grantStatus == null
+    && Number(order.grantSchemaVersion) !== GRANT_SCHEMA_VERSION) {
+    return fail({ code: 1500, message: '历史订单发放状态待核验，请勿重复支付' });
+  }
 
-  const userRes = await db.collection(COLLECTIONS.USERS).where({ openId: order.userId }).get();
-  const user = (userRes.data || [])[0];
-  if (!user) return fail(ERRORS.UNAUTHORIZED);
+  const user = await userDomain.ensureUser(db, order.userId);
+  const lock = await quotaLock.acquireQuotaLock(db, order.userId);
+  if (!lock) return fail(ERRORS.TASK_QUOTA_BUSY);
 
   const transactionId = payment.transactionId || payment.transaction_id || order.transactionId || '';
+  const paymentProvider = payment.paymentProvider || order.paymentProvider || '';
+  const channelOrderType = payment.channelOrderType != null
+    ? Number(payment.channelOrderType)
+    : (order.channelOrderType != null ? Number(order.channelOrderType) : null);
   const paymentResult = {
     transactionId,
     amountFen: paidAmount,
@@ -179,203 +219,279 @@ async function fulfillOrder(db, order, payment = {}) {
     appId: payment.appId || payment.appid || '',
     mchId: payment.mchId || payment.mchid || '',
     outTradeNo: payment.outTradeNo || payment.out_trade_no || order.outTradeNo,
+    paymentProvider,
+    channelOrderType: Number.isFinite(channelOrderType) ? channelOrderType : null,
   };
-  const memberDays = Math.max(0, Number(order.memberDays) || 0);
-  const memberFloorDays = Math.max(0, Number(order.memberFloorDays) || 0);
-  const taskPackDelta = order.productType === 'TASK_PACK' ? 1 : 0;
-
-  const transaction = await db.startTransaction();
-  let userPatch = null;
-  let entitlementGrant = null;
   try {
-    const latestOrder = docDataOf(await transaction.collection(COLLECTIONS.ORDERS).doc(order._id).get())
-      || order;
-    if (latestOrder.grantStatus === GrantStatus.REVERTED
-      || latestOrder.refundStatus === RefundStatus.REFUNDED
-      || latestOrder.status === OrderStatus.REFUNDED) {
-      await rollbackQuietly(transaction);
-      return ok({
-        orderId: latestOrder._id,
-        status: OrderStatus.PAID,
-        entitlementStatus: 'REFUNDED',
-        alreadyReverted: true,
+    const transaction = await db.startTransaction();
+    let userPatch = null;
+    let entitlementGrant = null;
+    try {
+      const latestOrder = docDataOf(await transaction.collection(COLLECTIONS.ORDERS).doc(order._id).get())
+        || order;
+      if (latestOrder.grantStatus === GrantStatus.REVERTED
+        || latestOrder.refundStatus === RefundStatus.REFUNDED
+        || latestOrder.status === OrderStatus.REFUNDED) {
+        await rollbackQuietly(transaction);
+        return ok({
+          orderId: latestOrder._id,
+          status: OrderStatus.PAID,
+          entitlementStatus: 'REFUNDED',
+          alreadyReverted: true,
+        });
+      }
+      if (latestOrder.status === OrderStatus.PAID
+        && latestOrder.grantStatus === GrantStatus.GRANTED) {
+        await rollbackQuietly(transaction);
+        return ok({
+          orderId: latestOrder._id,
+          status: OrderStatus.PAID,
+          entitlementStatus: 'PAID_GRANTED',
+          alreadyPaid: true,
+        });
+      }
+      if (![OrderStatus.PENDING, OrderStatus.PAID, OrderStatus.CLOSED].includes(latestOrder.status)) {
+        await rollbackQuietly(transaction);
+        return fail(ERRORS.ORDER_NOT_FOUND);
+      }
+      if (latestOrder.status === OrderStatus.PAID
+        && latestOrder.grantStatus == null
+        && Number(latestOrder.grantSchemaVersion) !== GRANT_SCHEMA_VERSION) {
+        await rollbackQuietly(transaction);
+        return fail({ code: 1500, message: '历史订单发放状态待核验，请勿重复支付' });
+      }
+
+      const latestUser = docDataOf(await transaction.collection(COLLECTIONS.USERS).doc(user._id).get())
+        || user;
+      const nowTs = new Date();
+      const memberDays = Math.max(0, Number(latestOrder.memberDays) || 0);
+      const memberFloorDays = Math.max(0, Number(latestOrder.memberFloorDays) || 0);
+      const taskPackCountAdded = taskPackCountAddedOf(latestOrder);
+      const taskPackSlotsAdded = taskPackSlotsAddedOf(latestOrder);
+      const currentExpiryMs = dateMs(latestUser.memberExpiresAt);
+      const validCurrentExpiry = currentExpiryMs > nowTs.getTime() ? currentExpiryMs : nowTs.getTime();
+      const expiryCandidates = [
+        memberDays > 0 ? validCurrentExpiry + memberDays * DAY_MS : 0,
+        memberFloorDays > 0 ? nowTs.getTime() + memberFloorDays * DAY_MS : 0,
+        currentExpiryMs > 0 ? currentExpiryMs : 0,
+      ];
+      const nextExpiryMs = Math.max(...expiryCandidates);
+      entitlementGrant = {
+        beforeExpiresAt: currentExpiryMs ? new Date(currentExpiryMs) : null,
+        afterExpiresAt: new Date(nextExpiryMs),
+        memberDaysAddedMs: Math.max(0, nextExpiryMs - validCurrentExpiry),
+        taskPackDelta: taskPackCountAdded,
+        taskPackCountAdded,
+        taskPackSlotsAdded,
+        specVersion: latestOrder.specVersion || '',
+        appliedAt: nowTs,
+        revertedAt: null,
+      };
+      userPatch = {
+        memberLevel: MemberLevel.MEMBER,
+        memberSince: latestUser.memberSince || nowTs,
+        memberOrderId: order._id,
+        memberExpiresAt: new Date(nextExpiryMs),
+      };
+      if (taskPackCountAdded > 0) {
+        const currentPackCount = Math.max(0, parseInt(latestUser.taskPackCount, 10) || 0);
+        const currentPackSlots = latestUser.taskPackSlots != null
+          ? Math.max(0, parseInt(latestUser.taskPackSlots, 10) || 0)
+          : currentPackCount * LEGACY_TASK_PACK_SIZE;
+        userPatch.taskPackCount = currentPackCount + taskPackCountAdded;
+        userPatch.taskPackSlots = currentPackSlots + taskPackSlotsAdded;
+      }
+
+      await transaction.collection(COLLECTIONS.USERS).doc(user._id).update({ data: userPatch });
+      await transaction.collection(COLLECTIONS.ORDERS).doc(order._id).update({
+        data: {
+          status: OrderStatus.PAID,
+          paidAt: latestOrder.paidAt || nowTs,
+          transactionId,
+          paymentProvider: paymentProvider || latestOrder.paymentProvider || '',
+          channelOrderType: Number.isFinite(channelOrderType) ? channelOrderType : null,
+          paymentResult,
+          refundStatus: latestOrder.refundStatus || RefundStatus.NONE,
+          grantStatus: GrantStatus.GRANTED,
+          grantSchemaVersion: GRANT_SCHEMA_VERSION,
+          entitlementGrant,
+          grantError: '',
+          updatedAt: nowTs,
+        },
       });
-    }
-    if (latestOrder.status === OrderStatus.PAID
-      && latestOrder.grantStatus !== GrantStatus.FAILED) {
-      await rollbackQuietly(transaction);
-      return ok({
-        orderId: latestOrder._id,
-        status: OrderStatus.PAID,
-        entitlementStatus: 'PAID_GRANTED',
-        alreadyPaid: true,
-      });
-    }
-    if (![OrderStatus.PENDING, OrderStatus.PAID, OrderStatus.CLOSED].includes(latestOrder.status)) {
-      await rollbackQuietly(transaction);
-      return fail(ERRORS.ORDER_NOT_FOUND);
+      await transaction.commit();
+    } catch (err) {
+      try { await transaction.rollback(); } catch (rollbackErr) { /* commit 结果未知，下面以数据库回读为准 */ }
+      const fresh = await findOrderById(db, order._id);
+      if (fresh && (fresh.grantStatus === GrantStatus.REVERTED
+        || fresh.refundStatus === RefundStatus.REFUNDED)) {
+        return ok({
+          orderId: fresh._id,
+          status: OrderStatus.PAID,
+          entitlementStatus: 'REFUNDED',
+          alreadyReverted: true,
+        });
+      }
+      if (fresh && fresh.status === OrderStatus.PAID && fresh.grantStatus === GrantStatus.GRANTED) {
+        return ok({
+          orderId: fresh._id,
+          status: OrderStatus.PAID,
+          entitlementStatus: 'PAID_GRANTED',
+          alreadyPaid: true,
+        });
+      }
+      if (fresh && fresh.status === OrderStatus.PAID
+        && fresh.grantStatus == null
+        && Number(fresh.grantSchemaVersion) !== GRANT_SCHEMA_VERSION) {
+        return fail({ code: 1500, message: '历史订单发放状态待核验，请勿重复支付' });
+      }
+      await markGrantFailed(db, order, err.message);
+      return fail({ code: 1500, message: `订单发放失败：${err.message}` });
     }
 
-    const latestUser = docDataOf(await transaction.collection(COLLECTIONS.USERS).doc(user._id).get())
-      || user;
-    const nowTs = new Date();
-    const currentExpiryMs = dateMs(latestUser.memberExpiresAt);
-    const validCurrentExpiry = currentExpiryMs > nowTs.getTime() ? currentExpiryMs : nowTs.getTime();
-    const expiryCandidates = [
-      memberDays > 0 ? validCurrentExpiry + memberDays * DAY_MS : 0,
-      memberFloorDays > 0 ? nowTs.getTime() + memberFloorDays * DAY_MS : 0,
-      currentExpiryMs > 0 ? currentExpiryMs : 0,
-    ];
-    const nextExpiryMs = Math.max(...expiryCandidates);
-    entitlementGrant = {
-      beforeExpiresAt: currentExpiryMs ? new Date(currentExpiryMs) : null,
-      afterExpiresAt: new Date(nextExpiryMs),
-      memberDaysAddedMs: Math.max(0, nextExpiryMs - validCurrentExpiry),
-      taskPackDelta,
-      appliedAt: nowTs,
-      revertedAt: null,
-    };
-    userPatch = {
+    return ok({
+      orderId: order._id,
+      status: OrderStatus.PAID,
+      entitlementStatus: 'PAID_GRANTED',
       memberLevel: MemberLevel.MEMBER,
-      memberSince: latestUser.memberSince || nowTs,
-      memberOrderId: order._id,
-      memberExpiresAt: new Date(nextExpiryMs),
-    };
-    if (taskPackDelta) {
-      userPatch.taskPackCount = Math.max(0, parseInt(latestUser.taskPackCount, 10) || 0) + taskPackDelta;
-    }
-
-    await transaction.collection(COLLECTIONS.USERS).doc(user._id).update({ data: userPatch });
-    await transaction.collection(COLLECTIONS.ORDERS).doc(order._id).update({
-      data: {
-        status: OrderStatus.PAID,
-        paidAt: latestOrder.paidAt || nowTs,
-        transactionId,
-        paymentResult,
-        refundStatus: latestOrder.refundStatus || RefundStatus.NONE,
-        grantStatus: GrantStatus.GRANTED,
-        entitlementGrant,
-        grantError: '',
-        updatedAt: nowTs,
-      },
+      memberExpiresAt: userPatch && userPatch.memberExpiresAt,
+      taskPackCount: userPatch && userPatch.taskPackCount != null
+        ? userPatch.taskPackCount
+        : (parseInt(user.taskPackCount, 10) || 0),
+      taskPackSlots: userPatch && userPatch.taskPackSlots != null
+        ? userPatch.taskPackSlots
+        : (parseInt(user.taskPackSlots, 10) || 0),
     });
-    await transaction.commit();
-  } catch (err) {
-    try { await transaction.rollback(); } catch (rollbackErr) { /* commit 结果未知，下面以数据库回读为准 */ }
-    // commit 响应丢失时数据库可能已经成功。先回读，避免把已发放订单覆盖成 FAILED。
-    const fresh = await findOrderById(db, order._id);
-    if (fresh && (fresh.grantStatus === GrantStatus.REVERTED
-      || fresh.refundStatus === RefundStatus.REFUNDED)) {
-      return ok({
-        orderId: fresh._id,
-        status: OrderStatus.PAID,
-        entitlementStatus: 'REFUNDED',
-        alreadyReverted: true,
-      });
-    }
-    if (fresh && fresh.status === OrderStatus.PAID && fresh.grantStatus === GrantStatus.GRANTED) {
-      return ok({
-        orderId: fresh._id,
-        status: OrderStatus.PAID,
-        entitlementStatus: 'PAID_GRANTED',
-        alreadyPaid: true,
-      });
-    }
-    await markGrantFailed(db, order, err.message);
-    return fail({ code: 1500, message: `订单发放失败：${err.message}` });
+  } finally {
+    await quotaLock.releaseQuotaLock(db, lock);
   }
-
-  return ok({
-    orderId: order._id,
-    status: OrderStatus.PAID,
-    entitlementStatus: 'PAID_GRANTED',
-    memberLevel: MemberLevel.MEMBER,
-    memberExpiresAt: userPatch && userPatch.memberExpiresAt,
-    taskPackCount: userPatch && userPatch.taskPackCount != null
-      ? userPatch.taskPackCount
-      : (parseInt(user.taskPackCount, 10) || 0),
-  });
 }
 
 async function reverseOrderEntitlement(db, order, refundedAmountFen) {
-  if (!order || order.status !== OrderStatus.PAID) return fail(ERRORS.ORDER_NOT_FOUND);
-  if (order.grantStatus === GrantStatus.REVERTED || order.refundStatus === RefundStatus.REFUNDED) {
+  if (!order) return fail(ERRORS.ORDER_NOT_FOUND);
+  if (order.status === OrderStatus.REFUNDED
+    || order.grantStatus === GrantStatus.REVERTED
+    || order.refundStatus === RefundStatus.REFUNDED) {
     return ok({ orderId: order._id, alreadyReverted: true });
   }
+  if (order.status !== OrderStatus.PAID) return fail(ERRORS.ORDER_NOT_FOUND);
+  const freshSeed = await findOrderById(db, order._id);
+  if (!freshSeed) return fail(ERRORS.ORDER_NOT_FOUND);
 
-  const userRes = await db.collection(COLLECTIONS.USERS).where({ openId: order.userId }).get();
-  const user = (userRes.data || [])[0];
-  if (!user) return fail(ERRORS.UNAUTHORIZED);
-
-  const transaction = await db.startTransaction();
-  try {
-    const latestOrder = docDataOf(await transaction.collection(COLLECTIONS.ORDERS).doc(order._id).get())
-      || order;
-    if (latestOrder.grantStatus === GrantStatus.REVERTED
-      || latestOrder.refundStatus === RefundStatus.REFUNDED) {
-      await rollbackQuietly(transaction);
-      return ok({ orderId: latestOrder._id, alreadyReverted: true });
-    }
-    if (latestOrder.status !== OrderStatus.PAID) {
-      await rollbackQuietly(transaction);
-      return fail(ERRORS.ORDER_NOT_FOUND);
-    }
-    const latestUser = docDataOf(await transaction.collection(COLLECTIONS.USERS).doc(user._id).get())
-      || user;
-    const grant = latestOrder.entitlementGrant || {};
+  const recordRefundWithoutReversal = async () => {
     const nowTs = new Date();
-    const currentExpiryMs = dateMs(latestUser.memberExpiresAt);
-    // 兼容上线前已支付、但没有权益快照的历史订单。订单自身仍保留商品
-    // 快照，因此可以保守地按商品天数/名额包数量回收，不能直接把权益留空。
-    const hasMemberSnapshot = grant.memberDaysAddedMs != null;
-    const hasPackSnapshot = grant.taskPackDelta != null;
-    const addedMs = Math.max(0, Number(
-      hasMemberSnapshot ? grant.memberDaysAddedMs : (Number(latestOrder.memberDays) || 0) * DAY_MS
-    ) || 0);
-    const taskPackDelta = Math.max(0, Number(
-      hasPackSnapshot ? grant.taskPackDelta : (latestOrder.productType === 'TASK_PACK' ? 1 : 0)
-    ) || 0);
-    const nextExpiryMs = Math.max(nowTs.getTime(), currentExpiryMs - addedMs);
-    const nextPackCount = Math.max(
-      0,
-      (parseInt(latestUser.taskPackCount, 10) || 0) - taskPackDelta
-    );
-    const member = nextExpiryMs > nowTs.getTime();
-    const userPatch = {
-      memberExpiresAt: new Date(nextExpiryMs),
-      memberLevel: member ? MemberLevel.MEMBER : MemberLevel.NORMAL,
-      taskPackCount: nextPackCount,
-    };
-    await transaction.collection(COLLECTIONS.USERS).doc(user._id).update({ data: userPatch });
-    await transaction.collection(COLLECTIONS.ORDERS).doc(order._id).update({
+    await db.collection(COLLECTIONS.ORDERS).where({
+      _id: freshSeed._id,
+      status: OrderStatus.PAID,
+    }).update({
       data: {
         refundStatus: RefundStatus.REFUNDED,
-        refundedAmountFen: Number(refundedAmountFen) || Number(latestOrder.amountFen) || 0,
+        refundedAmountFen: Number(refundedAmountFen) || Number(freshSeed.amountFen) || 0,
         refundedAt: nowTs,
-        grantStatus: GrantStatus.REVERTED,
-        entitlementGrant: {
-          ...grant,
-          memberDaysAddedMs: addedMs,
-          taskPackDelta,
-          legacyBackfill: !hasMemberSnapshot || !hasPackSnapshot,
-          revertedAt: nowTs,
-        },
         updatedAt: nowTs,
       },
     });
-    await transaction.commit();
-  } catch (err) {
-    try { await transaction.rollback(); } catch (rollbackErr) { /* commit 结果未知，下面以数据库回读为准 */ }
-    const fresh = await findOrderById(db, order._id);
-    if (fresh && fresh.grantStatus === GrantStatus.REVERTED) {
-      return ok({ orderId: fresh._id, alreadyReverted: true });
+    return ok({
+      orderId: freshSeed._id,
+      refundedAmountFen: Number(refundedAmountFen) || Number(freshSeed.amountFen) || 0,
+      entitlementReversed: false,
+    });
+  };
+
+  if (freshSeed.grantStatus === GrantStatus.FAILED
+    || freshSeed.grantStatus === GrantStatus.NONE
+    || freshSeed.grantStatus == null) {
+    if (freshSeed.grantStatus == null && Number(freshSeed.grantSchemaVersion) !== GRANT_SCHEMA_VERSION) {
+      return fail({ code: 1500, message: '历史订单发放状态待核验，暂不能自动回收权益' });
     }
-    return fail({ code: 1500, message: `权益回收失败：${err.message}` });
+    return recordRefundWithoutReversal();
   }
-  return ok({
-    orderId: order._id,
-    refundedAmountFen: Number(refundedAmountFen) || Number(order.amountFen) || 0,
-  });
+  if (freshSeed.grantStatus !== GrantStatus.GRANTED) {
+    return fail({ code: 1500, message: '订单权益状态不允许自动回收' });
+  }
+
+  const user = await userDomain.ensureUser(db, freshSeed.userId);
+  const lock = await quotaLock.acquireQuotaLock(db, freshSeed.userId);
+  if (!lock) return fail(ERRORS.TASK_QUOTA_BUSY);
+  try {
+    const transaction = await db.startTransaction();
+    try {
+      const latestOrder = docDataOf(await transaction.collection(COLLECTIONS.ORDERS).doc(freshSeed._id).get())
+        || freshSeed;
+      if (latestOrder.grantStatus === GrantStatus.REVERTED
+        || latestOrder.refundStatus === RefundStatus.REFUNDED) {
+        await rollbackQuietly(transaction);
+        return ok({ orderId: latestOrder._id, alreadyReverted: true });
+      }
+      if (latestOrder.status !== OrderStatus.PAID) {
+        await rollbackQuietly(transaction);
+        return fail(ERRORS.ORDER_NOT_FOUND);
+      }
+      if (latestOrder.grantStatus !== GrantStatus.GRANTED) {
+        await rollbackQuietly(transaction);
+        return recordRefundWithoutReversal();
+      }
+      const latestUser = docDataOf(await transaction.collection(COLLECTIONS.USERS).doc(user._id).get())
+        || user;
+      const grant = latestOrder.entitlementGrant || {};
+      const nowTs = new Date();
+      const currentExpiryMs = dateMs(latestUser.memberExpiresAt);
+      const hasMemberSnapshot = grant.memberDaysAddedMs != null;
+      const addedMs = Math.max(0, Number(
+        hasMemberSnapshot ? grant.memberDaysAddedMs : (Number(latestOrder.memberDays) || 0) * DAY_MS
+      ) || 0);
+      const taskPackCountAdded = taskPackCountAddedOf(latestOrder);
+      const taskPackSlotsAdded = taskPackSlotsAddedOf(latestOrder);
+      const nextExpiryMs = Math.max(nowTs.getTime(), currentExpiryMs - addedMs);
+      const currentPackCount = Math.max(0, parseInt(latestUser.taskPackCount, 10) || 0);
+      const currentPackSlots = latestUser.taskPackSlots != null
+        ? Math.max(0, parseInt(latestUser.taskPackSlots, 10) || 0)
+        : currentPackCount * LEGACY_TASK_PACK_SIZE;
+      const nextPackCount = Math.max(0, currentPackCount - taskPackCountAdded);
+      const nextPackSlots = Math.max(0, currentPackSlots - taskPackSlotsAdded);
+      const member = nextExpiryMs > nowTs.getTime();
+      const userPatch = {
+        memberExpiresAt: new Date(nextExpiryMs),
+        memberLevel: member ? MemberLevel.MEMBER : MemberLevel.NORMAL,
+        taskPackCount: nextPackCount,
+        taskPackSlots: nextPackSlots,
+      };
+      await transaction.collection(COLLECTIONS.USERS).doc(user._id).update({ data: userPatch });
+      await transaction.collection(COLLECTIONS.ORDERS).doc(latestOrder._id).update({
+        data: {
+          refundStatus: RefundStatus.REFUNDED,
+          refundedAmountFen: Number(refundedAmountFen) || Number(latestOrder.amountFen) || 0,
+          refundedAt: nowTs,
+          grantStatus: GrantStatus.REVERTED,
+          entitlementGrant: {
+            ...grant,
+            memberDaysAddedMs: addedMs,
+            taskPackDelta: taskPackCountAdded,
+            taskPackCountAdded,
+            taskPackSlotsAdded,
+            legacyBackfill: !hasMemberSnapshot || grant.taskPackSlotsAdded == null,
+            revertedAt: nowTs,
+          },
+          updatedAt: nowTs,
+        },
+      });
+      await transaction.commit();
+    } catch (err) {
+      try { await transaction.rollback(); } catch (rollbackErr) { /* commit 结果未知，下面以数据库回读为准 */ }
+      const fresh = await findOrderById(db, freshSeed._id);
+      if (fresh && fresh.grantStatus === GrantStatus.REVERTED) {
+        return ok({ orderId: fresh._id, alreadyReverted: true });
+      }
+      return fail({ code: 1500, message: `权益回收失败：${err.message}` });
+    }
+    return ok({
+      orderId: freshSeed._id,
+      refundedAmountFen: Number(refundedAmountFen) || Number(freshSeed.amountFen) || 0,
+      entitlementReversed: true,
+    });
+  } finally {
+    await quotaLock.releaseQuotaLock(db, lock);
+  }
 }
 
 function isCallbackPaidResult(result = {}) {
@@ -403,6 +519,8 @@ module.exports = {
   ORDER_TTL_MS,
   REFUND_WINDOW_MS,
   DUPLICATE_WINDOW_MS,
+  LEGACY_TASK_PACK_SIZE,
+  GRANT_SCHEMA_VERSION,
   amountOf,
   dateMs,
   orderExpiresAtMs,
@@ -411,6 +529,9 @@ module.exports = {
   findOrderByOutTradeNo,
   findCaseByOutRefundNo,
   grantStateOf,
+  taskPackCountAddedOf,
+  taskPackSlotsAddedOf,
+  isLiveEntitlement,
   paymentViewOf,
   markOrderClosed,
   markGrantFailed,

@@ -1,5 +1,6 @@
 const app = getApp();
 const api = require('../../utils/api.js');
+const membershipPay = require('../../utils/membership-pay.js');
 
 const TYPE_LABEL = {
   RIGHTS_NOT_RECEIVED: '权益未到账',
@@ -34,6 +35,7 @@ Page({
       navBarHeight: g.navBarHeight,
       orderId: (options && options.orderId) || '',
     });
+    this._afterSalesRequestId = '';
   },
 
   onShow() { this.load(); },
@@ -87,6 +89,7 @@ Page({
   onTypeTap(e) {
     const type = e.currentTarget.dataset.type;
     if (this.data.existingCase) return;
+    this._afterSalesRequestId = '';
     this.setData({ selectedType: type, resultMessage: '', resultTone: '' });
   },
 
@@ -103,12 +106,16 @@ Page({
       return;
     }
     this.setData({ submitting: true, resultMessage: '' });
+    const requestId = this._afterSalesRequestId || membershipPay.newRequestId();
+    this._afterSalesRequestId = requestId;
     api.payment.afterSales.submit({
       orderId: this.data.orderId,
       type,
+      requestId,
       reasonCode: type,
       description: String(this.data.description || '').trim(),
     }).then(result => {
+      this._afterSalesRequestId = '';
       this.setData({
         submitting: false,
         resultTone: 'success',

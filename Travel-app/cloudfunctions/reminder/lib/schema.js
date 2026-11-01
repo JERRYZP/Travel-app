@@ -129,6 +129,7 @@ const ERRORS = {
   REMINDER_WINDOW_CLOSED: { code: 1017, message: '已过放票时间，提醒无法开启或取消' },
   /* 2026-10-27 会员 / 提醒名额。限额只在服务端判定，页面不自行推导。 */
   TASK_LIMIT_EXCEEDED: { code: 1026, message: '提醒名额不足，请先开通会员或加购名额' },
+  TASK_QUOTA_BUSY: { code: 1031, message: '提醒名额正在更新，请稍后重试' },
   MEMBERSHIP_REQUIRED: { code: 1022, message: '请先开通会员再加购提醒名额' },
   PAYMENT_NOT_READY: { code: 1023, message: '支付通道准备中，请稍后再试' },
   ORDER_NOT_FOUND: { code: 1024, message: '订单不存在或已失效' },

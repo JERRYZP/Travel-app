@@ -29,8 +29,10 @@ Component({
     /* 「还有其他日期可约」气泡的忽略态。⚠️ 与上面那个**不是同一个语义**
        （别问我结果 ≠ 别给我挽回方案），页面分开记 key（`itemId` vs `itemId:recover`）。 */
     recoverDismissed: { type: Boolean, value: false },
-    /* 「没抢到」且确实还有别的日期可约（由页面按服务端的 recoveryCandidates 判定） */
+    /* 服务端是否算出了候选日期。只影响本次即时挽回气泡的提示语。 */
     recoverable: { type: Boolean, value: false },
+    /* 本次刚点过「没抢到」：只有该操作会触发即时挽回气泡。 */
+    recoveryPrompt: { type: Boolean, value: false },
     recoverHint: { type: String, value: '' },
   },
 

@@ -138,9 +138,12 @@
   </view>
 
   <!-- ⚠️ 下面两块必须**紧挨着**，中间不能插注释：`wx:elif` 只认它前面紧邻的那个节点，
-       中间隔一个注释节点就会静默失配（不报错，但挽回块永远不显示）。 -->
-  <view wx:elif="{{!history && item.result === 'FAILED' && recoverable && !recoverDismissed}}" class="tc-bubble">
-    <text class="tc-bubble-q">还有其他日期可约</text>
+       中间隔一个注释节点就会静默失配（不报错，但挽回块永远不显示）。
+       「约其他日」只在用户刚点完「没抢到」的本次操作后上卡；
+       已有 FAILED 状态重新加载时不默认出现，仍可从右侧菜单进入。
+       候选只用来决定提示语，用户仍可手动选择一个行程外的新日期。 -->
+  <view wx:elif="{{!history && item.result === 'FAILED' && recoveryPrompt && !recoverDismissed}}" class="tc-bubble">
+    <text class="tc-bubble-q">{{recoverable ? '还有其他日期可约' : '换个日期再约?'}}</text>
     <view class="tc-bubble-acts">
       <view class="tc-bubble-btn tc-bubble-go" catchtap="onRecover" data-item-id="{{item.itemId}}">约其他日</view>
       <view class="tc-bubble-skip" catchtap="onDismissRecover">忽略</view>

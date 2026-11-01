@@ -36,49 +36,135 @@ const free = {
   taskUsed: 2,
   taskRemaining: 3,
   taskLimit: 5,
-  memberTaskSlots: 10,
+  freeTaskSlots: 5,
+  memberTaskSlots: 15,
+  memberDurationDays: 30,
   ownedTaskPackCount: 0,
-  taskPackSize: 5,
+  taskPackSize: 10,
   memberExpiresAtText: '',
 };
 
+const serverPackages = [
+  {
+    id: 'member',
+    type: 'MEMBER',
+    title: '会员 30 天',
+    priceText: '¥3',
+    taskSlots: 15,
+    addedSlots: 10,
+    memberDays: 30,
+    memberFloorDays: 30,
+    available: true,
+  },
+  {
+    id: 'task_pack_5',
+    type: 'TASK_PACK',
+    title: '10 个提醒名额',
+    priceText: '¥3',
+    taskSlots: 10,
+    addedSlots: 10,
+    memberDays: 0,
+    memberFloorDays: 30,
+    available: true,
+  },
+];
+
+function membershipGateOf(reminderCount, current) {
+  return setupDef.membershipGateOf(reminderCount, current, serverPackages);
+}
+
 async function run() {
   console.log('=== 1. 提醒页只在超额时显示付费入口 ===');
-  let gate = setupDef.membershipGateOf(2, free);
+  let gate = membershipGateOf(2, free);
   eq(gate.showMembershipGate, false, '本次 2 条且额度足够时不显示');
-  gate = setupDef.membershipGateOf(2, { ...free, taskUsed: 3, taskRemaining: 2 });
+  eq(gate.membershipQuotaLimit, 5, '未超额时也同步当前额度，状态不会沿用旧值');
+  eq(gate.membershipQuotaRequested, 2, '未超额时同步本次新建数');
+  gate = membershipGateOf(2, { ...free, taskUsed: 3, taskRemaining: 2 });
   eq(gate.showMembershipGate, false, '刚好用满 5 个时仍不显示');
-  gate = setupDef.membershipGateOf(1, { ...free, taskUsed: 5, taskRemaining: 0 });
-  eq(gate.showMembershipGate, true, '第 6 条时显示');
+  gate = membershipGateOf(5, { ...free, taskUsed: 3, taskRemaining: 2 });
+  eq(gate.showMembershipGate, true, '免费额度不足时显示');
+  eq(gate.membershipQuotaLimit, 5, '公式展示当前额度 5');
+  eq(gate.membershipQuotaUsed, 3, '公式展示已占额度 3');
+  eq(gate.membershipQuotaRemaining, 2, '公式展示剩余额度 2');
+  eq(gate.membershipQuotaRequested, 5, '公式展示本次新建 5');
+  eq(gate.membershipQuotaGap, 3, '公式展示还差 3');
   eq(gate.upgradePackageId, 'member', '普通用户优先开会员');
   eq(gate.membershipActionText, '支付 ¥3，开通 30 天会员并继续', '按钮直接说明商品、金额并继续原流程');
 
   console.log('\n=== 2. 会员超额时加购，不重复卖会员 ===');
-  gate = setupDef.membershipGateOf(1, {
+  gate = membershipGateOf(1, {
     ...free,
     member: true,
-    taskUsed: 10,
+    taskUsed: 15,
     taskRemaining: 0,
-    taskLimit: 10,
+    taskLimit: 15,
     memberExpiresAtText: '2026年11月26日',
   });
   eq(gate.showMembershipGate, true, '会员满额时显示');
   eq(gate.upgradePackageId, 'task_pack_5', '会员显示加购包');
-  eq(gate.membershipActionText, '支付 ¥3，加购 5 个名额并继续', '加购后继续原提交');
+  eq(gate.membershipActionText, '支付 ¥3，加购 10 个名额并继续', '加购后继续原提交');
+  gate = membershipGateOf(7, {
+    ...free,
+    member: true,
+    taskUsed: 12,
+    taskRemaining: 3,
+    taskLimit: 15,
+  });
+  eq(gate.membershipQuotaLimit, 15, '会员公式展示当前额度 15');
+  eq(gate.membershipQuotaUsed, 12, '会员公式展示已占额度 12');
+  eq(gate.membershipQuotaRemaining, 3, '会员公式展示剩余额度 3');
+  eq(gate.membershipQuotaGap, 4, '会员公式展示本次新建 7、还差 4');
+  gate = membershipGateOf(13, {
+    ...free,
+    member: true,
+    taskUsed: 3,
+    taskRemaining: 12,
+    taskLimit: 15,
+  });
+  eq(gate.membershipQuotaUsed, 3, '历史保护任务不进入公式的已占额度');
+  eq(gate.membershipQuotaRemaining, 12, '历史保护任务不压缩公式的剩余额度');
+  eq(gate.membershipQuotaGap, 1, '历史保护额度下按新增池计算本次缺口');
+  const availablePackages = [
+    { id: 'member', type: 'MEMBER', available: true },
+    { id: 'task_pack_5', type: 'TASK_PACK', available: true },
+  ];
+  eq(membershipDef.defaultPackageIdOf({ member: true }, availablePackages), 'task_pack_5',
+    '会员进入会员页默认选中加购，不默认续费会员');
+  eq(membershipDef.defaultPackageIdOf({ member: false }, availablePackages), 'member',
+    '非会员仍默认选中开通会员');
+  eq(membershipDef.defaultPackageIdOf({ member: true }, [availablePackages[0]]), 'member',
+    '加购不可用时安全回退到会员套餐');
+  let preferredMembershipUrl = '';
+  const originalWx = global.wx;
+  global.wx = { navigateTo: ({ url }) => { preferredMembershipUrl = url; } };
+  setupDef.onMembership.call({
+    data: {
+      membership: { member: true, taskUsed: 15, taskLimit: 15, taskRemaining: 0 },
+      reminderCount: 16,
+      upgradePackageId: 'task_pack_5',
+    },
+  });
+  eq(preferredMembershipUrl.includes('packageId=task_pack_5'), true,
+    '设置提醒页打开会员页时显式携带加购意向');
+  global.wx = originalWx;
+  const membershipPage = { setData: () => {} };
+  membershipDef.onLoad.call(membershipPage, { packageId: 'task_pack_5' });
+  eq(membershipPage._preferredPackageId, 'task_pack_5',
+    '会员页接收并校验设置提醒页传入的加购意向');
 
   console.log('\n=== 3. 会员过期后续费会恢复已购提醒名额 ===');
-  gate = setupDef.membershipGateOf(1, {
+  gate = membershipGateOf(1, {
     ...free,
     member: false,
-    taskUsed: 12,
+    taskUsed: 15,
     taskRemaining: 0,
     taskLimit: 5,
-    memberTaskSlots: 10,
+    memberTaskSlots: 15,
     ownedTaskPackCount: 1,
-    taskPackSize: 5,
+    taskPackSize: 10,
   });
-  eq(gate.upgradePackageId, 'member', '续费会员即可恢复原有 15 个提醒名额');
-  eq(gate.membershipGateDesc, '因服务器压力，普通用户最多有 5 个提醒名额；开通会员后上限提升至 10 个，有效期 30 天。',
+  eq(gate.upgradePackageId, 'member', '续费会员即可恢复原有 25 个提醒名额');
+  eq(gate.membershipGateDesc, '因服务器压力，普通用户最多有 5 个提醒名额；开通会员后上限提升至 15 个，有效期 30 天。',
     '非会员用服务器压力说明固定免费额度，不再重复本次数量');
   eq(gate.membershipGateDesc.includes('本次需要'), false, '标题已经说明缺口，正文不再重复本次数量');
 
@@ -93,11 +179,103 @@ async function run() {
   const membershipWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership/membership.wxml'), 'utf8');
   const membershipJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership/membership.js'), 'utf8');
   const membershipWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership/membership.wxss'), 'utf8');
+  const spotCardWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/components/spot-card/spot-card.wxss'), 'utf8');
   const membershipAll = [membershipWxml, membershipJs].join('\n');
+  const reminderAuthWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/components/reminder-auth-sheet/reminder-auth-sheet.wxml'), 'utf8');
+  const reminderAuthJs = fs.readFileSync(path.join(ROOT, 'miniprogram/components/reminder-auth-sheet/reminder-auth-sheet.js'), 'utf8');
+  const reminderAuthJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/components/reminder-auth-sheet/reminder-auth-sheet.json'), 'utf8'));
+  const paymentConfirmWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/components/payment-confirm-sheet/payment-confirm-sheet.wxml'), 'utf8');
+  const paymentConfirmJs = fs.readFileSync(path.join(ROOT, 'miniprogram/components/payment-confirm-sheet/payment-confirm-sheet.js'), 'utf8');
+  const membershipJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership/membership.json'), 'utf8'));
+  const spotHubJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-hub/spot-hub.json'), 'utf8'));
+  const shareSceneJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/pages/share-scene/share-scene.json'), 'utf8'));
+  const homeJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.json'), 'utf8'));
+  const spotHubWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-hub/spot-hub.wxml'), 'utf8');
+  const shareSceneWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/share-scene/share-scene.wxml'), 'utf8');
+  const homeWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxml'), 'utf8');
+  const orderDetailWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-order-detail/membership-order-detail.wxml'), 'utf8');
+  const orderDetailJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-order-detail/membership-order-detail.js'), 'utf8');
+  const orderDetailWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-order-detail/membership-order-detail.wxss'), 'utf8');
 
   eq(setupWxml.includes('wx:if="{{showMembershipGate}}"'), true, '付费块整体由额度不足开关控制');
+  eq(setupWxml.includes('当前额度 {{membershipQuotaLimit}} 个 − 已占 {{membershipQuotaUsed}} 个 = 剩余 {{membershipQuotaRemaining}} 个'),
+    true, '支付卡展示额度、已占和剩余的公式');
+  eq(membershipWxml.includes("status-band {{membership.member ? 'member-first' : ''}}"), true,
+    '会员态给顶部状态卡添加独立间距状态');
+  eq(/\.status-band\.member-first\s*\{\s*margin-top:\s*0;?\s*\}/.test(membershipWxss), true,
+    '会员态移除说明卡不存在时残留的上边距');
+  eq(/\.spot-card-remind\s*\{[^}]*min-width:\s*100rpx/.test(spotCardWxss), true,
+    '景点设提醒入口提供更宽的触控区域');
+  eq(/\.spot-card-remind\s*\{[^}]*min-height:\s*72rpx/.test(spotCardWxss), true,
+    '景点设提醒入口提供更稳的安卓纵向热区');
+  eq(setupWxml.includes('本次新建 {{membershipQuotaRequested}} 个，还差 {{membershipQuotaGap}} 个'),
+    true, '支付卡展示本次新建数和缺口');
   eq(setupWxml.indexOf('membership-gate-desc') < setupWxml.indexOf('membership-gate-action'), true,
     '会员说明在上、支付按钮在下，长文案不再挤在右侧');
+  eq(reminderAuthWxml.includes('放票提醒授权'), true, '统一浮层包含放票提醒授权区');
+  eq(reminderAuthWxml.includes('<text class="ras-title">设置提醒</text>'), true,
+    '统一浮层标题固定为设置提醒');
+  eq(reminderAuthWxml.includes('show && (auth || datePlan)'), true,
+    '日期资格说明与授权共用同一个浮层');
+  eq(reminderAuthWxml.includes("busy ? '正在处理...' : auth.primaryText"), true,
+    '授权区复用 PAGE-008 的固定补授权按钮位置');
+  eq(reminderAuthWxml.includes('1次授权可发送1条提醒'), true,
+    '授权区复用 PAGE-008 的第一条说明');
+  eq(reminderAuthWxml.includes('每次点击最多增加1次授权，需要几次请重复点'), true,
+    '授权区复用 PAGE-008 的手动补齐说明');
+  eq(reminderAuthWxml.includes('“总是保持以上选择”可免去后续弹窗'), true,
+    '授权区复用 PAGE-008 的订阅弹窗说明');
+  eq(reminderAuthWxml.includes('查看提醒样式示例'), true,
+    '授权区提供真实提醒样式示例入口');
+  eq(reminderAuthJson.usingComponents['reminder-sample-sheet'],
+    '/components/reminder-sample-sheet/reminder-sample-sheet',
+    '统一浮层注册真实提醒样式组件');
+  eq(reminderAuthWxml.includes('当前额度 {{membership.limit}} 个 − 已占 {{membership.used}} 个 = 剩余 {{membership.remaining}} 个'),
+    true, '统一浮层包含提醒名额额度公式');
+  eq(reminderAuthWxml.includes('本次新建 {{membership.requested}} 个，还差 {{membership.shortfall}} 个'),
+    true, '统一浮层包含本次新建数与名额缺口');
+  eq(reminderAuthWxml.includes('查看会员权益与退款说明'), true,
+    '统一浮层提供会员权益说明入口');
+  eq(reminderAuthWxml.includes('{{membership.payText}}'), true,
+    '名额主按钮直接使用服务端套餐生成的支付并继续文案');
+  eq(reminderAuthWxml.includes('{{continueText}}'), true,
+    '无名额限制时统一浮层使用状态机提供的正式提交按钮');
+  eq(/continueText:\s*\{\s*type:\s*String,\s*value:\s*'开启行程放票提醒'/.test(reminderAuthJs), true,
+    '统一浮层默认主按钮文案保持开启行程放票提醒');
+  eq(/ras-continue \{\{checkoutReady \? '' : 'disabled'\}\}/.test(reminderAuthWxml), true,
+    '名额未满足时底部提交按钮置灰');
+  eq(reminderAuthWxml.includes('bindtap="onReselect"'), true,
+    '日期失效时可在原浮层返回重选');
+  eq(reminderAuthWxml.includes('暂不处理'), false, '统一浮层不保留暂不处理');
+  eq(reminderAuthWxml.includes('payment-confirm-sheet'), true, '统一浮层内嵌支付确认层');
+  eq(reminderAuthJson.usingComponents['payment-confirm-sheet'], '/components/payment-confirm-sheet/payment-confirm-sheet',
+    '统一浮层注册支付确认组件');
+  eq(membershipJson.usingComponents['payment-confirm-sheet'], '/components/payment-confirm-sheet/payment-confirm-sheet',
+    '会员页复用同一个支付确认组件');
+  eq(paymentConfirmWxml.includes('确认支付'), true, '支付确认组件展示明确标题');
+  eq(paymentConfirmWxml.includes('Apple'), true, '支付确认组件保留 iOS 退款边界');
+  eq(/paying \|\| disabled/.test(paymentConfirmWxml), true,
+    '支付中或不可继续时禁用支付按钮');
+  eq(/triggerEvent\('confirm'\)/.test(paymentConfirmJs), true,
+    '支付确认组件向页面发出确认事件');
+  eq(/onBenefits\(\)[\s\S]*triggerEvent\('benefits'\)/.test(reminderAuthJs), true,
+    '权益入口发出独立事件');
+  eq(/bind:benefits="onReminderAuthBenefits"/.test(spotHubWxml), true,
+    '景点页接收权益入口事件');
+  eq(/bind:reselect="onReminderAuthReselect"/.test(spotHubWxml), true,
+    '景点页接收日期重选事件');
+  eq(/bind:benefits="onReminderAuthBenefits"/.test(shareSceneWxml), true,
+    '分享场景接收权益入口事件');
+  eq(/bind:pay="onReminderAuthPay"/.test(homeWxml), true,
+    '首页约其他日接收同一提醒名额支付入口');
+  eq(/bind:continue="onReminderAuthContinue"/.test(homeWxml), true,
+    '首页约其他日接收同一提醒检查继续事件');
+  eq(spotHubJson.usingComponents['reminder-auth-sheet'], '/components/reminder-auth-sheet/reminder-auth-sheet',
+    '景点页注册统一提醒检查浮层');
+  eq(shareSceneJson.usingComponents['reminder-auth-sheet'], '/components/reminder-auth-sheet/reminder-auth-sheet',
+    '分享场景注册统一提醒检查浮层');
+  eq(homeJson.usingComponents['reminder-auth-sheet'], '/components/reminder-auth-sheet/reminder-auth-sheet',
+    '首页约其他日注册同一个提醒检查浮层');
   eq(/membership-gate-link[^>]*bindtap="onMembership"/.test(setupWxml), true,
     '会员卡有独立的权益详情入口');
   eq(setupWxml.includes('查看会员权益与退款说明'), true,
@@ -106,7 +284,8 @@ async function run() {
     '会员名额不足时通过统一 canSubmit 同步置灰主按钮');
   eq(/membershipBlocked\s*=\s*this\.data\.showMembershipGate === true/.test(setupJs), true,
     'JS 提交态与会员闸门使用同一事实');
-  eq(setupJs.includes("upgradeConfirmAmount: '¥3'"), true, '设置提醒确认层使用 3 元价格');
+  eq(setupJs.includes("upgradeConfirmAmount: ''") && setupJs.includes('upgradeConfirmAmount: pkg.priceText'), true,
+    '设置提醒确认层价格只读取服务端套餐');
   eq(setupWxml.includes('支付 {{upgradeConfirmAmount}}'), true,
     '设置提醒支付按钮复用确认金额字段，避免再次调价漏改');
   eq(/onSubmit\(\)[\s\S]{0,180}?showMembershipGate/.test(setupJs), true,
@@ -157,8 +336,9 @@ async function run() {
   eq(membershipWxml.includes('explain-kicker'), false, '顶部权益卡删除冗余小字');
   eq(membershipWxml.includes('开通会员以增加可同时开启的提醒名额'), true,
     '顶部权益卡使用精简后的主文案');
-  eq(membershipWxml.includes('¥3 一次支付') && membershipWxml.includes('¥3 增加 5 个名额'), true,
-    '会员页当前价格展示为 3 元');
+  eq(membershipWxml.includes('{{membership.memberPackagePriceText}} 一次支付')
+    && membershipWxml.includes('{{membership.taskPackPriceText}} 增加 {{membership.taskPackSize}} 个名额'), true,
+    '会员页当前价格与加购数量读取服务端套餐口径');
   eq(membershipWxml.includes('¥2'), false, '会员页不再展示旧价格 2 元');
   eq(membershipWxml.includes('protectedTaskUsed > 0') && membershipWxml.includes('不占当前新增的'), true,
     '老用户历史提醒单独展示且明确不占当前新增名额');
@@ -178,6 +358,20 @@ async function run() {
     '退款提示不再使用“原则上”弱化退款边界');
   eq(membershipWxss.includes('.payment-state.PAID_GRANTED'), false,
     '移除已不可达的权益到账状态样式');
+  eq(membershipWxml.includes('退款申请和审核由 Apple 独立处理，小程序客服无法决定结果'), true,
+    'iOS 购买说明明确退款决定权归 Apple，客服不决定退款');
+  eq(paymentConfirmWxml.includes('如需申请，可在 App Store 购买记录中操作'), true,
+    'iOS 支付确认层只在需要时说明简短申请路径');
+  eq(membershipWxml.includes('可申请退款，需客服核实'), true,
+    'Android 退款仍保留客服核实口径');
+  eq(membershipWxml.includes('wx:else>虚拟权益支付成功后生效'), true,
+    '会员页购买说明按设备区分 iOS 与 Android');
+  eq(paymentConfirmWxml.includes('wx:else>24 小时内且未新增任何提醒'), true,
+    '支付确认层按设备区分 iOS 与 Android');
+  eq(membershipWxml.includes('iOS 退款：') || membershipWxml.includes('点击“报告问题”申请'), false,
+    '会员页与支付确认层不把 Apple 退款做成强引导路径');
+  eq(paymentConfirmJs.includes('wx.getDeviceInfo'), true,
+    '支付确认层只在 iOS 设备展示 Apple 退款提示');
   eq(membershipJs.includes('`因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额`'), true,
     '免费版状态卡使用固定免费基础额度，不使用老用户保护额度');
   eq(membershipJs.includes('免费版可使用 ${limit || 5} 个提醒名额'), false,
@@ -200,10 +394,43 @@ async function run() {
   );
   eq(paymentData.paymentState && paymentData.paymentState.status, 'PAID_GRANT_FAILED',
     '仍需用户处理的权益异常状态继续保留');
-  const orderDetailJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-order-detail/membership-order-detail.js'), 'utf8');
   const afterSalesWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-after-sales/membership-after-sales.wxml'), 'utf8');
+  eq(orderDetailWxml.includes('{{afterSalesActionLabel}}')
+    && orderDetailJs.includes("'如何申请APP退款'"), true,
+    'Apple 订单退款按钮固定使用如何申请APP退款');
+  eq(orderDetailJs.includes('查看 Apple 退款说明'), false,
+    'Apple 订单退款按钮不随退款状态切换文案');
+  eq(orderDetailWxml.includes('Apple 退款说明') && orderDetailWxml.includes('Apple 审核期间'), true,
+    '订单详情提供 Apple 退款申请路径和审核期间权益说明');
+  eq(orderDetailWxml.includes('Apple 拒绝退款：会员权益保持不变。'), true,
+    '明确 Apple 拒绝退款时权益不变');
+  eq(orderDetailWxml.includes('确认退款：系统收到结果后自动回收'), true,
+    '明确 Apple 退款成功后的权益回收');
+  eq(orderDetailJs.includes("this.setData({ showIosRefundGuide: true })"), true,
+    '点击 Apple 退款入口打开详细说明面板');
+  eq(orderDetailWxss.includes('.refund-sheet') && orderDetailWxss.includes('max-height: 84vh'), true,
+    '详细说明面板适配移动端高度并可滚动');
+  eq(orderDetailWxml.includes('order.entitlementGrant.taskPackDelta * order.addedSlots'), true,
+    '提醒名额增量按订单快照计算，不把当前 10 个规格写死回 5 个');
+  eq(orderDetailWxml.includes('taskPackDelta * 5'), false,
+    '订单详情不再残留 5 个名额的硬编码阶梯');
   eq(orderDetailJs.includes('latestCase && latestCase.decisionNote'), true,
     '订单详情展示客服填写的驳回原因');
+  eq(orderDetailWxml.includes('wx:if="{{latestCase}}"')
+    && orderDetailWxml.includes('退款售后记录'), true,
+    '订单详情直接展示本单退款售后记录卡');
+  eq(orderDetailWxml.includes("order.paymentChannel === 'APPLE' ? '退款记录' : '退款售后记录'"), true,
+    'Apple 订单退款记录卡不显示售后字样');
+  eq(orderDetailWxml.includes('{{latestCase.typeLabel}}')
+    && orderDetailWxml.includes('{{latestCase.statusLabel}}')
+    && orderDetailWxml.includes('{{latestCase.outRefundNo}}'), true,
+    '退款售后记录卡展示类型、状态和退款单号');
+  eq(orderDetailWxml.includes('该记录由系统根据平台退款结果自动生成'), true,
+    '系统自动退款记录有明确来源说明');
+  eq(orderDetailWxml.includes('refund-service-link'), false,
+    'Apple 退款说明不再提供无效的售后页面跳转');
+  eq(orderDetailWxss.includes('.refund-service-link'), false,
+    'Apple 退款说明移除无效跳转的残留样式');
   eq(afterSalesWxml.includes('previousCase.decisionNote'), true,
     '重新申请售后前展示上次驳回原因');
 
@@ -224,13 +451,13 @@ async function run() {
         member: true,
         memberExpiresAtText: '2026年11月26日',
         taskUsed: 3,
-        taskLimit: 10,
+        taskLimit: 15,
       },
     }
   );
   eq(profileData.memberTagText, '尊贵会员', '会员标签凸显身份');
   eq(profileData.memberCardTitle, '尊贵会员', '会员卡标题');
-  eq(profileData.memberCardDesc, '2026-11-26 到期｜提醒名额 3/10', '会员卡显示到期和提醒名额');
+  eq(profileData.memberCardDesc, '2026-11-26 到期｜提醒名额 3/15', '会员卡显示到期和提醒名额');
   eq(profileData.memberCardAction, '升级', '会员卡行动为升级');
 
   console.log('\n=== 5b. 售后入口只在有待处理单时显示数量标识 ===');
@@ -267,6 +494,7 @@ async function run() {
   let upgradeData = {
     membership: { member: true, memberExpiresAt: currentExpiry },
     upgradePackageId: 'task_pack_5',
+    packages: serverPackages,
   };
   setupDef.onUpgradeAndContinue.call({
     data: upgradeData,

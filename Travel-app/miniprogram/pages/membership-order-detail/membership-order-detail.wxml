@@ -42,23 +42,76 @@
     <view wx:if="{{order.entitlementGrant}}" class="rights-card">
       <text class="rights-title">本单权益发放记录</text>
       <text>会员时长增加：{{order.entitlementGrant.memberDaysAddedMs ? '已记录' : '无'}}</text>
-      <text>提醒名额增加：{{order.entitlementGrant.taskPackDelta ? order.entitlementGrant.taskPackDelta * 5 + ' 个' : '会员基础额度'}}</text>
+      <text>提醒名额增加：{{order.entitlementGrant.taskPackDelta ? order.entitlementGrant.taskPackDelta * order.addedSlots + ' 个' : '会员基础额度'}}</text>
       <text wx:if="{{order.entitlementGrant.revertedAt}}">退款后已按本单快照回收；不会删除已有提醒。</text>
+    </view>
+
+    <view wx:if="{{latestCase}}" class="after-sales-card">
+      <view class="after-sales-card-head">
+        <text class="rights-title">{{order.paymentChannel === 'APPLE' ? '退款记录' : '退款售后记录'}}</text>
+        <text class="after-sales-status">{{latestCase.statusLabel}}</text>
+      </view>
+      <view class="info-row"><text>处理类型</text><text>{{latestCase.typeLabel}}</text></view>
+      <view class="info-row"><text>记录时间</text><text>{{latestCase.createdAtText}}</text></view>
+      <view wx:if="{{latestCase.refundedAtText}}" class="info-row"><text>退款时间</text><text>{{latestCase.refundedAtText}}</text></view>
+      <view wx:if="{{latestCase.refundAmountFen}}" class="info-row"><text>退款金额</text><text>{{latestCase.refundAmountText}}</text></view>
+      <view wx:if="{{latestCase.outRefundNo}}" class="info-row after-sales-no-row"><text>退款单号</text><text class="after-sales-no">{{latestCase.outRefundNo}}</text></view>
+      <text wx:if="{{latestCase.decisionNote}}" class="after-sales-note">处理说明：{{latestCase.decisionNote}}</text>
+      <text wx:if="{{latestCase.systemGenerated}}" class="after-sales-auto">该记录由系统根据平台退款结果自动生成</text>
     </view>
 
     <view class="action-list">
       <view wx:if="{{order.actionFlags.canPay}}" class="action primary" bindtap="onPay">继续支付</view>
       <view wx:if="{{order.actionFlags.canCancel}}" class="action" bindtap="onCancel">取消订单</view>
       <view wx:if="{{order.actionFlags.canSync}}" class="action" bindtap="onSync">同步支付结果</view>
-      <view wx:if="{{order.actionFlags.canAfterSales}}" class="action" bindtap="onAfterSales">{{order.actionFlags.afterSalesLabel}}</view>
+      <view wx:if="{{order.actionFlags.canAfterSales}}" class="action" bindtap="onAfterSales">{{afterSalesActionLabel}}</view>
       <view wx:if="{{order.actionFlags.canRebuy}}" class="action primary" bindtap="onRebuy">重新购买</view>
     </view>
 
-    <view class="rule-card">
+    <view wx:if="{{order.paymentChannel === 'APPLE'}}" class="rule-card apple-rule-card">
+      <text class="rule-title">Apple 退款规则</text>
+      <text>iOS 订单由 Apple App Store 受理退款，小程序内无需重复提交退款申请。</text>
+      <text>Apple 审核期间会员权益继续有效；拒绝退款时权益不变，确认退款后系统再回收本订单新增权益。</text>
+      <text>审核进度和最终结果以 Apple 为准，退款到账时间以实际支付渠道处理结果为准。</text>
+    </view>
+    <view wx:else class="rule-card">
       <text class="rule-title">退款规则</text>
       <text>支付后 24 小时内且没有新增任何提醒，可提交退款申请，需客服核实。</text>
       <text>已新增提醒、超过 24 小时或无正当理由的申请原则上不支持。每笔订单最多一次全额退款。</text>
       <text>退款到账时间以微信支付实际处理结果为准；退款成功后只回收本订单新增权益。</text>
     </view>
   </block>
+</view>
+
+<view wx:if="{{showIosRefundGuide}}" class="refund-mask" bindtap="onCloseIosRefundGuide">
+  <view class="refund-sheet" catchtap="noop">
+    <view class="refund-sheet-head">
+      <view>
+        <text class="refund-sheet-title">Apple 退款说明</text>
+        <text wx:if="{{order.refundStatusLabel}}" class="refund-sheet-status">当前状态：{{order.refundStatusLabel}}</text>
+      </view>
+      <view class="refund-sheet-close" bindtap="onCloseIosRefundGuide">×</view>
+    </view>
+    <scroll-view class="refund-sheet-scroll" scroll-y>
+      <view class="refund-section">
+        <text class="refund-section-title">申请路径</text>
+        <text class="refund-step">1. 打开 App Store，点击右上角头像。</text>
+        <text class="refund-step">2. 进入“购买记录”，找到本次会员或提醒名额购买。</text>
+        <text class="refund-step">3. 点击“报告问题”，选择退款原因并提交。</text>
+        <text class="refund-url">也可以使用购买时的 Apple ID 登录 reportaproblem.apple.com 申请。</text>
+      </view>
+      <view class="refund-section">
+        <text class="refund-section-title">审核期间</text>
+        <text>Apple 审核期间，会员和提醒名额继续有效，不影响使用。审核进度请在 App Store 购买记录中查看。</text>
+      </view>
+      <view class="refund-section">
+        <text class="refund-section-title">处理结果</text>
+        <text>Apple 拒绝退款：会员权益保持不变。</text>
+        <text>Apple 确认退款：系统收到结果后自动回收本订单新增的会员时长和提醒名额，不删除你已经创建的提醒。</text>
+        <text>我们会在 Apple 问询时提供订单使用情况作为核验意见，最终是否退款由 Apple 决定。</text>
+      </view>
+      <text class="refund-note">小程序内无需再次提交退款申请；最终结果和到账时间以 Apple 通知为准。</text>
+    </scroll-view>
+    <view class="refund-confirm" bindtap="onCloseIosRefundGuide">我知道了</view>
+  </view>
 </view>

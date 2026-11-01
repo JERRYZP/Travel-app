@@ -185,6 +185,10 @@ console.log('\n=== 4. 设置提醒权限与硬闸门 ===');
   eq(/\.navbar-title\s*\{[^}]*left:\s*50%[^}]*transform:\s*translateX\(-50%\)/.test(SETUP_WXSS), true,
     '设置页标题保持居中');
   eq(/name="wechat-large" size="26px"/.test(SETUP_WXML), true, '微信通知图标内部白色图形加大');
+  eq(/<text class="section-label">提醒方式<\/text>/.test(SETUP_WXML), false,
+    '移除提醒方式卡片上方的分区标题');
+  eq(/\.auth-card\s*\{[^}]*margin-top:\s*32rpx/.test(SETUP_WXSS), true,
+    '移除分区标题后保留卡片顶部呼吸空间');
   eq(fs.existsSync(path.join(ROOT, 'miniprogram/images/icons/wechat-large.svg')), true,
     '微信放大图标资源存在');
   eq(/checkbox \{\{channels\.officialAccount \? 'checked' : ''\}\}/.test(SETUP_WXML), true,
@@ -250,12 +254,21 @@ console.log('\n=== 5. 设置提醒页面行为 ===');
 const apiCalls = { commits: [] };
 const toasts = [];
 const modalCalls = [];
+let commitReject = null;
 const apiStub = {
   reminder: {
     cart: {
       list: () => Promise.resolve({ summary: { reminderCount: 10 } }),
       commit: payload => {
         apiCalls.commits.push(payload);
+        if (commitReject) {
+          if (commitReject.errorCode === 1008 && commitReject.subscription) {
+            health.quota = Number(commitReject.subscription.quota) || 0;
+            health.availableQuota = Number(commitReject.subscription.availableQuota) || 0;
+            health.pendingMessageCount = Number(commitReject.subscription.pendingMessageCount) || 0;
+          }
+          return Promise.reject(commitReject);
+        }
         return Promise.resolve({ createdTasks: 10, tripId: 'trip-v03', needsOaAuth: true });
       },
     },
@@ -378,6 +391,33 @@ function instantiate(def) {
   eq(apiCalls.commits.length, 1, '授权满足后主按钮触发提交');
   eq(apiCalls.commits[0].channels[0], 'OFFICIAL_ACCOUNT', '提交走微信通知通道');
   eq(modalCalls.length, 0, '提交成功后不弹公众号关注引导');
+
+  console.log('=== 5.3 提交瞬间授权失效时留在本页补齐 ===');
+  health.quota = 10;
+  health.availableQuota = 10;
+  health.pendingMessageCount = 0;
+  await page.refreshAccessState(10);
+  commitReject = {
+    success: false,
+    errorCode: 1008,
+    subscription: {
+      required: 10,
+      quota: 10,
+      pendingMessageCount: 1,
+      availableQuota: 9,
+      shortfall: 1,
+    },
+  };
+  toasts.length = 0;
+  page.onSubmit();
+  await new Promise(r => setTimeout(r, 20));
+  eq(page.data.submitting, false, '服务端额度竞态失败后释放提交锁');
+  eq(page.data.shortfall, 1, '页面重新读取真实授权缺口');
+  eq(/提交前授权额度发生变化/.test(page.data.authFeedback), true,
+    '授权竞态失败后保留页面内说明');
+  eq(toasts[toasts.length - 1], '授权额度已变化，请补齐后重试',
+    '授权竞态失败不使用泛化错误 Toast');
+  commitReject = null;
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);

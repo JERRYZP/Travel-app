@@ -190,10 +190,18 @@ async function main() {
         if (name !== COLLECTIONS.USERS) return collection;
         return {
           ...collection,
-          doc: (id) => ({
-            ...collection.doc(id),
-            update: async () => { throw new Error('模拟权益写入失败'); },
-          }),
+          doc: (id) => {
+            const base = collection.doc(id);
+            return {
+              ...base,
+              update: async ({ data }) => {
+                if (Object.prototype.hasOwnProperty.call(data || {}, 'memberExpiresAt')) {
+                  throw new Error('模拟权益写入失败');
+                }
+                return base.update({ data });
+              },
+            };
+          },
         };
       };
       return tx;

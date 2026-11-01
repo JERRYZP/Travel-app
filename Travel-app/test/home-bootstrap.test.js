@@ -210,8 +210,8 @@ const seedSpot = async () => {
     eq(res.recoverableIds.indexOf('ITEM1') > -1, true,
       '候选在**同一次** bootstrap 响应里给到（页面不得另开一次请求去算）');
 
-    /* 单日行程排除掉刚失败的那一天后池子为空 → 第③层静默，列表必须是空的。
-       反过来说：前端拿到空数组时，「约其他日」整块保持静默是**正确**行为。 */
+    /* 单日行程排除掉刚失败的那一天后池子为空 → 第③层不生成候选。
+       候选为空只影响提示语；卡片上的「约其他日」仍由 FAILED 状态直接展示。 */
     await CURRENT_DB.collection(COLLECTIONS.TRIPS).doc('TRIP1').update({
       data: { startDate: past.visit, endDate: past.visit },
     });
@@ -242,6 +242,7 @@ const seedSpot = async () => {
       '推导口径 = visitDate − advanceDays（与 lib/item.deriveReleaseAt 同一真身）');
     eq(time.formatHourMinute(row.releaseAt), '20:00', '放票时刻取规则里的 releaseTime');
 
+    await reminder.main({ action: 'subscribe.add' });
     const commitRes = await reminder.main({
       action: 'cart.commit', channels: ['OFFICIAL_ACCOUNT'], offsets: [5],
     });

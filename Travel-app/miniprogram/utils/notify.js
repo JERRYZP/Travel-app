@@ -324,11 +324,12 @@ function showReminderAccessSheet(alertText, firstLabel, options) {
 }
 
 /**
- * 用户明确选择“补授权并继续”后，才发起微信一次性订阅授权。
+ * 用户明确选择“补 1 次并继续”后，才发起微信一次性订阅授权。
  * 这里不能再自动触发：轻量入口经过 cart.add / 查额度等多段异步后，
  * 直接 requestSubscribeMessage 既容易失去用户手势上下文，也让用户不知道为何弹窗。
  */
-function completeSubscribeShortfall(shortfall, tpl, needed) {
+function completeSubscribeShortfall(shortfall, tpl, needed, beforeAvailableQuota) {
+  const before = Math.max(0, Number(beforeAvailableQuota) || 0);
   return requestSubscribeBurst(shortfall, tpl).then(r => {
     if (r.reason === 'master-switch-off' || r.reason === 'subscription-disabled') {
       return {
@@ -349,15 +350,59 @@ function completeSubscribeShortfall(shortfall, tpl, needed) {
       if (left <= 0) {
         return { action: 'ready', needed, shortfall: 0, availableQuota, added: r.added, reason: r.reason };
       }
+      if (r.ok && availableQuota > before) {
+        /* 这一次授权真实到账了，但还差后续次数。重新展示用户选择面板，
+           下一次 requestSubscribeMessage 仍由用户新的点击触发，不能自动连发。 */
+        return {
+          action: 'retry',
+          needed,
+          shortfall: left,
+          availableQuota,
+          added: r.added,
+          reason: 'quota-shortfall',
+        };
+      }
       return {
         action: 'cancelled',
         needed,
         shortfall: left,
         availableQuota,
         added: r.added,
-        reason: r.ok ? 'quota-shortfall' : (r.reason || 'quota-shortfall'),
+        reason: r.ok ? 'quota-unsynced' : (r.reason || 'request-failed'),
       };
     });
+  });
+}
+
+/**
+ * 同一系统 ActionSheet 的连续补授权循环。
+ * 每一轮都等待用户再次点击，只申请 1 次；补足或用户退出为止。
+ */
+function promptQuotaShortfall(state, tpl, options) {
+  const needed = Math.max(1, Number(state && state.needed) || 1);
+  const availableQuota = Math.max(0, Number(state && state.availableQuota) || 0);
+  const shortfall = Math.max(1, Number(state && state.shortfall) || 1);
+  const retry = !!(state && state.retry);
+  const alertText = retry
+    ? `还差 ${shortfall} 次微信授权，当前可用 ${availableQuota} 次。每次点击最多补 1 次，补齐后继续刚才的提醒。`
+    : `本次设置提醒需要 ${needed} 次微信授权，当前可用 ${availableQuota} 次，还差 ${shortfall} 次。每次点击最多补 1 次，补齐后继续刚才的提醒。`;
+
+  return showReminderAccessSheet(
+    alertText,
+    retry ? '继续补 1 次' : '补 1 次并继续',
+    options
+  ).then(choice => {
+    if (choice.choice === 'first') {
+      return completeSubscribeShortfall(shortfall, tpl, needed, availableQuota)
+        .then(next => {
+          if (next.action !== 'retry') return next;
+          return promptQuotaShortfall(Object.assign({}, next, { retry: true }), tpl, options);
+        });
+    }
+    if (choice.choice === 'trip-only') {
+      return { action: 'trip-only', needed, shortfall, availableQuota, reason: 'quota-shortfall' };
+    }
+    return { action: 'cancelled', needed, shortfall, availableQuota, reason: choice.reason || 'cancelled' };
   });
 }
 
@@ -371,6 +416,7 @@ function reminderAccessCancelText(access) {
     case 'user-cancelled': return '已取消，本次未设置提醒';
     case 'rejected': return '已取消，本次未设置提醒';
     case 'quota-shortfall': return '授权还未补齐，本次未设置提醒';
+    case 'quota-unsynced': return '授权已提交，但可用次数未增加，本次未设置提醒';
     case 'banned': return '该模板已被微信限制，本次未设置提醒';
     case 'template-filtered': return '模板未通过微信校验，本次未设置提醒';
     case 'account-failed': return '授权未记账，本次未设置提醒';
@@ -391,7 +437,7 @@ function showReminderAccessCancelled(access) {
 /**
  * 设置提醒前的统一闸门。返回结果由页面决定如何提交，不在工具层直接创建行程。
  *
- * 订阅额度不足时先说明“本次为什么需要授权”，等用户点“补授权并继续”
+ * 订阅额度不足时先说明“本次为什么需要授权”，等用户点“补 1 次并继续”
  * 再调用微信授权接口；成功后把 ready 交回原动线继续提交。
  *
  * @returns Promise<{
@@ -430,19 +476,7 @@ function confirmReminderAccess(needed, templateId, options) {
       return { action: 'ready', needed: want, shortfall: 0, availableQuota };
     }
 
-    return showReminderAccessSheet(
-      `本次设置提醒需要 ${want} 次微信授权，当前可用 ${availableQuota} 次，还差 ${shortfall} 次。补齐后会继续完成刚才的提醒。`,
-      '补授权并继续',
-      options
-    ).then(choice => {
-      if (choice.choice === 'first') {
-        return completeSubscribeShortfall(shortfall, tpl, want);
-      }
-      if (choice.choice === 'trip-only') {
-        return { action: 'trip-only', needed: want, shortfall, reason: 'quota-shortfall' };
-      }
-      return { action: 'cancelled', needed: want, shortfall, reason: choice.reason || 'cancelled' };
-    });
+    return promptQuotaShortfall({ needed: want, availableQuota, shortfall }, tpl, options);
   });
 }
 

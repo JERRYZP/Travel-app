@@ -47,6 +47,20 @@ Page({
     dateBookedDates: [],
     dateMinDate: '',
     dateAction: null,
+    dateMultiple: false,
+    showReminderAuth: false,
+    reminderAuth: null,
+    datePlan: null,
+    reminderAuthBusy: false,
+    reminderAuthFeedback: '',
+    reminderCheckoutReady: false,
+    reminderContinueText: '开启行程放票提醒',
+    membershipLimit: null,
+    taskLimitPayConfirm: null,
+    taskLimitPayButtonText: '',
+    taskLimitPaying: false,
+    taskLimitPayDisabled: false,
+    taskLimitPayFeedback: '',
   },
 
   onLoad(options) {
@@ -64,6 +78,7 @@ Page({
   },
 
   onShow() {
+    if (this._reminderAuthResolve) reminderFlow.refreshReminderAuth(this);
     /* 页面栈可能在别处被改写（reLaunch/redirectTo 之后回到本页），
        每回复显时重算一次返回按钮可见性，不靠 onLoad 那一帧的结论。 */
     const canGoBack = this.canGoBack();
@@ -182,6 +197,46 @@ Page({
 
   onDateClose() {
     reminderFlow.onDateClose(this);
+  },
+
+  onReminderAuthPrimary() {
+    return reminderFlow.requestReminderAuthOnce(this);
+  },
+
+  onReminderAuthSettings() {
+    return reminderFlow.openReminderAuthSettings(this);
+  },
+
+  onReminderAuthTripOnly() {
+    return reminderFlow.tripOnlyReminderCheckout(this);
+  },
+
+  onReminderAuthClose() {
+    return reminderFlow.closeReminderCheckout(this);
+  },
+
+  onReminderAuthContinue() {
+    return reminderFlow.continueReminderCheckout(this);
+  },
+
+  onReminderAuthReselect() {
+    return reminderFlow.reselectReminderDates(this);
+  },
+
+  onReminderAuthPay() {
+    return reminderFlow.openTaskLimitPayment(this);
+  },
+
+  onReminderAuthBenefits() {
+    return reminderFlow.openTaskLimitBenefitsPage(this);
+  },
+
+  onReminderAuthPayClose() {
+    return reminderFlow.closeTaskLimitPayment(this);
+  },
+
+  onReminderAuthPayConfirm() {
+    return reminderFlow.confirmTaskLimitPayment(this);
   },
 
   /* 左上角返回：只有栈里真有上一页才显示（景点页 Banner「查看更多」进栈）。

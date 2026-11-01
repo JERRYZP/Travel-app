@@ -67,6 +67,7 @@
       bubble-dismissed="{{it.bubbleDismissed}}"
       recover-dismissed="{{it.recoverDismissed}}"
       recoverable="{{it.recoverable}}"
+      recovery-prompt="{{it.recoveryPrompt}}"
       bind:spot="onCardSpot"
       bind:menuclose="onMenuClose"
       bind:mark="onCardMark"

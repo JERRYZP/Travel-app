@@ -103,6 +103,43 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     eq(committed.createdTasks, 0, '不创建提醒任务');
   }
 
+  console.log('\n=== 3aa. 日期资格预检与原子入清单（mock 镜像）===');
+  {
+    const m = freshMock();
+    const c = (n, d) => m.mockCall(n, d);
+    const pad = n => String(n).padStart(2, '0');
+    const bj = new Date(Date.now() + 8 * 3600000);
+    const dateAfter = days => {
+      const d = new Date(Date.UTC(bj.getUTCFullYear(), bj.getUTCMonth(), bj.getUTCDate() + days));
+      return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+    };
+    const pastVisit = dateAfter(2);
+    const futureVisit = dateAfter(30);
+    const plan = await c('cart.planDates', {
+      spotId: 'gugong',
+      visitDates: [pastVisit, futureVisit],
+    });
+    eq(plan.success, true, 'mock 提供 cart.planDates');
+    eq(plan.summary.tripOnly, 1, '过放票日期标记为仅行程');
+    eq(plan.summary.reminder, 1, '未来日期标记为可提醒');
+    const added = await c('cart.addDates', {
+      spotId: 'gugong',
+      visitDates: [pastVisit, futureVisit],
+    });
+    eq(added.added, 2, 'cart.addDates 一次写入两条日期');
+    eq(added.addedReminders, 1, '返回实际提醒项数');
+    eq(added.addedTripOnly, 1, '返回实际仅行程数');
+    const duplicate = await c('cart.planDates', {
+      spotId: 'gugong',
+      visitDates: [pastVisit, futureVisit],
+    });
+    eq(duplicate.summary.existing, 2, '再次预检识别已存在日期');
+    eq((await c('cart.addDates', {
+      spotId: 'gugong',
+      visitDates: [pastVisit, futureVisit],
+    })).added, 0, '重复日期不会重复写入');
+  }
+
   /* ============ 3b. 指定弱提醒景点显式提升为强提醒 ============ */
   console.log('\n=== 3b. strongReminder 覆盖默认弱提醒策略（mock 镜像）===');
   {
@@ -534,6 +571,43 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
 
     eq(drift.length, 0, 'mock 内嵌 SPOTS/RULES 与 data/ 真身无漂移');
     if (drift.length) drift.slice(0, 8).forEach(x => console.log('     漂移:', x));
+  }
+
+  console.log('\n=== 10.2 mock 会员套餐、requestId 与名额账本镜像 ===');
+  {
+    const m = freshMock();
+    const c = (n, d) => m.mockCall(n, d);
+    const initial = await c('membership.status', {});
+    const memberPackage = initial.packages.find(item => item.type === 'MEMBER');
+    const taskPackPackage = initial.packages.find(item => item.type === 'TASK_PACK');
+    eq(memberPackage.priceText, '¥3', 'mock 会员价格由套餐镜像生成');
+    eq(memberPackage.memberDays, 30, 'mock 会员有效期由套餐镜像生成');
+    eq(taskPackPackage.addedSlots, 10, 'mock 名额包数量由套餐镜像生成');
+    eq(initial.membership.freeTaskSlots, 5, 'mock 免费额度与云端一致');
+    eq(initial.membership.memberTaskSlots, 15, 'mock 会员总额度与云端一致');
+
+    const requestId = 'mock_membership_request_001';
+    const memberOrder = await c('membership.createOrder', { packageId: 'member', requestId });
+    const retry = await c('membership.createOrder', { packageId: 'member', requestId });
+    eq(retry.orderId, memberOrder.orderId, 'mock 同一 requestId 返回同一订单');
+    const paidMember = await c('create', { orderId: memberOrder.orderId });
+    eq(paidMember.entitlementStatus, 'PAID_GRANTED', 'mock 会员订单发放成功');
+    const changed = await errOf(c('membership.createOrder', {
+      packageId: 'task_pack_5', requestId,
+    }));
+    eq(changed && changed.errorCode, 1010, 'mock 同一 requestId 改商品被拒绝');
+    const afterMember = await c('membership.status', {});
+    eq(afterMember.membership.taskLimit, 15, 'mock 会员开通后总额度提升到 15');
+
+    const packOrder = await c('membership.createOrder', {
+      packageId: 'task_pack_5', requestId: 'mock_task_pack_request_001',
+    });
+    const paidPack = await c('create', { orderId: packOrder.orderId });
+    eq(paidPack.taskPackSlots, 10, 'mock 新名额包按 10 个发放');
+    const afterPack = await c('membership.status', {});
+    eq(afterPack.membership.taskPackCount, 1, 'mock 用户保存名额包数量');
+    eq(afterPack.membership.taskPackSlots, 10, 'mock 用户保存名额总数');
+    eq(afterPack.membership.taskLimit, 25, 'mock 会员与加购名额混合累计');
   }
 
   console.log('\n=== 11. 我的反馈镜像 ===');

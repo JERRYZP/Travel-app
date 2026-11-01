@@ -12,7 +12,6 @@
 <view class="page-body">
   <image class="page-illustration" src="/images/icons/setup-illustration.svg" mode="aspectFit" />
 
-  <text class="section-label">提醒方式</text>
   <view class="setting-card auth-card">
     <view class="setting-row auth-title-row">
       <view class="setting-row-left">
@@ -70,6 +69,11 @@
   <view wx:if="{{showMembershipGate}}" class="membership-gate">
     <view class="membership-gate-copy">
       <text class="membership-gate-title">{{membershipGateTitle}}</text>
+      <view class="membership-quota">
+        <text class="membership-quota-label">提醒名额明细</text>
+        <text class="membership-quota-formula">当前额度 {{membershipQuotaLimit}} 个 − 已占 {{membershipQuotaUsed}} 个 = 剩余 {{membershipQuotaRemaining}} 个</text>
+        <text class="membership-quota-requested">本次新建 {{membershipQuotaRequested}} 个，还差 {{membershipQuotaGap}} 个</text>
+      </view>
       <text class="membership-gate-desc">{{membershipGateDesc}}</text>
       <text class="membership-gate-note">{{membershipGateNote}}</text>
     </view>

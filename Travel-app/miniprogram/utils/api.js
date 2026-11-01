@@ -88,6 +88,8 @@ const reminder = {
     recoveryCandidates: (p) => call('reminder', { action: 'tripItem.recoveryCandidates', ...p }),
   },
   cart: {
+    planDates: (p) => call('reminder', { action: 'cart.planDates', ...p }),
+    addDates: (p) => call('reminder', { action: 'cart.addDates', ...p }),
     add: (p) => call('reminder', { action: 'cart.add', ...p }),
     addAll: (p) => call('reminder', { action: 'cart.addAll', ...p }),
     updateRemindOn: (p) => call('reminder', { action: 'cart.updateRemindOn', ...p }),
@@ -172,6 +174,7 @@ function toastError(result) {
     1005: '数据更新中',
     1006: '行程日期不合法',
     1007: '跳转失败，已复制链接',
+    1008: '授权次数已变化，请重新点击开启',
     1009: '先添加至少一条提醒',
     1010: '请检查输入',
     1011: '提交失败，请重试',

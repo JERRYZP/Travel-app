@@ -2,7 +2,8 @@
  * 会员支付公共流程。
  *
  * 页面只决定“买哪个服务端返回的 packageId”，金额、权益和有效期全部由云端订单决定。
- * wx.requestPayment 成功只表示客户端流程结束，权益必须以 payment.query / 回调为准。
+ * 普通微信支付与小程序虚拟支付共用同一套订单、查单和权益流程。
+ * 客户端拉起成功只表示客户端流程结束，权益必须以 payment.query / 回调为准。
  * 返回值是持久的业务状态，页面不能再用短暂 Toast 代替支付结果。
  */
 
@@ -12,6 +13,13 @@ const QUERY_ATTEMPTS = 8;
 const QUERY_INTERVAL_MS = 1200;
 const PENDING_ORDER_KEY = 'membership_pending_order_v1';
 const PENDING_ORDER_MAX_AGE_MS = 20 * 60 * 1000;
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
+const RETRYABLE_STATUSES = new Set(['PENDING', 'PAID_GRANT_UNKNOWN']);
+
+function newRequestId() {
+  const random = Math.random().toString(36).slice(2, 12);
+  return `pay_${Date.now().toString(36)}_${random}`.slice(0, 80);
+}
 
 function storageGet() {
   if (typeof wx === 'undefined' || !wx.getStorageSync) return null;
@@ -52,14 +60,57 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function requestPayment(payment, orderId) {
+function loginCode() {
+  return new Promise(resolve => {
+    if (typeof wx === 'undefined' || typeof wx.login !== 'function') {
+      resolve('');
+      return;
+    }
+    wx.login({
+      success: res => resolve((res && res.code) || ''),
+      fail: () => resolve(''),
+    });
+  });
+}
+
+function requestVirtualPayment(payment, orderId) {
+  return new Promise((resolve, reject) => {
+    if (typeof wx === 'undefined' || typeof wx.requestVirtualPayment !== 'function') {
+      reject({ errorCode: 1023, error: '当前微信版本暂不支持虚拟支付', orderId });
+      return;
+    }
+    wx.requestVirtualPayment({
+      ...payment,
+      success: resolve,
+      fail: err => {
+        const message = String((err && err.errMsg) || '');
+        const errorCode = Number(err && (err.errCode || err.errcode));
+        if (errorCode === -2 || /cancel|canceled|cancelled|取消/i.test(message)) {
+          reject({ cancelled: true, error: '支付未完成', orderId });
+          return;
+        }
+        reject({
+          errorCode: 1023,
+          channelErrorCode: errorCode || 0,
+          error: message || '支付未完成',
+          orderId,
+        });
+      },
+    });
+  });
+}
+
+function requestPayment(payment, orderId, paymentProvider) {
+  const virtual = paymentProvider === 'VIRTUAL_PAY'
+    || (payment && payment.mode === 'short_series_goods');
+  if (virtual) return requestVirtualPayment(payment, orderId);
   return new Promise((resolve, reject) => {
     wx.requestPayment({
       ...payment,
       success: resolve,
       fail: err => {
         const message = String((err && err.errMsg) || '');
-        if (/cancel/i.test(message)) {
+        if (/cancel|canceled|cancelled|取消/i.test(message)) {
           reject({ cancelled: true, error: '支付未完成', orderId });
           return;
         }
@@ -77,6 +128,7 @@ function paidResultOf(result, orderId) {
       orderId,
       memberExpiresAt: result.memberExpiresAt || null,
       taskPackCount: Number(result.taskPackCount) || 0,
+      taskPackSlots: Number(result.taskPackSlots) || 0,
     };
   }
   if (entitlementStatus === 'PAID_GRANT_FAILED') {
@@ -85,14 +137,29 @@ function paidResultOf(result, orderId) {
   if (entitlementStatus === 'REFUNDED') {
     return { status: 'REFUNDED', orderId, message: '订单已退款' };
   }
-  if (result && result.status === 'PAID') {
-    // 兼容旧版 payment.query 返回；新版后端始终带 entitlementStatus。
-    return { status: 'PAID_GRANTED', orderId, memberExpiresAt: result.memberExpiresAt || null, taskPackCount: Number(result.taskPackCount) || 0 };
+  if (entitlementStatus === 'PAID_GRANT_UNKNOWN') {
+    return {
+      status: 'PAID_GRANT_UNKNOWN',
+      orderId,
+      message: '支付已确认，权益发放状态待核验，请查看订单详情',
+    };
   }
   if (result && result.status === 'CLOSED') {
     return { status: 'CLOSED', orderId, message: '订单已关闭' };
   }
   return null;
+}
+
+function shouldKeepPending(result) {
+  return !!result && RETRYABLE_STATUSES.has(result.status);
+}
+
+async function cancelAfterUserCancel(orderId) {
+  if (!orderId || !api.payment || typeof api.payment.cancel !== 'function') return null;
+  const result = await api.payment.cancel({ orderId });
+  const resolved = paidResultOf(result, orderId);
+  if (resolved && !shouldKeepPending(resolved)) clearPendingOrder(orderId);
+  return resolved || result || null;
 }
 
 async function waitForPaid(orderId) {
@@ -122,28 +189,45 @@ async function waitForPaid(orderId) {
 async function payExistingOrder(orderId) {
   if (!orderId) throw { errorCode: 1023, error: '订单不存在' };
   rememberPendingOrder(orderId);
-  const created = await api.payment.create({ orderId });
+  const code = await loginCode();
+  const created = await api.payment.create({
+    orderId,
+    loginCode: code,
+    clientSupportsVirtualPay: true,
+  });
   const resolvedFromCreate = paidResultOf(created, orderId);
   if (resolvedFromCreate) {
-    clearPendingOrder(orderId);
+    if (!shouldKeepPending(resolvedFromCreate)) clearPendingOrder(orderId);
     return resolvedFromCreate;
   }
 
   if (!created.mockPaid) {
-    if (!created.payment) throw { errorCode: 1023, error: '支付参数缺失，请稍后再试', orderId };
+    const channelPayment = created.virtualPayment || created.payment;
+    if (!channelPayment) throw { errorCode: 1023, error: '支付参数缺失，请稍后再试', orderId };
     try {
-      await requestPayment(created.payment, orderId);
+      await requestPayment(channelPayment, orderId, created.paymentProvider);
     } catch (err) {
+      if (err && err.cancelled) {
+        try {
+          const resolved = await cancelAfterUserCancel(orderId);
+          if (resolved && resolved.status !== 'PENDING' && resolved.status !== 'CLOSED') return resolved;
+        } catch (cancelErr) {
+          // 取消动作本身不能覆盖原支付错误；订单仍保留在本地，后续可继续查单。
+        }
+      }
       throw { ...err, orderId: err.orderId || orderId };
     }
   }
   const result = await waitForPaid(orderId);
-  if (result.status !== 'PENDING') clearPendingOrder(orderId);
+  if (!shouldKeepPending(result)) clearPendingOrder(orderId);
   return result;
 }
 
-async function purchase(packageId) {
-  const order = await api.reminder.membership.createOrder({ packageId });
+async function purchase(packageId, options = {}) {
+  const requestId = REQUEST_ID_PATTERN.test(String(options.requestId || ''))
+    ? String(options.requestId)
+    : newRequestId();
+  const order = await api.reminder.membership.createOrder({ packageId, requestId });
   if (!order || !order.orderId) throw { errorCode: 1023, error: '订单创建失败' };
   return payExistingOrder(order.orderId);
 }
@@ -152,8 +236,11 @@ module.exports = {
   purchase,
   payExistingOrder,
   requestPayment,
+  requestVirtualPayment,
+  newRequestId,
   waitForPaid,
   paidResultOf,
+  shouldKeepPending,
   rememberPendingOrder,
   pendingOrder,
   clearPendingOrder,

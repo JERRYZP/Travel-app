@@ -11,9 +11,8 @@
 const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
-const _ = db.command;
 
-const { COLLECTIONS, V1, ERRORS, ChannelType, PENDING_CART_TRIP_ID, ReminderBackendStatus, ok, fail } = require('./lib/schema');
+const { COLLECTIONS, V1, ERRORS, ChannelType, PENDING_CART_TRIP_ID, ok, fail } = require('./lib/schema');
 const time = require('./lib/time');
 const trip = require('./lib/trip');
 const timeline = require('./lib/timeline');
@@ -23,6 +22,7 @@ const item = require('./lib/item');
 const itemActions = require('./lib/trip-item-actions');
 const recovery = require('./lib/recovery');
 const membership = require('./lib/membership');
+const userDomain = require('./lib/user');
 const {
   DEFAULT_SUBSCRIBE_TEMPLATE_ID,
   subscribeQuotaOf,
@@ -78,7 +78,7 @@ exports.main = async (event) => {
       case 'tripItem.undoResult':
         return await itemActions.undoResult(db, userId, event);
       case 'tripItem.updateReminder':
-        return await itemActions.updateReminder(db, userId, event);
+        return await itemActions.updateReminder(db, userId, { ...event, requireSubscription: true });
       case 'tripItem.remove':
         return await itemActions.remove(db, userId, event);
       case 'tripItem.removeVisitDate':
@@ -91,6 +91,10 @@ exports.main = async (event) => {
         return await homeBootstrap(db, userId, event);
 
       /* ======== 提醒清单 ======== */
+      case 'cart.planDates':
+        return await cart.planDates(db, userId, event);
+      case 'cart.addDates':
+        return await cart.addDates(db, userId, event);
       case 'cart.add':
         return await cart.add(db, userId, event);
       case 'cart.addAll': {
@@ -115,7 +119,7 @@ exports.main = async (event) => {
       case 'cart.updateRemindOn':
         return await cart.updateRemindOn(db, userId, event.cartId, event.remindOn === true);
       case 'cart.commit': {
-        const res = await task.submit(db, userId, event);
+        const res = await task.submit(db, userId, { ...event, requireSubscription: true });
         if (!res.success) return res;
         return ok(res);
       }
@@ -390,9 +394,9 @@ async function homeBootstrap(db, userId, event = {}) {
 
 /** TABLE-005 用户表：首次调用时惰性创建（无感登录：自动生成昵称+随机默认头像，无任何弹窗） */
 async function getOrCreateUser(userId) {
-  const res = await db.collection(COLLECTIONS.USERS).where({ openId: userId }).get();
-  if ((res.data || []).length > 0) {
-    const u = res.data[0];
+  const existing = await userDomain.findUser(db, userId);
+  if (existing) {
+    const u = existing;
     /* 惰性迁移旧数据：昵称为空或「游客」-> 补自动资料，用户无感知 */
     if (!u.nickname || u.nickname === '游客') {
       const patch = genAutoProfile();
@@ -402,29 +406,8 @@ async function getOrCreateUser(userId) {
     }
     return ok({ user: u });
   }
-  const createdAt = time.now();
-  const data = {
-    openId: userId,
-    ...genAutoProfile(),
-    phone: '',
-    notifyPrefs: {
-      officialAccount: false,
-      sms: false,
-      offsets: [...V1.ALLOWED_OFFSETS],
-    },
-    subscribeQuota: 0,
-    memberLevel: V1.MEMBER_LEVEL_DEFAULT, // V1 固定 NORMAL
-    points: 0,
-    taskPackCount: 0,
-    protectedTaskQuota: 5,
-    protectionMigratedAt: createdAt,
-    lastReminderCreatedAt: null,
-    memberSince: null,
-    memberExpiresAt: null,
-    createdAt,
-  };
-  const add = await db.collection(COLLECTIONS.USERS).add({ data });
-  return ok({ user: { _id: add._id, ...data } });
+  const u = await userDomain.ensureUser(db, userId, { nowTs: time.now() });
+  return ok({ user: u });
 }
 
 /**
@@ -432,16 +415,6 @@ async function getOrCreateUser(userId) {
  * 头像 = 随机默认占位图（主包内本地路径 /images/avatars/default-{1..6}.png，前端 <image> 直接渲染）。
  * 昵称允许重复（无唯一约束）；用户可在「编辑资料」页自行修改头像/昵称/手机号。
  */
-function genAutoProfile() {
-  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
-  let suffix = '';
-  for (let i = 0; i < 6; i++) suffix += chars[Math.floor(Math.random() * chars.length)];
-  return {
-    nickname: '用户' + suffix,
-    avatarUrl: '/images/avatars/default-' + (1 + Math.floor(Math.random() * 6)) + '.png',
-  };
-}
-
 async function updateNotifyPrefs(userId, prefs) {
   const res = await db.collection(COLLECTIONS.USERS).where({ openId: userId }).get();
   if (!(res.data || []).length) await getOrCreateUser(userId);
@@ -511,45 +484,7 @@ async function addSubscribe(userId, templateId) {
 
 /** subscribe.get —— 查询当前用户某个模板的本地额度 */
 async function getSubscribe(userId, templateId) {
-  const tpl = templateId || DEFAULT_SUBSCRIBE_TEMPLATE_ID;
-  const nowTs = time.now();
-  const nowMs = new Date(nowTs).getTime();
-  /* 2026-10-27 降本：只取真正会进统计的任务，不再把该用户全部历史任务拉回来。
-     `task.reminderHealthOf` 的三条过滤是 —— ①只认 WAITING；②releaseAt 非有限值或
-     已到期的不算；③模板不匹配的不算（templateId 为空时不过滤模板）。
-     ⚠️ 收窄条件必须与之一一对应，漏一条就会让「待发送 n 条 / 还差 n 次授权」算错：
-        · backendStatus / releaseAt 两个条件与 ①② 等价，可以下推到 where；
-        · `new Date(releaseAt).getTime()` 非有限值的数据在 where 侧无法表达，
-          所以在内存里再兜一次（与 reminderHealthOf 同一个判断）。
-     ⚠️ 不加 limit：待发送数要精确，截断会让额度提示少算。 */
-  const [res, taskRes] = await Promise.all([
-    db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
-    db.collection(COLLECTIONS.REMINDER_TASKS)
-      .where({
-        userId,
-        backendStatus: ReminderBackendStatus.WAITING,
-        releaseAt: _.gt(new Date(nowMs)),
-      })
-      .get(),
-  ]);
-  const u = (res.data || [])[0] || {};
-  const quotas = u.subscribeQuotas || {};
-  const quota = subscribeQuotaOf(u, tpl);
-  const liveTasks = (taskRes.data || []).filter(t => t
-    && t.backendStatus === ReminderBackendStatus.WAITING
-    && Number.isFinite(new Date(t.releaseAt).getTime()));
-  const health = task.reminderHealthOf(liveTasks, quota, nowTs, tpl);
-  return ok({
-    quota,
-    totalQuota: totalSubscribeQuota(quotas, u.subscribeQuota),
-    quotas,
-    templateId: tpl,
-    pendingMessageCount: health.pendingMessageCount,
-    nearestRemindAt: health.nearestRemindAt,
-    level: health.level,
-    shortfall: health.shortfall,
-    replenishNeeded: health.replenishNeeded,
-  });
+  return task.subscriptionStatus(db, userId, templateId);
 }
 
 /**

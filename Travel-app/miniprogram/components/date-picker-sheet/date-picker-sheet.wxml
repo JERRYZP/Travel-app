@@ -31,7 +31,7 @@
           <view
             wx:for="{{month.days}}"
             wx:key="index"
-            class="dp-cell {{item.cellClass}} {{item.disabled ? 'is-disabled' : ''}} {{item.inTrip ? 'in-trip ' + item.tripEdge : ''}} {{item.date && item.date === choice ? 'is-selected' : ''}}"
+            class="dp-cell {{item.cellClass}} {{item.disabled ? 'is-disabled' : ''}} {{item.inTrip ? 'in-trip ' + item.tripEdge : ''}} {{item.selected ? 'is-selected' : ''}}"
             bindtap="onDayTap"
             data-date="{{item.date}}"
             data-disabled="{{item.disabled}}"
@@ -42,9 +42,13 @@
       </swiper-item>
     </swiper>
 
+    <view wx:if="{{multiple}}" class="dp-selection {{selectedCount ? 'has-selection' : ''}}">
+      {{selectionSummary}}
+    </view>
+
     <!-- 底部按钮 -->
     <view class="dp-acts">
-      <view class="dp-confirm {{choice ? '' : 'disabled'}}" bindtap="onConfirm">确定</view>
+      <view class="dp-confirm {{selectedCount ? '' : 'disabled'}}" bindtap="onConfirm">{{confirmText}}</view>
       <view class="dp-cancel" bindtap="onClose">取消</view>
     </view>
   </view>
