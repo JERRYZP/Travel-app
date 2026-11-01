@@ -884,7 +884,9 @@ function instantiateComponent(def) {
   home.data.trips = JSON.parse(JSON.stringify(bootstrap.trips));
   home.data.history = JSON.parse(JSON.stringify(bootstrap.history));
   home.data.trips[0].items[0].spotName = '故宫博物院';
-  home.loadHome = () => {};
+  home.data.recoveryPromptIds = ['i1'];
+  let homeReloads = 0;
+  home.loadHome = () => { homeReloads += 1; };
   home.onRecover({ detail: { itemId: 'i1' } });
   eq(home.data.showDateSheet, true, '首页打开单日期选择器');
   eq(home.data.dateMultiple, false, '首页约其他日仍为单选');
@@ -902,6 +904,8 @@ function instantiateComponent(def) {
   eq(calls.planDates[0].visitDates.join(','), '2026-10-06', '共享流程只提交首页选中的一个日期');
   eq(calls.addDates[0].visitDates.join(','), '2026-10-06', '服务端日期预检同样只针对一个日期');
   eq(calls.toasts[calls.toasts.length - 1], '提醒已设置，放票前见', '约其他日复用景点页成功反馈');
+  eq(home.data.recoveryPromptIds.length, 0, '提交成功后收起即时挽回气泡');
+  eq(homeReloads, 1, '共享流程完成后刷新首页聚合数据');
 
   console.log('\n=== 4.1 首页约其他日：授权不足留在统一浮层 ===');
   calls.commit = []; calls.toasts = []; calls.navigations = []; calls.authRequests = [];
@@ -990,13 +994,13 @@ function instantiateComponent(def) {
     },
   };
   home.data.dateAction = { spotId: 'gugong', remindOn: true };
-  const tripOnlyFlow = home.onRecoverConfirm({ detail: { visitDate: '2026-10-10' } });
+  const homeTripOnlyFlow = home.onRecoverConfirm({ detail: { visitDate: '2026-10-10' } });
   await wait(30);
   eq(home.data.showReminderAuth, true, '只能加入行程时先停在统一浮层');
   eq(home.data.datePlan.title, '所选日期已过放票时间，无法设置提醒', '浮层解释真实原因');
   await home.onReminderAuthContinue();
   await wait(20);
-  await tripOnlyFlow;
+  await homeTripOnlyFlow;
   eq(calls.commit[0].disableReminders, true, '用户确认后仅加入行程');
   eq(calls.toasts[calls.toasts.length - 1], '已加入行程 · 已过放票时间，提醒无法设置',
     '明确说明提醒未设置');
