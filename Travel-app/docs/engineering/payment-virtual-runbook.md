@@ -1,6 +1,6 @@
 # 小程序虚拟支付接入 Runbook
 
-> 2026-11-01 当前状态：用户报告虚拟支付审核、材料、道具和消息推送配置已准备。`payment` / `reminder` 已部署，`payment_reconcile_state` 与关键索引已创建核验，生产数据已备份，名额账本 dry-run 与正式迁移均完成；体验版 `1.1.4` 已上传。**支付和会员限制仍只对白名单测试账号生效，未删除支付白名单，`MEMBERSHIP_ENFORCEMENT_MODE=test` 保持不变；本次未提交审核、未正式发布、未切全量。** 已实测 Apple 自主退款最终通知能触发售后留痕和权益回收；Android/iOS 其余支付场景、退款问询及真实签名回调证据仍需继续验收，测试通过不等于支付全量已经上线。
+> 2026-11-01 当前状态：用户报告虚拟支付审核、材料、道具和消息推送配置已准备。`payment` / `reminder` 已部署，`payment_reconcile_state` 与关键索引已创建核验，生产数据已备份，名额账本 dry-run 与正式迁移均完成；体验版 `1.1.4` 已上传。**`payment` 支付白名单已删除，新版客户端新订单全量使用虚拟支付；`MEMBERSHIP_ENFORCEMENT_MODE=test` 保持不变，会员限制仍只对测试账号生效。本次未提交审核、未正式发布、未切会员限制全量。** 已实测 Apple 自主退款最终通知能触发售后留痕和权益回收；Android/iOS 其余支付场景、退款问询及真实签名回调证据仍需继续验收，测试通过不等于会员限制全量已经上线。
 >
 > 本文不记录实际 AppSecret、AppKey、商户号、公司开户行、管理员 OpenID 或其他敏感值。所有部署、环境变量修改、消息推送配置和渠道切换都必须取得用户当场明确授权。
 
@@ -62,7 +62,7 @@
 | 变量 | 必填 | 说明 |
 |---|---|---|
 | `PAYMENT_PROVIDER` | 切换时 | 缺省 `WECHAT_PAY_V3`；虚拟支付正式启用时设置为 `VIRTUAL_PAY` |
-| `PAYMENT_VIRTUAL_PAY_TEST_OPENIDS` | 灰度联调时 | 逗号分隔 OpenID；非空时仅这些用户走虚拟支付，其他用户继续 API v3；全量前删除该变量 |
+| `PAYMENT_VIRTUAL_PAY_TEST_OPENIDS` | 灰度联调时 | 逗号分隔 OpenID；非空时仅这些用户走虚拟支付，其他用户继续 API v3。2026-11-01 已从 `cloud1` 删除，支付渠道进入新版客户端全量 |
 | `WECHAT_APP_ID` | 是 | 当前为 `wx05c160a589b97d76` |
 | `WECHAT_APP_SECRET` | 是 | 小程序 AppSecret，只放云函数环境变量 |
 | `WECHAT_VIRTUAL_PAY_ENV` | 是 | `0` 现网，`1` 沙箱；iOS 只能 `0` |
@@ -162,7 +162,7 @@ Access Token 使用内存缓存并提前 5 分钟刷新；微信返回 `40001/40
 5. 以 `dryRun=false` 重新从头执行同一迁移。每批最多 50 人，必须沿返回的 `nextCursor` 继续到 `hasMore=false`；不可跳批，也不能把 dry-run 的游标当作已写入结果。
 6. 保持 `MEMBERSHIP_ENFORCEMENT_MODE=test`，用白名单 OpenID 真机验证支付、权益到账、退款回收、并发提醒和恢复支付。
 7. 上传体验版并提交审核；审核等待期和发布初期继续保持 `test`，非白名单任务进入历史保护池。
-8. 支付和迁移验收全部通过后，才删除支付测试白名单并另行评估切到 `MEMBERSHIP_ENFORCEMENT_MODE=all`。
+8. 支付白名单已于 2026-11-01 删除，新版客户端新订单全量使用虚拟支付；完成正式版覆盖与支付验收后，再另行评估切到 `MEMBERSHIP_ENFORCEMENT_MODE=all`。
 
 ## 8. 测试顺序
 
@@ -215,10 +215,11 @@ Access Token 使用内存缓存并提前 5 分钟刷新；微信返回 `40001/40
 - 名额账本 dry-run 133 批、扫描 6605 人；正式迁移 133 批、更新 6620 人，人工核查 0、历史补签 1，最终 `hasMore=false`。
 - 体验版 `1.1.4` 已上传，可进入正式体验测试。
 - 2026-11-01 真实 Apple 自主退款最终通知已通过平台重试验证：`payment` 返回成功，售后工作台生成一条「平台退款 / 系统自动」记录，订单按权益快照完成回收。
+- 2026-11-01 已从 `cloud1` 的 `payment` 删除 `PAYMENT_VIRTUAL_PAY_TEST_OPENIDS`；云端回读确认配置由 21 项变为 20 项，`PAYMENT_PROVIDER=VIRTUAL_PAY`、`WECHAT_VIRTUAL_PAY_ENV=0` 和其余配置保持不变。
 
 待完成：
 
 - Android 沙箱完成支付、权益到账、退款、并发提醒和恢复支付真机验收。
 - iOS 现网继续完成 Apple 支付和 Apple 退款问询验收；最终平台退款通知、售后留痕与权益回收已于 2026-11-01 实测通过。
 - 补齐其余真实消息推送、主动查单和退款证据，并确认真实签名 API v3 支付/退款回调。
-- 删除 `PAYMENT_VIRTUAL_PAY_TEST_OPENIDS` 完成支付全量，并在验收后另行授权将 `MEMBERSHIP_ENFORCEMENT_MODE` 从 `test` 切到 `all`。
+- 在正式版覆盖稳定并完成支付验收后，另行授权将 `MEMBERSHIP_ENFORCEMENT_MODE` 从 `test` 切到 `all`。
