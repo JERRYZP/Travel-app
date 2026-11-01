@@ -11,8 +11,7 @@
 
 <view class="page-body">
   <view class="hero">
-    <text class="hero-kicker">3 分钟上手</text>
-    <text class="hero-title">不代抢不代约，只帮你记住放票时间</text>
+    <text class="hero-title">只提醒，不代抢不代约</text>
     <text class="hero-sub">设好提醒后，到点去官方渠道抢票即可。</text>
   </view>
 
@@ -20,20 +19,36 @@
     <view class="section-head">
       <view class="section-index">1</view>
       <view>
-        <text class="section-title">3 步设置提醒</text>
-        <text class="section-sub">生成时间线只是预览，提交后才创建行程</text>
+        <text class="section-title">两种设置提醒方式</text>
+        <text class="section-sub">按你的习惯选择，提交后才会创建提醒</text>
       </view>
     </view>
-    <view class="step-list">
-      <view class="step-item"><text class="step-no">1</text><text>选择出行日期和想去的景点</text></view>
-      <view class="step-item"><text class="step-no">2</text><text>加入清单，进入“设置提醒”并提交</text></view>
-      <view class="step-item"><text class="step-no">3</text><text>按微信提示允许授权，放票前收到提醒</text></view>
+    <view class="mode-list">
+      <view class="mode-item">
+        <view class="mode-head">
+          <text class="mode-tag">主流程</text>
+          <text class="mode-title">先排行程，再批量提醒</text>
+        </view>
+        <text class="mode-desc">选择日期和景点，生成时间线并加入清单后，一次检查授权与提醒名额。</text>
+        <text class="mode-steps">选日期 → 选景点 → 提交提醒</text>
+      </view>
+      <view class="mode-item">
+        <view class="mode-head">
+          <text class="mode-tag secondary">景点页</text>
+          <text class="mode-title">为单个景点直接设提醒</text>
+        </view>
+        <text class="mode-desc">在景点页选中一个景点和出行日期，点“设提醒”，再完成同一套授权检查。</text>
+        <text class="mode-steps">进景点页 → 选日期 → 设提醒</text>
+      </view>
     </view>
     <view class="sample-entry" bindtap="onReminderSamples">
       <text>查看提醒样式示例</text>
       <svg-icon name="chevron-right" size="12px" />
     </view>
-    <view class="card-action" bindtap="onAddTrip">新增提醒</view>
+    <view class="action-row">
+      <view class="card-action" bindtap="onAddTrip">先新增行程</view>
+      <view class="card-action secondary" bindtap="onSpots">去景点页</view>
+    </view>
   </view>
 
   <view class="guide-card">
@@ -72,9 +87,13 @@
   </view>
 
   <view class="faq-section">
-    <text class="faq-title">常见问题</text>
+    <view class="faq-section-head">
+      <text class="faq-title">常见问题</text>
+      <text class="faq-section-sub">支付与退款问题集中在下方</text>
+    </view>
+    <text class="faq-group-title">预约与提醒</text>
     <view
-      wx:for="{{faqs}}"
+      wx:for="{{reminderFaqs}}"
       wx:key="key"
       class="faq-item {{openFaq === item.key ? 'open' : ''}}"
       bindtap="onToggleFaq"
@@ -85,6 +104,29 @@
         <svg-icon name="{{openFaq === item.key ? 'chevron-up' : 'chevron-down'}}" size="14px" />
       </view>
       <text wx:if="{{openFaq === item.key}}" class="faq-answer">{{item.a}}</text>
+    </view>
+
+    <view id="payment-faq" class="payment-faq-group">
+      <view class="payment-faq-head">
+        <view>
+          <text class="faq-group-title">会员与支付</text>
+          <text class="payment-faq-sub">到账、退款与 Apple 订单</text>
+        </view>
+        <text class="payment-faq-count">{{paymentFaqs.length}} 个问题</text>
+      </view>
+      <view
+        wx:for="{{paymentFaqs}}"
+        wx:key="key"
+        class="faq-item {{openFaq === item.key ? 'open' : ''}}"
+        bindtap="onToggleFaq"
+        data-key="{{item.key}}"
+      >
+        <view class="faq-question">
+          <text>{{item.q}}</text>
+          <svg-icon name="{{openFaq === item.key ? 'chevron-up' : 'chevron-down'}}" size="14px" />
+        </view>
+        <text wx:if="{{openFaq === item.key}}" class="faq-answer">{{item.a}}</text>
+      </view>
     </view>
   </view>
 

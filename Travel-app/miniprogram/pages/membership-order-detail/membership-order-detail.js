@@ -68,6 +68,15 @@ function stateOfOrder(order, latestCase) {
         : '本次退款未完成，当前权益仍有效。请打开售后进度联系客服重试，不要重复申请。',
     };
   }
+  if (order.status === 'PAID'
+    && (order.grantStatus === 'GRANTED' || order.entitlementStatus === 'PAID_GRANTED')
+    && !entitlementReverted(order)) {
+    return {
+      tone: 'success',
+      title: '支付已完成，权益已到账',
+      desc: '本订单对应的会员时长和提醒名额已经生效。',
+    };
+  }
   if (order.status === 'PAID' && order.grantStatus === 'FAILED') {
     return {
       tone: 'error',
@@ -347,3 +356,5 @@ Page({
 
   onBack() { wx.navigateBack(); },
 });
+
+module.exports = { stateOfOrder };

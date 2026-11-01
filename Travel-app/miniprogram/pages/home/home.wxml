@@ -107,7 +107,10 @@
           <svg-icon name="chevron-right" size="14px" />
         </view>
 
-        <view class="empty-cta" bindtap="onAddTrip">添加我的第一个行程</view>
+        <view class="empty-actions">
+          <view class="empty-cta" bindtap="onAddTrip">先建行程，批量设提醒</view>
+          <view class="empty-cta empty-cta-secondary" bindtap="onOpenSpotReminder">为单个景点设提醒</view>
+        </view>
         <text class="empty-trust">*只做提醒，不代抢 · 预约直达官网渠道</text>
       </view>
     </view>
@@ -277,8 +280,8 @@
 </view>
 
 <!-- 悬浮新增提醒。
-     ⚠️ 只在**已有行程**时出现：空态本身已经有一个居中的「+ 新增提醒」，
-     再叠一个就是同屏两个一模一样的入口。
+     ⚠️ 只在**已有行程**时出现：空态本身已经有「建行程」和「单景点设提醒」
+     两个明确入口，再叠一个同职责悬浮按钮只会制造选择噪音。
      也带上 !loading —— 加载期间 isBlank 还没算出来（仍是初值 false），
      不加的话新用户一进页面会先看到悬浮按钮闪一下再消失。
      ⚠️ 再加 !previewNewUser：开发预览是空态，`isBlank` 虽是 true，

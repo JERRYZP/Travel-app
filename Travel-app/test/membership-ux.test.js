@@ -29,6 +29,9 @@ require('../miniprogram/pages/profile/profile.js');
 let membershipDef = null;
 global.Page = def => { membershipDef = def; };
 require('../miniprogram/pages/membership/membership.js');
+let orderDetailPage = null;
+global.Page = () => {};
+orderDetailPage = require('../miniprogram/pages/membership-order-detail/membership-order-detail.js');
 global.Page = originalPage;
 
 const free = {
@@ -186,6 +189,8 @@ async function run() {
   const reminderAuthJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/components/reminder-auth-sheet/reminder-auth-sheet.json'), 'utf8'));
   const paymentConfirmWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/components/payment-confirm-sheet/payment-confirm-sheet.wxml'), 'utf8');
   const paymentConfirmJs = fs.readFileSync(path.join(ROOT, 'miniprogram/components/payment-confirm-sheet/payment-confirm-sheet.js'), 'utf8');
+  const privacyPolicy = fs.readFileSync(path.join(ROOT, 'docs/legal/隐私政策.md'), 'utf8');
+  const termsAgreement = fs.readFileSync(path.join(ROOT, 'docs/legal/用户服务协议.md'), 'utf8');
   const membershipJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership/membership.json'), 'utf8'));
   const spotHubJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-hub/spot-hub.json'), 'utf8'));
   const shareSceneJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/pages/share-scene/share-scene.json'), 'utf8'));
@@ -196,6 +201,8 @@ async function run() {
   const orderDetailWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-order-detail/membership-order-detail.wxml'), 'utf8');
   const orderDetailJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-order-detail/membership-order-detail.js'), 'utf8');
   const orderDetailWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-order-detail/membership-order-detail.wxss'), 'utf8');
+  const orderListWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-orders/membership-orders.wxml'), 'utf8');
+  const orderListJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-orders/membership-orders.js'), 'utf8');
 
   eq(setupWxml.includes('wx:if="{{showMembershipGate}}"'), true, '付费块整体由额度不足开关控制');
   eq(setupWxml.includes('当前额度 {{membershipQuotaLimit}} 个 − 已占 {{membershipQuotaUsed}} 个 = 剩余 {{membershipQuotaRemaining}} 个'),
@@ -254,6 +261,23 @@ async function run() {
     '会员页复用同一个支付确认组件');
   eq(paymentConfirmWxml.includes('确认支付'), true, '支付确认组件展示明确标题');
   eq(paymentConfirmWxml.includes('Apple'), true, '支付确认组件保留 iOS 退款边界');
+  eq(paymentConfirmWxml.includes('本商品为即时交付的虚拟服务')
+    && paymentConfirmWxml.includes('不自动续费'), true,
+    '支付确认组件明确即时交付和不自动续费');
+  eq(paymentConfirmWxml.includes('《用户服务协议》')
+    && paymentConfirmWxml.includes('《隐私政策》'), true,
+    '支付前可直接查阅用户协议和隐私政策');
+  eq(/onOpenAgreement\(e\)[\s\S]*\/pages\/legal\/legal\?type=/.test(paymentConfirmJs), true,
+    '支付确认页协议链接复用统一协议页');
+  eq(privacyPolicy.includes('iOS 端由 Apple App Store 处理'), true,
+    '隐私政策明确 Apple 支付和退款数据处理角色');
+  eq(privacyPolicy.includes('售后服务与审核记录')
+    && privacyPolicy.includes('支付后新增提醒数')
+    && privacyPolicy.includes('审计日志'), true,
+    '隐私政策覆盖售后申请证据与审核日志');
+  eq(termsAgreement.includes('相关权益立即开始提供')
+    && termsAgreement.includes('不适用七日无理由退货'), true,
+    '用户协议明确虚拟服务即时交付及无理由退货边界');
   eq(/paying \|\| disabled/.test(paymentConfirmWxml), true,
     '支付中或不可继续时禁用支付按钮');
   eq(/triggerEvent\('confirm'\)/.test(paymentConfirmJs), true,
@@ -329,6 +353,11 @@ async function run() {
   eq(profileJs.includes("url: '/pages/membership/membership'"), true, '入口跳转会员页');
   eq(appJson.pages.includes('pages/membership/membership'), true, '会员页已注册');
   eq(appJson.pages.includes('pages/membership-orders/membership-orders'), true, '订单页已注册');
+  eq(orderListWxml.includes('bindtap="onOpenPaymentFaq"'), true, '会员订单页顶部提供支付 FAQ 入口');
+  eq(orderListWxml.indexOf('payment-faq-entry') < orderListWxml.indexOf('wx:if="{{loading}}"'), true,
+    '支付 FAQ 入口固定在订单内容顶部');
+  eq(orderListJs.includes("url: '/pages/guide/guide?focus=payment-faq'"), true,
+    '支付 FAQ 入口深链到攻略问答组');
   eq(membershipAll.includes('bindtap="onOrders"'), true, '会员详情页有订单信息入口');
   eq(/免广告/.test(membershipAll), false, '会员页不承诺平台无法控制的免广告');
   eq(membershipWxml.includes('wx:if="{{!membership.member}}" class="explain-card"'), true,
@@ -395,6 +424,23 @@ async function run() {
   eq(paymentData.paymentState && paymentData.paymentState.status, 'PAID_GRANT_FAILED',
     '仍需用户处理的权益异常状态继续保留');
   const afterSalesWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-after-sales/membership-after-sales.wxml'), 'utf8');
+  const afterSalesJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-after-sales/membership-after-sales.js'), 'utf8');
+  const adminAfterSalesWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/admin-after-sales/admin-after-sales.wxml'), 'utf8');
+  const adminAfterSalesJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/admin-after-sales/admin-after-sales.js'), 'utf8');
+  eq(afterSalesWxml.includes('wx:if="{{existingCase.canCancel}}"')
+    && afterSalesWxml.includes('取消售后'), true,
+    '用户售后页只在服务端允许时展示取消按钮');
+  eq(afterSalesWxml.includes('申请时间：{{existingCase.createdAtText}}')
+    && afterSalesWxml.includes('售后申请预计 24 小时内处理；超过 24 小时仍未更新处理结果，请联系客服。'), true,
+    '售后单明确展示申请时间和超时处理预期');
+  eq(afterSalesJs.includes('api.payment.afterSales.cancel(existingCase._id)')
+    && afterSalesJs.includes('确认取消'), true,
+    '取消售后经过二次确认并调用专用接口');
+  eq(adminAfterSalesJs.includes("key: 'CANCELLED'") && adminAfterSalesJs.includes("label: '已取消'"),
+    true, '后台提供已取消筛选并展示用户取消状态');
+  eq(adminAfterSalesWxml.includes('用户已主动取消本次售后申请')
+    && adminAfterSalesWxml.includes('history.stats.cancelled'), true,
+    '后台详情展示取消来源与历史取消统计');
   eq(orderDetailWxml.includes('{{afterSalesActionLabel}}')
     && orderDetailJs.includes("'如何申请APP退款'"), true,
     'Apple 订单退款按钮固定使用如何申请APP退款');
@@ -425,6 +471,24 @@ async function run() {
     && orderDetailWxml.includes('{{latestCase.statusLabel}}')
     && orderDetailWxml.includes('{{latestCase.outRefundNo}}'), true,
     '退款售后记录卡展示类型、状态和退款单号');
+  const grantedState = orderDetailPage.stateOfOrder({
+    status: 'PAID',
+    grantStatus: 'GRANTED',
+    refundStatus: 'NONE',
+    entitlementGrant: { appliedAt: new Date() },
+  }, { status: 'CANCELLED' });
+  eq(grantedState.tone, 'success', '已支付且权益已发放的订单展示成功态');
+  eq(grantedState.title, '支付已完成，权益已到账',
+    '取消售后后不再落入“状态待核验”兜底文案');
+  eq(/待核验/.test(grantedState.desc), false,
+    '权益已到账时不再提示用户重复进入页面核验');
+  const unknownGrantState = orderDetailPage.stateOfOrder({
+    status: 'PAID',
+    grantStatus: 'UNKNOWN',
+    refundStatus: 'NONE',
+  }, null);
+  eq(unknownGrantState.title, '支付已确认，权益待核验',
+    '真正未知的权益发放状态仍保留保护性提示');
   eq(orderDetailWxml.includes('该记录由系统根据平台退款结果自动生成'), true,
     '系统自动退款记录有明确来源说明');
   eq(orderDetailWxml.includes('refund-service-link'), false,
@@ -470,9 +534,11 @@ async function run() {
   eq(profileData.afterSalesPendingCount, 0, '没有待处理单时不显示数量');
   profileDef.applyAfterSalesAdminStatus.call(
     { setData: patch => { profileData = { ...profileData, ...patch }; } },
-    { isAdmin: true, pendingCount: 3 }
+    { isAdmin: true, pendingCount: 3, fundingBlockedCount: 1 }
   );
   eq(profileData.afterSalesPendingText, '3', '有待处理单时显示准确数量');
+  eq(profileData.afterSalesFundingBlocked, true, '退款资金不足时在“我的”入口持续告警');
+  eq(profileData.afterSalesAdminHint, '退款资金不足 · 1 笔', '资金阻断数量直接显示在入口说明');
   profileDef.applyAfterSalesAdminStatus.call(
     { setData: patch => { profileData = { ...profileData, ...patch }; } },
     { isAdmin: true, pendingCount: 120 }
@@ -485,8 +551,15 @@ async function run() {
   eq(profileData.showAfterSalesEntry, false, '非管理员不显示售后入口或数量');
   eq(profileWxml.includes('afterSalesPendingCount > 0'), true, 'WXML 仅在有待处理单时渲染徽标');
   eq(profileWxml.includes('class="setting-pending-badge"'), true, '售后管理入口包含待处理数量标识');
+  eq(profileWxml.includes('afterSalesFundingBlocked'), true, '售后入口区分退款资金阻断状态');
   eq(/\.setting-pending-badge\s*\{[^}]*background:\s*#C0472A/.test(profileWxss), true,
     '待处理标识使用独立的警示色');
+  eq(/\.setting-row-hint\.funding-blocked\s*\{[^}]*color:\s*#C0472A/.test(profileWxss), true,
+    '资金阻断说明使用警示色');
+
+  eq(adminAfterSalesWxml.includes('退款资金阻断'), true, '售后工作台顶部显示资金阻断告警');
+  eq(adminAfterSalesWxml.includes('detail.case.failureReason'), true, '售后详情保留并展示退款失败原因');
+  eq(adminAfterSalesWxml.includes('approveRefundLabel'), true, '异常售后单的按钮明确为重新发起退款');
 
   console.log('\n=== 6. 加购确认展示真实到期时间 ===');
   const now = Date.now();

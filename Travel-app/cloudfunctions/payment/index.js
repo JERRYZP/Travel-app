@@ -54,6 +54,29 @@ const wechatAuth = require('./lib/wechat-auth');
 const RECONCILE_BATCH_SIZE = 50;
 const RECONCILE_TOTAL_BUDGET_MS = 45 * 1000;
 const RECONCILE_QUEUE_BUDGET_MS = 10 * 1000;
+const REFUND_BALANCE_INSUFFICIENT_MESSAGE = '基本账户余额不足，请充值后重新发起';
+const CLIENT_CLOUD_SOURCES = new Set(['wx_client', 'wx_devtools', 'wx_localdebug']);
+
+function isTrustedVirtualMessageContext(context = {}) {
+  const source = String(context.SOURCE || '').trim();
+  if (!source) return !context.OPENID;
+  return !source.split(',').map(item => item.trim()).some(item => CLIENT_CLOUD_SOURCES.has(item));
+}
+
+function refundFailureOf(err, fallback = '退款发起失败，可稍后重试') {
+  const message = String((err && err.message) || '').trim();
+  const code = String((err && err.code) || '').trim();
+  const statusCode = Number(err && err.statusCode);
+  const isBalanceInsufficient = /基本账户余额不足|账户余额不足|余额不足/.test(message)
+    || /(?:balance|fund).*(?:insufficient|not.?enough)/i.test(`${message} ${code}`);
+  const fundingBlocked = isBalanceInsufficient && (statusCode === 0 || statusCode === 403);
+  return {
+    message: fundingBlocked ? REFUND_BALANCE_INSUFFICIENT_MESSAGE : fallback,
+    failureReason: String((fundingBlocked ? REFUND_BALANCE_INSUFFICIENT_MESSAGE : message) || fallback).slice(0, 500),
+    failureCode: fundingBlocked ? 'BASIC_ACCOUNT_INSUFFICIENT' : code.slice(0, 100),
+    fundingBlocked,
+  };
+}
 
 /* ============================== HTTP 回调 ============================== */
 
@@ -272,6 +295,9 @@ async function applyRefundResult(caseItem, result, source = 'queries') {
         source,
       },
       failureReason: '',
+      failureCode: '',
+      fundingBlocked: false,
+      fundingBlockedAt: null,
     });
     await db.collection(COLLECTIONS.ORDERS).doc(order._id).update({
       data: {
@@ -286,11 +312,19 @@ async function applyRefundResult(caseItem, result, source = 'queries') {
   }
 
   if (['CLOSED', 'ABNORMAL', 'REFUND_FAILED'].includes(refundStatus)) {
+    const failure = refundFailureOf({
+      message: result.failure_reason || result.status || '微信退款未成功',
+      code: result.failure_code || result.code || '',
+      statusCode: 0,
+    }, '微信退款未成功');
     await afterSales.updateCase(db, caseItem._id, {
       status: CaseStatus.REFUND_FAILED,
       refundStatus: RefundStatus.FAILED,
       refundId: result.refund_id || caseItem.refundId || '',
-      failureReason: result.failure_reason || result.status || '微信退款未成功',
+      failureReason: failure.failureReason,
+      failureCode: failure.failureCode,
+      fundingBlocked: failure.fundingBlocked,
+      fundingBlockedAt: failure.fundingBlocked ? new Date() : null,
       refundResult: { status: refundStatus, source },
     });
     await db.collection(COLLECTIONS.ORDERS).doc(order._id).update({
@@ -303,6 +337,10 @@ async function applyRefundResult(caseItem, result, source = 'queries') {
     status: CaseStatus.PROCESSING,
     refundStatus: RefundStatus.PROCESSING,
     refundId: result.refund_id || caseItem.refundId || '',
+    failureReason: '',
+    failureCode: '',
+    fundingBlocked: false,
+    fundingBlockedAt: null,
     refundResult: { status: refundStatus || 'PROCESSING', source },
   });
   return ok({ refundStatus: RefundStatus.PROCESSING, caseId: caseItem._id });
@@ -974,6 +1012,7 @@ async function adminCaseBundle(caseItem) {
         && order.grantStatus === GrantStatus.FAILED && !orderRefunded,
       canApproveRefund: !!order && order.status === OrderStatus.PAID
         && reviewableCase && !orderRefunded,
+      approveRefundLabel: caseItem.status === CaseStatus.REFUND_FAILED ? '重新发起退款' : '同意全额退款',
       canReject: rejectableCase,
       canSyncRefund: !!caseItem.outRefundNo
         && [CaseStatus.PROCESSING, CaseStatus.REFUND_FAILED].includes(caseItem.status),
@@ -1172,7 +1211,9 @@ async function handleVirtualRefund(message) {
   if (Number.isFinite(refundFee) && refundFee !== Number(order.amountFen)) {
     return virtualNotify.cloudFailure('退款金额与订单不一致');
   }
-  if (!virtualPay.isRefundedResult(queried) && !virtualPay.isRefundFailedResult(queried)) {
+  if (!virtualPay.isRefundedResult(queried)
+    && !virtualPay.isRefundFailedResult(queried)
+    && !virtualPay.isRefundProcessingResult(queried)) {
     return virtualNotify.cloudFailure('退款尚未完成');
   }
 
@@ -1349,7 +1390,89 @@ async function syncRefundCase(caseItem) {
   return applyRefundResult(caseItem, result, 'refund_query');
 }
 
+function isExplicitRefundNotFoundError(err) {
+  const statusCode = Number(err && err.statusCode);
+  const code = String((err && (err.code || err.errcode)) || '');
+  const message = String((err && (err.message || err.errMsg)) || '');
+  if (statusCode === 404) return true;
+  if (/RESOURCE_NOT_EXISTS|REFUND_NOT_EXIST|ORDER_NOT_EXIST|NOT_FOUND/i.test(code)) return true;
+  return /退款(?:单|记录)?.{0,8}不存在|退款记录未找到|order.{0,16}not.{0,8}exist/i.test(message);
+}
+
+async function confirmNoRemoteRefund(caseItem, order) {
+  if (caseItem.status !== CaseStatus.REFUND_FAILED || !caseItem.outRefundNo) {
+    return ok({ remoteRefundAbsent: true });
+  }
+  try {
+    if (paymentProvider.isVirtualPay(order)) {
+      const config = virtualPay.configForOrder(order);
+      if (!virtualPay.hasApiConfig(config)) return fail(ERRORS.PAYMENT_NOT_READY);
+      await virtualPay.queryRefund({
+        outRefundNo: caseItem.outRefundNo,
+        order,
+        config,
+      });
+    } else {
+      const config = wxpay.configOf();
+      if (!wxpay.hasApiConfig(config)) return fail(ERRORS.PAYMENT_NOT_READY);
+      await wxpay.queryRefund({ outRefundNo: caseItem.outRefundNo, config });
+    }
+  } catch (err) {
+    if (isExplicitRefundNotFoundError(err)) return ok({ remoteRefundAbsent: true });
+    console.error('[payment] cancel after-sales refund preflight failed', {
+      caseId: caseItem._id,
+      outRefundNo: caseItem.outRefundNo,
+      statusCode: err && err.statusCode,
+      code: err && (err.code || err.errcode),
+      message: err && (err.message || err.errMsg),
+    });
+    return fail({
+      code: ERRORS.PAYMENT_NOT_READY.code,
+      message: '暂时无法确认退款记录，请稍后重试',
+    });
+  }
+  return fail({
+    code: ERRORS.REFUND_NOT_ELIGIBLE.code,
+    message: '支付渠道已存在退款记录，请刷新订单退款进度',
+  });
+}
+
+async function cancelAfterSales(context, event) {
+  const caseItem = await afterSales.getCaseById(db, event.caseId);
+  if (!caseItem || caseItem.userId !== context.OPENID) return fail(ERRORS.CASE_NOT_FOUND);
+  if (caseItem.status === CaseStatus.CANCELLED) {
+    return ok({ case: afterSales.caseViewOf(caseItem), idempotent: true });
+  }
+  if (!afterSales.USER_CANCELLABLE_CASE_STATUSES.has(caseItem.status)) {
+    return fail({
+      code: ERRORS.REFUND_NOT_ELIGIBLE.code,
+      message: caseItem.status === CaseStatus.PROCESSING
+        ? '退款已发起，当前不能取消售后'
+        : '当前售后状态不能取消',
+    });
+  }
+  const order = await findOrderById(db, caseItem.orderId);
+  if (!order || order.userId !== context.OPENID) return fail(ERRORS.ORDER_NOT_FOUND);
+  if (order.refundStatus === RefundStatus.REFUNDED
+    || order.refundStatus === RefundStatus.PROCESSING
+    || order.grantStatus === GrantStatus.REVERTED) {
+    return fail({
+      code: ERRORS.REFUND_NOT_ELIGIBLE.code,
+      message: '退款已处理或正在处理，当前不能取消售后',
+    });
+  }
+  const preflight = await confirmNoRemoteRefund(caseItem, order);
+  if (!preflight.success) return preflight;
+  return afterSales.cancelCaseForUser(db, context.OPENID, caseItem._id, {
+    expectedStatus: caseItem.status,
+  });
+}
+
 async function approveRefund(context, event, operatorOverride = '') {
+  if (!operatorOverride) {
+    const denied = adminRequired(context);
+    if (denied) return denied;
+  }
   const operator = operatorOverride || context.OPENID;
   const caseItem = await afterSales.getCaseById(db, event.caseId);
   if (!caseItem) return fail(ERRORS.CASE_NOT_FOUND);
@@ -1381,7 +1504,13 @@ async function approveRefund(context, event, operatorOverride = '') {
     if (!virtualPay.isPaidResult(current)) {
       return fail({ code: ERRORS.REFUND_NOT_ELIGIBLE.code, message: '订单当前不是可退款状态' });
     }
-    await afterSales.markRefundProcessing(db, caseItem, outRefundNo);
+    const marked = await afterSales.markRefundProcessing(db, caseItem, outRefundNo);
+    if (!marked) {
+      return fail({
+        code: ERRORS.REFUND_NOT_ELIGIBLE.code,
+        message: '售后状态已更新，请刷新后重试',
+      });
+    }
     try {
       const created = await virtualPay.createRefund({
         order,
@@ -1413,10 +1542,14 @@ async function approveRefund(context, event, operatorOverride = '') {
       });
       return applied;
     } catch (err) {
+      const failure = refundFailureOf(err, '虚拟支付退款请求失败');
       await afterSales.updateCase(db, caseItem._id, {
         status: CaseStatus.REFUND_FAILED,
         refundStatus: RefundStatus.FAILED,
-        failureReason: String(err.message || '虚拟支付退款请求失败').slice(0, 500),
+        failureReason: failure.failureReason,
+        failureCode: failure.failureCode,
+        fundingBlocked: failure.fundingBlocked,
+        fundingBlockedAt: failure.fundingBlocked ? new Date() : null,
         outRefundNo,
       });
       await db.collection(COLLECTIONS.ORDERS).doc(order._id).update({
@@ -1425,15 +1558,25 @@ async function approveRefund(context, event, operatorOverride = '') {
       await afterSales.logAdminAction(db, operator, 'REFUND_ATTEMPT_FAILED', caseItem, {
         outRefundNo,
         error: String(err.message || '').slice(0, 300),
+        errorCode: String(err.code || '').slice(0, 100),
         statusCode: err.statusCode || 0,
       });
-      return fail({ code: ERRORS.PAYMENT_NOT_READY.code, message: '退款发起失败，可稍后重试' });
+      return fail({
+        code: ERRORS.PAYMENT_NOT_READY.code,
+        message: failure.message,
+      });
     }
   }
 
   const config = wxpay.configOf();
   if (!wxpay.hasRefundConfig(config)) return fail(ERRORS.PAYMENT_NOT_READY);
-  await afterSales.markRefundProcessing(db, caseItem, outRefundNo);
+  const marked = await afterSales.markRefundProcessing(db, caseItem, outRefundNo);
+  if (!marked) {
+    return fail({
+      code: ERRORS.REFUND_NOT_ELIGIBLE.code,
+      message: '售后状态已更新，请刷新后重试',
+    });
+  }
   try {
     const result = await wxpay.createRefund({
       order,
@@ -1453,10 +1596,14 @@ async function approveRefund(context, event, operatorOverride = '') {
     });
     return applied;
   } catch (err) {
+    const failure = refundFailureOf(err);
     await afterSales.updateCase(db, caseItem._id, {
       status: CaseStatus.REFUND_FAILED,
       refundStatus: RefundStatus.FAILED,
-      failureReason: String(err.message || '退款请求失败').slice(0, 500),
+      failureReason: failure.failureReason,
+      failureCode: failure.failureCode,
+      fundingBlocked: failure.fundingBlocked,
+      fundingBlockedAt: failure.fundingBlocked ? new Date() : null,
       outRefundNo,
     });
     await db.collection(COLLECTIONS.ORDERS).doc(order._id).update({
@@ -1465,9 +1612,13 @@ async function approveRefund(context, event, operatorOverride = '') {
     await afterSales.logAdminAction(db, operator, 'REFUND_ATTEMPT_FAILED', caseItem, {
       outRefundNo,
       error: String(err.message || '').slice(0, 300),
+      errorCode: String(err.code || '').slice(0, 100),
       statusCode: err.statusCode || 0,
     });
-    return fail({ code: ERRORS.PAYMENT_NOT_READY.code, message: '退款发起失败，可稍后重试' });
+    return fail({
+      code: ERRORS.PAYMENT_NOT_READY.code,
+      message: failure.message,
+    });
   }
 }
 
@@ -1873,9 +2024,10 @@ async function reconcile(options = {}) {
 exports.main = async (event = {}) => {
   const context = cloud.getWXContext() || {};
   if (isVirtualMessageEvent(event)) {
-    if (context.OPENID) {
+    if (!isTrustedVirtualMessageContext(context)) {
       console.warn('[payment] rejected client virtual message event', {
         event: event.Event || event.event || '',
+        source: context.SOURCE || '',
       });
       return virtualNotify.cloudFailure('虚拟支付消息只接受平台推送');
     }
@@ -1914,6 +2066,8 @@ exports.main = async (event = {}) => {
         return await cancelPayment(context, event);
       case 'afterSales.submit':
         return await submitAfterSales(context, event);
+      case 'afterSales.cancel':
+        return await cancelAfterSales(context, event);
       case 'afterSales.list':
         return await afterSales.listUserCases(db, context.OPENID);
       case 'afterSales.detail':
@@ -1923,16 +2077,23 @@ exports.main = async (event = {}) => {
       case 'afterSales.adminStatus': {
         const isAdmin = afterSales.isAfterSalesAdmin(context.OPENID);
         if (!isAdmin) {
-          return ok({ isAdmin: false, migrationCompleted: false, pendingCount: 0 });
+          return ok({
+            isAdmin: false,
+            migrationCompleted: false,
+            pendingCount: 0,
+            fundingBlockedCount: 0,
+          });
         }
-        const [migrationCompleted, pendingCount] = await Promise.all([
+        const [migrationCompleted, pendingCount, fundingBlockedCount] = await Promise.all([
           protectionMigrationCompleted(db),
           afterSales.countActiveCases(db).catch(() => 0),
+          afterSales.countFundingBlockedCases(db).catch(() => 0),
         ]);
         return ok({
           isAdmin: true,
           migrationCompleted,
           pendingCount,
+          fundingBlockedCount,
         });
       }
       case 'afterSales.adminList':
@@ -1986,10 +2147,13 @@ exports.main = async (event = {}) => {
 exports._test = {
   applyRefundResult,
   approveRefund,
+  cancelAfterSales,
+  isExplicitRefundNotFoundError,
   reconcile,
   runReconcileQueue,
   syncOrder,
   handleHttpCallback,
   handleVirtualMessage,
   iosRefundDecision,
+  isTrustedVirtualMessageContext,
 };

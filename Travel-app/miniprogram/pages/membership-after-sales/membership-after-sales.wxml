@@ -29,9 +29,17 @@
     <view wx:if="{{existingCase}}" class="existing-case">
       <text class="existing-title">已有售后申请</text>
       <text>{{existingCase.statusLabel}}</text>
+      <text>申请时间：{{existingCase.createdAtText}}</text>
       <text>申请类型：{{existingCase.typeLabel}}</text>
       <text wx:if="{{existingCase.decisionNote}}">处理说明：{{existingCase.decisionNote}}</text>
+      <text wx:if="{{existingCase.status !== 'REFUNDED'}}" class="service-expectation">售后申请预计 24 小时内处理；超过 24 小时仍未更新处理结果，请联系客服。</text>
       <view class="order-link" bindtap="onOrderDetail">查看订单与退款进度</view>
+      <view wx:if="{{resultMessage}}" class="result-message {{resultTone}}">{{resultMessage}}</view>
+      <view
+        wx:if="{{existingCase.canCancel}}"
+        class="cancel-btn {{cancelling ? 'disabled' : ''}}"
+        bindtap="onCancelAfterSales"
+      >{{cancelling ? '正在取消...' : '取消售后'}}</view>
     </view>
 
     <view wx:elif="{{reasonOptions.length === 0}}" class="existing-case">

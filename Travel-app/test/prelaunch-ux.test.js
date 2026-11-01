@@ -248,7 +248,18 @@ function resetWx(patch = {}) {
   const guideJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/guide/guide.js'), 'utf8');
   eq(/"pages\/guide\/guide"/.test(appJson), true, '攻略页已注册路由');
   eq(/navigateTo\(\{ url: '\/pages\/guide\/guide' \}\)/.test(profileJs), true, '我的页入口指向攻略页');
-  eq(/3 步设置提醒/.test(guideWxml), true, '攻略含三步使用说明');
+  eq(/两种设置提醒方式/.test(guideWxml), true, '攻略说明两种设置提醒方式');
+  eq(/先排行程，再批量提醒/.test(guideWxml), true, '攻略保留主流程批量提醒');
+  eq(/为单个景点直接设提醒/.test(guideWxml), true, '攻略说明景点页单景点提醒');
+  eq(/3 分钟上手|hero-kicker/.test(guideWxml), false, '攻略顶部移除 3 分钟标签');
+  eq(/会员与支付/.test(guideWxml), true, '攻略 FAQ 增加会员与支付分组');
+  eq(/支付成功后，会员或提醒名额没有马上到账怎么办/.test(guideWxml), false,
+    '支付问题由 JS 数据渲染');
+  eq(/paymentFaqs/.test(guideWxml), true, '攻略渲染支付常见问题数据');
+  eq(/key: 'payment-arrival'[\s\S]*key: 'payment-refund'[\s\S]*24 小时内且没有新增任何提醒/.test(guideJs), true,
+    '支付 FAQ 覆盖到账与退款口径');
+  eq(/focus === 'payment-faq'[\s\S]*pageScrollTo/.test(guideJs), true,
+    '攻略支持从订单页深链定位支付 FAQ');
   eq(/查看提醒样式示例/.test(guideWxml), true, '攻略第一步含提醒样式入口');
   eq(/onReminderSamples\(\)[\s\S]*showSampleSheet: true/.test(guideJs), true,
     '提醒样式入口在当前页打开');

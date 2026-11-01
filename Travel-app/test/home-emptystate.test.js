@@ -40,7 +40,17 @@ console.log('=== 1. 空态只在「一个行程项都没有」时出现 ===');
      不带的话新用户一进页面会先闪一下空态再切走。 */
   const blankBlock = /<block wx:if="\{\{!loading && trips\.length === 0 && history\.length === 0\}\}">/;
   eq(blankBlock.test(WXML), true, '空态块带 !loading（防加载瞬间闪空态）');
-  eq(/class="empty-cta" bindtap="onAddTrip"/.test(WXML), true, '空态里有一个创建行程 CTA');
+  eq(/class="empty-cta" bindtap="onAddTrip"/.test(WXML), true, '空态主 CTA 创建行程并批量设提醒');
+  eq(/先建行程，批量设提醒/.test(WXML), true, '主 CTA 文案说明建行程后可批量设提醒');
+  eq(/class="empty-cta empty-cta-secondary" bindtap="onOpenSpotReminder"/.test(WXML), true,
+    '空态副 CTA 进入单景点设提醒');
+  eq(/为单个景点设提醒/.test(WXML), true, '副 CTA 文案说明单景点设提醒');
+  eq(/\.empty-actions \{[^}]*flex-direction: column[^}]*gap: 16rpx/.test(HOME_WXSS), true,
+    '主副 CTA 上下排列且保持统一间距');
+  eq(/\.empty-cta-secondary \{[^}]*background: var\(--color-surface\)[^}]*color: var\(--color-primary\)/.test(HOME_WXSS), true,
+    '副 CTA 使用描边浅底，保持低于主 CTA 的视觉层级');
+  eq(/onOpenSpotReminder\(\)[\s\S]*\/pages\/spot-hub\/spot-hub/.test(JS), true,
+    '单景点设提醒复用景点页直设提醒入口');
   eq(/class="empty-steps"/.test(WXML), false, '旧三步说明已由结果预览替代');
   eq(/class="empty-proof-card"/.test(WXML), true, '空态展示行程→抢票→提醒的结果预览');
   eq(/emptyReleaseSample\.visitText/.test(WXML), true, '预览的出行计划来自动态示例数据');
@@ -139,15 +149,17 @@ console.log('=== 2. 悬浮按钮只在已有行程时出现 ===');
   eq(/isBlank: false,/.test(JS), true, 'isBlank 有初值（且初值为 false，配合 !loading 使用）');
 }
 
-console.log('=== 3. 两个入口互斥 ===');
+console.log('=== 3. 空态与悬浮入口互斥 ===');
 {
-  /* 结构上：空态 CTA 在 wx:if 块内、悬浮按钮以 !isBlank 为条件。
+  /* 结构上：空态两枚 CTA 都在 wx:if 块内、悬浮按钮以 !isBlank 为条件。
      两者的触发条件互补 —— 要么「无事可做 → 居中 CTA」，
      要么「已有行程 → 右下悬浮」，不会同时出现。 */
   const blankAt = WXML.indexOf('class="empty-cta"');
+  const secondaryAt = WXML.indexOf('class="empty-cta empty-cta-secondary"');
   const elseAt = WXML.indexOf('<block wx:else>');
   const fabAt = WXML.indexOf('class="fab-btn"');
   eq(blankAt > 0 && blankAt < elseAt, true, '空态 CTA 在 wx:if 分支内（不在 else 分支）');
+  eq(secondaryAt > blankAt && secondaryAt < elseAt, true, '空态副 CTA 也在 wx:if 分支内');
   eq(fabAt > elseAt, true, '悬浮按钮在 wx:else 分支之后，由 !isBlank 二次把关');
   eq((WXML.match(/bindtap="onAddTrip"/g) || []).length, 2, '全页只有这两个入口指向 onAddTrip');
 }

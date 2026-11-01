@@ -17,6 +17,7 @@ const FILTERS = [
   { key: 'UNDER_REVIEW', label: '审核中' },
   { key: 'PROCESSING', label: '处理中' },
   { key: 'REFUND_FAILED', label: '异常' },
+  { key: 'CANCELLED', label: '已取消' },
   { key: 'REFUNDED', label: '已完成' },
   { key: 'REJECTED', label: '已驳回' },
 ];
@@ -39,6 +40,7 @@ Page({
     migrationHasMore: false,
     migrationEntryEnabled: MIGRATION_ENTRY_ENABLED,
     migrationCompleted: false,
+    fundingBlockedCount: 0,
     migrationMessage: '',
     migrating: false,
     migrationAutoRunning: false,
@@ -60,14 +62,36 @@ Page({
     if (MIGRATION_ENTRY_ENABLED) this.loadMigrationStatus();
   },
 
-  onShow() { this.loadList(); },
+  onShow() {
+    this.loadStatus();
+    this.loadList();
+  },
 
   onUnload() { this._migrationStopRequested = true; },
 
   loadMigrationStatus() {
     return api.payment.afterSales.adminStatus().then(res => {
-      this.setData({ migrationCompleted: !!res.migrationCompleted });
+      this.applyStatus(res);
     }).catch(() => {});
+  },
+
+  loadStatus() {
+    return this.loadMigrationStatus();
+  },
+
+  applyStatus(res) {
+    this.setData({
+      migrationCompleted: !!(res && res.migrationCompleted),
+      fundingBlockedCount: Math.max(0, Number(res && res.fundingBlockedCount) || 0),
+    });
+  },
+
+  onShowFundingBlocked() {
+    if (this.data.activeFilter === 'REFUND_FAILED') {
+      return this.loadList();
+    }
+    this.setData({ activeFilter: 'REFUND_FAILED', detail: null, actionMessage: '' });
+    return this.loadList();
   },
 
   loadList() {
@@ -228,15 +252,18 @@ Page({
     if (!caseId) return Promise.resolve();
     return api.payment.afterSales.adminDetail(caseId).then(res => {
       this.setData({ detail: res });
-      return this.loadList();
+      return Promise.all([this.loadList(), this.loadStatus()]);
     });
   },
 
   onApprove() {
     if (this.data.acting || !this.data.detail) return;
+    const retrying = this.data.detail.case && this.data.detail.case.status === 'REFUND_FAILED';
     wx.showModal({
-      title: '同意全额退款',
-      content: '将按订单原金额发起一次全额退款。退款成功后只回收本订单新增权益，不删除用户已有提醒。',
+      title: retrying ? '重新发起退款' : '同意全额退款',
+      content: retrying
+        ? '请先确认商户基本账户已有足够退款资金。本次会沿用原退款单号重试，成功后只回收本订单新增权益。'
+        : '将按订单原金额发起一次全额退款。退款成功后只回收本订单新增权益，不删除用户已有提醒。',
       success: res => {
         if (!res.confirm) return;
         const caseId = this.data.detail.case._id;
@@ -251,6 +278,7 @@ Page({
           return this.refreshDetail();
         }).catch(err => {
           this.setData({ acting: false, actionMessage: (err && err.error) || '退款发起失败，可重试。' });
+          return this.refreshDetail();
         });
       },
     });

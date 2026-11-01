@@ -10,6 +10,15 @@
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
 
 <view class="page-body">
+  <view class="payment-faq-entry" bindtap="onOpenPaymentFaq">
+    <view class="payment-faq-icon"><svg-icon name="chat-linear" size="18px" /></view>
+    <view class="payment-faq-copy">
+      <text class="payment-faq-title">支付、到账、退款有疑问？</text>
+      <text class="payment-faq-desc">先看会员与支付常见问题</text>
+    </view>
+    <svg-icon name="chevron-right-gold" size="12px" />
+  </view>
+
   <view wx:if="{{loading}}" class="loading-wrap">
     <van-loading size="36rpx" color="#B8904A" />
   </view>

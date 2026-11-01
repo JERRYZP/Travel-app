@@ -58,7 +58,7 @@ function fakeHttpsSequence(sequence) {
   };
 }
 
-function loadPayment(db, openId = '') {
+function loadPayment(db, openId = '', source = '') {
   const originalLoad = Module._load;
   Module._load = function(request, parent) {
     if (request === 'wx-server-sdk' && parent && parent.filename.endsWith(`${path.sep}payment${path.sep}index.js`)) {
@@ -66,7 +66,12 @@ function loadPayment(db, openId = '') {
         DYNAMIC_CURRENT_ENV: 'dynamic',
         init() {},
         database() { return db; },
-        getWXContext() { return { OPENID: openId }; },
+        getWXContext() {
+          return {
+            OPENID: openId,
+            SOURCE: source || (openId ? 'wx_client' : ''),
+          };
+        },
       };
     }
     return originalLoad.apply(this, arguments);
@@ -309,6 +314,12 @@ async function testVirtualMessageIntegration() {
     });
     eq(forgedMessage.ErrCode, 1, '客户端伪造虚拟支付事件被拒绝');
     eq(queryCalls, 0, '客户端伪造事件不会触发微信查单');
+    eq(payment._test.isTrustedVirtualMessageContext({
+      OPENID: 'openid-virtual-1', SOURCE: 'wx_paycallback',
+    }), true, '平台支付回调即使带 OpenId 也按支付回调来源放行');
+    eq(payment._test.isTrustedVirtualMessageContext({
+      OPENID: 'openid-virtual-1', SOURCE: 'wx_client',
+    }), false, '小程序客户端来源仍不能伪造虚拟支付事件');
 
     const forgedHttp = await clientPayment.main({
       path: '/payment/virtual-notify',
@@ -606,6 +617,76 @@ async function testPlatformRefundBackfill() {
   }
 }
 
+async function testPlatformRefundProcessingWithOpenId() {
+  console.log('\n=== 7. 平台退款处理中通知带 OpenId 时仍可落库 ===');
+  const db = createDb();
+  const now = Date.now();
+  const originalQueryRefund = virtualPay.queryRefund;
+  virtualPay.queryRefund = async ({ outRefundNo }) => ({
+    order_id: outRefundNo,
+    order_type: 8,
+    status: virtualPay.VirtualOrderStatus.REFUND_MERCHANT_DONE,
+    order_fee: 300,
+    refund_fee: 300,
+    paid_time: Math.floor(now / 1000),
+    env_type: 1,
+    wx_order_id: 'wx-platform-refund-processing',
+  });
+  db._seed(COLLECTIONS.USERS, [{
+    _id: 'u-platform-processing', openId: 'openid-platform-processing', memberLevel: 'MEMBER',
+    memberExpiresAt: new Date(now + 30 * 86400000), taskPackCount: 0,
+  }]);
+  db._seed(COLLECTIONS.ORDERS, [{
+    _id: 'ov-platform-processing', userId: 'openid-platform-processing',
+    outTradeNo: 'TVIRT-PLATFORM-PROCESSING', paymentProvider: 'VIRTUAL_PAY',
+    virtualEnv: 0, channelOrderType: 7, packageId: 'member', productType: 'MEMBER',
+    title: '会员 30 天', amountFen: 300, memberDays: 30,
+    status: OrderStatus.PAID, refundStatus: RefundStatus.NONE,
+    grantStatus: GrantStatus.GRANTED, paidAt: new Date(now - 3600000),
+    entitlementGrant: {
+      memberDaysAddedMs: 30 * 86400000,
+      taskPackDelta: 0,
+      appliedAt: new Date(now - 3600000),
+    },
+  }]);
+
+  const previousEnv = { ...process.env };
+  Object.assign(process.env, {
+    PAYMENT_PROVIDER: 'VIRTUAL_PAY',
+    WECHAT_APP_ID: 'wx05c160a589b97d76',
+    WECHAT_APP_SECRET: 'app-secret',
+    WECHAT_VIRTUAL_PAY_ENV: '0',
+    WECHAT_VIRTUAL_PAY_OFFER_ID: 'offer-test',
+    WECHAT_VIRTUAL_PAY_PRODUCTION_APP_KEY: '12345',
+    WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER: 'member-product',
+    WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK: 'pack-product',
+  });
+  try {
+    const payment = loadPayment(db, 'openid-platform-processing', 'wx_paycallback');
+    const result = await payment.main({
+      Event: 'xpay_refund_notify',
+      OpenId: 'openid-platform-processing',
+      MchRefundId: 'RFPLATFORMPROCESSING',
+      MchOrderId: 'TVIRT-PLATFORM-PROCESSING',
+      RefundFee: 300,
+      RetCode: 0,
+    });
+    eq(result.ErrCode, 0, '平台退款处理中通知确认成功');
+    const order = db._dump(COLLECTIONS.ORDERS)[0];
+    const cases = db._dump(COLLECTIONS.AFTER_SALES_CASES);
+    eq(order.refundStatus, RefundStatus.PROCESSING, '订单进入退款处理中');
+    eq(order.grantStatus, GrantStatus.GRANTED, '尚未完成前不提前回收权益');
+    eq(cases.length, 1, '平台退款处理中即生成售后记录');
+    eq(cases[0].outRefundNo, 'RFPLATFORMPROCESSING', '售后记录保存平台退款单号');
+    eq(cases[0].status, CaseStatus.PROCESSING, '售后工作台可看到退款处理中');
+    eq(cases[0].evidence.paymentChannel, 'APPLE', '售后记录标记 Apple 渠道');
+  } finally {
+    virtualPay.queryRefund = originalQueryRefund;
+    for (const key of Object.keys(process.env)) if (!(key in previousEnv)) delete process.env[key];
+    Object.assign(process.env, previousEnv);
+  }
+}
+
 async function testLegacyProviderPinning() {
   console.log('\n=== 7. 旧微信支付在首次拉起时固化渠道 ===');
   const db = createDb();
@@ -642,6 +723,96 @@ async function testLegacyProviderPinning() {
   }
 }
 
+async function testRefundBalanceFailureMessage() {
+  console.log('\n=== 8. 管理端退款余额不足返回可操作原因并校验权限 ===');
+  const db = createDb();
+  const now = Date.now();
+  db._seed(COLLECTIONS.ORDERS, [{
+    _id: 'order-balance-fail', userId: 'openid-balance-fail', outTradeNo: 'TBALANCEFAIL',
+    paymentProvider: 'WECHAT_PAY_V3', packageId: 'member', productType: 'MEMBER',
+    title: '会员 30 天', amountFen: 300, memberDays: 30,
+    status: OrderStatus.PAID, refundStatus: RefundStatus.NONE,
+    grantStatus: GrantStatus.GRANTED, paidAt: new Date(now - 3600000),
+  }]);
+  db._seed(COLLECTIONS.AFTER_SALES_CASES, [{
+    _id: 'case-balance-fail', caseNo: 'ASC-BALANCE-FAIL', userId: 'openid-balance-fail',
+    orderId: 'order-balance-fail', outTradeNo: 'TBALANCEFAIL', type: CaseType.UNUSED_REFUND,
+    title: '会员 30 天', amountFen: 300, status: CaseStatus.UNDER_REVIEW,
+    refundStatus: RefundStatus.UNDER_REVIEW, createdAt: new Date(now),
+  }]);
+
+  const previousEnv = { ...process.env };
+  const originalConfigOf = wxpay.configOf;
+  const originalHasRefundConfig = wxpay.hasRefundConfig;
+  const originalCreateRefund = wxpay.createRefund;
+  process.env.AFTER_SALES_ADMIN_OPENIDS = 'admin-balance';
+  wxpay.configOf = () => ({});
+  wxpay.hasRefundConfig = () => true;
+  wxpay.createRefund = async () => {
+    const err = new Error('基本账户余额不足，请充值后重新发起');
+    err.statusCode = 403;
+    err.code = 'NOT_ENOUGH';
+    throw err;
+  };
+
+  try {
+    const payment = loadPayment(db);
+    const denied = await payment._test.approveRefund(
+      { OPENID: 'openid-not-admin' },
+      { caseId: 'case-balance-fail' }
+    );
+    eq(denied.errorCode, 1040, '非管理员不能绕过售后审核发起退款');
+
+    const result = await payment._test.approveRefund(
+      { OPENID: 'admin-balance' },
+      { caseId: 'case-balance-fail' }
+    );
+    eq(result.success, false, '微信支付拒绝时退款不返回成功');
+    eq(result.error, '基本账户余额不足，请充值后重新发起',
+      '管理端收到可直接处理的余额不足原因');
+    eq(db._dump(COLLECTIONS.AFTER_SALES_CASES)[0].status, CaseStatus.REFUND_FAILED,
+      '退款失败后售后单进入可重试状态');
+    const failedCase = db._dump(COLLECTIONS.AFTER_SALES_CASES)[0];
+    eq(failedCase.fundingBlocked, true, '余额不足售后单持久标记资金阻断');
+    eq(failedCase.failureCode, 'BASIC_ACCOUNT_INSUFFICIENT', '资金阻断使用稳定错误码');
+    eq(failedCase.failureReason, '基本账户余额不足，请充值后重新发起', '资金阻断原因落库');
+    eq(afterSales.caseViewOf(failedCase).fundingBlocked, true, '管理端详情可读取资金阻断标记');
+    eq(db._dump(COLLECTIONS.ORDERS)[0].refundStatus, RefundStatus.FAILED,
+      '退款失败后订单记录失败状态');
+    const audit = db._dump(COLLECTIONS.ADMIN_AUDIT_LOGS)
+      .find(item => item.action === 'REFUND_ATTEMPT_FAILED');
+    eq(audit.details.error, '基本账户余额不足，请充值后重新发起', '审计保留微信原始错误');
+    eq(audit.details.errorCode, 'NOT_ENOUGH', '审计保留微信错误码');
+    eq(audit.details.statusCode, 403, '审计保留 HTTP 状态码');
+
+    const adminPayment = loadPayment(db, 'admin-balance');
+    const status = await adminPayment.main({ action: 'afterSales.adminStatus' });
+    eq(status.success, true, '管理员可读取售后状态');
+    eq(status.pendingCount, 1, '资金阻断仍计入待处理售后');
+    eq(status.fundingBlockedCount, 1, '管理员入口可单独统计资金阻断售后');
+
+    wxpay.createRefund = async () => ({
+      status: 'PROCESSING',
+      refund_id: 'wx-refund-retry',
+    });
+    const retried = await adminPayment._test.approveRefund(
+      { OPENID: 'admin-balance' },
+      { caseId: 'case-balance-fail' }
+    );
+    eq(retried.success, true, '充值后可在原售后单重新发起退款');
+    const resumedCase = db._dump(COLLECTIONS.AFTER_SALES_CASES)[0];
+    eq(resumedCase.status, CaseStatus.PROCESSING, '重试成功后售后单回到处理中');
+    eq(resumedCase.fundingBlocked, false, '重试成功后清除资金阻断标记');
+    eq(resumedCase.failureReason, '', '重试成功后清除旧失败原因');
+  } finally {
+    wxpay.configOf = originalConfigOf;
+    wxpay.hasRefundConfig = originalHasRefundConfig;
+    wxpay.createRefund = originalCreateRefund;
+    for (const key of Object.keys(process.env)) if (!(key in previousEnv)) delete process.env[key];
+    Object.assign(process.env, previousEnv);
+  }
+}
+
 async function run() {
   await testProviderAndSignatures();
   await testAccessTokenRefresh();
@@ -649,7 +820,9 @@ async function run() {
   await testVirtualMessageIntegration();
   await testRefundNotification();
   await testPlatformRefundBackfill();
+  await testPlatformRefundProcessingWithOpenId();
   await testLegacyProviderPinning();
+  await testRefundBalanceFailureMessage();
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);
 }

@@ -145,8 +145,8 @@ Page({
     /* 摘要卡底部的「即将提醒」胶囊：接下来的放票时刻（服务端拼好文案）。
        来源是 stickyBanner.pills —— 不放独立字段，避免两处口径漂。 */
     bannerPills: [],
-    /* 完全没有行程项 = 空态。空态自带一个居中的创建行程 CTA，
-       所以要把悬浮按钮藏掉，避免同屏两个一模一样的入口。 */
+    /* 完全没有行程项 = 空态。空态自带「建行程」和「单景点设提醒」
+       两个明确入口，所以要把悬浮新增按钮藏掉，避免同职责入口重复。 */
     isBlank: false,
     previewNewUser: false,
     /* 新用户空态的内容证据：一张真实规则预览 + 3 个近期热门景点放票节点。
@@ -574,6 +574,10 @@ Page({
   },
 
   onOpenAllSpots() {
+    wx.redirectTo({ url: '/pages/spot-hub/spot-hub' });
+  },
+
+  onOpenSpotReminder() {
     wx.redirectTo({ url: '/pages/spot-hub/spot-hub' });
   },
 

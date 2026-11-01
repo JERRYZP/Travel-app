@@ -40,6 +40,17 @@ Component({
       this.triggerEvent('confirm');
     },
 
+    onOpenAgreement(e) {
+      if (this.data.paying) return;
+      const type = e && e.currentTarget && e.currentTarget.dataset.type === 'terms'
+        ? 'terms'
+        : 'privacy';
+      wx.navigateTo({
+        url: `/pages/legal/legal?type=${type}`,
+        fail: () => wx.showToast({ title: '协议暂时无法打开，请稍后重试', icon: 'none' }),
+      });
+    },
+
     noop() {},
   },
 });

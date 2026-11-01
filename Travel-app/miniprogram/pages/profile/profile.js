@@ -34,6 +34,9 @@ Page({
     showAfterSalesEntry: false,
     afterSalesPendingCount: 0,
     afterSalesPendingText: '',
+    afterSalesFundingBlockedCount: 0,
+    afterSalesAdminHint: '退款审核与权益补偿',
+    afterSalesFundingBlocked: false,
   },
 
   onLoad() {
@@ -112,10 +115,19 @@ Page({
   applyAfterSalesAdminStatus(res) {
     const isAdmin = !!(res && res.isAdmin);
     const count = isAdmin ? Math.max(0, Number(res.pendingCount) || 0) : 0;
+    const fundingBlockedCount = isAdmin
+      ? Math.max(0, Number(res.fundingBlockedCount) || 0)
+      : 0;
+    const fundingBlocked = fundingBlockedCount > 0;
     this.setData({
       showAfterSalesEntry: isAdmin,
       afterSalesPendingCount: count,
       afterSalesPendingText: count > 99 ? '99+' : String(count || ''),
+      afterSalesFundingBlockedCount: fundingBlockedCount,
+      afterSalesFundingBlocked: fundingBlocked,
+      afterSalesAdminHint: fundingBlocked
+        ? `退款资金不足 · ${fundingBlockedCount > 99 ? '99+' : fundingBlockedCount} 笔`
+        : '退款审核与权益补偿',
     });
   },
 

@@ -51,9 +51,9 @@ iOS Apple 内购订单在订单展示接口中返回 `paymentChannel=APPLE`。�
 - 回调必须校验时间戳窗口、微信支付公钥 ID、AppID、商户号、商户订单号、金额、交易状态和资源解密结果。
 - 下单、查单、关单、退款、退款查询的微信响应也必须验签；缺少响应验签公钥时 `hasApiConfig=false`，不允许静默跳过。
 - 支付回调只有在订单与权益事务提交成功后才返回 200；验签失败返回 401，内部处理失败返回 5xx 让微信重试。
-- 虚拟支付消息推送使用云函数事件而不是 API v3 验签；发货、退款事件仍必须先调用 `/xpay/query_order` 二次确认。云函数入口会拒绝携带客户端 `OPENID` 的 `xpay_*` 事件和 HTTP 回调形态，避免客户端伪造事件消耗查单调用；平台消息本身没有客户端 `OPENID`，仍必须通过查单复核后才能发放或回收权益。
+- 虚拟支付消息推送使用云函数事件而不是 API v3 验签；发货、退款事件仍必须先调用 `/xpay/query_order` 二次确认。云开发消息推送会把事件中的 `OpenId` 映射成调用上下文 `OPENID`，因此入口不能再按“有 OPENID 就是客户端”拒绝，而应按 `SOURCE` 拒绝 `wx_client`、`wx_devtools`、`wx_localdebug` 等客户端来源；平台 `wx_paycallback` 来源即使带 OPENID 也必须放行后再查单复核。客户端 HTTP 回调形态继续拒绝。
 - `/xpay/query_order` 官方响应没有 `productId/buyQuantity`。下单签名前必须校验订单 SKU 与套餐配置，发放前必须校验订单保存的 `virtualProductId`；有可用 `biz_meta` 时再核对版本化附加标识。商品快照缺失或不一致时不得继续自动发权益，应落 `grantStatus=FAILED` 并转人工核验。
-- 虚拟支付退款推送处理 `xpay_refund_notify`；iOS 退款问询处理 `xpay_subscribe_ios_refund_query_notify`，后者必须在 3 秒内返回。
+- 虚拟支付退款推送处理 `xpay_refund_notify`；iOS 退款问询处理 `xpay_subscribe_ios_refund_query_notify`，后者必须在 3 秒内返回。Apple 退款查单返回 `status=5`（商户侧扣款完成）时先幂等补建/更新“处理中”售后记录，不提前回收权益；只有查单到 `status=8`（用户侧收款完成）才标记已退款并按订单快照回收。
 - 订单固化支付渠道与虚拟支付环境：API v3 在首次拉起支付前写入 `paymentProvider=WECHAT_PAY_V3`；虚拟支付写入 `paymentProvider=VIRTUAL_PAY`、`virtualEnv` 和 `virtualProductId`。历史订单查单、退款按订单快照选择渠道、环境和 AppKey。
 - 日志记录路由、`outTradeNo` / `outRefundNo`、公钥 ID、时间戳、原始 body SHA-256、验签结果和失败原因；不记录私钥、APIv3 密钥或完整签名。
 - 15 分钟未支付的本地订单会关闭；客户端确认取消后再次购买必须使用新的 `requestId`、订单 ID 和 `outTradeNo`。同一请求重试返回同一订单；不同请求只有在 `productType + specVersion + addedSlots + memberDays + amountFen` 全部一致且未过期时才复用待支付订单，旧规格订单条件关闭，不能按相同价格误复用。

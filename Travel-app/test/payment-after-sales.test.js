@@ -9,6 +9,7 @@ const {
 } = require('../cloudfunctions/payment/lib/schema');
 const afterSales = require('../cloudfunctions/payment/lib/after-sales');
 const { reverseOrderEntitlement, fulfillOrder } = require('../cloudfunctions/payment/lib/order');
+const wxpay = require('../cloudfunctions/payment/lib/wxpay-v3');
 const {
   migrateProtectionBatch,
   protectionMigrationCompleted,
@@ -63,17 +64,50 @@ function seedPaidOrder(db, patch = {}) {
   }]);
 }
 
-function loadPayment(db) {
+function seedRefundFailedCase(db, patch = {}) {
+  seedUser(db);
+  seedPaidOrder(db, {
+    refundStatus: RefundStatus.FAILED,
+    paymentProvider: 'WECHAT_PAY_V3',
+    activeAfterSalesCaseId: 'case_refund_failed_cancel',
+    ...(patch.order || {}),
+  });
+  db._seed(COLLECTIONS.AFTER_SALES_CASES, [{
+    _id: 'case_refund_failed_cancel',
+    caseNo: 'ASCANCELFAILED',
+    userId: USER,
+    orderId: 'order_paid_001',
+    outTradeNo: 'T20261030TEST',
+    title: '会员 30 天',
+    amountFen: 200,
+    type: 'UNUSED_REFUND',
+    status: CaseStatus.REFUND_FAILED,
+    refundStatus: RefundStatus.FAILED,
+    outRefundNo: 'RFT20261030TEST',
+    failureReason: '基本账户余额不足，请充值后重新发起',
+    fundingBlocked: true,
+    createdAt: new Date(Date.now() - 1800000),
+    updatedAt: new Date(Date.now() - 600000),
+    ...(patch.case || {}),
+  }]);
+}
+
+function loadPayment(db, options = {}) {
+  const openId = options.openId || USER;
+  const moduleStubs = options.moduleStubs || {};
   const originalLoad = Module._load;
   Module._load = function(request, parent) {
-    if (request === 'wx-server-sdk'
-      && parent
-      && parent.filename.endsWith(`${path.sep}payment${path.sep}index.js`)) {
+    const fromPaymentIndex = parent
+      && parent.filename.endsWith(`${path.sep}payment${path.sep}index.js`);
+    if (fromPaymentIndex && Object.prototype.hasOwnProperty.call(moduleStubs, request)) {
+      return moduleStubs[request];
+    }
+    if (request === 'wx-server-sdk' && fromPaymentIndex) {
       return {
         DYNAMIC_CURRENT_ENV: 'dynamic',
         init() {},
         database() { return db; },
-        getWXContext() { return { OPENID: USER }; },
+        getWXContext() { return { OPENID: openId }; },
       };
     }
     return originalLoad.apply(this, arguments);
@@ -421,6 +455,140 @@ async function run() {
     await afterSales.countActiveCases(db),
     afterSales.ACTIVE_CASE_STATUSES.size,
     '服务端待处理数覆盖全部未结束状态并排除终态'
+  );
+
+  console.log('\n=== 6c. 用户可以取消未处理售后并释放订单锁 ===');
+  db = createDb();
+  seedUser(db);
+  seedPaidOrder(db);
+  const cancellableOrder = db._dump(COLLECTIONS.ORDERS)[0];
+  const cancellableUser = db._dump(COLLECTIONS.USERS)[0];
+  const cancellableCreated = await afterSales.createCaseRecord(db, USER, {
+    orderId: cancellableOrder._id,
+    type: 'UNUSED_REFUND',
+    requestId: 'req_user_cancel_after_sales_001',
+    description: '暂时不需要退款了',
+  }, {
+    eligibility: afterSales.refundEligibilityOf(cancellableOrder, cancellableUser),
+  });
+  const cancellableCaseId = cancellableCreated.case._id;
+  const cancelled = await afterSales.cancelCaseForUser(db, USER, cancellableCaseId, {
+    expectedStatus: CaseStatus.UNDER_REVIEW,
+  });
+  eq(cancelled.success, true, '审核中的售后可以取消');
+  eq(cancelled.case.status, CaseStatus.CANCELLED, '售后进入用户取消终态');
+  eq(cancelled.case.cancelledBy, 'USER', '保留取消人');
+  eq(!!cancelled.case.cancelledAtText, true, '保留用户取消时间');
+  let cancelledOrder = db._dump(COLLECTIONS.ORDERS)[0];
+  let cancelledUser = db._dump(COLLECTIONS.USERS)[0];
+  eq(cancelledOrder.activeAfterSalesCaseId, '', '取消后释放订单售后锁');
+  eq(cancelledOrder.refundStatus, RefundStatus.NONE, '取消后订单可重新申请售后');
+  eq(cancelledOrder.grantStatus, GrantStatus.GRANTED, '取消不回收已发放权益');
+  eq(cancelledUser.taskPackCount, cancellableUser.taskPackCount, '取消不改变名额包');
+  eq(
+    new Date(cancelledUser.memberExpiresAt).getTime(),
+    new Date(cancellableUser.memberExpiresAt).getTime(),
+    '取消不改变会员期限'
+  );
+  const cancelledHistory = await afterSales.userCaseHistory(db, USER, cancellableOrder._id);
+  eq(cancelledHistory.stats.cancelled, 1, '售后历史统计用户取消数');
+  eq(cancelledHistory.stats.active, 0, '用户取消后不进入待处理数量');
+  eq(await afterSales.countActiveCases(db), 0, '工作台待处理数排除用户取消单');
+  const cancelledAgain = await afterSales.cancelCaseForUser(db, USER, cancellableCaseId);
+  eq(cancelledAgain.success && cancelledAgain.idempotent, true, '重复取消保持幂等');
+  const otherUserCancelled = await afterSales.cancelCaseForUser(db, 'another_openid', cancellableCaseId);
+  eq(otherUserCancelled.success, false, '其他用户不能取消售后');
+  eq(otherUserCancelled.errorCode, 1030, '其他用户按记录不存在处理');
+  eq(
+    await afterSales.markRefundProcessing(db, { _id: cancellableCaseId, orderId: cancellableOrder._id }, 'RFTEST'),
+    false,
+    '已取消售后不能被并发退款流程改回处理中'
+  );
+  const reapplied = await afterSales.createCaseRecord(db, USER, {
+    orderId: cancellableOrder._id,
+    type: 'ENTITLEMENT_MISMATCH',
+    requestId: 'req_user_reapply_after_cancel_001',
+    description: '取消后重新核对权益',
+  }, {});
+  eq(reapplied.success, true, '取消后可以重新提交售后');
+  eq(reapplied.case.status, CaseStatus.UNDER_REVIEW, '重新申请进入正常审核流程');
+
+  console.log('\n=== 6d. 退款处理中不能由用户取消 ===');
+  db = createDb();
+  seedRefundFailedCase(db, {
+    order: { refundStatus: RefundStatus.PROCESSING },
+    case: { status: CaseStatus.PROCESSING, refundStatus: RefundStatus.PROCESSING },
+  });
+  const processingCancel = await afterSales.cancelCaseForUser(
+    db,
+    USER,
+    'case_refund_failed_cancel',
+    { expectedStatus: CaseStatus.PROCESSING }
+  );
+  eq(processingCancel.success, false, '退款处理中拒绝取消');
+  eq(processingCancel.errorCode, 1029, '退款处理中返回不可取消错误码');
+
+  console.log('\n=== 6e. 异常退款仅在远端无退款单时允许取消 ===');
+  db = createDb();
+  seedRefundFailedCase(db);
+  const notFoundWxpay = {
+    ...wxpay,
+    configOf: () => ({ mchId: 'merchant_test' }),
+    hasApiConfig: () => true,
+    queryRefund: async () => {
+      throw new wxpay.WxPayApiError('退款单不存在', {
+        statusCode: 404,
+        code: 'RESOURCE_NOT_EXISTS',
+      });
+    },
+  };
+  let cancelPayment = loadPayment(db, { moduleStubs: { './lib/wxpay-v3': notFoundWxpay } });
+  const remoteAbsentCancel = await cancelPayment.main({
+    action: 'afterSales.cancel',
+    caseId: 'case_refund_failed_cancel',
+  });
+  eq(remoteAbsentCancel.success, true, '远端确认无退款单后允许取消异常售后');
+  eq(remoteAbsentCancel.case.status, CaseStatus.CANCELLED, '异常售后取消成功');
+  eq(db._dump(COLLECTIONS.ORDERS)[0].refundStatus, RefundStatus.NONE, '异常售后取消后释放退款状态');
+
+  db = createDb();
+  seedRefundFailedCase(db);
+  const remoteExistsWxpay = {
+    ...wxpay,
+    configOf: () => ({ mchId: 'merchant_test' }),
+    hasApiConfig: () => true,
+    queryRefund: async () => ({ status: 'PROCESSING', out_refund_no: 'RFT20261030TEST' }),
+  };
+  cancelPayment = loadPayment(db, { moduleStubs: { './lib/wxpay-v3': remoteExistsWxpay } });
+  const remoteExistsCancel = await cancelPayment.main({
+    action: 'afterSales.cancel',
+    caseId: 'case_refund_failed_cancel',
+  });
+  eq(remoteExistsCancel.success, false, '远端已有退款单时拒绝取消异常售后');
+  eq(
+    db._dump(COLLECTIONS.AFTER_SALES_CASES)[0].status,
+    CaseStatus.REFUND_FAILED,
+    '远端已有退款单时保留异常售后状态'
+  );
+
+  db = createDb();
+  seedRefundFailedCase(db);
+  const timeoutWxpay = {
+    ...wxpay,
+    configOf: () => ({ mchId: 'merchant_test' }),
+    hasApiConfig: () => true,
+    queryRefund: async () => { throw new Error('退款查询超时'); },
+  };
+  cancelPayment = loadPayment(db, { moduleStubs: { './lib/wxpay-v3': timeoutWxpay } });
+  const uncertainCancel = await cancelPayment.main({
+    action: 'afterSales.cancel',
+    caseId: 'case_refund_failed_cancel',
+  });
+  eq(uncertainCancel.success, false, '退款查询超时时拒绝取消');
+  eq(
+    db._dump(COLLECTIONS.AFTER_SALES_CASES)[0].status,
+    CaseStatus.REFUND_FAILED,
+    '无法确认退款记录时保持异常售后状态'
   );
 
   console.log('\n=== 7. 老用户保护额度迁移 ===');

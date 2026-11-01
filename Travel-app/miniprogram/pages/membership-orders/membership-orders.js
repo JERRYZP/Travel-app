@@ -129,6 +129,10 @@ Page({
     wx.navigateTo({ url: `/pages/membership-order-detail/membership-order-detail?orderId=${orderId}` });
   },
 
+  onOpenPaymentFaq() {
+    wx.navigateTo({ url: '/pages/guide/guide?focus=payment-faq' });
+  },
+
   onCopyOrderNo(e) {
     const orderNo = e.currentTarget.dataset.no;
     if (!orderNo) return;

@@ -1190,6 +1190,7 @@ const MOCK_CASE_STATUS_LABEL = {
   REFUNDED: '已退款',
   REJECTED: '已驳回',
   REFUND_FAILED: '退款异常',
+  CANCELLED: '用户已取消',
 };
 const MOCK_CASE_TYPE_LABEL = {
   RIGHTS_NOT_RECEIVED: '权益未到账',
@@ -1311,8 +1312,15 @@ function mockCaseView(item) {
     description: item.description || '',
     status,
     statusLabel: MOCK_CASE_STATUS_LABEL[status] || '处理中',
+    canCancel: ['SUBMITTED', 'AUTO_CHECKING', 'UNDER_REVIEW', 'APPROVED', 'REFUND_FAILED'].includes(status),
     refundStatus: item.refundStatus || 'NONE',
     refundStatusLabel: MOCK_CASE_STATUS_LABEL[status] || '处理中',
+    failureReason: item.failureReason || '',
+    failureCode: item.failureCode || '',
+    fundingBlocked: item.fundingBlocked === true,
+    fundingBlockedAt: item.fundingBlockedAt || null,
+    fundingBlockedAtText: item.fundingBlockedAt
+      ? `${fmt(item.fundingBlockedAt)} ${pad(beijingParts(item.fundingBlockedAt).hour)}:${pad(beijingParts(item.fundingBlockedAt).minute)}` : '',
     decisionNote: item.decisionNote || '',
     outRefundNo: item.outRefundNo || '',
     refundAmountFen: item.refundAmountFen || 0,
@@ -1324,6 +1332,11 @@ function mockCaseView(item) {
     reviewedAtText: '',
     refundedAtText: item.refundedAt
       ? `${fmt(item.refundedAt)} ${pad(beijingParts(item.refundedAt).hour)}:${pad(beijingParts(item.refundedAt).minute)}` : '',
+    cancelledAt: item.cancelledAt || null,
+    cancelledAtText: item.cancelledAt
+      ? `${fmt(item.cancelledAt)} ${pad(beijingParts(item.cancelledAt).hour)}:${pad(beijingParts(item.cancelledAt).minute)}` : '',
+    cancelledBy: item.cancelledBy || '',
+    cancellationReason: item.cancellationReason || '',
   };
 }
 
@@ -2389,7 +2402,7 @@ const handlers = {
   'afterSales.submit': (data) => {
     const order = db.orders[data.orderId];
     if (!order) return { success: false, error: '订单不存在或已失效', errorCode: 1024 };
-    const existing = Object.values(db.afterSalesCases).find(item => item.orderId === data.orderId && !['REJECTED', 'REFUNDED'].includes(item.status));
+    const existing = Object.values(db.afterSalesCases).find(item => item.orderId === data.orderId && !['REJECTED', 'REFUNDED', 'CANCELLED', 'RESOLVED', 'CLOSED'].includes(item.status));
     if (existing) return { success: false, error: '该订单已有处理中或已完成的售后申请', errorCode: 1028 };
     const eligibility = mockOrderEligibility(order);
     if (data.type === 'RIGHTS_NOT_RECEIVED' && order.grantStatus === 'GRANTED') {
@@ -2422,7 +2435,37 @@ const handlers = {
     if (db.afterSalesCases[caseId].refundStatus !== 'NONE') {
       order.refundStatus = db.afterSalesCases[caseId].refundStatus;
     }
+    order.activeAfterSalesCaseId = caseId;
     return { success: true, case: mockCaseView(db.afterSalesCases[caseId]) };
+  },
+  'afterSales.cancel': (data) => {
+    const item = db.afterSalesCases[data.caseId];
+    if (!item) return { success: false, error: '售后记录不存在', errorCode: 1030 };
+    if (item.status === 'CANCELLED') {
+      return { success: true, case: mockCaseView(item), idempotent: true };
+    }
+    if (!['SUBMITTED', 'AUTO_CHECKING', 'UNDER_REVIEW', 'APPROVED', 'REFUND_FAILED'].includes(item.status)) {
+      return { success: false, error: '当前售后状态不能取消', errorCode: 1029 };
+    }
+    const order = db.orders[item.orderId];
+    if (!order) return { success: false, error: '订单不存在或已失效', errorCode: 1024 };
+    if (order.refundStatus === 'PROCESSING' || order.refundStatus === 'REFUNDED' || order.grantStatus === 'REVERTED') {
+      return { success: false, error: '退款已处理或正在处理，当前不能取消售后', errorCode: 1029 };
+    }
+    const nowTs = new Date();
+    item.statusBeforeCancellation = item.status;
+    item.refundStatusBeforeCancellation = item.refundStatus || 'NONE';
+    item.status = 'CANCELLED';
+    item.refundStatus = 'NONE';
+    item.cancelledAt = nowTs;
+    item.cancelledBy = 'USER';
+    item.cancellationReason = '用户主动取消';
+    item.fundingBlocked = false;
+    item.fundingBlockedAt = null;
+    item.updatedAt = nowTs;
+    if (order.activeAfterSalesCaseId === item._id) order.activeAfterSalesCaseId = '';
+    if (!['PROCESSING', 'REFUNDED'].includes(order.refundStatus)) order.refundStatus = 'NONE';
+    return { success: true, case: mockCaseView(item) };
   },
   'afterSales.list': () => ({
     success: true,
@@ -2442,7 +2485,9 @@ const handlers = {
     const activeStatuses = ['SUBMITTED', 'AUTO_CHECKING', 'UNDER_REVIEW', 'APPROVED', 'PROCESSING', 'REFUND_FAILED'];
     const pendingCount = Object.values(db.afterSalesCases)
       .filter(item => activeStatuses.includes(item.status)).length;
-    return { success: true, isAdmin: true, pendingCount };
+    const fundingBlockedCount = Object.values(db.afterSalesCases)
+      .filter(item => item.status === 'REFUND_FAILED' && item.fundingBlocked === true).length;
+    return { success: true, isAdmin: true, pendingCount, fundingBlockedCount };
   },
   'afterSales.adminList': (data) => {
     let items = Object.values(db.afterSalesCases);
@@ -2478,7 +2523,8 @@ const handlers = {
           total: userCases.length,
           refunded: userCases.filter(entry => entry.status === 'REFUNDED').length,
           rejected: userCases.filter(entry => entry.status === 'REJECTED').length,
-          active: userCases.filter(entry => !['REFUNDED', 'REJECTED', 'RESOLVED', 'CLOSED'].includes(entry.status)).length,
+          cancelled: userCases.filter(entry => entry.status === 'CANCELLED').length,
+          active: userCases.filter(entry => !['REFUNDED', 'REJECTED', 'CANCELLED', 'RESOLVED', 'CLOSED'].includes(entry.status)).length,
           sameOrder: userCases.length,
         },
       },

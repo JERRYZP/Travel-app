@@ -24,6 +24,7 @@ Page({
     selectedType: '',
     description: '',
     submitting: false,
+    cancelling: false,
     resultMessage: '',
     resultTone: '',
   },
@@ -98,7 +99,7 @@ Page({
   },
 
   onSubmit() {
-    if (this.data.submitting || this.data.existingCase) return;
+    if (this.data.submitting || this.data.cancelling || this.data.existingCase) return;
     const type = this.data.selectedType;
     if (!type) return;
     if (type === 'OTHER' && !String(this.data.description || '').trim()) {
@@ -123,7 +124,7 @@ Page({
           ? '权益已补发到账，无需再提交售后。'
           : (result.autoRefund
             ? '系统已核验为重复支付，正在自动原路退款。'
-            : '申请已提交，客服会先自动核验，预计 24 小时内完成审核。'),
+            : '售后申请预计 24 小时内处理；超时仍未更新结果，请联系客服。'),
       });
       return this.load();
     }).catch(err => {
@@ -132,6 +133,38 @@ Page({
         resultTone: 'error',
         resultMessage: (err && err.error) || '提交失败，请稍后重试。',
       });
+    });
+  },
+
+  onCancelAfterSales() {
+    const existingCase = this.data.existingCase;
+    if (this.data.cancelling || !existingCase || !existingCase.canCancel) return;
+    const isRefundFailed = existingCase.status === 'REFUND_FAILED';
+    wx.showModal({
+      title: '取消售后申请',
+      content: isRefundFailed
+        ? '系统会先确认支付渠道没有退款记录。取消后将停止本次异常处理，不会发起退款；如仍有问题，可稍后重新申请。'
+        : '取消后将停止本次售后处理，不会发起退款；如仍有问题，可稍后重新申请。',
+      confirmText: '确认取消',
+      confirmColor: '#A7462B',
+      success: res => {
+        if (!res.confirm) return;
+        this.setData({ cancelling: true, resultMessage: '', resultTone: '' });
+        api.payment.afterSales.cancel(existingCase._id).then(() => {
+          this.setData({
+            cancelling: false,
+            resultMessage: '售后申请已取消。',
+            resultTone: 'success',
+          });
+          return this.load();
+        }).catch(err => {
+          this.setData({
+            cancelling: false,
+            resultMessage: (err && err.error) || '取消失败，请稍后重试。',
+            resultTone: 'error',
+          });
+        });
+      },
     });
   },
 

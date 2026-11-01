@@ -145,6 +145,7 @@ const payment = {
   cancel: (p) => call('payment', { action: 'cancel', ...(p || {}) }),
   afterSales: {
     submit: (p) => call('payment', { action: 'afterSales.submit', ...(p || {}) }),
+    cancel: (caseId) => call('payment', { action: 'afterSales.cancel', caseId }),
     list: () => call('payment', { action: 'afterSales.list' }),
     detail: (caseId) => call('payment', { action: 'afterSales.detail', caseId }),
     syncRights: (orderId) => call('payment', { action: 'afterSales.syncRights', orderId }),

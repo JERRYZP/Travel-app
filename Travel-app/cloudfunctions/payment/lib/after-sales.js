@@ -6,7 +6,7 @@
 
 const crypto = require('crypto');
 const {
-  COLLECTIONS, ERRORS, OrderStatus, RefundStatus, CaseType, CaseStatus, ok, fail,
+  COLLECTIONS, ERRORS, OrderStatus, RefundStatus, GrantStatus, CaseType, CaseStatus, ok, fail,
 } = require('./schema');
 const {
   REFUND_WINDOW_MS, DUPLICATE_WINDOW_MS, dateMs, isLiveEntitlement,
@@ -33,6 +33,7 @@ const CASE_STATUS_LABEL = {
   REFUNDED: '已退款',
   REJECTED: '已驳回',
   REFUND_FAILED: '退款异常',
+  CANCELLED: '用户已取消',
   RESOLVED: '已解决',
   CLOSED: '已关闭',
 };
@@ -43,6 +44,13 @@ const ACTIVE_CASE_STATUSES = new Set([
   CaseStatus.UNDER_REVIEW,
   CaseStatus.APPROVED,
   CaseStatus.PROCESSING,
+  CaseStatus.REFUND_FAILED,
+]);
+const USER_CANCELLABLE_CASE_STATUSES = new Set([
+  CaseStatus.SUBMITTED,
+  CaseStatus.AUTO_CHECKING,
+  CaseStatus.UNDER_REVIEW,
+  CaseStatus.APPROVED,
   CaseStatus.REFUND_FAILED,
 ]);
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
@@ -200,8 +208,14 @@ function caseViewOf(item = {}) {
     description: item.description || '',
     status,
     statusLabel: CASE_STATUS_LABEL[status] || '处理中',
+    canCancel: USER_CANCELLABLE_CASE_STATUSES.has(status),
     refundStatus,
     refundStatusLabel: CASE_STATUS_LABEL[status] || '处理中',
+    failureReason: String(item.failureReason || ''),
+    failureCode: String(item.failureCode || ''),
+    fundingBlocked: item.fundingBlocked === true,
+    fundingBlockedAt: item.fundingBlockedAt || null,
+    fundingBlockedAtText: timeText(item.fundingBlockedAt),
     decisionNote: item.decisionNote || '',
     outRefundNo: item.outRefundNo || '',
     refundAmountFen: Number(item.refundAmountFen) || 0,
@@ -213,6 +227,10 @@ function caseViewOf(item = {}) {
     reviewedAtText: timeText(item.reviewedAt),
     refundedAt: item.refundedAt || null,
     refundedAtText: timeText(item.refundedAt),
+    cancelledAt: item.cancelledAt || null,
+    cancelledAtText: timeText(item.cancelledAt),
+    cancelledBy: item.cancelledBy || '',
+    cancellationReason: item.cancellationReason || '',
   };
 }
 
@@ -601,7 +619,7 @@ async function getCaseForUser(db, userId, caseId) {
 async function userCaseHistory(db, userId, orderId, limit = 20) {
   if (!userId) return { items: [], stats: {} };
   const activeValues = [...ACTIVE_CASE_STATUSES];
-  const [latestRes, totalRes, refundedRes, rejectedRes, activeRes, sameOrderRes] = await Promise.all([
+  const [latestRes, totalRes, refundedRes, rejectedRes, cancelledRes, activeRes, sameOrderRes] = await Promise.all([
     db.collection(COLLECTIONS.AFTER_SALES_CASES)
       .where({ userId })
       .orderBy('createdAt', 'desc')
@@ -613,6 +631,9 @@ async function userCaseHistory(db, userId, orderId, limit = 20) {
       .count(),
     db.collection(COLLECTIONS.AFTER_SALES_CASES)
       .where({ userId, status: CaseStatus.REJECTED })
+      .count(),
+    db.collection(COLLECTIONS.AFTER_SALES_CASES)
+      .where({ userId, status: CaseStatus.CANCELLED })
       .count(),
     db.collection(COLLECTIONS.AFTER_SALES_CASES)
       .where({ userId, status: db.command.in(activeValues) })
@@ -627,6 +648,7 @@ async function userCaseHistory(db, userId, orderId, limit = 20) {
       total: Number(totalRes.total) || 0,
       refunded: Number(refundedRes.total) || 0,
       rejected: Number(rejectedRes.total) || 0,
+      cancelled: Number(cancelledRes.total) || 0,
       active: Number(activeRes.total) || 0,
       sameOrder: Number(sameOrderRes.total) || 0,
     },
@@ -648,6 +670,13 @@ async function listCasesForAdmin(db, status = '') {
 async function countActiveCases(db) {
   const res = await db.collection(COLLECTIONS.AFTER_SALES_CASES)
     .where({ status: db.command.in([...ACTIVE_CASE_STATUSES]) })
+    .count();
+  return Number(res.total) || 0;
+}
+
+async function countFundingBlockedCases(db) {
+  const res = await db.collection(COLLECTIONS.AFTER_SALES_CASES)
+    .where({ status: CaseStatus.REFUND_FAILED, fundingBlocked: true })
     .count();
   return Number(res.total) || 0;
 }
@@ -675,6 +704,83 @@ async function updateCase(db, caseId, patch = {}) {
   return fresh;
 }
 
+async function cancelCaseForUser(db, userId, caseId, options = {}) {
+  const expectedStatus = String(options.expectedStatus || '');
+  let outcome = null;
+  await db.runTransaction(async transaction => {
+    const current = docDataOf(await transaction.collection(COLLECTIONS.AFTER_SALES_CASES)
+      .doc(caseId).get());
+    if (!current || current.userId !== userId) {
+      outcome = fail(ERRORS.CASE_NOT_FOUND);
+      return;
+    }
+    if (current.status === CaseStatus.CANCELLED) {
+      outcome = ok({ case: caseViewOf(current), idempotent: true });
+      return;
+    }
+    if (!USER_CANCELLABLE_CASE_STATUSES.has(current.status)) {
+      outcome = fail({
+        code: ERRORS.REFUND_NOT_ELIGIBLE.code,
+        message: current.status === CaseStatus.PROCESSING
+          ? '退款已发起，当前不能取消售后'
+          : '当前售后状态不能取消',
+      });
+      return;
+    }
+    if (expectedStatus && current.status !== expectedStatus) {
+      outcome = fail({
+        code: ERRORS.REFUND_NOT_ELIGIBLE.code,
+        message: '售后状态已更新，请刷新后重试',
+      });
+      return;
+    }
+
+    const order = docDataOf(await transaction.collection(COLLECTIONS.ORDERS)
+      .doc(current.orderId).get());
+    if (!order || order.userId !== userId) {
+      outcome = fail(ERRORS.ORDER_NOT_FOUND);
+      return;
+    }
+    if (order.status === OrderStatus.REFUNDED
+      || order.refundStatus === RefundStatus.REFUNDED
+      || order.refundStatus === RefundStatus.PROCESSING
+      || order.grantStatus === GrantStatus.REVERTED) {
+      outcome = fail({
+        code: ERRORS.REFUND_NOT_ELIGIBLE.code,
+        message: '退款已处理或正在处理，当前不能取消售后',
+      });
+      return;
+    }
+
+    const nowTs = new Date();
+    const casePatch = {
+      status: CaseStatus.CANCELLED,
+      refundStatus: RefundStatus.NONE,
+      statusBeforeCancellation: current.status,
+      refundStatusBeforeCancellation: current.refundStatus || RefundStatus.NONE,
+      cancelledAt: nowTs,
+      cancelledBy: 'USER',
+      cancellationReason: '用户主动取消',
+      fundingBlocked: false,
+      fundingBlockedAt: null,
+      updatedAt: nowTs,
+    };
+    await transaction.collection(COLLECTIONS.AFTER_SALES_CASES).doc(caseId).update({
+      data: casePatch,
+    });
+    const orderPatch = { updatedAt: nowTs };
+    if (order.activeAfterSalesCaseId === caseId) orderPatch.activeAfterSalesCaseId = '';
+    if (![RefundStatus.REFUNDED, RefundStatus.PROCESSING].includes(order.refundStatus)) {
+      orderPatch.refundStatus = RefundStatus.NONE;
+    }
+    await transaction.collection(COLLECTIONS.ORDERS).doc(current.orderId).update({
+      data: orderPatch,
+    });
+    outcome = ok({ case: caseViewOf({ ...current, ...casePatch }) });
+  }, 3);
+  return outcome || fail({ code: ERRORS.SERVER_ERROR.code, message: '取消售后失败，请稍后重试' });
+}
+
 async function logAdminAction(db, adminId, action, caseItem, details = {}) {
   await db.collection(COLLECTIONS.ADMIN_AUDIT_LOGS).add({
     data: {
@@ -689,21 +795,47 @@ async function logAdminAction(db, adminId, action, caseItem, details = {}) {
 }
 
 async function markRefundProcessing(db, caseItem, outRefundNo, refundStatus = 'PROCESSING') {
-  await updateCase(db, caseItem._id, {
-    status: CaseStatus.PROCESSING,
-    refundStatus: RefundStatus.PROCESSING,
-    outRefundNo,
-    approvedAt: caseItem.approvedAt || new Date(),
-    refundRequestStatus: refundStatus,
-  });
-  await db.collection(COLLECTIONS.ORDERS).doc(caseItem.orderId).update({
-    data: {
-      refundStatus: RefundStatus.PROCESSING,
-      outRefundNo,
-      activeAfterSalesCaseId: caseItem._id,
-      updatedAt: new Date(),
-    },
-  });
+  let marked = false;
+  await db.runTransaction(async transaction => {
+    const current = docDataOf(await transaction.collection(COLLECTIONS.AFTER_SALES_CASES)
+      .doc(caseItem._id).get());
+    if (!current || ![CaseStatus.AUTO_CHECKING, CaseStatus.UNDER_REVIEW, CaseStatus.REFUND_FAILED]
+      .includes(current.status)) {
+      return;
+    }
+    const order = docDataOf(await transaction.collection(COLLECTIONS.ORDERS)
+      .doc(current.orderId).get());
+    if (!order || order.status !== OrderStatus.PAID
+      || order.refundStatus === RefundStatus.REFUNDED
+      || order.grantStatus === GrantStatus.REVERTED) {
+      return;
+    }
+    const nowTs = new Date();
+    await transaction.collection(COLLECTIONS.AFTER_SALES_CASES).doc(current._id).update({
+      data: {
+        status: CaseStatus.PROCESSING,
+        refundStatus: RefundStatus.PROCESSING,
+        outRefundNo,
+        approvedAt: current.approvedAt || nowTs,
+        refundRequestStatus: refundStatus,
+        failureReason: '',
+        failureCode: '',
+        fundingBlocked: false,
+        fundingBlockedAt: null,
+        updatedAt: nowTs,
+      },
+    });
+    await transaction.collection(COLLECTIONS.ORDERS).doc(current.orderId).update({
+      data: {
+        refundStatus: RefundStatus.PROCESSING,
+        outRefundNo,
+        activeAfterSalesCaseId: current._id,
+        updatedAt: nowTs,
+      },
+    });
+    marked = true;
+  }, 3);
+  return marked;
 }
 
 module.exports = {
@@ -711,6 +843,7 @@ module.exports = {
   CASE_TYPE_LABEL,
   CASE_STATUS_LABEL,
   ACTIVE_CASE_STATUSES,
+  USER_CANCELLABLE_CASE_STATUSES,
   adminOpenIdsOf,
   isAfterSalesAdmin,
   outRefundNoOf,
@@ -735,9 +868,11 @@ module.exports = {
   getCaseForUser,
   listCasesForAdmin,
   countActiveCases,
+  countFundingBlockedCases,
   userCaseHistory,
   getCaseById,
   updateCase,
+  cancelCaseForUser,
   logAdminAction,
   markRefundProcessing,
 };

@@ -98,6 +98,7 @@
   border-radius: 16rpx; background: #C0472A;
   color: #FFFFFF; font-size: 20rpx; font-weight: 600; line-height: 1;
 }
+.setting-row-hint.funding-blocked { color: #C0472A; font-weight: 600; }
 .setting-row-right { display: flex; align-items: center; gap: 8rpx; }
 .setting-row-hint { font-size: 24rpx; color: var(--color-muted); }
 .setting-row-hint-none { color: var(--color-primary); font-weight: 600; }

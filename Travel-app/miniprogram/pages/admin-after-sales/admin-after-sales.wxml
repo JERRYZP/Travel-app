@@ -14,6 +14,14 @@
   </view>
 
   <block wx:else>
+    <view wx:if="{{fundingBlockedCount > 0}}" class="funding-alert">
+      <view class="funding-alert-copy">
+        <text class="funding-alert-title">退款资金阻断</text>
+        <text class="funding-alert-desc">{{fundingBlockedCount}} 笔退款因基本账户余额不足未发起。请先充值，再打开异常售后单重新退款。</text>
+      </view>
+      <view class="funding-alert-action" bindtap="onShowFundingBlocked">查看异常单</view>
+    </view>
+
     <view wx:if="{{migrationEntryEnabled && !migrationCompleted}}" class="migration-card">
       <view class="migration-copy">
         <text class="migration-title">上线前数据迁移</text>
@@ -58,7 +66,8 @@
           <text class="case-no">{{item.caseNo}}</text>
           <view class="case-head-right">
             <text wx:if="{{item.systemGenerated}}" class="case-auto">系统自动</text>
-            <text class="case-status">{{item.statusLabel}}</text>
+            <text wx:if="{{item.fundingBlocked}}" class="case-funding">资金不足</text>
+            <text class="case-status {{item.status === 'CANCELLED' ? 'cancelled' : ''}}">{{item.statusLabel}}</text>
           </view>
         </view>
         <text class="case-title">{{item.typeLabel}} · {{item.title}}</text>
@@ -77,10 +86,12 @@
       <view class="detail-close" bindtap="onCloseDetail">×</view>
     </view>
     <scroll-view class="detail-scroll" scroll-y>
-      <view class="detail-status">{{detail.case.statusLabel}}</view>
+      <view class="detail-status {{detail.case.status === 'CANCELLED' ? 'cancelled' : ''}}">{{detail.case.statusLabel}}</view>
       <view class="detail-section">
         <text class="detail-section-title">售后信息</text>
         <text wx:if="{{detail.case.systemGenerated}}">生成方式：系统自动创建</text>
+        <text wx:if="{{detail.case.cancelledAtText}}">用户取消时间：{{detail.case.cancelledAtText}}</text>
+        <text wx:if="{{detail.case.cancelledBy === 'USER'}}">用户已主动取消本次售后申请，不会继续发起退款。</text>
         <text>类型：{{detail.case.typeLabel}}</text>
         <text>说明：{{detail.case.description || '未填写'}}</text>
         <text>金额：{{detail.case.amountText}}</text>
@@ -102,9 +113,15 @@
         <text>距离支付：{{detail.case.evidence.eligibility.hoursSincePaid}} 小时</text>
         <text wx:if="{{detail.case.evidence.duplicate}}">重复支付证据：{{detail.case.evidence.duplicate.duplicate ? '已发现同商品订单' : '未发现'}}</text>
       </view>
+      <view wx:if="{{detail.case.failureReason}}" class="detail-section funding-detail">
+        <text class="detail-section-title">退款失败原因</text>
+        <text>{{detail.case.failureReason}}</text>
+        <text wx:if="{{detail.case.fundingBlocked}}">处理方式：先在微信支付商户平台充值基本账户，再点击下方「重新发起退款」。</text>
+        <text wx:if="{{detail.case.fundingBlockedAtText}}">阻断时间：{{detail.case.fundingBlockedAtText}}</text>
+      </view>
       <view class="detail-section">
         <text class="detail-section-title">历史售后与退款</text>
-        <text>累计申请 {{detail.history.stats.total}} 次；退款完成 {{detail.history.stats.refunded}} 次；驳回 {{detail.history.stats.rejected}} 次；处理中 {{detail.history.stats.active}} 次。</text>
+        <text>累计申请 {{detail.history.stats.total}} 次；退款完成 {{detail.history.stats.refunded}} 次；驳回 {{detail.history.stats.rejected}} 次；用户取消 {{detail.history.stats.cancelled}} 次；处理中 {{detail.history.stats.active}} 次。</text>
         <text>本订单累计申请 {{detail.history.stats.sameOrder}} 次。</text>
         <view wx:for="{{detail.history.items}}" wx:key="_id" class="history-row">
           <text>{{item.createdAtText}} · {{item.typeLabel}} · {{item.statusLabel}}</text>
@@ -119,7 +136,7 @@
           <view wx:if="{{detail.actionCapabilities.canSyncPayment}}" class="admin-action" bindtap="onSyncPayment">同步支付结果</view>
           <view wx:if="{{detail.actionCapabilities.canRetryGrant}}" class="admin-action" bindtap="onRetryGrant">补发权益</view>
           <view wx:if="{{detail.actionCapabilities.canSyncRefund}}" class="admin-action" bindtap="onSyncRefund">同步退款结果</view>
-          <view wx:if="{{detail.actionCapabilities.canApproveRefund}}" class="admin-action primary" bindtap="onApprove">同意全额退款</view>
+          <view wx:if="{{detail.actionCapabilities.canApproveRefund}}" class="admin-action primary" bindtap="onApprove">{{detail.actionCapabilities.approveRefundLabel}}</view>
           <view wx:if="{{detail.actionCapabilities.canReject}}" class="admin-action danger" bindtap="onReject">驳回申请</view>
           <view wx:if="{{!detail.actionCapabilities.canSyncPayment && !detail.actionCapabilities.canRetryGrant && !detail.actionCapabilities.canSyncRefund && !detail.actionCapabilities.canApproveRefund && !detail.actionCapabilities.canReject}}" class="action-empty">当前售后单没有可执行操作</view>
         </view>

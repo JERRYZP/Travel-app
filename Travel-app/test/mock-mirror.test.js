@@ -608,6 +608,27 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     eq(afterPack.membership.taskPackCount, 1, 'mock 用户保存名额包数量');
     eq(afterPack.membership.taskPackSlots, 10, 'mock 用户保存名额总数');
     eq(afterPack.membership.taskLimit, 25, 'mock 会员与加购名额混合累计');
+
+    const submittedCase = await c('afterSales.submit', {
+      orderId: packOrder.orderId,
+      type: 'OTHER',
+      requestId: 'mock_after_sales_cancel_001',
+      description: '暂不处理',
+    });
+    eq(submittedCase.case.canCancel, true, 'mock 未处理售后允许取消');
+    const cancelledCase = await c('afterSales.cancel', { caseId: submittedCase.case._id });
+    eq(cancelledCase.case.status, 'CANCELLED', 'mock 用户取消进入终态');
+    eq(cancelledCase.case.cancelledBy, 'USER', 'mock 保留用户取消来源');
+    const cancelledOrderId = packOrder.orderId;
+    eq(m.__internals.db.orders[cancelledOrderId].activeAfterSalesCaseId, '',
+      'mock 取消后释放订单售后锁');
+    const reappliedCase = await c('afterSales.submit', {
+      orderId: cancelledOrderId,
+      type: 'OTHER',
+      requestId: 'mock_after_sales_reapply_001',
+      description: '重新申请',
+    });
+    eq(reappliedCase.success, true, 'mock 取消后允许重新申请售后');
   }
 
   console.log('\n=== 11. 我的反馈镜像 ===');

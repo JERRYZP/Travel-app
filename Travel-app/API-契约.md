@@ -1092,6 +1092,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 ```javascript
 { action: 'afterSales.submit', orderId, type, requestId, reasonCode?, description? }
+{ action: 'afterSales.cancel', caseId }
 { action: 'afterSales.list' }
 { action: 'afterSales.detail', caseId }
 { action: 'afterSales.syncRights', orderId }
@@ -1104,7 +1105,10 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - 重复支付识别只纳入 `PAID + GRANTED` 且未退款、未回收的有效权益订单。退款失败、退款驳回但仍有效的订单继续计入；已退款或已回收订单不得再次触发重复支付。
 - `UNUSED_REFUND` 仅在支付后 24 小时内且支付后未新增任何提醒时可提交，进入客服审核。
 - 已使用、超过 24 小时、权益正常或无正当理由的申请原则上驳回；每个订单最多一次全额退款，V1 不做部分退款。
-- 售后状态：`SUBMITTED | AUTO_CHECKING | UNDER_REVIEW | APPROVED | PROCESSING | REFUNDED | REJECTED | REFUND_FAILED | RESOLVED | CLOSED`。
+- 售后状态：`SUBMITTED | AUTO_CHECKING | UNDER_REVIEW | APPROVED | PROCESSING | REFUNDED | REJECTED | REFUND_FAILED | CANCELLED | RESOLVED | CLOSED`。
+- 用户可取消 `SUBMITTED`、`AUTO_CHECKING`、`UNDER_REVIEW`、`APPROVED` 和尚未实际发起退款的 `REFUND_FAILED` 售后。`PROCESSING`、`REFUNDED` 等已进入退款处理的状态不可取消。
+- 取消成功后售后单进入 `CANCELLED` 终态，记录 `cancelledAt/cancelledBy=USER`；仅当订单活动售后指向该单时清空 `activeAfterSalesCaseId`，订单 `refundStatus` 恢复为 `NONE`，不回收权益，用户可重新申请。
+- 取消 `REFUND_FAILED` 前必须按订单固化支付渠道查询远端退款单。只有明确返回退款单不存在时才允许取消；远端已有退款记录、查询超时、网络错误或配置缺失时失败关闭，保持异常状态，避免与管理员重试退款竞争。
 
 #### `payment.afterSales.admin*`（管理员）
 
@@ -1122,11 +1126,13 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```
 
 - 仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用；未配置时工作台关闭，不存在代码内置兜底账号。
-- `adminStatus` 返回 `{ isAdmin, migrationCompleted, pendingCount }`。`pendingCount` 是未结束售后单数量，供「我的」页售后入口提示；非管理员固定返回 0。
+- `adminStatus` 返回 `{ isAdmin, migrationCompleted, pendingCount, fundingBlockedCount }`。`pendingCount` 是未结束售后单数量，用户已取消的单不计入；`fundingBlockedCount` 是其中因商户基本账户余额不足而未能发起退款的数量，供「我的」入口和工作台顶部持续告警。非管理员数量固定返回 0。
+- 管理员可按 `CANCELLED` 筛选并查看“用户已取消”、取消时间和取消前异常原因；取消单不显示同意退款、驳回或重试退款操作。
 - 上线前迁移完成后正式工作台已关闭迁移入口；若未来重新开启，工作台可据 `migrationCompleted=true` 自动隐藏。
 - `adminDetail` 返回订单、用户权益、支付渠道、支付查单结果、权益发放快照、支付后新增提醒数、重复支付证据和历史售后记录。系统自动补建的平台退款记录会返回 `systemGenerated=true`、退款单号和退款金额。
 - 查看敏感信息、同步支付结果、补发权益、同意退款、驳回和同步退款均写 `admin_audit_logs`。
 - 驳回必须填写用户可见原因。退款使用确定性 `outRefundNo`，网络重试不会重复退款；退款结果只认微信回调或主动退款查询。
+- 发起退款返回余额不足时，售后单持久保存 `failureReason`、`failureCode=BASIC_ACCOUNT_INSUFFICIENT`、`fundingBlocked=true` 和 `fundingBlockedAt`。管理员补足基本账户后可在原售后单重新发起；重试开始或退款成功后清除阻断字段。不得把退款金额改成扣除手续费后的金额。
 - 退款成功后按本订单 `entitlementGrant` 快照回收本单新增会员时长和名额包，不影响其他订单，也不删除用户已有提醒。
 - 权益发放失败的订单收到退款结果时只记录订单和售后退款状态，不修改用户会员期限、包数或名额总数；只有确认曾成功发放的订单才允许按快照回收。
 - `adminMigrateProtection` 按默认 `_id` 游标每批最多处理 50 位用户；最后一批完成后写入全局完成标记，之后重复调用返回 `alreadyCompleted=true` 且不再更新用户。迁移未完成前不得切 `MEMBERSHIP_ENFORCEMENT_MODE=all`。
@@ -1296,7 +1302,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-012** 编辑资料 | `user.profile`、`user.updateProfile`（头像走 `open-type="chooseAvatar"` + `wx.cloud.uploadFile` 上传） |
 | **PAGE-014** 会员与提醒名额 | `membership.status`、`membership.createOrder`、`membership.orders`、`payment.create/query/cancel`；支付前确认、持久支付状态和订单入口；“我的”页常驻会员状态卡 |
 | **PAGE-015** 订单与退款详情 | `membership.orders`、`membership.orderDetail`；列表最多 50 笔，详情按本人单笔读取，主订单状态与退款状态分离，支持继续支付、取消、同步、申请售后和重新购买 |
-| **PAGE-016** 用户售后申请 | `membership.orderDetail`、`payment.afterSales.submit/list/detail/syncRights`；未到账、重复支付、未使用退款、权益不符和其他问题 |
+| **PAGE-016** 用户售后申请 | `membership.orderDetail`、`payment.afterSales.submit/cancel/list/detail/syncRights`；未到账、重复支付、未使用退款、权益不符和其他问题，未处理与无远端退款记录的异常单可取消 |
 | **PAGE-017** 售后管理 | `payment.afterSales.admin*`；仅 `AFTER_SALES_ADMIN_OPENIDS` 可见，服务端二次鉴权并写审计日志 |
 | **PAGE-013** 分享场景页 | `spots.list`（today）、`spots.batch`（national-day-2026）；点击景点后 `spots.detail` |
 | **PAGE-010-1** 提醒设置 | `subscribe.get` + 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`；缺口按钮为「补授权次数+1」，点击一次最多申请 1 条（模板未配置时「去授权」置灰） |
