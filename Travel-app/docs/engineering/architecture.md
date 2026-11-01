@@ -18,6 +18,7 @@
 | `notifier` | 到期提醒发送、MISSED 收敛、清理 |
 | `payment` | 会员 / 提醒名额订单、支付与退款回调、主动查单、售后、权益发放与 2 分钟补偿 |
 | `feedback` | 意见反馈与信息纠错 |
+| `admin` | 只读 Web 管理后台 API：管理员鉴权、用户/任务查询、事件汇总 |
 | `scraper` | 抓取与规则推算，未完成线上闭环 |
 | `ics-generator` | `.ics` 生成，日历通道已下线但函数保留 |
 
@@ -133,3 +134,12 @@ reminder.membership.createOrder
 - 昵称和头像只能来自用户主动选择或系统生成占位，不能读取真实微信资料冒充。
 - 反馈分建议/Bug；信息纠错必须附景点、纠错类型和描述。
 - 反馈管理页只对白名单管理员开放。
+
+## 只读 Web 管理后台
+
+- `admin-web/` 是独立桌面端 Vue 3 + Element Plus 应用，部署到 CloudBase 静态托管；第一版使用默认域名，仅用于内部测试。
+- Web 端不直连数据库，所有请求都调用 `cloudfunctions/admin/`。
+- `admins` 保存独立管理员账号；不和小程序用户 `users` 混用。
+- `reminder_events` 是追加式事件账本，任务创建、重建、取消、发送成功/失败/跳过、触发和未送达都会写事件。
+- `reminder_daily_stats` 保存永久日汇总；`admin_audit_logs` 保存登录与敏感字段查看审计。
+- 事件写入采用 best-effort：统计写失败不得阻断用户创建任务或 notifier 发送提醒。

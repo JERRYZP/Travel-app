@@ -319,7 +319,6 @@
   font-size: 21rpx;
   color: var(--text-faint);
 }
-
 .payment-state {
   display: flex;
   flex-direction: column;

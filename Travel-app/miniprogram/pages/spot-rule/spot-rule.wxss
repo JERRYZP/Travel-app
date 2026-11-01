@@ -110,7 +110,6 @@
 }
 .entry-hint { font-size: 20rpx; color: var(--color-muted); }
 .entry-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8rpx; flex-shrink: 0; }
-.entry-copy { font-size: 20rpx; color: var(--color-muted); text-decoration: underline; }
 .entry-btn {
   padding: 8rpx 20rpx; border-radius: 24rpx; font-size: 20rpx;
   border: 1rpx solid var(--color-primary); color: var(--color-primary);

@@ -48,6 +48,18 @@ function buildHomeData(res, now, opts) {
        模板里做不了「只有第一趟」。 */
     Object.assign({}, t, { _weak: i === 0 }));
   const primary = trips.length ? trips[0] : null;
+  const history = res.history || [];
+  /* 摘要卡展示的那一趟（2026-10-15 用户口径）：优先最近未结束行程；
+     全都结束了就退化成**最近的一段过往行程**，卡片副标题显示「已结束」。
+     起因：所有行程都结束之后首页只剩一条「过往行程」折叠条，一屏空白。
+
+     ⚠️ **它只服务摘要卡的渲染**，别拿它当「还能继续加提醒的那一趟」：
+        `onAddTrip` 的预填只认 `primaryTrip`（用过往行程的日期段预填 PAGE-005，
+        会直接生成一个已经过去的时间范围）。
+     ⚠️ 这里**不重新判定哪趟结束了**：`trips` / `history` 的拆分是服务端算的
+        （`endDate >= today` 留在主墙，次日归历史），数组序也是服务端给的
+        （history 按 `startDate` 降序），页面只沿同一个顺序回退一层。 */
+  const summaryTrip = primary || history[0] || null;
   const releasePreview = buildEmptyPreview(res, now);
   const serverNow = res.serverNow ? new Date(res.serverNow) : now;
   const quotaWarningDayKey = release.toDateStr(serverNow);
@@ -59,14 +71,15 @@ function buildHomeData(res, now, opts) {
   return {
     trips,
     primaryTrip: primary,
+    summaryTrip,
     /* 被划掉的气泡在重新加载后清空：新的一次会话可以再问一次，
        但同一次会话里不重复追问（「忽略」的语义 = 提前进入中性态）。
        `undefined` = 保留现有值 —— 静默刷新和缓存绘制都不能抹掉它。 */
     dismissed: silent ? undefined : [],
-    history: res.history || [],
+    history,
     loading: false,
     /* 空态判定：没有任何进行中行程、也没有历史行程 */
-    isBlank: trips.length === 0 && (res.history || []).length === 0,
+    isBlank: trips.length === 0 && history.length === 0,
     previewNewUser: false,
     /* ⚠️ 胶囊是**顶层独立字段**，不挂在 stickyBanner 下——横幅只覆盖眼下一小时，
        而胶囊要回答「后面还有哪几场」。别在这里自己从 trips 里挑放票时刻：
@@ -141,6 +154,10 @@ Page({
 
     trips: [],
     history: [],
+    /* 顶部摘要卡渲染的那一趟：= 最近未结束行程，全都结束时退化成最近一段过往行程
+       （副标题显示「已结束」）。⚠️ 与 `primaryTrip` 分开：后者是「还能继续加提醒的
+       那一趟」，只有 `onAddTrip` 的预填读它。 */
+    summaryTrip: null,
     primaryTrip: null,
     /* 摘要卡底部的「即将提醒」胶囊：接下来的放票时刻（服务端拼好文案）。
        来源是 stickyBanner.pills —— 不放独立字段，避免两处口径漂。 */
@@ -326,6 +343,7 @@ Page({
         loading: false,
         trips: [],
         history: [],
+        summaryTrip: null,
         primaryTrip: null,
         bannerPills: [],
         banner: null,
@@ -512,10 +530,13 @@ Page({
     this.setData({ showReminderQuotaWarning: false });
   },
 
-  /* ===== 分段吸顶测量 =====
-     不用 position: sticky —— skyline 下表现不稳。沿用既有做法：
-     onPageScroll 里测每个分段标题在文档中的位置，越过阈值就切成固定态，
-     并撑一个等高的 spacer 防止内容跳动。 */
+  /* ===== 分段吸顶 =====
+     ⚠️ 这里原来有一段「onPageScroll 里测分段标题、越过阈值切成固定态 + 撑 spacer」的
+        手工吸顶，2026-09-21 随行程分段标题的吸顶一起删掉了（那个标题与摘要卡重复）。
+        2026-10-12 起，吸顶的是**日期分段标题**，走 `trip-section` 内的
+        `position: sticky`（页面是 WebView 渲染，`skylineRenderEnable: false`），
+        偏移量由本页下发 `day-sticky-top`。别再往 onPageScroll 里加测位逻辑：
+        每帧一轮 `boundingClientRect` 比渲染层自己算贵得多。 */
 
   /**
    * 滚到某条行程项（进首页自动定位）。
@@ -545,6 +566,10 @@ Page({
    * 和已经选过的景点重新输一遍是纯浪费。预填的是 `primaryTrip`（trips[0]，进行中
    * 行程按开始日期升序的第一个，与首页置顶那趟是同一趟），不是别的：
    * 空态时 primaryTrip 为 null，参数自然为空，页面维持从零填。
+   *
+   * ⚠️ **不是 `summaryTrip`**（2026-10-15）：摘要卡在「所有行程都结束」时会退化展示
+   * 最近的一段**过往行程**，那是渲染层的兜底；拿它的日期段预填 PAGE-005 会直接
+   * 生成一个已经过去的时间范围（提交时被判 1016「行程项所在日期已结束」）。
    *
    * 传 tripId 只影响两件事——预填 + 预览里把**这一趟**已有的项标成「已加入行程」；
    * 生成时间线依旧只按「当前所选日期段 × 景点」即时算，不会因此读别趟行程的状态。

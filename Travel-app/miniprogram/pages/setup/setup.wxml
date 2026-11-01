@@ -162,6 +162,5 @@
     <view class="upgrade-confirm-btn" bindtap="onConfirmUpgrade">支付 {{upgradeConfirmAmount}}</view>
   </view>
 </view>
-
 <reminder-sample-sheet show="{{showSampleSheet}}" bind:close="onCloseSample" />
 <oa-follow-sheet show="{{showOaSheet}}" bind:close="onCloseOaSheet" />

@@ -1,6 +1,7 @@
 /* 行程分段容器。
    行程分段标题**只为弱化之外的分段渲染**（见 wxml 的 wx:if="{{!weak}}"），
-   摘要卡那趟不渲染；吸顶样式已废止（不再需要该行吸顶）。 */
+   摘要卡那趟不渲染；该行（`.ts-head`）的吸顶已废止。日期分段标题（`.ts-day-head`）
+   的吸顶见下方 `.ts-day-head.is-pinned`。 */
 .trip-section { margin-bottom: 40rpx; }
 .trip-section.is-history { opacity: .78; }
 
@@ -45,9 +46,49 @@
   display: flex;
   align-items: center;
   gap: 16rpx;
-  margin: 32rpx 2rpx 14rpx; /* 2026-09-23 日期标题上方再加 8px(16rpx) */
+  /* ⚠️ 上下的呼吸位是 **padding 不是 margin**（2026-10-12 用户口径）：
+     吸顶后这块的底色就是「置顶条」的高度，纯 margin 的话置顶条只有一行字那么高——
+     上面的日期贴着导航栏、下面的卡片正好切在字的下沿，看起来像被切掉一块。
+     改成 padding 后置顶条上下各多出 16rpx(8px)，而总间距不变
+     （上方仍是 16rpx 外边距 + 16rpx 内边距 = 32rpx，与 2026-09-23 的数值一致；
+     下方 14→16rpx，差 2rpx 肉眼不可见）。
+     ⚠️ 动这里的 margin-top 必须同步改 `.ts-day-head.is-pinned::before` 的高度。 */
+  padding: 16rpx 0 16rpx;
+  margin: 16rpx 2rpx 0;
 }
 .ts-day-title { font-size: 26rpx; font-weight: 500; color: var(--text-strong); }
+/* ===== 日期分段标题吸顶（2026-10-12 用户口径）=====
+   滚到某一天的内容里时，这一天的日期标题要一直看得见。
+
+   ⚠️ 与顶部 `.ts-head` 的「不吸顶」不冲突：那是行程分段标题（城市 + 日期范围），
+      与摘要卡同屏重复；这里是日期分段标题。
+   ⚠️ `top` 只在内联里给（页面级滚动时 = 状态栏 + 导航栏高度）。wxss 不写 top：
+      写了也只是被内联覆盖，写死 0 反而会在页面忘记下发时把标题吸到状态栏底下。
+   ⚠️ 底色必须**不透明**（页面底色）：卡片是非定位元素，会正常滑到标题下面，
+      但标题原来没有底色，卡片从标题底下透出来会把日期糊掉。
+   ⚠️ z-index 35 是**夹在中间**取的：`trip-card` 的普通内容（非定位）、
+      它的菜单层 31 都必须在标题之下（否则卡片滑上去时，右上角那个菜单图标会浮在
+      吸顶标题上）；而「菜单展开态」的 40 必须还在标题之上（用户在用的菜单不能被吸顶标题盖住）。
+      注意它同时是层叠上下文：标题里的日期菜单（`.ts-day-menu` 31 / `.ts-day-pop` 32）
+      被收在这一层里，对外取 35 —— 展开态仍高于卡片的捕获层 31，菜单照常能点。 */
+.ts-day-head.is-pinned {
+  position: sticky;
+  z-index: 35;
+  background: var(--color-page);
+}
+/* ⚠️ 补位块：高度必须等于 `.ts-day-head` 的 `margin-top`（现在是 16rpx，见上）。
+   sticky 的偏移作用在**外边距盒**上——标题顶到吸顶线时，它那段上外边距会留在
+   标题上方成为一条透明带，下方的卡片会从这条带里透出来。用一块同色底填掉。
+   （只在吸顶态渲染：非吸顶时它盖的是标题自己的空白外边距，同色看不出来。） */
+.ts-day-head.is-pinned::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -16rpx;
+  height: 16rpx;
+  background: var(--color-page);
+}
 /* ⚠️ 2026-09-22 按设计稿改金底 + 去掉字重：
    它是个**位置标记**不是可点的标签，金底已经足够把它顶出来，再粗就抢标题了。 */
 .ts-day-badge {

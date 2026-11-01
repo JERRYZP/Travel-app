@@ -41,6 +41,39 @@ const trip = require('../cloudfunctions/reminder/lib/trip');
 const { COLLECTIONS } = require('../cloudfunctions/reminder/lib/schema');
 Module._load = origLoad;
 
+/* 计数：`trip.list` 拿到 prefetched.tasks 后**不该再对 reminder_tasks 发读操作**
+   （2026-10-13 去 N+1）。只挂 reminder_tasks，seed 走的 add 不算读。 */
+let reminderTaskReads = 0;
+const rawCollection = CURRENT_DB.collection.bind(CURRENT_DB);
+const looksLikeQuery = (r) => r && typeof r === 'object'
+  && typeof r.get === 'function' && typeof r.orderBy === 'function';
+const countingQuery = (q) => new Proxy(q, {
+  get(target, prop) {
+    const v = target[prop];
+    if (typeof v !== 'function') return v;
+    return (...args) => {
+      if (prop === 'get' || prop === 'count') reminderTaskReads += 1;
+      const r = v.apply(target, args);
+      return looksLikeQuery(r) ? countingQuery(r) : r;
+    };
+  },
+});
+CURRENT_DB.collection = (name) => {
+  const api = rawCollection(name);
+  if (name !== COLLECTIONS.REMINDER_TASKS) return api;
+  return new Proxy(api, {
+    get(target, prop) {
+      const v = target[prop];
+      if (typeof v !== 'function') return v;
+      return (...args) => {
+        if (prop === 'get' || prop === 'count') reminderTaskReads += 1;
+        const r = v.apply(target, args);
+        return looksLikeQuery(r) ? countingQuery(r) : r;
+      };
+    },
+  });
+};
+
 let fail = 0;
 const eq = (a, b, m) => {
   const ok = String(a) === String(b);
@@ -87,6 +120,7 @@ const shapeOf = res => JSON.stringify((res.trips || []).map(t => ({
 (async () => {
   console.log('=== 1. 并发取 nextReminderAt：结果与串行一致 ===');
   await seed();
+  reminderTaskReads = 0;
   const concurrent = await trip.list(CURRENT_DB, USER, {
     items: ITEMS, tasks: TASKS, carts: [],
   });
@@ -101,17 +135,40 @@ const shapeOf = res => JSON.stringify((res.trips || []).map(t => ({
     '全空的行程被级联删除');
   eq((concurrent.trips || []).some(x => x._id === 'T_HAS_ITEM'), true,
     '只有行程项、没有任务的行程被保留（不能只看任务判定）');
+  eq(reminderTaskReads, 0, 'prefetched 路径不再对 reminder_tasks 发读操作（去 N+1）');
 
   console.log('=== 2. prefetched 内存判定 == 逐趟 count 判定 ===');
   await seed();
+  reminderTaskReads = 0;
   const withPrefetch = shapeOf(await trip.list(CURRENT_DB, USER, {
     items: ITEMS, tasks: TASKS, carts: [],
   }));
+  const readsWithPrefetch = reminderTaskReads;
 
   await seed();
+  reminderTaskReads = 0;
   const withoutPrefetch = shapeOf(await trip.list(CURRENT_DB, USER));
+  const readsWithoutPrefetch = reminderTaskReads;
 
   eq(withPrefetch, withoutPrefetch, '两条路径的结果逐字段相同（含 nextReminderAt 与删除结果）');
+  eq(readsWithPrefetch, 0, 'prefetched 路径零 reminder_tasks 查询');
+  eq(readsWithoutPrefetch > 0, true, '未预取时仍逐趟查询（守卫路径没被写死）');
+
+  console.log('=== 2b. 预取数据触及 100 条上限时退回逐趟查询 ===');
+  await seed();
+  reminderTaskReads = 0;
+  /* 造一批凑满上限的任务（都是其它行程的，不参与 nextReminderAt），
+     触发「预取可能被截断」的守卫 → 必须退回逐趟查询，而不是用不完整的数据算排序键。 */
+  const padding = Array.from({ length: 100 }, (_v, i) => ({
+    _id: `PAD_${i}`, userId: USER, tripId: 'T_OTHER',
+    backendStatus: 'TRIGGERED', releaseAt: '2026-01-01T00:00:00.000Z',
+  }));
+  const guarded = await trip.list(CURRENT_DB, USER, {
+    items: ITEMS, tasks: TASKS.concat(padding), carts: [],
+  });
+  const tGuarded = (guarded.trips || []).find(x => x._id === 'T_HAS_TASK') || {};
+  eq(reminderTaskReads > 0, true, '预取触及上限 → 退回逐趟查询');
+  eq(tGuarded.nextReminderAt, '2026-09-29T12:00:00.000Z', '退回后 nextReminderAt 仍是权威值');
 
   console.log('=== 3. 清单非空时保留行程（prefetched 的第三张表）===');
   await seed();

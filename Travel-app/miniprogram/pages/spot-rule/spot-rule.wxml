@@ -122,11 +122,10 @@
               <text class="entry-label">{{item.label}}</text>
               <view class="entry-badge">{{spot.reservationRequired ? '预约方式' : '购票方式'}}{{index + 1}}</view>
             </view>
-            <text class="entry-hint">{{item.hint}}</text>
+            <text class="entry-hint">{{item.type === 'WEB' ? '复制链接后到手机浏览器打开' : item.hint}}</text>
           </view>
           <view class="entry-actions">
-            <text wx:if="{{item.type === 'WEB' && item.url}}" class="entry-copy" catchtap="onCopyEntry" data-entry="{{item}}">复制链接</text>
-            <view class="entry-btn {{item.type === 'OFFICIAL_ACCOUNT' ? 'btn-account' : 'btn-link'}}">{{item.type === 'OFFICIAL_ACCOUNT' ? '查看二维码' : '打开链接'}}</view>
+            <view class="entry-btn {{item.type === 'OFFICIAL_ACCOUNT' ? 'btn-account' : 'btn-link'}}">{{item.type === 'OFFICIAL_ACCOUNT' ? '查看二维码' : item.type === 'WEB' ? '复制链接' : '打开链接'}}</view>
           </view>
         </view>
       </view>

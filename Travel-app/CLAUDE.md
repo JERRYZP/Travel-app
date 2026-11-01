@@ -16,9 +16,10 @@
 - V0.3 主流程已实现：四步流程、日期锚点、清单策略、PAGE-008 授权硬闸门。
 - 新用户首页空态已重构：动态结果预览、提醒样式入口、高热度 S 级景点「近期热门景点放票」。
 - 分享、深链、今日/国庆场景页、提醒额度健康度、真实缺口预警与 48 小时缓冲窗口均已实现。
-- 2026-10-28 已完成非会员修复收口：授权额度、提醒回滚、清单收敛、随买随用、强提醒与景点页搜索均已提交；云函数尚未重新部署，客户端尚未发版，真机验证仍为 `pending`。
-- 会员付费工作保存在独立 WIP 分支，未进入 `main`；不得把 WIP 提交当成已上线能力。
+- 2026-10-28 已完成非会员修复收口：授权额度、提醒回滚、清单收敛、随买随用、强提醒与景点页搜索均已提交；部署范围与真机状态仍按 `docs/engineering/current-state.md` 分别判断。
+- 会员付费已并入 `main` 发布候选，但会员限制仍按灰度配置运行；不得把“已合并/已测试”写成“已全量上线”。
 - 2026-10-27 已发版客户端来自当时未提交工作区，Git 中没有可诚实对应的发布 commit/tag。
+- 只读 Web 管理后台代码已合入 `admin-web/` 与 `cloudfunctions/admin/`，不是小程序体验版的运行依赖；是否部署仍以云开发控制台和单独授权为准。
 - 完整状态、待部署范围和待验证项见 `docs/engineering/current-state.md`。
 
 ## Git 纪律
@@ -52,6 +53,7 @@
 | `cloudfunctions/**`、appid/cloudEnv | `.claude/rules/deployment.md`、`docs/engineering/current-state.md` |
 | API 域与数据模型 | `API-契约.md`、`docs/engineering/architecture.md` |
 | 提醒发送和 MISSED | `docs/engineering/reminder-troubleshooting.md`、`docs/engineering/domain-rules.md` |
+| `admin-web/**` | `docs/engineering/admin-console.md`、`API-契约.md` |
 
 路径规则由 Claude Code 按匹配文件自动加载；根文件不复制完整机制。
 
@@ -89,9 +91,10 @@ npm run check
 ```
 
 - 若从父目录 `my/` 进入，先执行 `cd Travel-app`。
-- `npm test`：当前 47 套回归测试。
-- `npm run check`：校验 WXML 方法绑定、图标资源、包内图片路径（WXML 与 `imageUrl` 字面量）、组件路径、CSS 变量和页面三件套。
-- 微信开发者工具：打开 `Travel-app/`；Vant 首次使用前执行“工具 -> 构建 npm”。
+- `npm test`：跑全部回归测试。**套数不写死在这里** —— 权威是 `package.json` 的 `test` 脚本；
+  写死过两次（27 → 32 → 34），每次都过期。
+- `npm run check`：校验 WXML 方法绑定、图标资源、包内图片路径（WXML 与 `imageUrl` 字面量）、组件路径、CSS 变量、页面三件套和主包质量线。
+- 微信开发者工具：打开 `Travel-app/`；Vant 使用仓库内固定组件副本，不需要再执行“工具 -> 构建 npm”。
 
 ## 部署
 

@@ -300,13 +300,6 @@
   flex-shrink: 0;
 }
 
-.popup-entry-copy {
-  font-size: 22rpx;
-  color: var(--color-muted);
-  text-decoration: underline;
-  flex-shrink: 0;
-}
-
 .popup-entry-btn {
   padding: 10rpx 24rpx;
   border-radius: 999rpx;

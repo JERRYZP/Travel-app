@@ -13,6 +13,7 @@ const {
   COLLECTIONS, ERRORS, ReminderBackendStatus, V1, ok, fail,
 } = require('./schema');
 const time = require('./time');
+const events = require('./events');
 const item = require('./item');
 const tripItem = require('./trip-item');
 const cart = require('./cart');
@@ -50,10 +51,16 @@ async function contextOf(db, userId, it) {
 async function removeTasksOf(db, userId, itemId) {
   const res = await db.collection(COLLECTIONS.REMINDER_TASKS)
     .where({ userId, itemId }).get();
-  for (const t of (res.data || [])) {
+  const tasks = res.data || [];
+  await events.recordEvents(db, tasks.map(t =>
+    events.taskEvent(events.EVENT_TYPES.TASK_CANCELED, t, time.now(), {
+      source: 'reminder.tripItem.remove',
+    })
+  ));
+  for (const t of tasks) {
     await db.collection(COLLECTIONS.REMINDER_TASKS).doc(t._id).remove();
   }
-  return (res.data || []).length;
+  return tasks.length;
 }
 
 /**
@@ -300,6 +307,7 @@ async function updateReminder(db, userId, {
       ? membership.quotaPoolOfExistingTask(currentTask)
       : membership.newTaskQuotaPoolOf(userId);
     const transaction = await db.startTransaction();
+    let rebuiltTaskId = null;
     try {
       if (freshItem.remindOn !== true) {
         await transaction.collection(COLLECTIONS.TRIP_ITEMS).doc(itemId).update({
@@ -309,7 +317,7 @@ async function updateReminder(db, userId, {
       for (const task of activeTasks) {
         await transaction.collection(COLLECTIONS.REMINDER_TASKS).doc(task._id).remove();
       }
-      await transaction.collection(COLLECTIONS.REMINDER_TASKS).add({
+      const rebuilt = await transaction.collection(COLLECTIONS.REMINDER_TASKS).add({
         data: {
           userId,
           templateId: DEFAULT_SUBSCRIBE_TEMPLATE_ID,
@@ -329,6 +337,7 @@ async function updateReminder(db, userId, {
           createdAt: lockNowTs,
         },
       });
+      rebuiltTaskId = rebuilt && rebuilt._id;
       await membership.markReminderCreated(db, userId, lockNowTs, {
         transaction,
         user: lock && lock.user,
@@ -338,6 +347,24 @@ async function updateReminder(db, userId, {
     } catch (err) {
       try { await transaction.rollback(); } catch (rollbackErr) { /* 事务可能已结束 */ }
       return fail({ code: 1011, message: `提醒更新失败：${err.message}` });
+    }
+
+    if (rebuiltTaskId) {
+      await events.recordEvent(db, events.taskEvent(
+        events.EVENT_TYPES.TASK_REBUILT,
+        {
+          _id: rebuiltTaskId,
+          userId,
+          itemId,
+          tripId: freshItem.tripId,
+          spotId: freshItem.spotId,
+          visitDate: freshItem.visitDate,
+          releaseAt: freshReleaseAt,
+          channels: nextChannels,
+        },
+        lockNowTs,
+        { source: 'reminder.tripItem.updateReminder.rebuild' }
+      ));
     }
 
     return reminderUpdateResult(db, userId, freshItem, freshCtx, true, tasks, lockNowTs);
@@ -367,6 +394,12 @@ async function turnReminderOff(db, userId, itemId, it, ctx, nowTs) {
       try { await transaction.rollback(); } catch (rollbackErr) { /* 事务可能已结束 */ }
       return fail({ code: 1011, message: `提醒取消失败：${err.message}` });
     }
+
+    await events.recordEvents(db, activeTasks.map(t =>
+      events.taskEvent(events.EVENT_TYPES.TASK_CANCELED, t, nowTs, {
+        source: 'reminder.tripItem.updateReminder.off',
+      })
+    ));
   }
 
   return reminderUpdateResult(

@@ -76,7 +76,6 @@ eq(/updateReminder: \(p\) => homeMutationCall\(/.test(apiCode), true,
   '行程项提醒开关成功后让首页缓存失效');
 eq(/add: \(templateId\) => homeMutationCall\(/.test(apiCode), true,
   '补授权成功后让首页缓存失效（额度预警应及时消失）');
-
 console.log('=== 3. ⚠️ 早退必须在「非 silent 且有缓存」的分支内 ===');
 {
   /* 结构：if (!silent) { const cached = homeCache.read(); if (cached) { ... if (ttlFresh) { return; } } else { ... } }

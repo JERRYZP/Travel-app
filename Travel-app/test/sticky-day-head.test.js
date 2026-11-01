@@ -1,13 +1,7 @@
 /**
- * 日期标题吸顶：预约时间线（PAGE-005）。
+ * 日期分段标题吸顶（预约时间线 + 首页行程墙）的结构与交互约定。
  *
- * 口径：`position: sticky` + 页面量出来下发的偏移量 + 不透明底 + 夹在中间的 z-index。
- * 这个测试只钉住**预约时间线**这一处。
- *
- * ⚠️ 首页行程墙的日期吸顶（`components/trip-section` 的 `.ts-day-head.is-pinned`）
- *    尚未合入 main，它只存在于 `codex/ux1012` 分支上。本轮只移植时间线这一处，
- *    所以这里不覆盖首页。等首页那套移植过来时，把分支版的第 1~3 组断言补回来。
- *
+ * 两处共用同一套口径：`position: sticky` + 页面下发的偏移量 + 不透明底 + 夹在中间的 z-index。
  * 运行：node test/sticky-day-head.test.js
  */
 const fs = require('fs');
@@ -31,11 +25,75 @@ const num = (block, prop) => {
   return m ? Number(m[1]) : NaN;
 };
 
+const TS_WXSS = read('miniprogram/components/trip-section/trip-section.wxss');
+const TS_WXML = read('miniprogram/components/trip-section/trip-section.wxml');
+const TS_JS = read('miniprogram/components/trip-section/trip-section.js');
+const HOME_WXML = read('miniprogram/pages/home/home.wxml');
+const HOME_JS = read('miniprogram/pages/home/home.js');
+const TC_WXSS = read('miniprogram/components/trip-card/trip-card.wxss');
 const ADD_WXML = read('miniprogram/pages/add-trip/add-trip.wxml');
 const ADD_WXSS = read('miniprogram/pages/add-trip/add-trip.wxss');
 const ADD_JS = read('miniprogram/pages/add-trip/add-trip.js');
 
-console.log('=== 预约时间线：日期标题吸在「导航栏 + 吸顶面板」下面 ===');
+console.log('=== 1. 首页行程墙：日期标题吸顶，偏移量由页面下发 ===');
+{
+  eq(/dayStickyTop:\s*\{\s*type:\s*Number/.test(TS_JS), true,
+    'dayStickyTop 属性已声明（未声明的属性不会进组件 data）');
+  eq(/class="ts-day-head \{\{dayStickyTop > 0 \? 'is-pinned' : ''\}\}"/.test(TS_WXML), true,
+    '偏移量未知时不吸顶');
+  eq(/style="top: \{\{dayStickyTop\}\}px;"/.test(TS_WXML), true,
+    'top 由页面内联下发，不在 wxss 里写死');
+
+  const pinned = rule(TS_WXSS, '.ts-day-head.is-pinned');
+  eq(/position:\s*sticky/.test(pinned), true, '吸顶用 position: sticky');
+  eq(/(^|[;{\s])top\s*:/.test(pinned), false, 'wxss 不写 top（写了只会被内联覆盖，写死还会吸到状态栏底下）');
+  eq(/background:\s*var\(--color-page\)/.test(pinned), true, '吸顶标题有不透明底（否则卡片透出来糊住日期）');
+
+  /* 页面级滚动：偏移量只能是「状态栏 + 导航栏」，写常量在各机型上都会错 */
+  const usages = HOME_WXML.match(/<trip-section/g) || [];
+  const sticky = HOME_WXML.match(/day-sticky-top="\{\{statusBarHeight \+ navBarHeight\}\}"/g) || [];
+  eq(usages.length > 0, true, '首页有 trip-section');
+  eq(sticky.length, usages.length, '每个 trip-section（含历史）都下发了 day-sticky-top');
+  eq(/createSelectorQuery\(/.test(HOME_JS), false,
+    '首页不在 onPageScroll 里做测位（吸顶交给渲染层，别退回逐帧量位置）');
+}
+
+console.log('=== 2. 行程墙 z-index：卡片内容与菜单都要能从标题下面滑过去 ===');
+{
+  const pinned = rule(TS_WXSS, '.ts-day-head.is-pinned');
+  const stickyZ = num(pinned, 'z-index');
+  const dayMenuZ = num(rule(TS_WXSS, '.ts-day-menu'), 'z-index');
+  const dayOpenZ = num(rule(TS_WXSS, '.ts-day-menu.is-open'), 'z-index');
+  const catchZ = num(rule(TS_WXSS, '.ts-day-catch'), 'z-index');
+  const cardMenuZ = num(rule(TC_WXSS, '.tc-menu'), 'z-index');
+  const cardOpenZ = num(rule(TC_WXSS, '.tc-menu.is-open'), 'z-index');
+
+  eq(stickyZ > 0, true, '吸顶标题有 z-index（否则定位的卡片菜单图标会浮在标题上）');
+  eq(stickyZ > cardMenuZ, true, '高于卡片菜单图标：卡片滑上去时图标也要藏到标题下面');
+  eq(stickyZ > dayMenuZ, true, '高于日期菜单按钮本身（它就是标题行里的那个图标）');
+  eq(stickyZ > catchZ, true, '高于菜单捕获层：捕获层是 fixed 全屏，不能盖住吸顶标题');
+  eq(stickyZ < dayOpenZ, true, '低于日期菜单展开态：用户正在用的弹层不能被吸顶标题盖住');
+  eq(stickyZ < cardOpenZ, true, '低于卡片菜单展开态：同上');
+}
+
+console.log('=== 3. 行程墙补位块：标题上外边距让出的那条带要填掉 ===');
+{
+  const head = rule(TS_WXSS, '.ts-day-head');
+  const marginTop = /margin:\s*(-?[\d.]+rpx)/.exec(head);
+  eq(marginTop !== null, true, '标题用 margin 做纵向节奏');
+  /* 置顶条的高度就是这块的盒子高度：纯 margin 会让它只有一行字那么高，
+     上面贴着导航栏、下面的卡片正好切在字的下沿（2026-10-12 用户口径：上下各加 8px） */
+  const pad = /padding:\s*([\d.]+)rpx\s+\S+\s+([\d.]+)rpx/.exec(head);
+  eq(pad !== null && Number.parseFloat(pad[1]) >= 16 && Number.parseFloat(pad[2]) >= 16, true,
+    '置顶条上下各有 ≥16rpx(8px) 内边距');
+  const band = rule(TS_WXSS, '.ts-day-head.is-pinned::before');
+  eq(/position:\s*absolute/.test(band), true, '补位块是绝对定位（sticky 标题即其包含块）');
+  eq(/background:\s*var\(--color-page\)/.test(band), true, '补位块与页面同色');
+  eq(num(band, 'top'), -Number.parseFloat(marginTop[1]), '补位块上移一个外边距');
+  eq(/height:\s*([\d.]+rpx)/.exec(band)[1], marginTop[1], '补位块高度 = 标题上外边距');
+}
+
+console.log('=== 4. 预约时间线：日期标题吸在「导航栏 + 吸顶面板」下面 ===');
 {
   const base = rule(ADD_WXSS, '.timeline-day-head');
   const pinned = rule(ADD_WXSS, '.timeline-day-head.is-pinned');
