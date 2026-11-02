@@ -1,6 +1,6 @@
 # 会员支付、售后与提醒名额
 
-> 2026-11-02 当前状态：会员购买断路器已创建 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），并部署 `payment` / `reminder`；云端只读冒烟通过，`paymentReconcileEveryTwoMinutes` 已恢复并核验。包含管理开关和停售态 UI 的新客户端尚未上传，真实停售切换未执行。2026-11-01 的支付全链路加固、生产集合、账本迁移与体验版 `1.1.4` 状态继续有效；会员限制仍保持 `test`，未切全量。
+> 2026-11-02 当前状态：会员购买断路器已创建 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），并部署 `payment` / `reminder`。客服工作台后端随后部署到新版 `payment`：真实管理员订单列表/详情、售后昵称搜索和 `membership.status=OPEN` 冒烟通过，`paymentReconcileEveryTwoMinutes` 保持启用。包含管理开关和停售态 UI 的新客户端尚未上传，真实停售切换未执行。会员限制仍保持 `test`，未切全量。
 >
 > 权威业务口径以 `产品文档.md` 为准，接口以 `API-契约.md` 为准，索引以 `数据库索引.md` 为准。
 
@@ -171,6 +171,7 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 
 云端已验证：
 
+- 2026-11-02 已将含会员购买断路器和客服工作台的 `payment`（18 个文件）部署到 `cloud1`；`payment` 为 `Active`，部署包包含 `adminOrders.list/detail`。真实管理员接口冒烟返回会员订单、当前昵称、完整 OpenID 和订单详情；售后昵称搜索可用；`membership.status` 返回 `sales.state=OPEN`。部署后 15 分钟无 `payment` 5xx，`paymentReconcileEveryTwoMinutes = 0 */2 * * * * *` 保持启用。
 - 2026-11-01 已将 `payment`（15 个文件）与 `reminder`（19 个文件）部署到 `cloud1`；部署前已完整备份 `users`、`orders`、`reminder_tasks`、`after_sales_cases`、`admin_audit_logs`，备份清单包含文件 SHA-256。
 - 2026-11-01 复核发现 `payment_reconcile_state` 实际不存在，定时补偿报 `-502005` 后中断，导致已到账退款仍停留“退款中”。工作区已补自动创建与无游标降级，并增加退款队列隔离与状态收口回归；新版 `payment` 部署前该问题仍存在于线上。
 - 已创建、核验 `orders_status_id`、`orders_status_grant_id`、`orders_user_status_id`、`after_sales_status_id`；`orders` 共 9 个索引、`after_sales_cases` 共 8 个索引。
