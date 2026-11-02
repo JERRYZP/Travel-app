@@ -190,7 +190,7 @@ function loadPage(file, api) {
   eq(/safe-top=/.test(homeWxml), false,
     '页面不再用摘要卡局部安全间距打补丁');
   eq(/open-type="share"[\s\S]*data-share-kind="trip"/.test(sheetWxml), true, '浮层用原生分享按钮并在就绪后开放');
-  eq(/<svg-icon name="wechat-white" size="28rpx"/.test(sheetWxml), true,
+  eq(/<svg-icon name="wechat-white" size="32rpx"/.test(sheetWxml), true,
     '分享按钮使用无底色白色微信图标，尺寸与文案接近');
   eq(fs.existsSync(WECHAT_WHITE_ICON_PATH), true, '白色微信图标资源存在');
   eq(/获得链接的人只能查看，不能编辑或复制行程/.test(sheetWxml), true, '浮层明确只读边界');

@@ -17,8 +17,8 @@ const tripShareCover = require('../../utils/trip-share-cover.js');
 
 /* 导航块高度（rpx）= `.navbar-content` 的 height，两处必须一致。 */
 const NAV_BAR_RPX = 88;
-/* 正文第一块紧贴导航块底边；横幅/卡片之间的位移只由文档流决定。 */
-const PAGE_GAP_RPX = 0;
+/* 胶囊底边 → 正文第一块。用真实胶囊位置兜底，避免不同屏宽/状态栏下钻到组件下面。 */
+const PAGE_GAP_RPX = 16;
 /* 滚多少像素把导航栏底色从全透明推到不透明 */
 const NAV_FADE_PX = 50;
 const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
@@ -243,13 +243,12 @@ Page({
     const entryContext = shareEntry.consumeEntry(app, options);
     if (entryContext.source) analytics.captureLanding(entryContext, 'home');
     this.setData({
-      /* ⚠️ 模板里只把 `statusBarHeight` 当**数字**用（换算成 rpx 要 ×2），
-         不能与 rpx 常量做字符串拼接 —— 见过把 px 值和 rpx 直接相加的先例。
-         `navBarHeight` 只给 `scrollToItem` 的偏移量用：导航基线本身固定 88rpx，
-         不读 app.js 反推的那个值（它会偏大，让标题整体下坠）。 */
+      /* ⚠️ 模板里只把 `statusBarHeight` 当**数字**用；正文起点由
+         `pageTopOf()` 按当前屏宽把 px 换算成 rpx，并使用胶囊真实 bottom。
+         `navBarHeight` 只给 `scrollToItem` 的偏移量用。 */
       statusBarHeight: g.statusBarHeight || 20,
       navBarHeight: g.navBarHeight || 44,
-      pageTop: pageTopOf(g.statusBarHeight),
+      pageTop: pageTopOf(g.statusBarHeight, g.menuButton, g.windowWidth),
       entryContext,
     });
     /* 从订阅消息点进来：先落到对应景点的详情浮窗（预约直达 + 倒计时）。
@@ -1309,8 +1308,13 @@ function tripShareTitleOf(nickname, trip) {
  * ⚠️ 状态栏是 px 且带小数（iPhone 15 实测 48.5px），换算成 rpx 必须 ×2。
  * ⚠️ 这个值**不含横幅高度**：横幅排在正文内部，占位由它自己负责。
  */
-function pageTopOf(statusBarHeight) {
-  return (statusBarHeight || 20) * 2 + NAV_BAR_RPX + PAGE_GAP_RPX;
+function pageTopOf(statusBarHeight, menuButton, windowWidth) {
+  const width = Number(windowWidth) || 375;
+  const status = Number(statusBarHeight) || 20;
+  const navBottomRpx = status * 750 / width + NAV_BAR_RPX;
+  const capsuleBottom = Number(menuButton && menuButton.bottom) || 0;
+  const capsuleBottomRpx = capsuleBottom > 0 ? capsuleBottom * 750 / width : 0;
+  return Math.ceil(Math.max(navBottomRpx, capsuleBottomRpx) + PAGE_GAP_RPX);
 }
 
 /** 解析服务端时间戳（毫秒数或 ISO 字符串）；拿不到就返回 0。 */

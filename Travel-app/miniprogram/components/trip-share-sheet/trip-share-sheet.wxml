@@ -40,7 +40,7 @@
         open-type="share"
         data-share-kind="trip"
       >
-        <svg-icon name="wechat-white" size="28rpx" />
+        <svg-icon name="wechat-white" size="32rpx" />
         <text>发送给微信好友</text>
       </button>
 

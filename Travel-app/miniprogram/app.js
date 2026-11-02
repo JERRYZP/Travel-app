@@ -11,6 +11,7 @@ App({
     cloudEnv: CLOUD_ENV_PROD,
     statusBarHeight: 20,
     navBarHeight: 44,
+    windowWidth: 375,
     menuButton: null,
     currentTripId: null,
     homeMode: 1,
@@ -25,6 +26,7 @@ App({
     const menuButton = wx.getMenuButtonBoundingClientRect();
     const accountInfo = wx.getAccountInfoSync ? wx.getAccountInfoSync() : null;
     this.globalData.statusBarHeight = sysInfo.statusBarHeight;
+    this.globalData.windowWidth = sysInfo.windowWidth || 375;
     this.globalData.navBarHeight = (menuButton.top - sysInfo.statusBarHeight) * 2 + menuButton.height;
     this.globalData.menuButton = menuButton;
     this.globalData.envVersion = (accountInfo && accountInfo.miniProgram && accountInfo.miniProgram.envVersion) || '';
