@@ -25,6 +25,9 @@ Component({
     /* 即将放票的项，来自 home.bootstrap 的 stickyBanner.pills。
        ⚠️ 文案已由服务端拼好，组件不碰时间格式化。 */
     pills: { type: Array, value: [] },
+    /* 行程只读分享入口位于标题行最右侧；装饰英文在标题与分享之间。 */
+    showShareAction: { type: Boolean, value: false },
+    shareActionLabel: { type: String, value: '' },
   },
   data: {
     /* 「北京 10.2-10.4」→「北京之行」 */
@@ -61,6 +64,9 @@ Component({
     onPillTap(e) {
       const d = e.currentTarget.dataset;
       this.triggerEvent('pill', { itemId: d.id, spotId: d.spot });
+    },
+    onShareTap() {
+      this.triggerEvent('share');
     },
   },
 });

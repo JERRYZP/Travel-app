@@ -43,6 +43,43 @@ let orderSeq = 0;
 let subscribeSeq = 0;
 const subscribeQuotas = {};
 
+function mockShareExpiresOn(trip) {
+  return trip && trip.endDate ? addDays(trip.endDate, 7) : '';
+}
+
+function mockShareStatusOf(trip) {
+  if (!trip) return 'NONE';
+  if (trip.shareToken) return fmt(new Date()) <= mockShareExpiresOn(trip) ? 'ACTIVE' : 'EXPIRED';
+  return (trip.shareCreatedAt || trip.shareUpdatedAt) ? 'REVOKED' : 'NONE';
+}
+
+function mockPublicTrip(trip) {
+  if (!trip) return null;
+  return {
+    _id: trip._id,
+    city: trip.city,
+    startDate: trip.startDate,
+    endDate: trip.endDate,
+    name: trip.name,
+    spotIds: Array.isArray(trip.spotIds) ? trip.spotIds.slice() : [],
+    spots: Array.isArray(trip.spots) ? trip.spots.map(s => ({ ...s })) : [],
+    status: trip.status,
+    createdAt: trip.createdAt,
+    updatedAt: trip.updatedAt,
+    nextReminderAt: trip.nextReminderAt || null,
+    shareActive: mockShareStatusOf(trip) === 'ACTIVE',
+  };
+}
+
+function mockShareToken() {
+  const chars = '0123456789abcdef';
+  let out = '';
+  for (let i = 0; i < 64; i += 1) {
+    out += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return out;
+}
+
 /**
  * 台账自愈判定（镜像 cloudfunctions/reminder/lib/quota.js 的 shouldHealQuota，
  * 以及 cloudfunctions/notifier/index.js 的同名副本）。
@@ -1555,6 +1592,18 @@ const handlers = {
     trip.name = name;
     trip.spotIds = finalSpotIds;
     trip.spots = finalSpots;
+    const shareSource = [trip, ...mergedTrips]
+      .filter(t => t && mockShareStatusOf(t) === 'ACTIVE')
+      .sort((a, b) => {
+        if (a._id === keepId) return -1;
+        if (b._id === keepId) return 1;
+        return String(a._id).localeCompare(String(b._id));
+      })[0] || null;
+    if (shareSource) {
+      trip.shareToken = shareSource.shareToken;
+      trip.shareCreatedAt = shareSource.shareCreatedAt || new Date();
+      trip.shareUpdatedAt = new Date();
+    }
 
     mergedIds.filter(id => id !== keepId).forEach((id) => {
       // 被吞并行程的任务与清单改挂到存续行程（提醒本身不受影响）
@@ -1594,7 +1643,7 @@ const handlers = {
     const sorted = kept.sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
     // 老数据只有 spotIds → 统一补出 spots 段（按行程整段），前端可放心依赖
     sorted.forEach(t => { t.spots = normalizeSpots(t); });
-    return { success: true, trips: sorted, showGroupTabs: sorted.length >= 2 };
+    return { success: true, trips: sorted.map(mockPublicTrip), showGroupTabs: sorted.length >= 2 };
   },
   'trip.updateSpots': (data) => {
     const trip = db.trips[data.tripId];
@@ -1644,6 +1693,118 @@ const handlers = {
     delete db.trips[data.tripId];
     clearPendingIfNoItems();
     return { success: true, tripId: data.tripId, removedTasks, removedCartItems, removedItems };
+  },
+  'tripShare.create': (data) => {
+    const trip = db.trips[data.tripId];
+    if (!trip) return { success: false, error: '当前行程暂不可分享', errorCode: 1041 };
+    const today = fmt(new Date());
+    if (trip.endDate < today) return { success: false, error: '当前行程暂不可分享', errorCode: 1041 };
+    if (!Object.values(db.items).some(item => item.tripId === trip._id)) {
+      return { success: false, error: '当前行程暂不可分享', errorCode: 1041 };
+    }
+    if (mockShareStatusOf(trip) === 'ACTIVE') {
+      return {
+        success: true,
+        tripId: trip._id,
+        ownerNickname: mockUser.nickname,
+        token: trip.shareToken,
+        expiresOn: mockShareExpiresOn(trip),
+        reused: true,
+      };
+    }
+    trip.shareToken = mockShareToken();
+    trip.shareCreatedAt = new Date();
+    trip.shareUpdatedAt = new Date();
+    return {
+      success: true,
+      tripId: trip._id,
+      ownerNickname: mockUser.nickname,
+      token: trip.shareToken,
+      expiresOn: mockShareExpiresOn(trip),
+      reused: false,
+    };
+  },
+  'tripShare.status': (data) => {
+    const trip = db.trips[data.tripId];
+    if (!trip) return { success: false, error: '参数不合法', errorCode: 1010 };
+    const status = mockShareStatusOf(trip);
+    return {
+      success: true,
+      tripId: trip._id,
+      ownerNickname: mockUser.nickname,
+      status,
+      shareActive: status === 'ACTIVE',
+      token: status === 'ACTIVE' ? trip.shareToken : '',
+      expiresOn: status === 'ACTIVE' ? mockShareExpiresOn(trip) : '',
+      canCreate: trip.endDate >= fmt(new Date()),
+    };
+  },
+  'tripShare.revoke': (data) => {
+    const trip = db.trips[data.tripId];
+    if (!trip) return { success: false, error: '参数不合法', errorCode: 1010 };
+    if (!trip.shareToken) {
+      return {
+        success: true,
+        tripId: trip._id,
+        revoked: false,
+        status: mockShareStatusOf(trip),
+      };
+    }
+    trip.shareToken = '';
+    trip.shareUpdatedAt = new Date();
+    return { success: true, tripId: trip._id, revoked: true, status: 'REVOKED' };
+  },
+  'tripShare.open': (data) => {
+    const token = String(data.token || '');
+    if (!/^[a-f0-9]{64}$/.test(token)) {
+      return { success: false, error: '这份行程暂时无法查看', errorCode: 1042 };
+    }
+    const trip = Object.values(db.trips).find(t => t.shareToken === token);
+    if (!trip || !token || mockShareStatusOf(trip) !== 'ACTIVE') {
+      return { success: false, error: '这份行程暂时无法查看', errorCode: 1042 };
+    }
+    const rows = Object.values(db.items)
+      .filter(item => item.tripId === trip._id)
+      .map(item => {
+        const spot = SPOTS.find(s => s.spotId === item.spotId);
+        return {
+          visitDate: item.visitDate,
+          spotId: item.spotId,
+          spotName: (spot && spot.name) || item.spotId,
+        };
+      })
+      .sort((a, b) => {
+        const byDate = String(a.visitDate).localeCompare(String(b.visitDate));
+        if (byDate !== 0) return byDate;
+        return String(a.spotName).localeCompare(String(b.spotName));
+      });
+    if (!rows.length) {
+      return { success: false, error: '这份行程暂时无法查看', errorCode: 1042 };
+    }
+    const grouped = new Map();
+    rows.forEach(row => {
+      if (!grouped.has(row.visitDate)) grouped.set(row.visitDate, []);
+      grouped.get(row.visitDate).push({ spotId: row.spotId, spotName: row.spotName });
+    });
+    return {
+      success: true,
+      share: {
+        readOnly: true,
+        expiresOn: mockShareExpiresOn(trip),
+      },
+      trip: {
+        city: trip.city,
+        startDate: trip.startDate,
+        endDate: trip.endDate,
+        dayCount: diffDays(trip.startDate, trip.endDate) + 1,
+        spotCount: new Set(rows.map(row => row.spotId)).size,
+        days: [...grouped.entries()].map(([visitDate, items]) => ({
+          visitDate,
+          dayNumber: diffDays(trip.startDate, visitDate) + 1,
+          items,
+        })),
+      },
+    };
   },
 
   /* ----- timeline ----- */
@@ -3002,6 +3163,7 @@ const handlers = {
       const entry = {
         _id: t._id, city: t.city, startDate: t.startDate, endDate: t.endDate, name: t.name,
         progress: backupGroupProgress(mine), itemCount: mine.length,
+        shareActive: mockShareStatusOf(t) === 'ACTIVE',
         /* 首页预填 add-trip 用；与云端 homeBootstrap 同一口径 */
         spotIds: [...new Set(mine.map(i => i.spotId))],
       };

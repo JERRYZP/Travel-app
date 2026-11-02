@@ -1,10 +1,11 @@
 /**
  * 分享入口上下文（2026-09-25）
  *
- * 只处理公开参数 source / spotId / sceneId：
+ * 只处理公开参数 source / spotId / sceneId / token：
  * - 页面 onLoad 可直接传 options；
  * - App.onLaunch / App.onShow 传的是 { query: {...} }；
- * - 不解析或保存昵称、OpenID、行程和票务状态。
+ * - 不解析或保存昵称、OpenID、行程 ID、票务结果和提醒状态。
+ * - 行程分享 token 是唯一的私有内容凭证，不进入埋点。
  */
 
 const SOURCES = ['share', 'timeline', 'home_share', 'search', 'direct'];
@@ -35,11 +36,12 @@ function parseEntryOptions(options) {
     source: normalizeSource(o.source),
     spotId: safeDecode(o.spotId),
     sceneId: safeDecode(o.sceneId),
+    token: safeDecode(o.token),
   };
 }
 
 function hasEntry(entry) {
-  return !!(entry && (entry.source || entry.spotId || entry.sceneId));
+  return !!(entry && (entry.source || entry.spotId || entry.sceneId || entry.token));
 }
 
 /** App 生命周期只暂存，不立即改变当前页面；由目标页消费。 */
@@ -69,6 +71,7 @@ function consumeEntry(app, options) {
 
 /** 从分享来源解析日志条目类型；页面可传 defaultType 覆盖 list/home。 */
 function entryTypeOf(entry, defaultType) {
+  if (entry && entry.token) return 'trip';
   if (entry && entry.spotId) return 'spot';
   if (entry && entry.sceneId) return 'scene';
   return defaultType || 'home';
@@ -76,6 +79,7 @@ function entryTypeOf(entry, defaultType) {
 
 function entryIdOf(entry, defaultId) {
   if (!entry) return defaultId || '';
+  if (entry.token) return 'readonly';
   return entry.spotId || entry.sceneId || defaultId || '';
 }
 
@@ -142,6 +146,11 @@ function buildSceneQuery(sceneId, source) {
     + '&source=' + encodeURIComponent(normalizeSource(source) || 'timeline');
 }
 
+function buildTripSharePath(token, source) {
+  return '/pages/trip-share/trip-share?token=' + encodeURIComponent(token || '')
+    + '&source=' + encodeURIComponent(normalizeSource(source) || 'share');
+}
+
 module.exports = {
   SOURCES,
   SHARE_IMAGES,
@@ -159,4 +168,5 @@ module.exports = {
   buildSpotListPayload,
   buildScenePath,
   buildSceneQuery,
+  buildTripSharePath,
 };

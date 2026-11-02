@@ -146,7 +146,7 @@ console.log('=== 2. 悬浮按钮只在已有行程时出现 ===');
   eq(/<view class="fab-btn"/.test(WXML), false, '悬浮按钮不是无条件渲染');
   /* 2026-10-15：`history` 提到了局部变量（摘要卡回退与 isBlank 共用同一份），
      判据本身没变 —— 仍是「没有进行中行程、也没有历史行程」。 */
-  eq(/const history = res\.history \|\| \[\];/.test(JS), true,
+  eq(/const history = \(res\.history \|\| \[\]\)\.map\(/.test(JS), true,
     'history 走同一个局部变量（不与摘要卡回退各取一份）');
   eq(/isBlank: trips\.length === 0 && history\.length === 0/.test(JS), true,
     'isBlank 的算法与空态判据一致');
@@ -225,12 +225,14 @@ console.log('=== 4. 摘要卡底部的「即将提醒」胶囊 ===');
     '卡上文字不用 opacity 叠渐变（渐变两端色不同，会渲染成两种颜色）');
   eq(/font-family: 'Times New Roman', Georgia, 'Songti SC', Didot, serif/.test(CARD_WXSS), true,
     '装饰英文走衬线族');
-  eq(/top: 59rpx; transform: translateY\(-50%\)/.test(CARD_WXSS), true,
-    '水印与「北京之行」上下居中');
-  /* 字距用 em（= 字号 × 70%），不用 rpx：em 自带「相对字号」的语义，
+  eq(/\.sm-mark \{[^}]*margin-left: 18rpx/.test(CARD_WXSS), true,
+    '装饰英文紧接在「北京之行」右侧');
+  eq(/\.sm-mark \{[^}]*position: absolute/.test(CARD_WXSS), false,
+    '装饰英文回到标题行的正常文档流');
+  /* 字距用 em（= 字号 × 32%），不用 rpx：em 自带「相对字号」的语义，
      以后调字号字距自动跟着走；写死 21rpx 会脱钩。 */
-  eq(/\.sm-mark-ch \{ margin-left: \.7em; \}/.test(CARD_WXSS), true,
-    '水印字距 = 字号 × 70%（em 单位，不用绝对值）');
+  eq(/\.sm-mark-ch \{ margin-left: \.32em; \}/.test(CARD_WXSS), true,
+    '装饰英文字距收紧到字号 × 32%（em 单位，不用绝对值）');
   eq(/\.sm-mark \{[^}]*opacity: \.28/.test(CARD_WXSS), true,
     '水印不透明度 .28（2026-09-21 由 .55 再降一半）');
   eq(/\.sm-name \{[^}]*font-size: 38rpx/.test(CARD_WXSS), true, '标题字号小一号（42→38rpx）');
@@ -701,7 +703,7 @@ console.log('=== 10. 组件抛出的事件，页面必须都接上了 ===');
     '横幅在模板里是普通节点（不带内联 top），并识别额度预警前置态');
 }
 
-console.log('=== 11. 顶部布局：横幅在文档流里 / 标题下沿对齐 / 卡片右列 ===');
+console.log('=== 11. 顶部布局：横幅在文档流里 / 导航栏安全间距 / 卡片右列 ===');
 {
   /* 用户 2026-09-22 报的三个问题，根因是同一个：**横幅曾经是 `position: fixed`**。
      fixed 元素不占文档流，于是「不被它压住」只能靠给内容加 padding 去凑，
@@ -719,24 +721,21 @@ console.log('=== 11. 顶部布局：横幅在文档流里 / 标题下沿对齐 /
   eq(/margin-bottom|margin:\s*0 0/.test(bannerRule), false,
     '横幅与摘要卡之间不留间距（2026-09-23 用户口径：别再给 margin-bottom）');
   eq(/margin-top:\s*0/.test(bannerRule), true,
-    '横幅与标题下沿直接对齐，不再通过负 margin 抵消留白');
+    '横幅自身不再加额外偏移，位置由统一正文基准决定');
 
   /* ⚠️ 导航栏是 fixed、不占文档流 → **正文必须自己让出它的高度**，
      否则第一块内容（加了横幅时就是横幅）会钻到标题底下被盖住。
      这一条曾经漏过，改完当场就是「横幅看不见」。 */
   eq(/class="page-body" style="padding-top: \{\{pageTop\}\}rpx;"/.test(WXML), true,
     '正文让出导航栏高度（否则内容钻到标题底下）');
-  /* ⚠️ 基准是**标题下沿**，不是导航块底边：导航块 88rpx 是给胶囊留的高度，
-     标题在它里面居中，底边到标题下沿还空着 (88−45)/2 ≈ 21.5rpx。
-     按底边算实测 20.1px —— 用户看到的就是「间隔太大」（2026-09-23 报的）。 */
-  eq(/const titleInset = \(NAV_BAR_RPX - NAV_TITLE_RPX\) \/ 2;/.test(JS), true,
-    'pageTop 减掉的是导航块比标题高出来的一半（居中内缩）');
-  eq(/return \(statusBarHeight \|\| 20\) \* 2 \+ NAV_BAR_RPX \+ PAGE_GAP_RPX - titleInset;/.test(JS), true,
-    'pageTop = 状态栏(px→rpx) + 导航块 − 内缩 = 标题下沿');
-  eq(/const PAGE_GAP_RPX = 0;/.test(JS), true,
-    '正文直接与标题下沿对齐');
-  eq(/const NAV_TITLE_RPX = 45;/.test(JS), true,
-    '标题行高 45rpx（30rpx × page line-height 1.5）');
+  /* 微信胶囊占满导航块右侧高度，正文必须从导航块底边再留安全间距，
+     否则顶部横幅或摘要卡会被原生胶囊遮挡。 */
+  eq(/return \(statusBarHeight \|\| 20\) \* 2 \+ NAV_BAR_RPX \+ PAGE_GAP_RPX;/.test(JS), true,
+    'pageTop = 状态栏(px→rpx) + 导航块 + 安全间距');
+  eq(/const PAGE_GAP_RPX = 28;/.test(JS), true,
+    '导航块底边后预留 28rpx 安全间距');
+  eq(/NAV_TITLE_RPX|titleInset/.test(JS), false,
+    '不再按标题下沿计算正文位置');
   /* ⚠️ 但**不能**把横幅高度也让进去：横幅就在正文里，占位它自己负责，
      再让一次就是双倍空白（上一版 fixed 时代就是这么写的）。 */
   eq(/BANNER_RPX|bannerTop|topOffsets/.test(WXML + JS), false,

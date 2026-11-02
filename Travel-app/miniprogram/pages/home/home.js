@@ -13,14 +13,12 @@ const homeTiming = require('../../utils/home-timing.js');
 const homeCache = require('../../utils/home-cache.js');
 const emptyPreview = require('../../utils/empty-preview.js');
 const reminderFlow = require('../../utils/reminder-flow.js');
+const tripShareCover = require('../../utils/trip-share-cover.js');
 
 /* 导航块高度（rpx）= `.navbar-content` 的 height，两处必须一致。 */
 const NAV_BAR_RPX = 88;
-/* 标题行高（rpx）= `.navbar-title` 的 font-size 30rpx × page 的 line-height 1.5。
-   导航块比标题高得多，标题在其中垂直居中，于是上下各空 (88−45)/2 ≈ 21.5rpx。 */
-const NAV_TITLE_RPX = 45;
-/* 标题下沿 → 正文顶：直接对齐，不再额外留白 */
-const PAGE_GAP_RPX = 0;
+/* 导航块底边 → 正文顶。留出安全间距，避免微信原生胶囊压住横幅或摘要卡。 */
+const PAGE_GAP_RPX = 28;
 /* 滚多少像素把导航栏底色从全透明推到不透明 */
 const NAV_FADE_PX = 50;
 const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
@@ -30,6 +28,12 @@ const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
    见 utils/home-refresh-window.js。常量本身只在「拿不到放票时刻」时兜底。 */
 const HOME_BOOTSTRAP_TTL_MS = refreshWindow.DEFAULT_TTL_MS;
 const EMPTY_RELEASE_FALLBACK = release.buildHomeReleasePreview([], new Date()).sample;
+
+function shareExpiryText(dateStr) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ''));
+  if (!m) return '';
+  return `${m[1]}年${Number(m[2])}月${Number(m[3])}日`;
+}
 
 /**
  * 把 `home.bootstrap` 的返回体加工成页面 data 补丁（纯函数）。
@@ -48,7 +52,9 @@ function buildHomeData(res, now, opts) {
        模板里做不了「只有第一趟」。 */
     Object.assign({}, t, { _weak: i === 0 }));
   const primary = trips.length ? trips[0] : null;
-  const history = res.history || [];
+  const history = (res.history || []).map(t => Object.assign({}, t, {
+    shareActive: t.shareActive === true,
+  }));
   /* 摘要卡展示的那一趟（2026-10-15 用户口径）：优先最近未结束行程；
      全都结束了就退化成**最近的一段过往行程**，卡片副标题显示「已结束」。
      起因：所有行程都结束之后首页只剩一条「过往行程」折叠条，一屏空白。
@@ -60,6 +66,9 @@ function buildHomeData(res, now, opts) {
         （`endDate >= today` 留在主墙，次日归历史），数组序也是服务端给的
         （history 按 `startDate` 降序），页面只沿同一个顺序回退一层。 */
   const summaryTrip = primary || history[0] || null;
+  const canCreateTripShare = !!primary
+    && ((primary.items || []).length > 0 || Number(primary.itemCount) > 0);
+  const shareActive = !!(summaryTrip && summaryTrip.shareActive);
   const releasePreview = buildEmptyPreview(res, now);
   const serverNow = res.serverNow ? new Date(res.serverNow) : now;
   const quotaWarningDayKey = release.toDateStr(serverNow);
@@ -72,6 +81,8 @@ function buildHomeData(res, now, opts) {
     trips,
     primaryTrip: primary,
     summaryTrip,
+    showTripShareAction: shareActive || canCreateTripShare,
+    tripShareActionLabel: shareActive ? '管理分享' : '分享行程',
     /* 被划掉的气泡在重新加载后清空：新的一次会话可以再问一次，
        但同一次会话里不重复追问（「忽略」的语义 = 提前进入中性态）。
        `undefined` = 保留现有值 —— 静默刷新和缓存绘制都不能抹掉它。 */
@@ -144,7 +155,7 @@ Page({
   data: {
     statusBarHeight: 20,
     navBarHeight: 44,
-    /* 正文的 padding-top（rpx）= 标题下沿，见 `pageTopOf()`。
+    /* 正文的 padding-top（rpx）= 导航块底边 + 安全间距，见 `pageTopOf()`。
        导航栏是 fixed 的、不占文档流，正文不让位就会被它盖住（横幅首当其冲）。
        ⚠️ 这里**不含横幅高度**：横幅就在正文里，高度由它自己占。 */
     pageTop: 0,
@@ -159,6 +170,10 @@ Page({
        那一趟」，只有 `onAddTrip` 的预填读它。 */
     summaryTrip: null,
     primaryTrip: null,
+    showTripShareAction: false,
+    tripShareActionLabel: '',
+    showTripShareSheet: false,
+    tripShareSheet: null,
     /* 摘要卡底部的「即将提醒」胶囊：接下来的放票时刻（服务端拼好文案）。
        来源是 stickyBanner.pills —— 不放独立字段，避免两处口径漂。 */
     bannerPills: [],
@@ -258,6 +273,16 @@ Page({
   },
 
   onShareAppMessage(options) {
+    const target = options && options.target;
+    if (target && target.dataset && target.dataset.shareKind === 'trip'
+      && this._tripSharePath) {
+      analytics.trackShareIntent('trip', 'current');
+      return {
+        title: this._tripShareTitle || '朋友分享给你的北京之行，点开看看吧',
+        path: this._tripSharePath,
+        imageUrl: this._tripShareCoverPath || tripShareCover.FALLBACK_IMAGE,
+      };
+    }
     /* 详情浮窗里的 open-type=share 也会走页面生命周期。
        只有按钮发起的转发才按景点分享；右上角菜单仍分享首页今日场景。 */
     if ((!options || options.from === 'button') && this.data.showSpotPopup && this.data.popupSpotMeta) {
@@ -345,6 +370,10 @@ Page({
         history: [],
         summaryTrip: null,
         primaryTrip: null,
+        showTripShareAction: false,
+        tripShareActionLabel: '',
+        showTripShareSheet: false,
+        tripShareSheet: null,
         bannerPills: [],
         banner: null,
         reminderQuotaWarning: null,
@@ -630,6 +659,159 @@ Page({
   onBannerOpen(e) {
     const spotId = e.detail && e.detail.spotId;
     if (spotId) this.openSpotPopup(spotId);
+  },
+
+  /* ===== 行程只读分享 ===== */
+
+  onTripShareTap() {
+    const trip = this.data.summaryTrip;
+    if (!trip || !trip._id) return;
+    const seq = (this._tripShareSeq = (this._tripShareSeq || 0) + 1);
+    const current = this.data.primaryTrip;
+    const isCurrent = !!(current && current._id === trip._id);
+    this.setData({
+      showTripShareSheet: true,
+      tripShareSheet: {
+        state: 'loading',
+        hasActive: trip.shareActive === true,
+        manageOnly: !isCurrent,
+        shareReady: false,
+        expiresOn: '',
+        error: '',
+        busy: false,
+      },
+    });
+    const request = isCurrent
+      ? api.reminder.tripShare.create({ tripId: trip._id })
+      : api.reminder.tripShare.status({ tripId: trip._id });
+    request.then(res => {
+      if (seq !== this._tripShareSeq || !this.data.showTripShareSheet) return;
+      const token = res.token || '';
+      this._tripSharePath = token
+        ? shareEntry.buildTripSharePath(token, 'share')
+        : '';
+      this._tripShareTitle = tripShareTitleOf(res.ownerNickname, trip);
+      const sharePatch = {
+        tripShareSheet: {
+          state: token ? 'preparing' : (res.status || 'NONE').toLowerCase(),
+          hasActive: trip.shareActive === true || res.reused === true,
+          manageOnly: !isCurrent,
+          shareReady: false,
+          expiresOn: shareExpiryText(res.expiresOn || ''),
+          error: '',
+          busy: false,
+        },
+      };
+      this.setData(sharePatch, () => {
+        if (!token) return;
+        const coverRequest = isCurrent
+          ? this.prepareTripShareCover(trip)
+          : Promise.resolve(tripShareCover.FALLBACK_IMAGE);
+        Promise.race([
+          coverRequest,
+          new Promise(resolve => {
+            setTimeout(() => resolve(tripShareCover.FALLBACK_IMAGE), 2500);
+          }),
+        ]).then(imageUrl => {
+          if (seq !== this._tripShareSeq || !this.data.showTripShareSheet) return;
+          this._tripShareCoverPath = imageUrl || tripShareCover.FALLBACK_IMAGE;
+          this.setData({
+            tripShareSheet: Object.assign({}, this.data.tripShareSheet || sharePatch.tripShareSheet, {
+              state: 'ready',
+              shareReady: true,
+            }),
+          });
+          this.applyTripShareActive(true);
+        });
+      });
+    }).catch(err => {
+      if (seq !== this._tripShareSeq || !this.data.showTripShareSheet) return;
+      this._tripSharePath = '';
+      this._tripShareTitle = '';
+      this._tripShareCoverPath = '';
+      const error = err && err.errorCode === 1041
+        ? '当前行程暂不可分享'
+        : '分享链接准备失败，请重试';
+      this.setData({
+        tripShareSheet: {
+          state: 'error',
+          hasActive: trip.shareActive === true,
+          manageOnly: !isCurrent,
+          shareReady: false,
+          expiresOn: '',
+          error,
+          busy: false,
+        },
+      });
+    });
+  },
+
+  onTripShareRetry() {
+    this.onTripShareTap();
+  },
+
+  /* 独立成方法，便于真机/DevTools 预热 Canvas，而不必真的发起一次会话分享。 */
+  prepareTripShareCover(trip) {
+    return tripShareCover.generate(this, trip);
+  },
+
+  onTripShareSheetClose() {
+    this._tripShareSeq = (this._tripShareSeq || 0) + 1;
+    this._tripSharePath = '';
+    this._tripShareTitle = '';
+    this._tripShareCoverPath = '';
+    this.setData({ showTripShareSheet: false, tripShareSheet: null });
+  },
+
+  applyTripShareActive(active) {
+    const patchTrip = trip => (trip ? Object.assign({}, trip, {
+      shareActive: active === true,
+    }) : trip);
+    const primaryTrip = patchTrip(this.data.primaryTrip);
+    const summaryTrip = patchTrip(this.data.summaryTrip);
+    const canCreate = !!primaryTrip
+      && ((primaryTrip.items || []).length > 0 || Number(primaryTrip.itemCount) > 0);
+    this.setData({
+      trips: (this.data.trips || []).map(patchTrip),
+      history: (this.data.history || []).map(patchTrip),
+      primaryTrip,
+      summaryTrip,
+      showTripShareAction: active === true || canCreate,
+      tripShareActionLabel: active === true ? '管理分享' : (canCreate ? '分享行程' : ''),
+    });
+  },
+
+  onTripShareRevoke() {
+    const trip = this.data.summaryTrip;
+    const sheet = this.data.tripShareSheet || {};
+    if (!trip || !trip._id || sheet.busy) return;
+    wx.showModal({
+      title: '停止分享？',
+      content: '停止后，已经发出的链接会立即失效。',
+      confirmText: '停止分享',
+      confirmColor: '#C0472A',
+      success: r => {
+        if (!r.confirm) return;
+        this.setData({
+          tripShareSheet: Object.assign({}, sheet, { busy: true }),
+        });
+        api.reminder.tripShare.revoke({ tripId: trip._id }).then(() => {
+          this._tripSharePath = '';
+          this._tripShareTitle = '';
+          this._tripShareCoverPath = '';
+          this.applyTripShareActive(false);
+          this.setData({ showTripShareSheet: false, tripShareSheet: null });
+          wx.showToast({ title: '已停止分享', icon: 'none' });
+        }).catch(err => {
+          api.toastError(err);
+          this.setData({
+            tripShareSheet: Object.assign({}, this.data.tripShareSheet || sheet, {
+              busy: false,
+            }),
+          });
+        });
+      },
+    });
   },
 
   onSpot(e) {
@@ -1090,19 +1272,25 @@ Page({
 });
 
 /**
- * 正文顶（rpx）= **标题下沿**。
+ * 会话分享标题。微信不开放本人真实昵称，只使用主人应用内资料；
+ * 昵称过长会挤坏聊天列表里的可读性，因此最多保留 12 个字符。
+ */
+function tripShareTitleOf(nickname, trip) {
+  const name = String(nickname || '').trim().slice(0, 12) || '朋友';
+  const tripName = util.tripDisplayName(trip) || '行程';
+  return name + '分享给你的' + tripName + '，点开看看吧';
+}
+
+/**
+ * 正文顶（rpx）= **导航块底边 + 安全间距**。
  *
- * ⚠️ 不是「导航栏底边」：导航块 88rpx 是给胶囊按钮留的高度，
- * 标题在它里面垂直居中，底边到标题下沿还空着 (88−45)/2 ≈ 21.5rpx。
- * 按底边算会多出这一截；当前正文直接与标题下沿对齐。
+ * 不能按「标题下沿」算：微信原生胶囊覆盖导航块右侧完整高度，
+ * 正文若从标题下沿开始，横幅和摘要卡会钻到胶囊下面。
  * ⚠️ 状态栏是 px 且带小数（iPhone 15 实测 48.5px），换算成 rpx 必须 ×2。
  * ⚠️ 这个值**不含横幅高度**：横幅排在正文内部，占位由它自己负责。
  */
 function pageTopOf(statusBarHeight) {
-  /* 减掉的是**导航块比标题高出来的那一半**（上下各空这么多，标题居中），
-     不是整个标题高度 —— 前者是 21.5rpx，后者是 45rpx，差一倍。 */
-  const titleInset = (NAV_BAR_RPX - NAV_TITLE_RPX) / 2;
-  return (statusBarHeight || 20) * 2 + NAV_BAR_RPX + PAGE_GAP_RPX - titleInset;
+  return (statusBarHeight || 20) * 2 + NAV_BAR_RPX + PAGE_GAP_RPX;
 }
 
 /** 解析服务端时间戳（毫秒数或 ISO 字符串）；拿不到就返回 0。 */

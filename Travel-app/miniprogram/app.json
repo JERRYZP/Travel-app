@@ -22,6 +22,7 @@
     "pages/spot-correction/spot-correction",
     "pages/admin-feedback/admin-feedback",
     "pages/share-scene/share-scene",
+    "pages/trip-share/trip-share",
     "pages/payment-probe/payment-probe"
   ],
   "window": {

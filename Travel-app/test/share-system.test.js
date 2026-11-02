@@ -33,6 +33,19 @@ eq(Object.prototype.hasOwnProperty.call(parsed, 'nickname'), false, '不保留�
 eq(shareEntry.buildSpotHubPath('gugong', 'share'), '/pages/spot-hub/spot-hub?spotId=gugong&source=share', '景点深链格式');
 eq(shareEntry.buildScenePath('today', 'share'), '/pages/share-scene/share-scene?sceneId=today&source=share', '场景链接格式');
 eq(shareEntry.buildSceneQuery('national-day-2026', 'timeline'), 'sceneId=national-day-2026&source=timeline', '朋友圈 query 格式');
+const tripEntry = shareEntry.parseEntryOptions({
+  token: 'a'.repeat(64),
+  source: 'share',
+  nickname: 'not-used',
+});
+eq(tripEntry.token, 'a'.repeat(64), '解析行程分享令牌');
+eq(shareEntry.entryTypeOf(tripEntry, 'home'), 'trip', '行程分享入口类型');
+eq(shareEntry.entryIdOf(tripEntry, 'home'), 'readonly', '行程分享埋点不记录令牌');
+eq(
+  shareEntry.buildTripSharePath('a'.repeat(64), 'share'),
+  `/pages/trip-share/trip-share?token=${'a'.repeat(64)}&source=share`,
+  '行程分享路径只携带令牌和来源'
+);
 
 console.log('\n=== 2. 北京时间场景计算 ===');
 const now = new Date('2026-09-25T10:00:00Z'); // 北京时间 18:00

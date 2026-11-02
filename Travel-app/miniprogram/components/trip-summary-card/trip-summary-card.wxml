@@ -1,13 +1,16 @@
 <view wx:if="{{trip}}" class="summary">
-  <!-- 右上角装饰英文水印。放在标题行里用绝对定位，不参与 flex 排布——
-       它是**背景纹理**，不该跟「北京之行」抢任何宽度。 -->
-  <view wx:if="{{watermark.length > 0}}" class="sm-mark">
-    <text wx:for="{{watermark}}" wx:key="index" class="sm-mark-ch">{{item}}</text>
-  </view>
-
-  <!-- ① 行程名（左）+ 装饰英文（右，绝对定位，不参与排布） -->
+  <!-- ① 行程名 + 行内装饰英文 + 分享入口，三者共用同一条标题行。 -->
   <view class="sm-head">
     <text class="sm-name">{{displayName}}</text>
+    <view wx:if="{{watermark.length > 0}}" class="sm-mark">
+      <text wx:for="{{watermark}}" wx:key="index" class="sm-mark-ch">{{item}}</text>
+    </view>
+    <view wx:if="{{showShareAction}}" class="sm-share-hit" bindtap="onShareTap">
+      <view class="sm-share-action">
+        <svg-icon name="wechat-linear" size="15.3px" />
+        <text>{{shareActionLabel}}</text>
+      </view>
+    </view>
   </view>
 
   <!-- ② 日期段 + 倒计时**同一行**（设计稿 UI/V.0.2-0919）：

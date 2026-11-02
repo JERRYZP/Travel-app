@@ -1,0 +1,69 @@
+<wxs module="asset" src="../../utils/cloud-assets.wxs"></wxs>
+
+<view class="ts-navbar" style="height: {{navTop}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="ts-navbar-content" style="height: {{navBarHeight}}px;">
+    <view wx:if="{{canGoBack}}" class="ts-back" bindtap="onBack">
+      <svg-icon name="back" size="18px" />
+    </view>
+    <text class="ts-navbar-title">行程安排</text>
+  </view>
+</view>
+<view style="height: {{navTop}}px;"></view>
+
+<view class="ts-page">
+  <block wx:if="{{loading}}">
+    <view class="ts-skeleton">
+      <view class="ts-skeleton-hero"></view>
+      <view class="ts-skeleton-line wide"></view>
+      <view class="ts-skeleton-line"></view>
+      <view class="ts-skeleton-card"></view>
+      <view class="ts-skeleton-card short"></view>
+    </view>
+  </block>
+
+  <view wx:elif="{{invalid}}" class="ts-state">
+    <svg-icon name="alert-circle-muted" size="34px" />
+    <text class="ts-state-title">这份行程暂时无法查看</text>
+    <text class="ts-state-desc">分享可能已停止、已过期，或行程已被删除。</text>
+    <view class="ts-state-action" bindtap="goHome">返回首页</view>
+  </view>
+
+  <view wx:elif="{{loadFailed}}" class="ts-state">
+    <svg-icon name="alert-circle-muted" size="34px" />
+    <text class="ts-state-title">行程加载失败</text>
+    <text class="ts-state-desc">网络开小差了，请稍后再试。</text>
+    <view class="ts-state-action" bindtap="onRetry">重新加载</view>
+  </view>
+
+  <block wx:elif="{{trip}}">
+    <view class="ts-hero">
+      <view class="ts-readonly">只读</view>
+      <text class="ts-hero-title">{{trip.title}}</text>
+      <text class="ts-hero-date">{{trip.dateRange}}</text>
+      <text class="ts-hero-summary">共 {{trip.dayCount}} 天 · {{trip.spotCount}} 处安排</text>
+    </view>
+
+    <view class="ts-days">
+      <view wx:for="{{trip.days}}" wx:key="key" wx:for-item="day" class="ts-day">
+        <view class="ts-day-head">
+          <text class="ts-day-title">{{day.title}}</text>
+          <text class="ts-day-badge">第{{day.dayNumber}}天</text>
+        </view>
+        <view class="ts-day-list">
+          <view wx:for="{{day.items}}" wx:key="spotId" wx:for-item="spot" class="ts-spot-row">
+            <image class="ts-spot-image" src="{{asset.spot(spot.spotId)}}" mode="aspectFill" lazy-load="{{true}}" />
+            <view class="ts-spot-copy">
+              <text class="ts-spot-name">{{spot.spotName}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="ts-footnote">
+      <text>只读分享 · 行程以分享者最新安排为准</text>
+      <text wx:if="{{expiresText}}">链接有效期至 {{expiresText}}</text>
+    </view>
+  </block>
+</view>

@@ -1,0 +1,210 @@
+.ts-navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 90;
+  background: var(--color-page);
+}
+.ts-navbar-content {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ts-back {
+  position: absolute;
+  left: 20rpx;
+  width: 60rpx;
+  height: 60rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ts-back:active { opacity: .6; }
+.ts-navbar-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.ts-page {
+  min-height: 100vh;
+  padding: 24rpx 30rpx calc(48rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  background: var(--color-page);
+}
+
+.ts-hero {
+  position: relative;
+  padding: 32rpx 30rpx 34rpx;
+  border: 1rpx solid #EADCC7;
+  border-radius: 24rpx;
+  background: #FFF8ED;
+  box-shadow: 0 2rpx 10rpx rgba(100, 60, 20, .06);
+}
+.ts-readonly {
+  position: absolute;
+  top: 30rpx;
+  right: 26rpx;
+  padding: 7rpx 16rpx;
+  border: 1rpx solid #DFC79F;
+  border-radius: 8rpx;
+  color: #8D6B3F;
+  font-size: 21rpx;
+  line-height: 1.2;
+}
+.ts-hero-title {
+  display: block;
+  max-width: 470rpx;
+  font-size: 42rpx;
+  line-height: 1.25;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+.ts-hero-date {
+  display: block;
+  margin-top: 14rpx;
+  font-size: 27rpx;
+  line-height: 1.4;
+  color: #7B5843;
+}
+.ts-hero-summary {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 23rpx;
+  line-height: 1.45;
+  color: #A07E62;
+}
+
+.ts-days {
+  margin-top: 38rpx;
+}
+.ts-day + .ts-day { margin-top: 38rpx; }
+.ts-day-head {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 0 4rpx 14rpx;
+}
+.ts-day-title {
+  font-size: 29rpx;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.ts-day-badge {
+  padding: 4rpx 10rpx;
+  border-radius: 6rpx;
+  background: #F0E2C8;
+  color: #8D6B3F;
+  font-size: 20rpx;
+  line-height: 1.3;
+}
+.ts-day-list {
+  overflow: hidden;
+  border: 1rpx solid #EDE0C8;
+  border-radius: 20rpx;
+  background: var(--color-surface);
+  box-shadow: 0 2rpx 8rpx rgba(100, 60, 20, .05);
+}
+.ts-spot-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 118rpx;
+  padding: 18rpx 22rpx;
+  box-sizing: border-box;
+}
+.ts-spot-row + .ts-spot-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 118rpx;
+  right: 22rpx;
+  height: 1rpx;
+  background: var(--color-border);
+}
+.ts-spot-image {
+  flex: none;
+  width: 78rpx;
+  height: 78rpx;
+  border-radius: 12rpx;
+  background: #EDE0C8;
+}
+.ts-spot-copy {
+  flex: 1;
+  min-width: 0;
+  margin-left: 18rpx;
+}
+.ts-spot-name {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-strong);
+  word-break: break-all;
+}
+.ts-footnote {
+  display: flex;
+  flex-direction: column;
+  gap: 7rpx;
+  padding: 34rpx 8rpx 10rpx;
+  text-align: center;
+  color: #A78D78;
+  font-size: 21rpx;
+  line-height: 1.55;
+}
+
+.ts-state {
+  min-height: 520rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.ts-state-title {
+  margin-top: 18rpx;
+  font-size: 31rpx;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.ts-state-desc {
+  max-width: 540rpx;
+  margin-top: 10rpx;
+  color: #9B816B;
+  font-size: 23rpx;
+  line-height: 1.55;
+}
+.ts-state-action {
+  min-height: 76rpx;
+  margin-top: 28rpx;
+  padding: 0 34rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: var(--color-primary);
+  color: #FDF6EE;
+  font-size: 25rpx;
+  font-weight: 600;
+}
+.ts-state-action:active { opacity: .86; }
+
+.ts-skeleton { padding-top: 2rpx; }
+.ts-skeleton-hero,
+.ts-skeleton-line,
+.ts-skeleton-card {
+  border-radius: 18rpx;
+  background: linear-gradient(90deg, #EFE6D7 25%, #F7F0E5 50%, #EFE6D7 75%);
+  background-size: 200% 100%;
+  animation: ts-shimmer 1.3s ease-in-out infinite;
+}
+.ts-skeleton-hero { height: 212rpx; }
+.ts-skeleton-line { width: 48%; height: 28rpx; margin-top: 26rpx; }
+.ts-skeleton-line.wide { width: 72%; margin-top: 36rpx; }
+.ts-skeleton-card { height: 138rpx; margin-top: 20rpx; }
+.ts-skeleton-card.short { width: 76%; }
+@keyframes ts-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}

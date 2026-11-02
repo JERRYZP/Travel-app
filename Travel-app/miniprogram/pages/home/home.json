@@ -10,6 +10,7 @@
     "result-sheet": "/components/result-sheet/result-sheet",
     "date-picker-sheet": "/components/date-picker-sheet/date-picker-sheet",
     "reminder-auth-sheet": "/components/reminder-auth-sheet/reminder-auth-sheet",
+    "trip-share-sheet": "/components/trip-share-sheet/trip-share-sheet",
     "snackbar": "/components/snackbar/snackbar",
     "van-loading": "/components/vendor/vant/loading/index"
   },

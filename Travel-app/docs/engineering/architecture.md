@@ -43,6 +43,7 @@
 | `pages/feedback` | 意见反馈 |
 | `pages/spot-correction` | 景点信息纠错 |
 | `pages/share-scene` | 今日/国庆公开场景页 |
+| `pages/trip-share` | PAGE-018 行程只读分享落地页；凭令牌读取脱敏投影，不提供任何写操作或二次转发 |
 
 `pages/spot-rule` 与 `pages/spots` 文件仍存在，但入口和历史定位需以当前路由审计为准，不能仅凭旧文档恢复旧动线。
 
@@ -58,8 +59,9 @@
 
 - 景点分享统一落 `pages/spot-hub?spotId=...`。
 - 今日放票和国庆场景统一落 `pages/share-scene?sceneId=...`。
-- 分享链接只携带公开参数，不携带昵称、OpenID、行程、票务结果或提醒状态。
-- 首页分享只分享公开场景，不分享个人行程。
+- 公开分享链接不携带昵称、OpenID、行程 ID、票务结果或提醒状态。
+- 行程只读分享走 `pages/trip-share?token=...`。令牌是唯一授权凭证，服务端按 `trips.shareToken` 查询后输出城市、日期和景点白名单；普通行程接口只暴露 `shareActive`。
+- 行程分享在 `endDate + 7 天` 当天仍有效，接收方不可转发到会话或朋友圈；首页右上角菜单仍只分享原公开首页。
 
 ## 行程与提醒模型
 

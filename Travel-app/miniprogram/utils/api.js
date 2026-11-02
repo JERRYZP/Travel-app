@@ -89,6 +89,12 @@ const reminder = {
     updateRange: (p) => call('reminder', { action: 'trip.updateRange', ...p }),
     remove: (p) => call('reminder', { action: 'trip.remove', ...p }),
   },
+  tripShare: {
+    create: (p) => homeMutationCall('reminder', { action: 'tripShare.create', ...p }),
+    status: (p) => call('reminder', { action: 'tripShare.status', ...p }),
+    revoke: (p) => homeMutationCall('reminder', { action: 'tripShare.revoke', ...p }),
+    open: (token) => call('reminder', { action: 'tripShare.open', token }),
+  },
   timeline: {
     /* 旧口径：按已落库的行程算。首页改纯预览后已无调用方，保留兼容 */
     generate: (p) => call('reminder', { action: 'timeline.generate', ...p }),
@@ -229,6 +235,8 @@ function toastError(result) {
     1032: '会员购买暂停中，请稍后再试',
     1033: '上线前迁移未完成，不能切换全量',
     1040: '无权限执行此操作',
+    1041: '当前行程暂不可分享',
+    1042: '这份行程暂时无法查看',
     1500: '服务异常，请稍后重试',
   };
   if (result && map[result.errorCode]) {

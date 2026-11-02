@@ -15,13 +15,11 @@
   </view>
 </view>
 
-<!-- ⚠️ `pageTop` = 标题下沿（**不是**导航栏底边）。
-     导航块 88rpx 是给胶囊按钮留的常规高度，标题在其中垂直居中，
-     所以底边到标题下沿还空着约 21.5rpx —— 当前正文直接与标题下沿对齐，
-     不再额外留白。
-     现在只让出「(88 − 标题行高) / 2」那一截，不再补额外间距。
-     导航栏是 fixed、正文必须让出它的高度，否则第一块内容会钻到标题底下；
-     这里只让导航块的内缩，**不让横幅的高度**——横幅就在正文里，占位归它自己。 -->
+<!-- ⚠️ `pageTop` = 导航块底边 + 安全间距。
+     微信原生胶囊覆盖导航块右侧完整高度，正文不能从标题下沿开始，
+     否则顶部横幅或摘要卡会钻到胶囊下面。
+     导航栏是 fixed、正文必须让出它的高度；这里只让导航栏和安全间距，
+     不让横幅自身高度——横幅就在正文里，占位归它自己。 -->
 <view class="page-body" style="padding-top: {{pageTop}}rpx;">
 
   <!-- 授权额度预警：short / exhausted 是真实缺口，立即提示；只有 low 缓冲受 48 小时窗口限制。可当天关闭。 -->
@@ -225,7 +223,14 @@
             `util.tripCountdownTextOf` 给出「已结束」；此时 `primaryTrip` 为 null
             （它是「还能继续加提醒的那趟」，只给 onAddTrip 预填用）。
             两者混用会出现「拿已结束行程的日期段预填新增提醒」这类错配。 -->
-    <trip-summary-card trip="{{summaryTrip}}" pills="{{bannerPills}}" bind:pill="onBannerPillTap" />
+    <trip-summary-card
+      trip="{{summaryTrip}}"
+      pills="{{bannerPills}}"
+      show-share-action="{{showTripShareAction}}"
+      share-action-label="{{tripShareActionLabel}}"
+      bind:pill="onBannerPillTap"
+      bind:share="onTripShareTap"
+    />
 
     <!-- 分段墙：未结束行程按开始日期升序纵向排列，不做横向 Tab -->
     <view wx:for="{{trips}}" wx:key="_id" wx:for-item="trip">
@@ -306,6 +311,17 @@
   bind:close="onSpotPopupClose"
   bind:loaded="onSpotPopupLoaded"
 />
+
+<trip-share-sheet
+  show="{{showTripShareSheet}}"
+  sheet="{{tripShareSheet}}"
+  bind:close="onTripShareSheetClose"
+  bind:retry="onTripShareRetry"
+  bind:revoke="onTripShareRevoke"
+/>
+
+<!-- 会话封面绘制节点：放在屏幕外，仅用于生成 700x560 JPG，不参与页面布局。 -->
+<canvas type="2d" id="trip-share-cover-canvas" class="trip-share-cover-canvas"></canvas>
 
 <!-- 提醒样式示例：当前页直接弹出，不从设置页中转 -->
 <reminder-sample-sheet show="{{showSampleSheet}}" bind:close="onCloseReminderSamples" />

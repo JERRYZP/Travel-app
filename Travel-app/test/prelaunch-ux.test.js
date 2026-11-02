@@ -341,6 +341,14 @@ function resetWx(patch = {}) {
   eq(/\.form-input\s*\{[^}]*height:\s*88rpx[^}]*line-height:\s*88rpx[^}]*padding:\s*0\s+20rpx/.test(feedbackWxss),
     true, '意见反馈输入框有足够高度和行高，文字不被裁切');
 
+  console.log('\n=== 4.2 底部导航图标按同一尺寸体系缩放 ===');
+  const tabbarWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/components/tabbar/tabbar.wxml'), 'utf8');
+  const tabbarWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/components/tabbar/tabbar.wxss'), 'utf8');
+  eq((tabbarWxml.match(/size="40rpx"/g) || []).length, 3, '三个 tabbar 图标统一使用 40rpx');
+  eq(/size="22px"/.test(tabbarWxml), false, '不再使用不随屏幕缩放的固定 22px 图标');
+  eq(/\.tabbar-icon-wrap\s*\{[^}]*width:\s*44rpx[^}]*height:\s*44rpx/.test(tabbarWxss), true,
+    '图标容器继续使用 44rpx，图标保留 4rpx 内边距');
+
   console.log('\n=== 5. 首次成功提示只出现一次 ===');
   wxState.storage = {};
   eq(notify.consumeFirstReminderSuccessTip(), true, '首次成功返回 true');

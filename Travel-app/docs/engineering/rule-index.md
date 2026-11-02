@@ -58,6 +58,7 @@
 | `RULE-DEPLOY-001` | `CLAUDE.md` 157-174 | 部署依赖、顺序和未验证状态 | `.claude/rules/deployment.md`、`docs/engineering/current-state.md` | `extracted` |
 | `RULE-ADMIN-001` | 2026-10-06 新增 | 只读 Web 管理后台、事件账本与统计口径 | `docs/engineering/admin-console.md`、`API-契约.md`、`数据库索引.md` | `extracted` |
 | `RULE-ADMIN-002` | 2026-11-02 客服工作台 | 会员购买开关置顶；会员订单与售后双页签；昵称/OpenID 展示、搜索、订单详情和管理员审计 | `产品文档.md` PAGE-017、`API-契约.md`、`数据库索引.md` | `delegated` |
+| `RULE-SHARE-001` | 2026-11-02 行程只读分享 | PAGE-018 只分享当前未结束整趟行程；链接只带 32 字节令牌，`endDate + 7 天` 当日仍有效；接收方不可编辑、复制或二次转发，公开投影不夹带身份与票务/提醒状态。主人应用内昵称只用于会话标题，Canvas 封面只画公开行程信息 | `产品文档.md` PAGE-018 / SHARE-RULE-008~009、`API-契约.md`、`数据库索引.md`、`docs/engineering/domain-rules.md` | `delegated` |
 
 ## Phase 3 验收结果
 

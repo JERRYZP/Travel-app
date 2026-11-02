@@ -65,7 +65,7 @@ function track(event, params) {
 function entryPayload(entry, defaultType, defaultId) {
   return {
     entry_type: (entry && entry.entryType) || defaultType || 'home',
-    entry_id: (entry && (entry.spotId || entry.sceneId)) || defaultId || 'home',
+    entry_id: (entry && (entry.spotId || entry.sceneId || entry.entryId)) || defaultId || 'home',
     source: (entry && entry.source) || 'direct',
   };
 }

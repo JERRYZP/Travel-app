@@ -342,6 +342,9 @@ function stripSensitiveDoc(doc) {
   delete out.openId;
   delete out.nickname;
   delete out.phone;
+  delete out.shareToken;
+  delete out.shareCreatedAt;
+  delete out.shareUpdatedAt;
   return out;
 }
 

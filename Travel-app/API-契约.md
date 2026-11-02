@@ -1,6 +1,7 @@
 # Travel-app 前端接口契约 V1.3
 
 > 面向：前端（微信小程序页面开发）
+> 2026-11-02 更新：新增 `tripShare.create/status/revoke/open` 与 PAGE-018 行程只读分享。分享令牌只从公开路径传入，普通行程接口仅返回 `shareActive`；主人接口可通过 `ownerNickname` 读取应用内昵称用于会话标题，接收方数据只含城市、日期、天数和景点名称。
 > 2026-11-02 更新：客服工作台新增会员限制模式切换。运行期真身为 `payment_config/membership_enforcement`，管理员可切 `off/test/all` 并即时生效；切 `all` 前服务端强制核验两项上线迁移。
 > 2026-11-02 更新：新增客服工作台。管理员可通过 `adminOrders.list/detail` 查询全部会员订单，售后列表补全昵称、完整 OpenID 与关键词搜索；会员购买总开关保留在页面顶部。
 > 2026-11-02 更新：新增会员购买总开关 `payment_config/membership_sales`。暂停只阻止新订单和新发起支付；已支付订单继续查单与发权益，会员状态、订单、退款和售后不受影响。
@@ -54,6 +55,8 @@
 | 1026 | 提醒名额不足 | 进入会员页或提醒页内付费入口；保留原清单并展示真实缺口 |
 | 1032 | 会员购买暂停中 | 关闭支付入口；保留清单和会员/订单/售后状态，稍后由服务端恢复 |
 | 1033 | 上线迁移未完成，不能切全量 | 保持原会员限制模式；先完成对应迁移 |
+| 1041 | 当前行程暂不可分享 | 分享浮层保留可见错误，不创建令牌 |
+| 1042 | 分享行程不可查看 | 只读页统一显示失效态，不区分停止、过期、删除或非法令牌 |
 | 1099 | 未知 action | Toast |
 | 1500 | 服务端异常 | Toast「服务异常，请稍后重试」 |
 
@@ -283,8 +286,9 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 ```
 用途：PAGE-001 首页形态1「生成预约时间线」→ 内部先创建行程
-说明：TRIP-RULE-002 —— 同城市 且（日期有交集 或 首尾相接）→ 合并成一个行程（= 一个任务分组 Tab），
-     日期取并集；新行程可能同时与多个既有行程相接，滚雪球式反复合并。
+说明：TRIP-RULE-002 —— 同城市即合并成一个行程（= 一个任务分组 Tab），
+     日期取并集；新行程可能同时与多个既有行程合并，滚雪球式反复合并。
+     不存在“一个月没有新行程”的冷却期，也不按日期间隔拆分。
      **合并的是行程，不是景点**：各景点保留自己被选中时的日期段（spots），
      时间线不会冒出用户没选过的 (景点 × 日期) 组合。
      被吞并行程的任务与提醒清单自动改挂到存续行程，存续行程复用第一个被合并行程的 tripId。
@@ -351,7 +355,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
       { spotId: "tiantan", startDate: "2026-05-31", endDate: "2026-06-04" }
     ],
     status: "ACTIVE",
-    nextReminderAt: "2026-05-24T12:00:00.000Z"  // 最近待提醒时间
+    nextReminderAt: "2026-05-24T12:00:00.000Z", // 最近待提醒时间
+    shareActive: true                    // 只下发布尔值，shareToken 永不进入普通返回体
   }],
   showGroupTabs: true                   // TRIP-RULE-006：≥2 个行程时 true
 }
@@ -429,6 +434,79 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 }
 // 失败：{ success: false, error: "参数不合法", errorCode: 1010 }（行程不存在或不属于该用户）
 ```
+
+---
+
+### 2.1.1 行程只读分享（`tripShare.*`，2026-11-02）
+
+#### `tripShare.create`
+
+```
+调用：{ action: 'tripShare.create', tripId }
+说明：幂等创建或读取当前整趟行程的只读分享令牌。
+     只允许行程属于当前调用者、endDate >= 北京今天，且至少有一个 trip_item。
+     已有效时复用原令牌；停止后再次调用生成新令牌。
+返回：{
+  success: true,
+  tripId,
+  ownerNickname,         // 仅主人接口返回的应用内昵称，用于会话分享标题，不回传微信昵称
+  token,                 // 64 位十六进制安全随机令牌，仅主人接口返回
+  expiresOn,             // endDate + 7 天，YYYY-MM-DD
+  reused                 // true = 复用旧链接
+}
+失败：1041 当前行程不可分享；1010 行程不存在或不属于调用者
+```
+
+#### `tripShare.status`
+
+```
+调用：{ action: 'tripShare.status', tripId }
+返回：{
+  success: true,
+  tripId,
+  ownerNickname,         // 仅主人接口返回，读取当前应用内资料昵称
+  status: 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'NONE',
+  shareActive,
+  token,                 // 仅 ACTIVE 时返回，供分享浮层复用
+  expiresOn,             // 仅 ACTIVE 时返回
+  canCreate              // 行程未结束时为 true
+}
+```
+
+#### `tripShare.revoke`
+
+```
+调用：{ action: 'tripShare.revoke', tripId }
+说明：幂等停止分享。成功后立即清空 shareToken，旧链接失效。
+返回：{ success: true, tripId, revoked: Boolean, status: 'REVOKED' | 'NONE' }
+```
+
+#### `tripShare.open`
+
+```
+调用：{ action: 'tripShare.open', token }
+说明：任意获得链接的微信用户均可读取。token 是唯一授权凭证，
+     不接受 tripId、userId 或 OpenID 作为辅助授权。
+返回：{
+  success: true,
+  share: { readOnly: true, expiresOn },
+  trip: {
+    city, startDate, endDate, dayCount, spotCount,
+    days: [{
+      visitDate, dayNumber,
+      items: [{ spotId, spotName }]
+    }]
+  }
+}
+失败：1042。无效、停止、过期、行程删除与无行程项统一使用该错误。
+```
+
+安全约束：
+
+- 公开投影是白名单，不得包含 `userId/openId/tripId/itemId/shareToken/releaseAt/result/ticketState/reminder`。
+- `ownerNickname` 只用于主人侧会话分享标题，只出现在 `tripShare.create/status`；不属于公开只读投影。
+- `trips` 文档内字段：`shareToken/shareCreatedAt/shareUpdatedAt`。普通 `trip.list` 和 `home.bootstrap` 只返回 `shareActive`。
+- 行程同城合并时，有效令牌迁到存续行程；多个候选冲突时保留存续行程自身令牌，否则取确定的首个候选。被合并或删除的行程旧令牌失效。
 
 ---
 
@@ -1343,6 +1421,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-015** 订单与退款详情 | `membership.orders`、`membership.orderDetail`；列表最多 50 笔，详情按本人单笔读取，主订单状态与退款状态分离，支持继续支付、取消、同步、申请售后和重新购买 |
 | **PAGE-016** 用户售后申请 | `membership.orderDetail`、`payment.afterSales.submit/cancel/list/detail/syncRights`；未到账、重复支付、未使用退款、权益不符和其他问题，未处理与无远端退款记录的异常单可取消 |
 | **PAGE-017** 客服工作台 | `payment.adminOrders.list/detail`、`payment.afterSales.admin*`；仅 `AFTER_SALES_ADMIN_OPENIDS` 可见，服务端二次鉴权并写审计日志 |
+| **PAGE-018** 行程只读分享 | 主人：`tripShare.create/status/revoke`；接收方：`tripShare.open` |
 | **PAGE-013** 分享场景页 | `spots.list`（today）、`spots.batch`（national-day-2026）；点击景点后 `spots.detail` |
 | **PAGE-010-1** 提醒设置 | `subscribe.get` + 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`；缺口按钮为「补授权次数+1」，点击一次最多申请 1 条（模板未配置时「去授权」置灰） |
 | **PAGE-010-4** 帮助与反馈 | 微信原生客服 `button open-type="contact"`；无云函数调用 |
@@ -1380,10 +1459,13 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 场景页：
 /pages/share-scene/share-scene?sceneId=today|national-day-2026
                                       &source=share|timeline|home_share|search|direct
+
+行程只读分享：
+/pages/trip-share/trip-share?token=<token>&source=share
 ```
 
-- `spotId` / `sceneId` 均做 URL 编码；无效景点显示明确失败态，无效场景回退 `today`。
-- 链接只允许公开参数，不得出现昵称、OpenID、行程 ID、票务结果或提醒状态。
+- `spotId` / `sceneId` / `token` 均做 URL 编码；无效景点显示明确失败态，无效场景回退 `today`，无效令牌统一显示不可查看。
+- 链接只允许公开参数，不得出现昵称、OpenID、行程 ID、票务结果或提醒状态；行程分享令牌是唯一私有内容凭证。
 - `today` 使用 `spots.list` 后按北京时间过滤；`national-day-2026` 使用 `spots.batch`，景点 ID 顺序以 `share-scenes.js` 配置为准。
 - 国庆场景有效期 2026-09-25 至 2026-10-08；过期后页面和分享路径回退 `today`。
 
@@ -1398,8 +1480,8 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 | `share_first_action` | `entry_type`、`entry_id`、`source`、`share_action_type` |
 | `share_revisit` | `entry_type`、`entry_id`、`source`、`day_offset` |
 
-- `entry_type`: `spot | scene | list | home`
-- `source`: `share | timeline | home_share | search | direct`
+- `entry_type`: `spot | scene | list | home | trip`
+- `source`: `share | timeline | home_share | search | direct | trip_share`
 - `share_action_type`: `reminder | trip_only`
 - 微信后台未注册事件或 API 不可用时，客户端静默降级；不得因此阻断提醒提交。
 
@@ -1490,6 +1572,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   primaryTripId: 'trip_a',
   trips: [{
     _id, city, startDate, endDate, name,
+    shareActive: true,              // 只读分享是否有效；不下发 shareToken
     progress: {
       done: 2,                    // 已成的预约需求组数
       total: 3,                   // 需预约的需求组总数，免预约不计
@@ -1499,6 +1582,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   }],
   history: [{
     _id, city, startDate, endDate, name,
+    shareActive: false,             // 历史行程在 endDate + 7 天内仍可能为 true
     progress: { done, total, noReservationCount }
   }],
   stickyBanner: {

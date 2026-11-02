@@ -131,6 +131,8 @@ const ERRORS = {
   ITEM_RESULT_INVALID: { code: 1014, message: '当前行程项不可标记结果' },
   ITEM_UNDO_EXPIRED: { code: 1015, message: '撤销时间已过' },
   ITEM_ENDED: { code: 1016, message: '行程项已结束' },
+  TRIP_SHARE_UNAVAILABLE: { code: 1041, message: '当前行程暂不可分享' },
+  TRIP_SHARE_INVALID: { code: 1042, message: '这份行程暂时无法查看' },
   /* 放票时刻已过 → 提醒开关对这条项不再有任何意义（2026-09-23 定规）。
      菜单此时也不渲染这两个入口，本错误码只可能来自旧版本小程序或直接调接口。 */
   REMINDER_WINDOW_CLOSED: { code: 1017, message: '已过放票时间，提醒无法开启或取消' },

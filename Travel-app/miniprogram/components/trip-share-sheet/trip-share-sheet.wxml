@@ -1,0 +1,56 @@
+<view wx:if="{{show}}" class="tss-mask" bindtap="onClose" catchtouchmove="noop">
+  <view class="tss-sheet" catchtap="noop">
+    <view class="tss-handle"></view>
+    <view class="tss-head">
+      <text class="tss-title">{{sheet.hasActive ? '管理分享' : '分享当前行程'}}</text>
+      <view class="tss-close" bindtap="onClose">
+        <svg-icon name="close" size="12px" />
+      </view>
+    </view>
+    <text class="tss-desc">获得链接的人只能查看，不能编辑或复制行程。</text>
+
+    <view wx:if="{{sheet.state === 'loading'}}" class="tss-state">
+      <van-loading size="32rpx" color="#B8904A" />
+      <text>正在准备分享链接…</text>
+    </view>
+
+    <view wx:elif="{{sheet.state === 'preparing'}}" class="tss-state">
+      <van-loading size="32rpx" color="#B8904A" />
+      <text>正在准备分享封面…</text>
+    </view>
+
+    <view wx:elif="{{sheet.state === 'error'}}" class="tss-state tss-state-error">
+      <text>{{sheet.error}}</text>
+      <view class="tss-retry" bindtap="onRetry">重新尝试</view>
+    </view>
+
+    <view wx:elif="{{!sheet.shareReady}}" class="tss-state">
+      <text>这份分享当前不可用。</text>
+    </view>
+
+    <block wx:else>
+      <view class="tss-expiry">
+        <text>行程结束后 7 天失效</text>
+        <text wx:if="{{sheet.expiresOn}}">预计 {{sheet.expiresOn}}</text>
+      </view>
+
+      <button
+        wx:if="{{!sheet.manageOnly}}"
+        class="tss-primary"
+        open-type="share"
+        data-share-kind="trip"
+      >
+        <svg-icon name="wechat" size="18px" />
+        <text>发送给微信好友</text>
+      </button>
+
+      <view wx:if="{{sheet.manageOnly}}" class="tss-manage-note">
+        行程已经结束，不能再次分享，但可以停止现有链接。
+      </view>
+
+      <view class="tss-revoke {{sheet.busy ? 'is-busy' : ''}}" bindtap="onRevoke">
+        {{sheet.busy ? '正在停止…' : '停止分享'}}
+      </view>
+    </block>
+  </view>
+</view>

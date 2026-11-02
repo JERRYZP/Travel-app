@@ -26,22 +26,22 @@
   color: #FDF6EE;
   overflow: hidden;                /* 让水印不越出圆角 */
 }
-
-/* 装饰英文水印：衬线体、细、大、极淡，与左侧「北京之行」**上下居中**。
+/* 装饰英文：衬线体、细、大、极淡，与「北京之行」在同一行内。
  *
  * 字体走衬线族（Times / Georgia / Songti / Didot 皆为系统自带），
  * 这笔英文要的是"印在卡片上的暗纹"，无衬线体太现代、太抢。
  * ⚠️ 小程序**不能内嵌自定义英文字体**（主包体积 + `wx.loadFontFace` 需网络且首帧会闪），
  * 所以用系统衬线族做梯队，不追求与设计稿字体逐字形一致。 */
 .sm-mark {
-  position: absolute; right: 30rpx;
+  flex: 1;
+  min-width: 0;
   /* 水印同属「北京之行以下」的正文层，取 #EAD9A8；它比正文更淡，
      因为它是装饰纹理，不该跟真文字一个存在感。 */
-  /* 与「北京之行」那一行上下居中：标题行高 54rpx + 卡片上内边距 32rpx
-     → 中线在 32 + 27 = 59rpx。用 translateY(-50%) 而不是把字号算进 top，
-     换字号时不用重算。 */
-  top: 59rpx; transform: translateY(-50%);
   display: flex;
+  align-items: center;
+  margin-left: 18rpx;
+  overflow: hidden;
+  white-space: nowrap;
   font-family: 'Times New Roman', Georgia, 'Songti SC', Didot, serif;
   /* 不透明度在 2026-09-21 由 .55 再降一半 → .28。
      它是背景纹理，存在感要低于任何真文字。 */
@@ -53,15 +53,45 @@
 /* ⚠️ 字距靠**逐字符元素之间的 margin** 撑开，不用 letter-spacing：
    部分机型对 letter-spacing 有上限，达不到设计稿那种散开的效果。
    空格字符已经由 tripWatermark 塞进数组里（「BEIJING␣␣TRIP」）。
-   ⚠️ 单位用 **em（= 字号百分比）而不是 rpx**：这里要的就是「字距 = 字号 × 70%」，
+   ⚠️ 单位用 **em（= 字号百分比）而不是 rpx**：这里要的就是「字距 = 字号 × 32%」，
    em 自带这个语义，改字号时字距自动跟着走；写成 21rpx 这种绝对值，
    以后一调字号就会脱钩，得记得回来重算。 */
-.sm-mark-ch { margin-left: .7em; }
+.sm-mark-ch { margin-left: .32em; }
 .sm-mark-ch:first-child { margin-left: 0; }
 
-/* ① 标题行（水印绝对定位，不参与这里的排布） */
+/* 分享固定在标题行最右侧，内层提供可见底色。 */
+.sm-share-hit {
+  flex: none;
+  margin-left: auto;
+  padding-left: 12rpx;
+}
+.sm-share-hit:active { opacity: .72; }
+.sm-share-action {
+  min-height: 52rpx;
+  display: flex;
+  align-items: center;
+  gap: 7rpx;
+  padding: 0 14rpx;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 999rpx;
+  background: rgba(88, 30, 19, .34);
+  color: #F6E0B5;
+  font-size: 23rpx;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+/* ① 标题行：标题、装饰英文与分享入口共用一行。 */
 .sm-head { display: flex; align-items: center; min-height: 54rpx; }
-.sm-name { font-size: 38rpx; font-weight: 700; letter-spacing: 2rpx; color: #FFFFFF; }
+.sm-name {
+  flex: none;
+  font-size: 38rpx;
+  font-weight: 700;
+  letter-spacing: 2rpx;
+  color: #FFFFFF;
+  white-space: nowrap;
+}
 
 /* ② 日期段 + 倒计时同一行 */
 .sm-meta { display: block; font-size: 26rpx; color: #EAD9A8; margin-top: 4rpx; }

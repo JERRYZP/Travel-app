@@ -9,6 +9,7 @@ const time = require('./time');
 const tripItem = require('./trip-item');
 const item = require('./item');
 const cart = require('./cart');
+const tripShare = require('./trip-share');
 
 /* ============ 纯函数区：可脱离云环境测试 ============ */
 
@@ -229,6 +230,22 @@ async function create(db, userId, {
   }
 
   const dropIds = mergedIds.filter(id => id !== keepId);
+  /* 分享是存续行程的属性。被合并行程里若有有效令牌，必须迁到存续行程；
+     多个候选冲突时固定优先存续行程自身的令牌，再按 merge 顺序取第一个。
+     其余行程随后被物理删除，旧链接自然一起失效。 */
+  const keptTrip = existing.find(t => t._id === keepId) || null;
+  const shareCandidate = [keptTrip, ...mergedTrips]
+    .filter(t => t && tripShare.isShareActive(t, time.todayStr(nowTs)))
+    .sort((a, b) => {
+      if (a._id === keepId) return -1;
+      if (b._id === keepId) return 1;
+      return String(a._id).localeCompare(String(b._id));
+    })[0] || null;
+  const inheritedShare = shareCandidate ? {
+    shareToken: shareCandidate.shareToken,
+    shareCreatedAt: shareCandidate.shareCreatedAt || nowTs,
+    shareUpdatedAt: nowTs,
+  } : {};
   await db.collection(COLLECTIONS.TRIPS).doc(keepId).update({
     data: {
       startDate: range.startDate,
@@ -237,6 +254,7 @@ async function create(db, userId, {
       spotIds: finalSpotIds,
       spots: finalSpots,
       updatedAt: nowTs,
+      ...inheritedShare,
     },
   });
 
@@ -576,7 +594,7 @@ async function list(db, userId, prefetched) {
 
   const sorted = sortTrips(trips);
   return ok({
-    trips: sorted,
+    trips: sorted.map(t => tripShare.publicTrip(t)),
     // TRIP-RULE-006：仅 ≥2 个行程时前端显示分组 Tab 行
     showGroupTabs: sorted.length >= 2,
   });

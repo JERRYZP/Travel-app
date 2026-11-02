@@ -177,7 +177,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 
   console.log('=== 5. 两件事不许混：摘要卡归卡，预填归 primaryTrip ===');
   {
-    eq(/<trip-summary-card trip="\{\{summaryTrip\}\}"/.test(HOME_WXML), true,
+    eq(/<trip-summary-card\s+trip="\{\{summaryTrip\}\}"/.test(HOME_WXML), true,
       '摘要卡绑 summaryTrip');
     eq(/trip="\{\{primaryTrip\}\}"/.test(HOME_WXML), false,
       '模板里不再有人绑 primaryTrip（防两处口径漂开）');
@@ -185,8 +185,14 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
       '回退只看服务端数组序：trips[0] → history[0]，页面不重判结束与否');
     eq(/const t = emptyHome \? null : this\.data\.primaryTrip;/.test(HOME_CODE), true,
       'onAddTrip 预填仍只读 primaryTrip（不拿已结束行程的日期段进 PAGE-005）');
-    eq(/this\.data\.summaryTrip/.test(HOME_CODE), false,
-      'summaryTrip 只做渲染，任何计算/提交逻辑都不读它');
+    const addTripCode = HOME_CODE.slice(
+      HOME_CODE.indexOf('onAddTrip()'),
+      HOME_CODE.indexOf('onEmptySpotTap(')
+    );
+    eq(/summaryTrip/.test(addTripCode), false,
+      'onAddTrip 的任何预填/提交逻辑仍不读 summaryTrip');
+    eq(/onTripShareTap\(\)[\s\S]*this\.data\.summaryTrip/.test(HOME_CODE), true,
+      '只读分享入口可以读取摘要卡当前展示的那一趟');
     eq(/summaryTrip: null,/.test(HOME_CODE), true, 'summaryTrip 在 data 里显式声明');
     eq((HOME_CODE.match(/summaryTrip: null,/g) || []).length, 2,
       'data 初值与开发预览分支都清成 null（预览态不许残留在卡片上）');

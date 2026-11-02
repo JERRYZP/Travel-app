@@ -15,6 +15,7 @@ const db = cloud.database();
 const { COLLECTIONS, V1, ERRORS, ChannelType, PENDING_CART_TRIP_ID, ok, fail } = require('./lib/schema');
 const time = require('./lib/time');
 const trip = require('./lib/trip');
+const tripShare = require('./lib/trip-share');
 const timeline = require('./lib/timeline');
 const cart = require('./lib/cart');
 const task = require('./lib/task');
@@ -61,6 +62,16 @@ exports.main = async (event) => {
       case 'trip.remove':
         // 显式删除行程（含其任务与提醒清单）：清理「进行中 0 / 已过期 0」的空壳行程
         return await trip.remove(db, userId, event.tripId);
+
+      /* ======== 行程只读分享（PAGE-018） ======== */
+      case 'tripShare.create':
+        return await tripShare.create(db, userId, { tripId: event.tripId });
+      case 'tripShare.status':
+        return await tripShare.status(db, userId, { tripId: event.tripId });
+      case 'tripShare.revoke':
+        return await tripShare.revoke(db, userId, { tripId: event.tripId });
+      case 'tripShare.open':
+        return await tripShare.open(db, event.token);
 
       /* ======== 时间线 ======== */
       case 'timeline.generate':
@@ -344,6 +355,7 @@ async function homeBootstrap(db, userId, event = {}) {
       name: t.name,
       progress,
       itemCount: mine.length,
+      shareActive: tripShare.isShareActive(t, today),
       /* 2026-09-21：首页「+ 新增提醒」要拿它预填 add-trip 的景点标签。
          只给 id，页面再走 spots.batch 取名字——这里多查一次会让 bootstrap 变重，
          而预填只发生在用户点按钮之后，没有必要让每次首页加载都背上它。 */
@@ -355,6 +367,9 @@ async function homeBootstrap(db, userId, event = {}) {
   }
   activeTrips.sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
   historyTrips.sort((a, b) => String(b.startDate).localeCompare(String(a.startDate)));
+  historyTrips.forEach((entry) => {
+    entry.shareActive = entry.shareActive === true;
+  });
 
   // 全局摘要卡用最近的一趟；历史区只给统计，不重复整张卡
   const primaryTripId = activeTrips.length ? activeTrips[0]._id : '';
