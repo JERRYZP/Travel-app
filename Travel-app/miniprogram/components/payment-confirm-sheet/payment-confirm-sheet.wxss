@@ -92,6 +92,59 @@
   line-height: 1.65;
 }
 
+.pcs-consent {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
+.pcs-consent-choice {
+  display: flex;
+  align-items: flex-start;
+  flex-shrink: 0;
+  gap: 12rpx;
+  min-height: 44rpx;
+}
+
+.pcs-consent-choice.disabled {
+  opacity: .55;
+}
+
+.pcs-checkbox {
+  position: relative;
+  width: 30rpx;
+  height: 30rpx;
+  margin-top: 2rpx;
+  border: 2rpx solid #B9AA97;
+  border-radius: 6rpx;
+  background: #FFFDF8;
+  box-sizing: border-box;
+}
+
+.pcs-checkbox.checked {
+  border-color: #8A642C;
+  background: #8A642C;
+}
+
+.pcs-checkbox.checked::after {
+  content: '';
+  position: absolute;
+  left: 9rpx;
+  top: 4rpx;
+  width: 7rpx;
+  height: 14rpx;
+  border-right: 3rpx solid #FFFDF8;
+  border-bottom: 3rpx solid #FFFDF8;
+  transform: rotate(45deg);
+  box-sizing: border-box;
+}
+
+.pcs-legal-links {
+  flex: 1;
+  min-width: 200rpx;
+}
+
 .pcs-legal-link {
   padding: 4rpx 0;
   color: #8A642C;

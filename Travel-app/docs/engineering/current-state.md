@@ -55,8 +55,9 @@
 - 2026-11-01 合并 `codex/ux1012`：首页补齐最近一段已结束行程的摘要卡、全部行程结束后摘要卡不退场、首页与预约时间线的日期标题吸顶；相关改动已进入本地发布候选，尚未部署或真机验收。
 - 2026-11-01 合并只读 Web 管理后台：新增 `admin-web/` 与 `cloudfunctions/admin/`，并接入 `reminder_events` 事件账本和 `reminder_daily_stats` 日汇总。管理后台不是小程序体验版运行依赖，云函数与索引仍需单独部署。
 - 2026-11-01 合并首页与发送链路降本：`home.bootstrap` 预取任务触及 100 条上限时退回逐趟查询，避免截断导致排序错误；`notifier` 合并待发与过期扫描、降低空转读取，并保留每小时 cleanup 节流。
-- 2026-11-02 会员购买断路器已部署：创建 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），更新 `payment`（16 个文件）与 `reminder`（21 个文件）；云端 `membership.status` 冒烟返回 `sales.state=OPEN` 且会员套餐可购买。开发者工具整包部署清空了 `payment` 定时触发器，已恢复并核验 `paymentReconcileEveryTwoMinutes = 0 */2 * * * * *`。新管理页客户端尚未上传，未执行真实停售切换。
-- 2026-11-02 客服工作台后端已部署：原售后管理升级为“会员订单 / 售后工单”双页签，会员购买开关固定在页面最顶部；管理员可按订单号、订单 ID、售后单号、完整 OpenID 和昵称搜索，订单与售后卡补全昵称和 OpenID，并提供订单详情及双向售后联动。新版 `payment`（18 个文件）已部署为 `Active`，真实管理员 `adminOrders.list/detail`、售后昵称搜索和 `membership.status=OPEN` 冒烟均通过，15 分钟内无 5xx；`paymentReconcileEveryTwoMinutes` 保持启用。**客户端尚未上传**。
+- 2026-11-02 会员购买断路器已部署：创建 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），更新 `payment`（16 个文件）与 `reminder`（21 个文件）；云端 `membership.status` 冒烟返回 `sales.state=OPEN` 且会员套餐可购买。开发者工具整包部署清空了 `payment` 定时触发器，已恢复并核验 `paymentReconcileEveryTwoMinutes = 0 */2 * * * * *`。包含管理页的客户端随后以 `2.1.0` 上传、审核通过并进入灰度；未执行真实停售切换。
+- 2026-11-02 客服工作台后端已部署：原售后管理升级为“会员订单 / 售后工单”双页签，会员购买开关固定在页面最顶部；管理员可按订单号、订单 ID、售后单号、完整 OpenID 和昵称搜索，订单与售后卡补全昵称和 OpenID，并提供订单详情及双向售后联动。新版 `payment`（18 个文件）已部署为 `Active`，真实管理员 `adminOrders.list/detail`、售后昵称搜索和 `membership.status=OPEN` 冒烟均通过，15 分钟内无 5xx；`paymentReconcileEveryTwoMinutes` 保持启用。**客户端 `2.1.0` 已上传、审核通过并进入灰度。**
+- 2026-11-02 微信审核因支付确认层“点击支付即同意”默认同意协议被驳回；客户端已改为默认未勾选的主动协议选择，未勾选时不可支付，协议链接仍可独立打开。修复后客户端 `2.1.0` 于 12:58 上传，审核通过并进入灰度；上午灰度观察到 5 笔成功支付、2 笔退款，客服工作台正常。实际审核通过并参与灰度的代码已由本提交和 `v2.1.0` tag 固化，尚未全量发布，本次不需要部署云函数。
 
 ## 当前配置
 
@@ -86,7 +87,7 @@
 - 支付部署、HTTP 回调、索引与真实验收步骤见 `docs/engineering/payment-v3-runbook.md`；代码完成不等于线上退款能力已可用。
 - 虚拟支付配置与验收步骤见 `docs/engineering/payment-virtual-runbook.md`；旧 API v3 Runbook 保留，切换前不得删除或覆盖。
 - 云函数：`reminder`（19 个文件）与 `payment`（15 个文件）已于 2026-11-01 重新部署到 `cloud1`；会员状态、首页 bootstrap 与管理员迁移入口已完成云端只读冒烟。`spots`、`feedback`、`notifier` 的其余未提交改动仍需按各自范围分别核对和授权部署。
-- 小程序：**2026-10-27 已发布**（用户上传工作区代码并提交发布，含当日三项客户端降本改动）。发布前的待办仍未闭环：新订阅模板真机曾出现 `20001 No template data return`；`cart.commit` 写路径、完整真机交互和多机型视觉仍未 live verified。**当前线上客户端与 git 任何提交都不严格对应**（发布源是未提交工作区），需要尽快补一个 tag 对齐。
+- 小程序：2026-10-27 曾发布一份来自未提交工作区的客户端，造成历史版本无法与 Git 严格对应；新订阅模板、`cart.commit` 写路径和多机型视觉的历史验收风险仍按原记录保留。2026-11-02 审核通过并参与灰度的 `2.1.0` 已用 `v2.1.0` tag 对齐，不再沿用“线上代码没有 Git 版本”的问题。
 - 因此不得把“测试通过”“已提交”“部分云函数已部署”写成“整体已上线”或“用户已看到新版本”。
 
 ## 当前需要部署的范围
@@ -109,8 +110,8 @@
 - `notifier`：已兼容旧任务走旧「活动开始通知」、新任务走新「预约开始提醒」；按任务实际模板发送和核销额度。应先部署，使旧任务和随后产生的新模板任务都有正确分流；当前已确认 `status_release_idx = backendStatus + releaseAt` 已存在，但云端触发器、测试发送和真机模板授权仍未完成闭环核对。
 - `reminder`：新提醒任务会写入当前模板 `_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA`；`lib/quota.js` 已兼容旧任务按旧模板记账。应在 notifier 之后部署，最后再发布小程序端。
 - `payment`：2026-11-01 已分次部署本轮全链路加固和退款资金阻断修复。当前版本包含订单/售后幂等、权益账本快照、退款精确回收、虚拟支付商品复核、补偿队列隔离，以及基本账户余额不足的稳定错误码与售后告警；本次部署保留原有 21 个环境变量，未切换生产支付或会员灰度开关。`payment_reconcile_state` 若仍缺失，运行时会尝试自动创建并降级为无游标扫描，仍需继续观察退款补偿日志和真机复验。
-- 会员购买断路器：`payment_config/membership_sales=OPEN` 已创建并设为仅管理端可读写，`payment` 与 `reminder` 已于 2026-11-02 部署并通过只读冒烟；`paymentReconcileEveryTwoMinutes` 已恢复。包含管理开关和停售态 UI 的小程序尚未上传，**不得把后端已部署写成客户端已可用**。
-- 客服工作台：`users_nickname`、`orders_created_at`、`orders_status_created_at`、`after_sales_case_no` 已创建并核验，含 `adminOrders.*` 的新版 `payment` 已于 2026-11-02 部署并通过管理员冒烟；`paymentReconcileEveryTwoMinutes` 保持启用。当前仅待上传小程序客户端。
+- 会员购买断路器：`payment_config/membership_sales=OPEN` 已创建并设为仅管理端可读写，`payment` 与 `reminder` 已于 2026-11-02 部署并通过只读冒烟；`paymentReconcileEveryTwoMinutes` 已恢复。包含管理开关和停售态 UI 的客户端已随 `2.1.0` 进入灰度，尚未全量发布。
+- 客服工作台：`users_nickname`、`orders_created_at`、`orders_status_created_at`、`after_sales_case_no` 已创建并核验，含 `adminOrders.*` 的新版 `payment` 已于 2026-11-02 部署并通过管理员冒烟；`paymentReconcileEveryTwoMinutes` 保持启用。客户端 `2.1.0` 已随灰度版本上线，客服工作台实际使用正常。
 - 2026-11-02 当前索引数量：`users` 5 个、`orders` 11 个、`after_sales_cases` 10 个。
 - 小程序端：提交后重新编译；仅部署云函数不能替代小程序端发布。
 
@@ -177,7 +178,7 @@
 | 索引 `spots.spotId` / `release_rules.spotId` / `reminder_tasks.userId+itemId` | **已建**（2026-10-27，用户操作） | 控制台操作，即时生效 |
 | 客户端第一批（固定 30s TTL、spots 缓存、add-trip 去重） | **已发版**（2026-10-27，用户操作） | 发布源为未提交工作区，与 git 无对应提交；需补 tag 对齐 |
 | 客户端第二批（首页自适应窗口 + 写操作后强制刷新） | **体验版 `1.1.1` 已上传**（2026-11-01） | 正式版尚未发布；真机待验收 |
-| 会员、提醒名额、支付与售后（客户端 + `reminder` + `payment`） | **体验版 `1.1.4` 已上传并设为体验版，`payment` / `reminder` 已部署，生产账本迁移已完成** | `1.1.4` 包含当前工作区全部客户端改动；本轮仍需 Android/iOS 真机验收退款资金告警、原单重试、支付与权益闭环 |
+| 会员、提醒名额、支付与售后（客户端 + `reminder` + `payment`） | **客户端 `2.1.0` 审核通过并灰度中，`payment` / `reminder` 已部署，生产账本迁移已完成** | 上午灰度观察到 5 笔成功支付、2 笔退款，客服工作台正常；尚未全量发布，`MEMBERSHIP_ENFORCEMENT_MODE=test` 保持不变 |
 | 生产数据备份与迁移 | **已完成**（2026-11-01） | `users 6587`、`orders 18`、`reminder_tasks 23979`、售后 `13`、审计日志 `188`；dry-run 133 批/6605 人，正式迁移 133 批/6620 人，人工核查 0、历史补签 1 |
 
 ⚠️ **测试通过、已部署、真机已验证是三个不同状态，不能互相替代。** 会员支付已取得真实购买、退款驳回、真实成功退款、权益回收和关闭小程序后补偿到账结果；仍未观察到真实签名 HTTP 支付/退款回调，不能写成“回调链路已联调完成”。
@@ -192,7 +193,7 @@
 
 ## 待验证
 
-- 体验版 `1.1.4` 的 Android 支付、售后资金阻断提示与原单重试、权益到账和并发提醒；iOS 现网 Apple 支付与平台退款记录。上传体验版不等于已完成真机验收。
+- 客户端 `2.1.0` 灰度已覆盖支付与退款主链路；仍需补全 Android/iOS 分渠道、售后资金阻断提示与原单重试、权益到账和并发提醒的覆盖矩阵。灰度样本不等于全量验收完成。
 - V0.3 主流程真机交互。
 - 帮助与反馈、我的反馈页面的真机跳转、空态、失败重试与在线客服。
 - 首页已过去日期折叠的展开/收起、滚动位置与不同机型视觉。

@@ -1,6 +1,6 @@
 # 会员支付、售后与提醒名额
 
-> 2026-11-02 当前状态：会员购买断路器已创建 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），并部署 `payment` / `reminder`。客服工作台后端随后部署到新版 `payment`：真实管理员订单列表/详情、售后昵称搜索和 `membership.status=OPEN` 冒烟通过，`paymentReconcileEveryTwoMinutes` 保持启用。包含管理开关和停售态 UI 的新客户端尚未上传，真实停售切换未执行。会员限制仍保持 `test`，未切全量。
+> 2026-11-02 当前状态：会员购买断路器已创建 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），并部署 `payment` / `reminder`。客服工作台后端已部署到新版 `payment`：真实管理员订单列表/详情、售后昵称搜索和 `membership.status=OPEN` 冒烟通过，`paymentReconcileEveryTwoMinutes` 保持启用。客户端 `2.1.0` 已上传、审核通过并进入灰度，上午观察到 5 笔成功支付、2 笔退款且客服工作台正常；实际灰度包已用 `v2.1.0` tag 固化，尚未全量发布。真实停售切换未执行，会员限制仍保持 `test`。
 >
 > 权威业务口径以 `产品文档.md` 为准，接口以 `API-契约.md` 为准，索引以 `数据库索引.md` 为准。
 
@@ -171,6 +171,7 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 
 云端已验证：
 
+- 2026-11-02 客户端 `2.1.0` 已上传、审核通过并进入灰度；灰度观察到 5 笔成功支付、2 笔退款，客服工作台正常。审核修复对应代码已提交并以 `v2.1.0` tag 固化，尚未全量发布。
 - 2026-11-02 已将含会员购买断路器和客服工作台的 `payment`（18 个文件）部署到 `cloud1`；`payment` 为 `Active`，部署包包含 `adminOrders.list/detail`。真实管理员接口冒烟返回会员订单、当前昵称、完整 OpenID 和订单详情；售后昵称搜索可用；`membership.status` 返回 `sales.state=OPEN`。部署后 15 分钟无 `payment` 5xx，`paymentReconcileEveryTwoMinutes = 0 */2 * * * * *` 保持启用。
 - 2026-11-01 已将 `payment`（15 个文件）与 `reminder`（19 个文件）部署到 `cloud1`；部署前已完整备份 `users`、`orders`、`reminder_tasks`、`after_sales_cases`、`admin_audit_logs`，备份清单包含文件 SHA-256。
 - 2026-11-01 复核发现 `payment_reconcile_state` 实际不存在，定时补偿报 `-502005` 后中断，导致已到账退款仍停留“退款中”。工作区已补自动创建与无游标降级，并增加退款队列隔离与状态收口回归；新版 `payment` 部署前该问题仍存在于线上。
@@ -182,12 +183,12 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 - `cloud1` 完成一次 ¥2 真实成功退款：订单 `refundStatus=REFUNDED`、`refundedAmountFen=200`，随后 `grantStatus=REVERTED`，本单权益按快照回收。实测退款到账与权益回收完成相隔约 87 秒，因此页面必须支持该中间态，不能提前显示“权益已全部回收”。
 - 关闭微信后的一笔真实订单在约 70 秒后由服务端主动查单/定时补偿确认：订单为 `PAID`，会员有效期与提醒名额已更新，未发生重复发放。
 - 微信云开发定时触发器已部署为 `paymentReconcileEveryTwoMinutes`，表达式 `0 */2 * * * * *`。
-- 体验版 `1.1.1` 已上传，版本描述为“会员支付全链路加固；退款、名额账本与虚拟支付验证”；本次未提交审核，正式版尚未发布。
+- 历史记录：体验版 `1.1.1` 曾以“会员支付全链路加固；退款、名额账本与虚拟支付验证”上传；该版本未提交审核。
 - 本轮新增 `utils/order-refresh.js`：仅对未过期待支付、权益补发、退款审核/处理中、以及“退款已到账但权益待回收”的状态每 5 秒静默刷新，最多 30 次；达到上限后保留“下拉刷新或稍后重新进入”提示，终态、`onHide` 和 `onUnload` 立即停止。会员页、订单列表和订单详情均接入，并支持下拉刷新。
 
 仍未完成：
 
-- 体验版 `1.1.1` 的 Android 沙箱支付、权益到账、退款、并发提醒与恢复支付真机验收。
+- `2.1.0` 的 Android/iOS 分渠道覆盖矩阵仍需补全；灰度已有 5 笔支付、2 笔退款，但不能替代沙箱异常场景验收。
 - iOS 现网 Apple 支付、Apple 退款问询和最终平台退款售后记录真机验收。
 - 微信支付真实签名回调、微信退款真实签名回调。
 - 退款回调失败场景与重复回调的真实环境验证。

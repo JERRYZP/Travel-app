@@ -12,6 +12,13 @@ Component({
 
   data: {
     isIosDevice: false,
+    agreementAccepted: false,
+  },
+
+  observers: {
+    show(value) {
+      if (value) this.setData({ agreementAccepted: false });
+    },
   },
 
   lifetimes: {
@@ -37,7 +44,16 @@ Component({
 
     onConfirm() {
       if (this.data.paying || this.data.disabled) return;
+      if (!this.data.agreementAccepted) {
+        wx.showToast({ title: '请先勾选协议', icon: 'none' });
+        return;
+      }
       this.triggerEvent('confirm');
+    },
+
+    onToggleAgreement() {
+      if (this.data.paying) return;
+      this.setData({ agreementAccepted: !this.data.agreementAccepted });
     },
 
     onOpenAgreement(e) {

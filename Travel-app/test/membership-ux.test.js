@@ -267,6 +267,19 @@ async function run() {
   eq(paymentConfirmWxml.includes('《用户服务协议》')
     && paymentConfirmWxml.includes('《隐私政策》'), true,
     '支付前可直接查阅用户协议和隐私政策');
+  eq(paymentConfirmWxml.includes('点击支付即同意'), false,
+    '支付确认层不再把点击支付解释为默认同意协议');
+  eq(paymentConfirmWxml.includes('bindtap="onToggleAgreement"')
+    && paymentConfirmWxml.includes('agreementAccepted'), true,
+    '支付确认层提供默认未勾选的主动协议选择');
+  eq(/agreementAccepted:\s*false/.test(paymentConfirmJs), true,
+    '协议选择初始为未勾选');
+  eq(/show\(value\)[\s\S]{0,160}agreementAccepted:\s*false/.test(paymentConfirmJs), true,
+    '每次重新打开支付确认层都会重置协议选择');
+  eq(/!this\.data\.agreementAccepted/.test(paymentConfirmJs), true,
+    '未主动勾选协议时不能发起支付');
+  eq(/paying \|\| disabled \|\| !agreementAccepted/.test(paymentConfirmWxml), true,
+    '未勾选协议时支付按钮显示禁用态');
   eq(/onOpenAgreement\(e\)[\s\S]*\/pages\/legal\/legal\?type=/.test(paymentConfirmJs), true,
     '支付确认页协议链接复用统一协议页');
   eq(privacyPolicy.includes('iOS 端由 Apple App Store 处理'), true,

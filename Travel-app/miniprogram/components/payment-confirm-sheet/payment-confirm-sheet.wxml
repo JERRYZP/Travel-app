@@ -16,13 +16,20 @@
     </view>
     <text wx:if="{{feedback}}" class="pcs-feedback">{{feedback}}</text>
     <view class="pcs-legal">
-      <text>点击支付即同意</text>
-      <text class="pcs-legal-link" data-type="terms" catchtap="onOpenAgreement">《用户服务协议》</text>
-      <text>并确认上述即时交付安排；请阅读</text>
-      <text class="pcs-legal-link" data-type="privacy" catchtap="onOpenAgreement">《隐私政策》</text>
-      <text>。</text>
+      <view class="pcs-consent">
+        <view class="pcs-consent-choice {{paying ? 'disabled' : ''}}"
+          aria-role="checkbox" aria-checked="{{agreementAccepted}}" bindtap="onToggleAgreement">
+          <view class="pcs-checkbox {{agreementAccepted ? 'checked' : ''}}"></view>
+          <text>我已阅读并同意</text>
+        </view>
+        <view class="pcs-legal-links">
+          <text class="pcs-legal-link" data-type="terms" catchtap="onOpenAgreement">《用户服务协议》</text>
+          <text>及</text>
+          <text class="pcs-legal-link" data-type="privacy" catchtap="onOpenAgreement">《隐私政策》</text>
+        </view>
+      </view>
     </view>
-    <view class="pcs-pay-btn {{paying || disabled ? 'disabled' : ''}}" bindtap="onConfirm">
+    <view class="pcs-pay-btn {{paying || disabled || !agreementAccepted ? 'disabled' : ''}}" bindtap="onConfirm">
       {{paying ? '处理中...' : buttonText}}
     </view>
   </view>
