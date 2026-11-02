@@ -12,6 +12,12 @@ const ENFORCEMENT_OPTIONS = [
   { mode: 'test', label: '测试' },
   { mode: 'all', label: '全量' },
 ];
+const ORDER_TIME_RANGES = [
+  { key: '7d', label: '近 7 天' },
+  { key: '30d', label: '近 30 天' },
+  { key: '90d', label: '近 90 天' },
+  { key: 'all', label: '全部' },
+];
 
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -74,6 +80,11 @@ Page({
     statusBarHeight: 20,
     navBarHeight: 44,
     activeTab: TAB_ORDERS,
+    filterStickyTop: 64,
+    orderTimeRangeLabels: ORDER_TIME_RANGES.map(item => item.label),
+    orderTimeRangeIndex: 1,
+    activeOrderTimeRange: '30d',
+    orderTimeRangeLabel: '近 30 天',
     orderStats: null,
     orderStatsLoading: false,
     orderStatsFailed: false,
@@ -126,6 +137,9 @@ Page({
     this.setData({
       statusBarHeight: g.statusBarHeight,
       navBarHeight: g.navBarHeight,
+      filterStickyTop: Math.floor(
+        (Number(g.statusBarHeight) || 20) + (Number(g.navBarHeight) || 44)
+      ),
       migrationCursor,
       migrationHasMore: !!migrationCursor,
       migrationMessage: migrationCursor ? '检测到上次未完成的迁移，可继续自动迁移。' : '',
@@ -355,6 +369,9 @@ Page({
       page,
       pageSize: 20,
     };
+    if (this.data.activeTab === TAB_ORDERS) {
+      params.timeRange = this.data.activeOrderTimeRange;
+    }
     const request = this.data.activeTab === TAB_ORDERS
       ? api.payment.adminOrders.list(params)
       : api.payment.afterSales.adminList(params);
@@ -416,6 +433,26 @@ Page({
     });
     this.loadList();
     if (orders) this.loadOrderStats();
+  },
+
+  onOrderTimeRangeChange(e) {
+    const index = Math.max(0, Math.min(
+      ORDER_TIME_RANGES.length - 1,
+      Number(e && e.detail && e.detail.value) || 0
+    ));
+    const selected = ORDER_TIME_RANGES[index];
+    if (!selected || selected.key === this.data.activeOrderTimeRange) return;
+    this.setData({
+      orderTimeRangeIndex: index,
+      activeOrderTimeRange: selected.key,
+      orderTimeRangeLabel: selected.label,
+      page: 1,
+      items: [],
+      detail: null,
+      orderDetail: null,
+      actionMessage: '',
+    });
+    this.loadList();
   },
 
   onSearchInput(e) {

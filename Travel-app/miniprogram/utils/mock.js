@@ -2518,7 +2518,20 @@ const handlers = {
     const keyword = String(data.keyword || '').trim();
     const page = Math.max(1, Math.floor(Number(data.page) || 1));
     const pageSize = Math.max(1, Math.min(50, Math.floor(Number(data.pageSize) || 20)));
+    const timeRange = ['7d', '30d', '90d', 'all'].includes(data.timeRange)
+      ? data.timeRange : '30d';
     let orders = Object.values(db.orders);
+    if (timeRange !== 'all') {
+      const days = { '7d': 7, '30d': 30, '90d': 90 }[timeRange];
+      const now = new Date();
+      const shifted = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+      const startMs = Date.UTC(
+        shifted.getUTCFullYear(),
+        shifted.getUTCMonth(),
+        shifted.getUTCDate()
+      ) - 8 * 60 * 60 * 1000 - (days - 1) * DAY_MS;
+      orders = orders.filter(order => new Date(order.createdAt || 0).getTime() >= startMs);
+    }
     if (data.status) orders = orders.filter(order => order.status === data.status);
     if (keyword) {
       orders = orders.filter(order => {

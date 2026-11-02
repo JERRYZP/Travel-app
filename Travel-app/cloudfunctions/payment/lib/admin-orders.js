@@ -12,10 +12,15 @@ const { grantStateOf } = require('./order');
 const afterSales = require('./after-sales');
 const directory = require('./admin-directory');
 
-const MAX_SEARCH_ROWS = 100;
 const ORDER_PAGE_SIZE = 100;
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const ORDER_TIME_RANGE_DAYS = Object.freeze({
+  '7d': 7,
+  '30d': 30,
+  '90d': 90,
+  all: null,
+});
 const VALID_ORDER_STATUSES = new Set(Object.values(OrderStatus));
 const STATUS_LABEL = {
   PENDING: '待支付',
@@ -69,6 +74,18 @@ function beijingDayRange(nowTs = new Date()) {
     start: new Date(startMs),
     end: new Date(startMs + DAY_MS),
   };
+}
+
+function normalizeOrderTimeRange(value) {
+  const key = String(value || '').trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(ORDER_TIME_RANGE_DAYS, key) ? key : '30d';
+}
+
+function orderTimeRangeStart(timeRange, nowTs = new Date()) {
+  const key = normalizeOrderTimeRange(timeRange);
+  const days = ORDER_TIME_RANGE_DAYS[key];
+  if (!days) return null;
+  return new Date(beijingDayRange(nowTs).start.getTime() - (days - 1) * DAY_MS);
 }
 
 async function ordersCreatedInDay(db, range) {
@@ -225,7 +242,14 @@ async function orderIdsByCaseNo(db, caseNo) {
   return [...new Set((res.data || []).map(item => item.orderId).filter(Boolean))];
 }
 
-async function searchOrders(db, keyword, status, pageInfo) {
+function applyOrderFilters(db, where, status, rangeStart) {
+  const next = { ...where };
+  if (status) next.status = status;
+  if (rangeStart) next.createdAt = db.command.gte(rangeStart);
+  return next;
+}
+
+async function searchOrders(db, keyword, status, pageInfo, rangeStart) {
   const kind = directory.keywordKindOf(keyword);
   let where = null;
   if (kind === 'OPENID') where = { userId: keyword };
@@ -242,22 +266,25 @@ async function searchOrders(db, keyword, status, pageInfo) {
     if (!ids.length) return { rows: [], total: 0 };
     where = { userId: db.command.in(ids) };
   }
-  const res = await db.collection(COLLECTIONS.ORDERS)
-    .where(where)
-    .limit(MAX_SEARCH_ROWS)
+  const query = db.collection(COLLECTIONS.ORDERS)
+    .where(applyOrderFilters(db, where, status, rangeStart));
+  const total = Number((await query.count()).total) || 0;
+  const res = await query
+    .orderBy('createdAt', 'desc')
+    .skip(pageInfo.skip)
+    .limit(pageInfo.pageSize)
     .get();
-  const rows = (res.data || [])
-    .filter(order => !status || order.status === status)
-    .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   return {
-    rows: rows.slice(pageInfo.skip, pageInfo.skip + pageInfo.pageSize),
-    total: rows.length,
+    rows: res.data || [],
+    total,
   };
 }
 
-async function listOrdersForAdmin(db, params = {}) {
+async function listOrdersForAdmin(db, params = {}, nowTs = new Date()) {
   const keyword = directory.keywordOf(params.keyword);
   const status = VALID_ORDER_STATUSES.has(params.status) ? params.status : '';
+  const timeRange = normalizeOrderTimeRange(params.timeRange);
+  const rangeStart = orderTimeRangeStart(timeRange, nowTs);
   const pageInfo = directory.normalizePage(params);
   let rows = [];
   let total = 0;
@@ -265,12 +292,13 @@ async function listOrdersForAdmin(db, params = {}) {
 
   if (keyword) {
     keywordType = directory.keywordKindOf(keyword);
-    const result = await searchOrders(db, keyword, status, pageInfo);
+    const result = await searchOrders(db, keyword, status, pageInfo, rangeStart);
     rows = result.rows;
     total = result.total;
   } else {
+    const where = applyOrderFilters(db, {}, status, rangeStart);
     let query = db.collection(COLLECTIONS.ORDERS);
-    if (status) query = query.where({ status });
+    if (Object.keys(where).length > 0) query = query.where(where);
     total = Number((await query.count()).total) || 0;
     const res = await query
       .orderBy('createdAt', 'desc')
@@ -294,6 +322,7 @@ async function listOrdersForAdmin(db, params = {}) {
     pageSize: pageInfo.pageSize,
     hasMore: pageInfo.skip + items.length < total,
     keywordType,
+    timeRange,
   });
 }
 
@@ -318,6 +347,8 @@ module.exports = {
   GRANT_LABEL,
   ENTITLEMENT_LABEL,
   beijingDayRange,
+  normalizeOrderTimeRange,
+  orderTimeRangeStart,
   orderViewOf,
   dailyStatsForAdmin,
   listOrdersForAdmin,

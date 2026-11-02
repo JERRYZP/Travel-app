@@ -110,33 +110,50 @@
       bindtap="loadOrderStats"
     >统计加载失败，点击重试</view>
 
-    <view class="admin-search">
-      <svg-icon name="search" size="15px" />
-      <input
-        class="admin-search-input"
-        value="{{keywordInput}}"
-        placeholder="{{searchPlaceholder}}"
-        confirm-type="search"
-        bindinput="onSearchInput"
-        bindconfirm="onSearchConfirm"
-      />
-      <view wx:if="{{keywordInput}}" class="admin-search-clear" bindtap="onClearSearch">
-        <svg-icon name="close" size="12px" />
+    <view class="filter-sticky" style="top: {{filterStickyTop}}px;">
+      <view class="admin-search">
+        <svg-icon name="search" size="15px" />
+        <input
+          class="admin-search-input"
+          value="{{keywordInput}}"
+          placeholder="{{searchPlaceholder}}"
+          confirm-type="search"
+          bindinput="onSearchInput"
+          bindconfirm="onSearchConfirm"
+        />
+        <view wx:if="{{keywordInput}}" class="admin-search-clear" bindtap="onClearSearch">
+          <svg-icon name="close" size="12px" />
+        </view>
+        <view class="admin-search-submit" bindtap="onSearchConfirm">搜索</view>
       </view>
-      <view class="admin-search-submit" bindtap="onSearchConfirm">搜索</view>
-    </view>
 
-    <scroll-view class="filter-scroll" scroll-x enhanced show-scrollbar="{{false}}">
-      <view class="filter-row">
-        <view
-          wx:for="{{filters}}"
-          wx:key="key"
-          class="filter-chip {{activeFilter === item.key ? 'active' : ''}}"
-          bindtap="onFilterTap"
-          data-key="{{item.key}}"
-        >{{item.label}}</view>
+      <view class="filter-toolbar">
+        <scroll-view class="filter-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+          <view class="filter-row">
+            <view
+              wx:for="{{filters}}"
+              wx:key="key"
+              class="filter-chip {{activeFilter === item.key ? 'active' : ''}}"
+              bindtap="onFilterTap"
+              data-key="{{item.key}}"
+            >{{item.label}}</view>
+          </view>
+        </scroll-view>
+        <picker
+          wx:if="{{activeTab === 'orders'}}"
+          class="order-time-picker"
+          mode="selector"
+          range="{{orderTimeRangeLabels}}"
+          value="{{orderTimeRangeIndex}}"
+          bindchange="onOrderTimeRangeChange"
+        >
+          <view class="order-time-select">
+            <text class="order-time-value">{{orderTimeRangeLabel}}</text>
+            <svg-icon name="chevron-down-muted" size="10px" />
+          </view>
+        </picker>
       </view>
-    </scroll-view>
+    </view>
 
     <view wx:if="{{loading}}" class="loading-wrap"><van-loading size="36rpx" color="#B8904A" /></view>
     <view wx:elif="{{loadFailed}}" class="state-box">

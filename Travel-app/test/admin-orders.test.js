@@ -155,12 +155,16 @@ function seed(db) {
   ]);
 }
 
+function listForAdmin(db, params) {
+  return adminOrders.listOrdersForAdmin(db, params, new Date(FIXED_NOW));
+}
+
 async function run() {
   const db = createDb();
   seed(db);
 
   console.log('=== 1. 会员订单列表与用户信息 ===');
-  const firstPage = await adminOrders.listOrdersForAdmin(db, { page: 1, pageSize: 2 });
+  const firstPage = await listForAdmin(db, { page: 1, pageSize: 2 });
   eq(firstPage.success, true, '管理员订单列表成功');
   eq(firstPage.total, 3, '返回订单总数');
   eq(firstPage.items.length, 2, '分页返回 2 条');
@@ -169,6 +173,64 @@ async function run() {
   eq(firstPage.items[0].user.openId, USER_A, '订单返回完整 OpenID');
   eq(firstPage.items[0].paymentChannelLabel, '微信虚拟支付', '订单展示支付渠道');
   eq(firstPage.items[0].cases.latestStatusLabel, '客服审核中', '订单展示关联售后状态');
+
+  console.log('\n=== 1z. 订单时间范围 ===');
+  const rangeDb = createDb();
+  rangeDb._seed(COLLECTIONS.ORDERS, [
+    {
+      _id: 'range_today',
+      userId: USER_A,
+      outTradeNo: 'TRANGETODAY',
+      amountFen: 100,
+      status: OrderStatus.PAID,
+      createdAt: new Date(FIXED_NOW - 60 * 60 * 1000),
+    },
+    {
+      _id: 'range_10d',
+      userId: USER_A,
+      outTradeNo: 'TRANGE10D',
+      amountFen: 100,
+      status: OrderStatus.PAID,
+      createdAt: new Date(FIXED_NOW - 10 * 86400000),
+    },
+    {
+      _id: 'range_60d',
+      userId: USER_A,
+      outTradeNo: 'TRANGE60D',
+      amountFen: 100,
+      status: OrderStatus.PAID,
+      createdAt: new Date(FIXED_NOW - 60 * 86400000),
+    },
+    {
+      _id: 'range_120d',
+      userId: USER_A,
+      outTradeNo: 'TRANGE120D',
+      amountFen: 100,
+      status: OrderStatus.PAID,
+      createdAt: new Date(FIXED_NOW - 120 * 86400000),
+    },
+  ]);
+  const recent7 = await listForAdmin(rangeDb, { timeRange: '7d' });
+  const recent30 = await listForAdmin(rangeDb, { timeRange: '30d' });
+  const defaultRange = await listForAdmin(rangeDb, {});
+  const recent90 = await listForAdmin(rangeDb, { timeRange: '90d' });
+  const allRange = await listForAdmin(rangeDb, { timeRange: 'all' });
+  eq(recent7.total, 1, '近 7 天只返回窗口内订单');
+  eq(recent30.total, 2, '近 30 天返回窗口内订单');
+  eq(defaultRange.timeRange, '30d', '未传时间范围时默认近 30 天');
+  eq(defaultRange.total, 2, '默认时间范围生效');
+  eq(recent90.total, 3, '近 90 天返回窗口内订单');
+  eq(allRange.total, 4, '全部范围返回全部历史');
+  const oldExact = await listForAdmin(rangeDb, {
+    keyword: 'TRANGE60D',
+    timeRange: '30d',
+  });
+  const oldExactAll = await listForAdmin(rangeDb, {
+    keyword: 'TRANGE60D',
+    timeRange: 'all',
+  });
+  eq(oldExact.total, 0, '精确搜索同样受时间范围限制');
+  eq(oldExactAll.total, 1, '切到全部后可查历史订单');
 
   console.log('\n=== 1a. 当日订单统计（北京时间） ===');
   const dayRange = adminOrders.beijingDayRange(new Date('2026-11-01T16:00:00.000Z'));
@@ -222,38 +284,38 @@ async function run() {
   eq(netStats.stats.netAmountText, '¥5', '净赚金额按展示格式返回');
 
   console.log('\n=== 2. 订单状态筛选与搜索 ===');
-  const paid = await adminOrders.listOrdersForAdmin(db, { status: 'PAID', page: 1, pageSize: 20 });
+  const paid = await listForAdmin(db, { status: 'PAID', page: 1, pageSize: 20 });
   eq(paid.total, 1, '按已支付筛选');
   eq(paid.items[0].orderId, 'ord_alpha_001', '筛选命中目标订单');
-  const nickname = await adminOrders.listOrdersForAdmin(db, { keyword: '张', page: 1, pageSize: 20 });
+  const nickname = await listForAdmin(db, { keyword: '张', page: 1, pageSize: 20 });
   eq(nickname.total, 2, '昵称部分匹配返回该用户全部订单');
-  const nicknamePaid = await adminOrders.listOrdersForAdmin(db, {
+  const nicknamePaid = await listForAdmin(db, {
     keyword: '张',
     status: 'PAID',
     page: 1,
     pageSize: 20,
   });
   eq(nicknamePaid.total, 1, '昵称搜索可与订单状态组合');
-  const openId = await adminOrders.listOrdersForAdmin(db, {
+  const openId = await listForAdmin(db, {
     keyword: USER_B,
     page: 1,
     pageSize: 20,
   });
   eq(openId.total, 1, '完整 OpenID 精确查询');
   eq(openId.items[0].orderId, 'ord_beta_002', 'OpenID 命中目标订单');
-  const tradeNo = await adminOrders.listOrdersForAdmin(db, {
+  const tradeNo = await listForAdmin(db, {
     keyword: 'TALPHA001',
     page: 1,
     pageSize: 20,
   });
   eq(tradeNo.items[0].orderId, 'ord_alpha_001', '商户订单号精确查询');
-  const orderId = await adminOrders.listOrdersForAdmin(db, {
+  const orderId = await listForAdmin(db, {
     keyword: 'ord_gamma_003',
     page: 1,
     pageSize: 20,
   });
   eq(orderId.items[0].outTradeNo, 'TGAMMA003', '订单 ID 精确查询');
-  const caseNo = await adminOrders.listOrdersForAdmin(db, {
+  const caseNo = await listForAdmin(db, {
     keyword: 'astestcase001',
     page: 1,
     pageSize: 20,
@@ -304,6 +366,10 @@ async function run() {
     path.join(ROOT, 'miniprogram/pages/admin-after-sales/admin-after-sales.js'),
     'utf8'
   );
+  const wxss = fs.readFileSync(
+    path.join(ROOT, 'miniprogram/pages/admin-after-sales/admin-after-sales.wxss'),
+    'utf8'
+  );
   eq(wxml.includes('客服工作台'), true, '页面标题升级为客服工作台');
   eq(wxml.indexOf('sales-card') < wxml.indexOf('workspace-tabs'), true, '会员售卖开关位于页签上方');
   eq(wxml.includes("activeTab === 'orders'"), true, '页面提供会员订单页签');
@@ -319,6 +385,11 @@ async function run() {
   eq(wxml.includes('当日净赚'), true, '第三项展示当日净赚');
   eq(wxml.includes('netAmountText'), true, '页面使用净赚金额而非原支付金额');
   eq(js.includes('api.payment.adminOrders.stats'), true, '页面接入订单统计接口');
+  eq(wxml.includes('onOrderTimeRangeChange'), true, '订单时间范围使用下拉筛选');
+  eq(wxml.includes('order-time-picker'), true, '时间范围下拉不占用筛选横向宽度');
+  eq(wxml.includes('filter-sticky'), true, '搜索与筛选区域接入吸顶容器');
+  eq(wxss.includes('position: sticky'), true, '搜索与筛选区域使用 sticky 吸顶');
+  eq(wxss.includes('top: {{filterStickyTop}}px') || wxml.includes('top: {{filterStickyTop}}px'), true, '吸顶偏移使用运行时导航栏高度');
 
   console.log('\n=== 6. 云函数路由、鉴权与审计 ===');
   process.env.AFTER_SALES_ADMIN_OPENIDS = ADMIN;
@@ -328,6 +399,7 @@ async function run() {
     keyword: '张',
     page: 1,
     pageSize: 20,
+    timeRange: 'all',
   });
   eq(routedList.success, true, '管理员可调用订单列表路由');
   eq(routedList.items[0].user.openId, USER_A, '路由返回完整用户信息');

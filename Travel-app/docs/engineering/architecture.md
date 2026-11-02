@@ -114,6 +114,7 @@ reminder.membership.createOrder
 - 售后证据、审核结果和退款单号存 `after_sales_cases`；敏感查看与审核操作写 `admin_audit_logs`。
 - 客服工作台通过 `adminOrders.list/detail` 查询全部会员订单，并在读取时按 `orders.userId -> users.openId` 补全昵称、会员状态和已购名额；订单不冗余保存昵称。售后列表同样按 `userId` 补全用户信息。
 - 客服工作台通过 `adminOrders.stats` 读取北京时间当日统计：当日创建订单数、已支付数、已支付金额、已完成退款金额和净赚金额。净赚按当日创建订单的 `paidAmountFen - refundedAmountFen` 计算；退款优先使用订单快照，历史单缺失快照时按原金额，处理中退款不扣。统计不受搜索、筛选和分页影响。
+- 客服工作台订单列表用 `timeRange=7d|30d|90d|all` 按北京时间订单创建时间过滤，默认 `30d`；搜索、状态和分页共用同一时间窗口，全部历史通过 `all` 显式读取。
 - 售后工作台仅对 `AFTER_SALES_ADMIN_OPENIDS` 开放，所有操作服务端二次鉴权。
 
 ## 数据真身与镜像

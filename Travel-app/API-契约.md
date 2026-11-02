@@ -1152,13 +1152,13 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 { action: 'afterSales.adminSyncRefund', caseId }
 { action: 'afterSales.adminMigrateProtection', cursor? }
 { action: 'afterSales.adminMigrateEntitlementLedger', cursor?, dryRun? }
-{ action: 'adminOrders.list', keyword?, status?, page?, pageSize? }
+{ action: 'adminOrders.list', keyword?, status?, timeRange?, page?, pageSize? }
 { action: 'adminOrders.stats' }
 { action: 'adminOrders.detail', orderId }
 ```
 
 - 仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用；未配置时工作台关闭，不存在代码内置兜底账号。
-- `adminOrders.list` 返回订单、当前昵称、完整 OpenID、支付渠道、权益状态和关联售后摘要。`keyword` 支持商户订单号、订单 ID、完整 OpenID、售后单号和昵称；只有昵称允许部分匹配。分页参数默认 `page=1&pageSize=20`，单页最大 50。
+- `adminOrders.list` 返回订单、当前昵称、完整 OpenID、支付渠道、权益状态和关联售后摘要。`keyword` 支持商户订单号、订单 ID、完整 OpenID、售后单号和昵称；只有昵称允许部分匹配。`timeRange=7d|30d|90d|all` 按北京时间自然日过滤订单创建时间，缺省或非法值按 `30d`；时间范围在数据库查询阶段生效，同时作用于搜索、状态筛选和分页。分页参数默认 `page=1&pageSize=20`，单页最大 50。
 - `adminOrders.stats` 返回北京时间当日的 `{ dateKey, totalOrders, paidOrders, paidAmountFen, paidAmountText, refundedAmountFen, refundedAmountText, netAmountFen, netAmountText }`。`totalOrders` 统计当日创建的全部订单；`paidOrders / paidAmountFen` 统计这些订单中已写入 `paidAt` 的订单及支付金额；`refundedAmountFen` 只汇总已完成退款，优先读取 `refundedAmountFen`，历史单缺失时按订单金额；`netAmountFen = paidAmountFen - refundedAmountFen`。统计独立于列表搜索和筛选。
 - `adminOrders.detail` 返回本人订单管理详情，包括用户会员状态、支付渠道、微信交易号、权益发放快照和关联售后记录。订单不存在统一返回 `1024`。
 - `afterSales.adminList` 的 `items[].user` 返回当前昵称、完整 OpenID、会员到期和已购名额；同样支持分页与关键词搜索。
