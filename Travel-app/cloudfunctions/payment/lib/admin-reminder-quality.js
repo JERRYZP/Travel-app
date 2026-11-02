@@ -1,7 +1,11 @@
 /**
  * 客服工作台提醒质量统计。
  *
- * 这里只读 reminder_events / reminder_tasks，按北京时间自然日和任务聚合：
+ * payment 的两分钟定时器在 13:00 / 21:00 后的首个 tick 只读
+ * reminder_events / reminder_tasks 计算一次快照；工作台只读取
+ * payment_config/reminder_quality_latest，不在每次打开或刷新时扫原始账本。
+ *
+ * 统计按北京时间自然日和任务聚合：
  * - 任务的所有 offset 都在计划时间后 120 秒内发送成功，才算准时；
  * - 未送达、跳过、终态或发送证据缺失都单独计数；
  * - 页面只消费服务端给出的状态，不重新推导阈值。
@@ -19,6 +23,8 @@ const ON_TIME_RATE_THRESHOLD = 99;
 const PAGE_SIZE = 100;
 const MAX_EVENT_ROWS = 20000;
 const MAX_TASK_ROWS = 10000;
+const SNAPSHOT_CONFIG_ID = 'reminder_quality_latest';
+const SNAPSHOT_SCHEMA_VERSION = 1;
 
 const EVENT_TYPES = {
   TASK_CREATED: 'TASK_CREATED',
@@ -330,7 +336,23 @@ function qualityWindows(nowTs) {
   };
 }
 
-async function statsForAdmin(db, nowTs = new Date()) {
+async function readSnapshot(db) {
+  try {
+    const res = await db.collection(COLLECTIONS.PAYMENT_CONFIG)
+      .where({ _id: SNAPSHOT_CONFIG_ID })
+      .limit(1)
+      .get();
+    const current = (res.data || [])[0];
+    if (!current || !current.quality || current.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
+      return null;
+    }
+    return current;
+  } catch (err) {
+    return null;
+  }
+}
+
+async function computeQualityForAdmin(db, nowTs = new Date()) {
   const _ = db.command;
   const windows = qualityWindows(nowTs);
   const eventQuery = db.collection(COLLECTIONS.REMINDER_EVENTS)
@@ -435,18 +457,79 @@ async function statsForAdmin(db, nowTs = new Date()) {
     reasonCodes: windowSummary.reasonCodes,
   };
 
-  return ok({
-    quality: {
-      timezone: 'Asia/Shanghai',
-      threshold: {
-        onTimeRate: ON_TIME_RATE_THRESHOLD,
-        delayToleranceSeconds: DELAY_TOLERANCE_SECONDS,
-      },
-      currentWindow,
-      baseline5d: baseline,
-      dataTruncated,
-      generatedAt: new Date(nowTs).toISOString(),
+  return {
+    timezone: 'Asia/Shanghai',
+    threshold: {
+      onTimeRate: ON_TIME_RATE_THRESHOLD,
+      delayToleranceSeconds: DELAY_TOLERANCE_SECONDS,
     },
+    currentWindow,
+    baseline5d: baseline,
+    dataTruncated,
+    generatedAt: new Date(nowTs).toISOString(),
+  };
+}
+
+function windowKeyOf(nowTs = new Date()) {
+  return qualityWindow(nowTs).endAt;
+}
+
+/**
+ * 定时器或首次读取时生成快照。同一统计窗口已存在时直接跳过重查询。
+ */
+async function refreshSnapshot(db, nowTs = new Date(), options = {}) {
+  const windowKey = windowKeyOf(nowTs);
+  const current = await readSnapshot(db);
+  if (options.force !== true && current && current.windowKey === windowKey) {
+    return {
+      refreshed: false,
+      windowKey,
+      quality: current.quality,
+      generatedAt: current.generatedAt,
+    };
+  }
+  const quality = await computeQualityForAdmin(db, nowTs);
+  const generatedAt = new Date(nowTs);
+  await db.collection(COLLECTIONS.PAYMENT_CONFIG).doc(SNAPSHOT_CONFIG_ID).set({
+    data: {
+      schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+      windowKey,
+      quality,
+      generatedAt,
+      updatedAt: new Date(),
+    },
+  });
+  return { refreshed: true, windowKey, quality, generatedAt };
+}
+
+/**
+ * 工作台只读快照，不扫描 reminder_events / reminder_tasks。
+ * 定时任务尚未写入当前窗口时返回 pending，同时保留上一份可展示数据。
+ */
+async function statsForAdmin(db, nowTs = new Date()) {
+  const windows = qualityWindows(nowTs);
+  const expectedWindowKey = windows.currentWindow.endAt;
+  const snapshot = await readSnapshot(db);
+  if (!snapshot) {
+    return ok({
+      pending: true,
+      stale: false,
+      quality: null,
+      expectedWindowKey,
+      snapshot: null,
+      currentWindow: windows.currentWindow,
+    });
+  }
+  const pending = snapshot.windowKey !== expectedWindowKey;
+  return ok({
+    pending,
+    stale: pending,
+    expectedWindowKey,
+    snapshot: {
+      windowKey: snapshot.windowKey,
+      generatedAt: snapshot.generatedAt,
+    },
+    quality: snapshot.quality,
   });
 }
 
@@ -456,10 +539,16 @@ module.exports = {
   DELAY_TOLERANCE_SECONDS,
   ON_TIME_RATE_THRESHOLD,
   WINDOW_HOURS,
+  SNAPSHOT_CONFIG_ID,
+  SNAPSHOT_SCHEMA_VERSION,
   classifyTask,
   summarizeRecords,
   statusOf,
   qualityWindow,
   qualityWindows,
+  windowKeyOf,
+  readSnapshot,
+  computeQualityForAdmin,
+  refreshSnapshot,
   statsForAdmin,
 };

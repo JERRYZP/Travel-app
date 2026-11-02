@@ -9,7 +9,7 @@
 
 ## 已实现
 
-- 2026-11-03 客服工作台提醒质量已部署并通过真实冒烟：40% 宽质量卡位于左侧并跨满右侧 60% 宽会员购买/会员限制两条等高控制卡的总高度；接口按北京时间 `13:00 / 21:00` 的最近完成 8 小时时段统计任务级 2 分钟内送达率，并返回前 5 日加权基线。真实窗口当时为 `323` 个任务、`298` 准时、`20` 未送达、`5` 证据缺失，准时率 `92.26%`，前 5 日加权均值 `55.91%`。历史任务缺少发送事件时，已用 `sentOffsets + triggeredAt` 回退计算；证据仍不完整时保持异常，不洗成准时。
+- 2026-11-03 客服工作台提醒质量快照改造为本地未部署候选：现有 `payment` 两分钟定时器在 `13:00 / 21:00` 后的首个 tick 统计最近完成 8 小时窗口并写入 `payment_config/reminder_quality_latest`，同一窗口后续只读快照；工作台只读快照，打开和刷新不再扫 `reminder_events` / `reminder_tasks`。首次快照未生成时显示「统计中」，新窗口未生成时保留上一份数据并重试。此前旧版质量接口已部署并通过真实冒烟，真实窗口当时为 `323` 个任务、`298` 准时、`20` 未送达、`5` 证据缺失，准时率 `92.26%`，前 5 日加权均值 `55.91%`；快照改造尚未部署。
 - 2026-11-03 调用量结构性优化已部署：景点列表/搜索/详情改读 `spots-snapshot/v1`，包内快照兜底、远程文件每日最多检查一次；首页冷窗口放宽到 5 分钟并支持下拉刷新；`profile`/`setup` 改走 `user.bootstrap`/`cart.bootstrap`；`cart.addAll` 改为一次上下文读取和单事务批量写入并返回状态补丁；四个热函数加入无隐私资源日志；支付补偿增加空队列短路；会员配置增加 45 秒实例内缓存。`HOME_RUNTIME_MODE` 保持 `off`，`user_runtime` 派生读模型尚未创建或启用。
 - 2026-11-03 景点快捷设提醒已部署：新增 `cart.planQuickDates` / `cart.quickCommit`，景点页、详情、分享与首页“约其他日”不再先把日期写进主流程 `reminder_cart`；授权/名额通过后由服务端一次事务直接创建行程项与任务。旧版遗留的同景点 pending 行会在 quickCommit 中续用并消费，其他主流程草稿不受影响；已落成真实行程的日期继续拦截。
 - 2026-11-03 分享 UI 修正为本地候选，尚未上传客户端：首页摘要卡入口始终显示「分享行程」；只读总览卡复用首页朱砂渐变、标题和 `BEIJING  TRIP` 装饰英文，并新增底部「返回首页」；分享浮层改用 `32rpx` 无底色白色微信 Icon；首页正文优先按胶囊实际 bottom 加 `8rpx`、再精确下移 `2px` 定位，仅胶囊信息缺失时回退导航块底边，额度提示或放票横幅出现时从同一起点将后续内容下推。该顶部结果已抽到 `miniprogram/utils/home-layout.js`，并由 `test/home-top-layout.test.js` 对 320 / 402 / 440 宽度数值锁定。
@@ -124,6 +124,7 @@
 - `notifier`：已兼容旧任务走旧「活动开始通知」、新任务走新「预约开始提醒」；按任务实际模板发送和核销额度。应先部署，使旧任务和随后产生的新模板任务都有正确分流；当前已确认 `status_release_idx = backendStatus + releaseAt` 已存在，但云端触发器、测试发送和真机模板授权仍未完成闭环核对。
 - `reminder`：新提醒任务会写入当前模板 `_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA`；`lib/quota.js` 已兼容旧任务按旧模板记账。应在 notifier 之后部署，最后再发布小程序端。
 - `payment`：2026-11-02 16:14 已整包更新本轮版本，运行时仍为 Nodejs16.13、20 个环境变量键完整，`paymentReconcileEveryTwoMinutes = 0 */2 * * * * *` 保持启用。当前版本包含后台会员限制模式、当日统计、7 / 30 / 90 天 / 全部筛选、Apple 超时待支付关闭、订单/售后幂等、权益账本快照、退款精确回收、虚拟支付商品复核和补偿队列隔离；管理员与订单接口冒烟通过。
+- `payment`：2026-11-03 提醒质量快照改造仍为本地候选，尚未部署。部署前需核验 `reminder_events.releaseAt` 与 `reminder_tasks.releaseAt` 索引；整包部署后必须恢复并核验 `paymentReconcileEveryTwoMinutes`，再等待首个 `13:00 / 21:00` 窗口写入并回读 `payment_config/reminder_quality_latest`。
 - 会员购买断路器：`payment_config/membership_sales=OPEN` 已创建并设为仅管理端可读写，`payment` 与 `reminder` 已于 2026-11-02 部署并通过只读冒烟；`paymentReconcileEveryTwoMinutes` 已恢复。包含管理开关和停售态 UI 的客户端 `2.1.1` 已全量发布。
 - 客服工作台：`users_nickname`、`orders_created_at`、`orders_status_created_at`、`after_sales_case_no` 已创建并核验，含 `adminOrders.*` 的新版 `payment` 已于 2026-11-02 部署并通过管理员冒烟；`paymentReconcileEveryTwoMinutes` 保持启用。客户端 `2.1.1` 已全量发布，客服工作台实际使用正常。
 - 会员限制模式后台开关：`payment`、`reminder` 和云端配置文档均已部署，客户端已全量包含控制卡。运行期真身为 `payment_config/membership_enforcement`，当前 `mode=all`；环境变量只作兜底。保护额度完成标记缺失，后台后续从其他模式切回 `all` 前必须先完成迁移审计治理。
@@ -199,7 +200,7 @@
 | 会员限制模式后台开关 | **已部署并通过云端/开发者工具冒烟** | `payment_config/membership_enforcement={mode:"all"}` 已创建；管理员返回 `source=DB`，页面显示“全部用户”；保护额度完成标记缺失，模式切回 `all` 的迁移闸门仍需治理 |
 | 客服工作台当日订单统计 | **已部署并通过云端冒烟** | 统计今日 36 单、已支付 23 单、支付 ¥69、退款 ¥6、净赚 ¥63 |
 | 客服工作台订单时间筛选与吸顶 | **已部署并通过云端冒烟** | 默认近 30 天，可切近 7 天 / 近 90 天 / 全部；`timeRange=all` 返回历史 70 单；搜索与筛选区吸顶在导航栏下方 |
-| 客服工作台提醒质量仪表 | **已部署并通过真实冒烟** | `payment.adminReminderQuality.stats` 返回 `92.26%` 当前窗口准时率和 `55.91%` 前 5 日均值，状态按低于 99% 显示异常；两条 `releaseAt` 索引已核验存在 |
+| 客服工作台提醒质量仪表 | **旧版已部署；快照改造待部署** | 旧版 `payment.adminReminderQuality.stats` 已通过真实冒烟；本地候选改为定时器写 `payment_config/reminder_quality_latest`、工作台只读快照，首次无快照返回 `pending`，旧快照保留旧值。部署 `payment` 后需核验现有两分钟触发器并回读首个快照 |
 | 行程只读分享 V1 | **已部署并通过云端与开发者工具冒烟** | `trips_share_token_idx` 已建；`tripShare.create/open` 成功，只读页真实渲染 17 个日期分组；真实会话转发和第二账号落地待真机验收 |
 | 客户端 `2.2.0` | **CLI 已上传，体验版最终确认待处理** | 包体 `1,107,418` 字节；普通 CLI 上传成功；增强 upload 工具的体验版确认任务仍为 `pending`，未送审、未发布正式版 |
 | 遗留 Apple 待支付单收口 | **已部署并通过定时补偿验证** | 两笔历史 `PENDING` 于 16:16:01 自动关闭，原因为 `VIRTUAL_PAY_EXPIRED_UNPAID`；当前待支付订单为 0 |

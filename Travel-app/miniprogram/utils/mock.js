@@ -2906,27 +2906,51 @@ const handlers = {
   },
 
   'adminReminderQuality.stats': () => {
-    const yesterday = addDays(toDateStr(new Date()), -1);
     const now = new Date();
+    const today = toDateStr(now);
+    const yesterday = addDays(today, -1);
     const hour = beijingParts(now).hour;
-    const windowLabel = hour < 13
-      ? '昨日 13:00-21:00'
-      : (hour < 21 ? '今日 05:00-13:00' : '今日 13:00-21:00');
-    const updatedLabel = hour < 13 ? '21:00' : (hour < 21 ? '13:00' : '21:00');
-    const nextUpdateAt = hour < 13
-      ? parseBeijing(toDateStr(now), '13:00')
+    const currentWindow = hour < 13
+      ? {
+        label: '昨日 13:00-21:00',
+        startAt: parseBeijing(yesterday, '13:00'),
+        endAt: parseBeijing(yesterday, '21:00'),
+        updatedLabel: '21:00',
+        nextUpdateAt: parseBeijing(today, '13:00'),
+      }
       : (hour < 21
-        ? parseBeijing(toDateStr(now), '21:00')
-        : new Date(parseBeijing(addDays(toDateStr(now), 1), '13:00')));
+        ? {
+          label: '今日 05:00-13:00',
+          startAt: parseBeijing(today, '05:00'),
+          endAt: parseBeijing(today, '13:00'),
+          updatedLabel: '13:00',
+          nextUpdateAt: parseBeijing(today, '21:00'),
+        }
+        : {
+          label: '今日 13:00-21:00',
+          startAt: parseBeijing(today, '13:00'),
+          endAt: parseBeijing(today, '21:00'),
+          updatedLabel: '21:00',
+          nextUpdateAt: parseBeijing(addDays(today, 1), '13:00'),
+        });
+    const generatedAt = new Date().toISOString();
     return {
       success: true,
+      pending: false,
+      stale: false,
+      expectedWindowKey: currentWindow.endAt.toISOString(),
+      snapshot: {
+        windowKey: currentWindow.endAt.toISOString(),
+        generatedAt,
+      },
       quality: {
         timezone: 'Asia/Shanghai',
         threshold: { onTimeRate: 99, delayToleranceSeconds: 120 },
         currentWindow: {
-          label: windowLabel,
-          updatedLabel,
-          nextUpdateAt: nextUpdateAt.toISOString(),
+          ...currentWindow,
+          startAt: currentWindow.startAt.toISOString(),
+          endAt: currentWindow.endAt.toISOString(),
+          nextUpdateAt: currentWindow.nextUpdateAt.toISOString(),
           durationHours: 8,
           expectedCount: 12,
           onTimeCount: 12,
@@ -2938,11 +2962,6 @@ const handlers = {
           status: 'HEALTHY',
           reasonCodes: [],
         },
-        yesterday: {
-          dateKey: yesterday,
-          expectedCount: 30,
-          missedCount: 0,
-        },
         baseline5d: {
           startDate: addDays(yesterday, -5),
           endDate: addDays(yesterday, -1),
@@ -2951,7 +2970,7 @@ const handlers = {
           onTimeRate: 99.4,
         },
         dataTruncated: false,
-        generatedAt: new Date().toISOString(),
+        generatedAt,
       },
     };
   },

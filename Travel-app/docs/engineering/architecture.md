@@ -125,7 +125,7 @@ reminder.membership.createOrder
 - 售后证据、审核结果和退款单号存 `after_sales_cases`；敏感查看与审核操作写 `admin_audit_logs`。
 - 客服工作台通过 `adminOrders.list/detail` 查询全部会员订单，并在读取时按 `orders.userId -> users.openId` 补全昵称、会员状态和已购名额；订单不冗余保存昵称。售后列表同样按 `userId` 补全用户信息。
 - 客服工作台通过 `adminOrders.stats` 读取北京时间当日统计：当日创建订单数、已支付数、已支付金额、已完成退款金额和净赚金额。净赚按当日创建订单的 `paidAmountFen - refundedAmountFen` 计算；退款优先使用订单快照，历史单缺失快照时按原金额，处理中退款不扣。统计不受搜索、筛选和分页影响。
-- 客服工作台通过 `adminReminderQuality.stats` 读取最近一个完整 8 小时时段的提醒质量。该接口只读 `reminder_events` 和 `reminder_tasks`，按任务聚合全部 offset 的实际发送延迟、未送达、跳过与证据缺失；前 5 日加权基线不包含昨日。页面在每日 `13:00 / 21:00` 边界自动刷新，只展示当前送达率和前 5 日均值，不在客户端重算 99% 或 120 秒阈值。
+- 客服工作台通过 `adminReminderQuality.stats` 读取 `payment_config/reminder_quality_latest` 的最近一个完整 8 小时时段快照。快照由现有 `paymentReconcileEveryTwoMinutes` 定时器在每日 `13:00 / 21:00` 后的首个 tick 生成；同一窗口重复触发只读取不重算。工作台接口不直接扫 `reminder_events` / `reminder_tasks`，页面优先使用本地缓存，服务端新窗口尚未生成时保留旧值并重试。快照按任务聚合全部 offset 的实际发送延迟、未送达、跳过与证据缺失；前 5 日加权基线不包含昨日。页面只展示当前送达率和前 5 日均值，不在客户端重算 99% 或 120 秒阈值。
 - 客服工作台订单列表用 `timeRange=7d|30d|90d|all` 按北京时间订单创建时间过滤，默认 `30d`；搜索、状态和分页共用同一时间窗口，全部历史通过 `all` 显式读取。
 - 售后工作台仅对 `AFTER_SALES_ADMIN_OPENIDS` 开放，所有操作服务端二次鉴权。
 

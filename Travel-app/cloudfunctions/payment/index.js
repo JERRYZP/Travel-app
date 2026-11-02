@@ -1773,6 +1773,25 @@ async function adminReminderQualityStats(context) {
   return adminReminderQuality.statsForAdmin(db);
 }
 
+async function refreshReminderQualitySnapshot(nowTs) {
+  try {
+    const result = await adminReminderQuality.refreshSnapshot(db, nowTs);
+    return {
+      refreshed: result.refreshed === true,
+      windowKey: result.windowKey,
+    };
+  } catch (err) {
+    console.error('[payment] reminder quality snapshot failed', {
+      name: err.name,
+      message: err.errMsg || err.message,
+    });
+    return {
+      refreshed: false,
+      error: 'QUALITY_SNAPSHOT_FAILED',
+    };
+  }
+}
+
 async function adminOrderDetail(context, event) {
   const denied = adminRequired(context);
   if (denied) return denied;
@@ -2079,11 +2098,14 @@ async function hasReconcileWork() {
 }
 
 async function reconcile(options = {}) {
+  const now = typeof options.now === 'function' ? options.now : Date.now;
+  const quality = await refreshReminderQualitySnapshot(new Date(now()));
   const config = wxpay.configOf();
   const legacyReady = wxpay.hasApiConfig(config);
   const virtualReady = virtualPay.hasApiConfig(virtualPay.configOf());
-  if (!legacyReady && !virtualReady) return ok({ skipped: true, reason: 'PAYMENT_NOT_READY' });
-  const now = typeof options.now === 'function' ? options.now : Date.now;
+  if (!legacyReady && !virtualReady) {
+    return ok({ skipped: true, reason: 'PAYMENT_NOT_READY', quality });
+  }
   const batchSize = Math.max(1, Math.min(100, Number(options.batchSize) || RECONCILE_BATCH_SIZE));
   const totalBudgetMs = Math.max(1, Number(options.totalBudgetMs) || RECONCILE_TOTAL_BUDGET_MS);
   const queueBudgetMs = Math.max(1, Number(options.queueBudgetMs) || RECONCILE_QUEUE_BUDGET_MS);
@@ -2094,6 +2116,7 @@ async function reconcile(options = {}) {
       reason: 'NO_RECONCILE_WORK',
       queues: {},
       errors: 0,
+      quality,
     });
   }
   const summary = {
@@ -2217,7 +2240,7 @@ async function reconcile(options = {}) {
       return { success: true, updated: false };
     },
   }));
-  return ok(summary);
+  return ok({ ...summary, quality });
 }
 
 /* ============================== 路由 ============================== */

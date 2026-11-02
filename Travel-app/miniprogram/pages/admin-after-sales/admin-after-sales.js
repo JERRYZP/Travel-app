@@ -3,6 +3,8 @@ const api = require('../../utils/api.js');
 
 const MIGRATION_CURSOR_KEY = 'admin_protection_migration_cursor_v1';
 const MIGRATION_BATCH_DELAY_MS = 300;
+const QUALITY_CACHE_KEY = 'admin_reminder_quality_snapshot_v1';
+const QUALITY_RETRY_MS = 2 * 60 * 1000;
 // 上线前迁移已经完成；保留服务端能力和本地实现，仅关闭正式工作台入口。
 const MIGRATION_ENTRY_ENABLED = false;
 const TAB_ORDERS = 'orders';
@@ -101,6 +103,27 @@ function reminderQualityViewOf(payload) {
     issueText,
     showRetry: false,
   };
+}
+
+function readQualityCache() {
+  try {
+    const cached = wx.getStorageSync(QUALITY_CACHE_KEY);
+    if (!cached || !cached.quality || !cached.quality.currentWindow) return null;
+    if (!Number.isFinite(Date.parse(cached.quality.currentWindow.nextUpdateAt))) return null;
+    return cached;
+  } catch (err) {
+    return null;
+  }
+}
+
+function writeQualityCache(quality) {
+  if (!quality || !quality.currentWindow) return;
+  try {
+    wx.setStorageSync(QUALITY_CACHE_KEY, {
+      quality,
+      savedAt: Date.now(),
+    });
+  } catch (err) {}
 }
 
 const FILTERS = [
@@ -254,22 +277,51 @@ Page({
     });
   },
 
-  loadReminderQuality() {
+  loadReminderQuality(options = {}) {
     if (this._qualityLoading) return Promise.resolve(false);
+    const force = options.force === true;
+    let cached = this._qualitySnapshot;
+    if (!cached) {
+      const stored = readQualityCache();
+      cached = stored ? stored.quality : null;
+    }
+    if (cached) {
+      this._qualitySnapshot = cached;
+      this.setData({ reminderQuality: reminderQualityViewOf(cached) });
+      const nextUpdateAt = Date.parse(cached.currentWindow
+        && cached.currentWindow.nextUpdateAt);
+      if (!force && Number.isFinite(nextUpdateAt) && Date.now() < nextUpdateAt) {
+        this.scheduleReminderQualityRefresh(cached);
+        return Promise.resolve(true);
+      }
+    }
     this._qualityLoading = true;
-    this.setData({ reminderQuality: qualityPlaceholder('loading') });
+    if (!this._qualitySnapshot) {
+      this.setData({ reminderQuality: qualityPlaceholder('loading') });
+    }
     return api.payment.adminReminderQuality.stats().then(res => {
       const quality = res && res.quality;
-      if (!quality) throw new Error('quality payload missing');
+      if (!quality) {
+        this.scheduleReminderQualityRetry();
+        return false;
+      }
+      this._qualitySnapshot = quality;
+      writeQualityCache(quality);
       this.setData({ reminderQuality: reminderQualityViewOf(quality) });
-      this.scheduleReminderQualityRefresh(quality);
+      if (res && res.pending) this.scheduleReminderQualityRetry();
+      else this.scheduleReminderQualityRefresh(quality);
       return true;
     }).catch(err => {
       this.clearReminderQualityTimer();
-      const pendingBackend = !!(err && err.errorCode === 1099);
-      this.setData({
-        reminderQuality: qualityPlaceholder(pendingBackend ? 'pending' : 'failed'),
-      });
+      if (this._qualitySnapshot) {
+        this.setData({ reminderQuality: reminderQualityViewOf(this._qualitySnapshot) });
+        this.scheduleReminderQualityRetry();
+      } else {
+        const pendingBackend = !!(err && err.errorCode === 1099);
+        this.setData({
+          reminderQuality: qualityPlaceholder(pendingBackend ? 'pending' : 'failed'),
+        });
+      }
       return false;
     }).then(result => {
       this._qualityLoading = false;
@@ -285,8 +337,22 @@ Page({
     const delay = Math.max(1000, nextUpdateAt - Date.now() + 500);
     this._qualityRefreshTimer = setTimeout(() => {
       this._qualityRefreshTimer = null;
-      if (!this.data.forbidden) this.loadReminderQuality();
+      if (!this.data.forbidden) this.loadReminderQuality({ force: true });
     }, delay);
+    if (this._qualityRefreshTimer && this._qualityRefreshTimer.unref) {
+      this._qualityRefreshTimer.unref();
+    }
+  },
+
+  scheduleReminderQualityRetry() {
+    this.clearReminderQualityTimer();
+    this._qualityRefreshTimer = setTimeout(() => {
+      this._qualityRefreshTimer = null;
+      if (!this.data.forbidden) this.loadReminderQuality({ force: true });
+    }, QUALITY_RETRY_MS);
+    if (this._qualityRefreshTimer && this._qualityRefreshTimer.unref) {
+      this._qualityRefreshTimer.unref();
+    }
   },
 
   clearReminderQualityTimer() {
@@ -296,7 +362,7 @@ Page({
   },
 
   onRetryReminderQuality() {
-    return this.loadReminderQuality();
+    return this.loadReminderQuality({ force: true });
   },
 
   applyStatus(res) {

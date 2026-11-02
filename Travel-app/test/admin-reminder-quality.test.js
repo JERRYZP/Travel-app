@@ -273,8 +273,23 @@ async function run() {
   console.log('\n=== 4. 当前时段与前 5 日聚合 ===');
   const db = createDb();
   seedQualityEvents(db);
+  const beforeSnapshot = await quality.statsForAdmin(db, FIXED_NOW);
+  eq(beforeSnapshot.success, true, '首个快照生成前接口仍可响应');
+  eq(beforeSnapshot.pending, true, '首个快照生成前返回 pending');
+  eq(beforeSnapshot.stale, false, '没有旧快照时不标记 stale');
+  eq(beforeSnapshot.quality, null, '首个快照生成前不临时扫表');
+  eq(db._size(COLLECTIONS.PAYMENT_CONFIG), 0, '工作台读取不会写入快照');
+  const refreshed = await quality.refreshSnapshot(db, FIXED_NOW);
+  eq(refreshed.refreshed, true, '首次节点刷新生成快照');
+  eq(refreshed.windowKey, quality.windowKeyOf(FIXED_NOW), '快照按统计窗口幂等');
+  const refreshedAgain = await quality.refreshSnapshot(db, FIXED_NOW);
+  eq(refreshedAgain.refreshed, false, '同一窗口重复触发不重算');
+  const snapshotRows = db._dump(COLLECTIONS.PAYMENT_CONFIG)
+    .filter(item => item._id === quality.SNAPSHOT_CONFIG_ID);
+  eq(snapshotRows.length, 1, '快照写入 payment_config 的确定性文档');
   const result = await quality.statsForAdmin(db, FIXED_NOW);
   eq(result.success, true, '质量统计成功');
+  eq(result.pending, false, '当前窗口快照可直接读取');
   eq(result.quality.currentWindow.label, '今日 05:00-13:00', '当前统计最近完成 8 小时窗口');
   eq(result.quality.currentWindow.updatedLabel, '13:00', '质量卡显示最近更新时间');
   eq(result.quality.currentWindow.expectedCount, 4, '当前窗口包含 5-13 点任务');
@@ -288,6 +303,63 @@ async function run() {
   eq(result.quality.baseline5d.onTimeRate, 100, '前 5 日加权准时率');
   eq(result.quality.dataTruncated, false, '未触发查询截断');
   eq(/openid|userId/i.test(JSON.stringify(result.quality)), false, '聚合响应不含敏感用户字段');
+
+  const readOnlyDb = createDb({
+    missingCollections: [COLLECTIONS.REMINDER_EVENTS, COLLECTIONS.REMINDER_TASKS],
+  });
+  readOnlyDb._seed(COLLECTIONS.PAYMENT_CONFIG, [{
+    _id: quality.SNAPSHOT_CONFIG_ID,
+    schemaVersion: quality.SNAPSHOT_SCHEMA_VERSION,
+    windowKey: quality.windowKeyOf(FIXED_NOW),
+    quality: result.quality,
+    generatedAt: FIXED_NOW,
+  }]);
+  const cachedResult = await quality.statsForAdmin(readOnlyDb, FIXED_NOW);
+  eq(cachedResult.success, true, '快照读取不依赖事件/任务原始集合');
+  eq(cachedResult.quality.currentWindow.onTimeRate, 50, '工作台读取已存快照');
+
+  const staleDb = createDb({
+    missingCollections: [COLLECTIONS.REMINDER_EVENTS, COLLECTIONS.REMINDER_TASKS],
+  });
+  staleDb._seed(COLLECTIONS.PAYMENT_CONFIG, [{
+    _id: quality.SNAPSHOT_CONFIG_ID,
+    schemaVersion: quality.SNAPSHOT_SCHEMA_VERSION,
+    windowKey: at('2026-11-02', '05:00').toISOString(),
+    quality: result.quality,
+    generatedAt: FIXED_NOW,
+  }]);
+  const staleResult = await quality.statsForAdmin(staleDb, FIXED_NOW);
+  eq(staleResult.pending, true, '当前窗口快照尚未生成时返回 pending');
+  eq(staleResult.stale, true, '旧窗口快照明确标记 stale');
+  eq(staleResult.expectedWindowKey, at('2026-11-02', '13:00').toISOString(),
+    '响应返回当前应读取的快照窗口');
+  eq(staleResult.quality.currentWindow.onTimeRate, 50, '新窗口等待期间继续返回上一份可用快照');
+
+  console.log('\n=== 4.1 两分钟定时器在节点生成且只生成一次质量快照 ===');
+  const timerDb = createDb();
+  seedQualityEvents(timerDb);
+  const timerPayment = loadPayment(timerDb, ADMIN);
+  const timerFirst = await timerPayment._test.reconcile({
+    now: () => FIXED_NOW.getTime(),
+    batchSize: 10,
+    totalBudgetMs: 1000,
+    queueBudgetMs: 500,
+  });
+  eq(timerFirst.quality.refreshed, true, '现有两分钟定时器承担节点快照计算');
+  const timerSecond = await timerPayment._test.reconcile({
+    now: () => FIXED_NOW.getTime(),
+    batchSize: 10,
+    totalBudgetMs: 1000,
+    queueBudgetMs: 500,
+  });
+  eq(timerSecond.quality.refreshed, false, '同一窗口后续定时触发只读快照并跳过');
+  const nextWindowPayment = await timerPayment._test.reconcile({
+    now: () => at('2026-11-02', '21:00').getTime(),
+    batchSize: 10,
+    totalBudgetMs: 1000,
+    queueBudgetMs: 500,
+  });
+  eq(nextWindowPayment.quality.refreshed, true, '进入下一个统计节点时生成新窗口快照');
 
   console.log('\n=== 5. 管理员路由与鉴权 ===');
   const previousAdmin = process.env.AFTER_SALES_ADMIN_OPENIDS;

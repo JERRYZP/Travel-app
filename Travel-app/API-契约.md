@@ -2,7 +2,7 @@
 
 > 面向：前端（微信小程序页面开发）
 > 2026-11-02 更新：新增 `tripShare.create/status/revoke/open` 与 PAGE-018 行程只读分享。分享令牌只从公开路径传入，普通行程接口仅返回 `shareActive`；主人接口可通过 `ownerNickname` 读取应用内昵称用于会话标题，接收方数据只含城市、日期、天数和景点名称。
-> 2026-11-02 更新：客服工作台新增 `adminReminderQuality.stats`。接口按北京时间 `13:00 / 21:00` 最近一个完整 8 小时时段统计提醒准时送达质量，并返回前 5 个完整自然日的加权基线；仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用。
+> 2026-11-03 更新：客服工作台 `adminReminderQuality.stats` 改为读取由 `payment` 两分钟定时器在北京时间 `13:00 / 21:00` 后首个 tick 持久化的质量快照；工作台打开和刷新不再扫描 `reminder_events` / `reminder_tasks`。仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用。
 > 2026-11-02 更新：客服工作台新增会员限制模式切换。运行期真身为 `payment_config/membership_enforcement`，管理员可切 `off/test/all` 并即时生效；切 `all` 前服务端强制核验两项上线迁移。
 > 2026-11-02 更新：新增客服工作台。管理员可通过 `adminOrders.list/detail` 查询全部会员订单，售后列表补全昵称、完整 OpenID 与关键词搜索；会员购买总开关保留在页面顶部。
 > 2026-11-02 更新：新增会员购买总开关 `payment_config/membership_sales`。暂停只阻止新订单和新发起支付；已支付订单继续查单与发权益，会员状态、订单、退款和售后不受影响。
@@ -1244,6 +1244,13 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - `adminReminderQuality.stats` 返回：
   ```javascript
   {
+    pending: false,
+    stale: false,
+    expectedWindowKey: "2026-11-02T05:00:00.000Z",
+    snapshot: {
+      windowKey: "2026-11-02T05:00:00.000Z",
+      generatedAt: "2026-11-02T05:02:00.000Z"
+    },
     quality: {
       timezone: 'Asia/Shanghai',
       threshold: { onTimeRate: 99, delayToleranceSeconds: 120 },
@@ -1262,11 +1269,13 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     }
   }
   ```
-- 质量统计只读 `reminder_events` 与仍在保留期内的 `reminder_tasks`，按任务而不是发送尝试计数。优先使用逐 offset 的 `SEND_SUCCEEDED.scheduledAt/eventAt`；事件缺失时，已 `TRIGGERED` 且 `sentOffsets` 覆盖全部计划 offset 的任务可用 `triggeredAt` 与最后一次计划发送时间回退计算。一个任务的全部 offset 都在各自计划时间后 120 秒内发送成功，才算 `onTime`；多 offset 任务只要一项失败或证据不完整，整项不能计入准时。
+- `pending=true` 表示当前统计窗口的快照尚未由定时器写入。首次部署或新窗口尚未生成时 `quality=null`、`snapshot=null`；已有旧窗口快照时仍返回 `quality`，同时 `pending=true`、`stale=true`，让工作台保留上一份可用数据而不是清空或重新扫表。`expectedWindowKey` 是当前应读取的 `currentWindow.endAt`。
+- 质量快照由现有 `paymentReconcileEveryTwoMinutes` 定时器负责生成：北京时间 `13:00 / 21:00` 后的首个 tick 计算并写入 `payment_config/reminder_quality_latest`，同一 `windowKey` 后续 tick 直接跳过重算。工作台接口只读取该确定性文档，不读 `reminder_events`、`reminder_tasks`，不临时计算。首次快照上线前可能短暂返回 `pending=true`。
+- 质量快照计算只读 `reminder_events` 与仍在保留期内的 `reminder_tasks`，按任务而不是发送尝试计数。优先使用逐 offset 的 `SEND_SUCCEEDED.scheduledAt/eventAt`；事件缺失时，已 `TRIGGERED` 且 `sentOffsets` 覆盖全部计划 offset 的任务可用 `triggeredAt` 与最后一次计划发送时间回退计算。一个任务的全部 offset 都在各自计划时间后 120 秒内发送成功，才算 `onTime`；多 offset 任务只要一项失败或证据不完整，整项不能计入准时。
 - `currentWindow` 固定选择最近一个已完成的 8 小时时段：`13:00` 选择 `05:00-13:00`，`21:00` 选择 `13:00-21:00`；13 点前继续选择前一日 `13:00-21:00`。`nextUpdateAt` 是下一个北京时间 `13:00 / 21:00` 边界，页面在保持可见时据此刷新。
 - `status` 只有三种业务结果：当前时段没有任务为 `EMPTY`；`currentWindow.onTimeRate < 99` 为 `ALERT`；其余为 `HEALTHY`。不再返回“关注”状态。未送达、跳过和证据缺失只通过计算送达率进入结果，不得在页面额外增加与阈值无关的红色条件。
 - `baseline5d` 固定为昨日之前的 5 个北京时间自然日，不包含昨日；`onTimeRate` 按任务数加权，`daysWithData` 只计算存在到期任务的日期。昨日未送达数、P95 延迟、任务数和固定阈值均不进入页面展示契约。
-- 响应只包含聚合值，不返回 OpenID、userId、taskId、单任务明细或错误原文。统计接口不写库、不新增定时任务；`reminder_events.releaseAt` 与 `reminder_tasks.releaseAt` 索引必须先核验。
+- 响应只包含聚合值，不返回 OpenID、userId、taskId、单任务明细或错误原文。工作台读取接口不写库；快照由现有两分钟定时器写入，不新增第二套定时任务。部署含定时快照计算的 `payment` 前必须核验 `reminder_events.releaseAt` 与 `reminder_tasks.releaseAt` 索引。
 - `adminOrders.detail` 返回本人订单管理详情，包括用户会员状态、支付渠道、微信交易号、权益发放快照和关联售后记录。订单不存在统一返回 `1024`。
 - `afterSales.adminList` 的 `items[].user` 返回当前昵称、完整 OpenID、会员到期和已购名额；同样支持分页与关键词搜索。
 - 管理员搜索订单写 `SEARCH_ADMIN_ORDERS`，搜索售后写 `SEARCH_ADMIN_AFTER_SALES`，查看订单详情写 `VIEW_ADMIN_ORDER_DETAIL`。审计只记录关键词类型和状态，不记录原始搜索词；订单详情审计只记录交易号是否存在，不记录交易号全文。
