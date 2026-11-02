@@ -38,7 +38,7 @@
   <view wx:if="{{showAfterSalesEntry}}" class="setting-card">
     <view class="setting-row" bindtap="onAfterSalesAdmin">
       <view class="setting-row-title">
-        <text class="setting-row-label">售后管理</text>
+        <text class="setting-row-label">客服工作台</text>
         <text wx:if="{{afterSalesPendingCount > 0}}" class="setting-pending-badge">{{afterSalesPendingText}}</text>
       </view>
       <view class="setting-row-right">

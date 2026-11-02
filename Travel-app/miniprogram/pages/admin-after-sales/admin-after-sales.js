@@ -5,6 +5,8 @@ const MIGRATION_CURSOR_KEY = 'admin_protection_migration_cursor_v1';
 const MIGRATION_BATCH_DELAY_MS = 300;
 // 上线前迁移已经完成；保留服务端能力和本地实现，仅关闭正式工作台入口。
 const MIGRATION_ENTRY_ENABLED = false;
+const TAB_ORDERS = 'orders';
+const TAB_AFTER_SALES = 'afterSales';
 
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -22,17 +24,34 @@ const FILTERS = [
   { key: 'REJECTED', label: '已驳回' },
 ];
 
+const ORDER_FILTERS = [
+  { key: '', label: '全部' },
+  { key: 'PENDING', label: '待支付' },
+  { key: 'PAID', label: '已支付' },
+  { key: 'CLOSED', label: '已关闭' },
+];
+
 Page({
   data: {
     statusBarHeight: 20,
     navBarHeight: 44,
-    filters: FILTERS,
+    activeTab: TAB_ORDERS,
+    filters: ORDER_FILTERS,
     activeFilter: '',
+    keywordInput: '',
+    activeKeyword: '',
+    searchPlaceholder: '订单号 / OpenID / 昵称',
+    emptyTitle: '还没有会员订单',
+    emptyDesc: '可按订单号、完整 OpenID 或昵称搜索。',
     loading: true,
     loadFailed: false,
+    loadingMore: false,
+    page: 1,
+    hasMore: false,
     forbidden: false,
     items: [],
     detail: null,
+    orderDetail: null,
     decisionNote: '',
     acting: false,
     actionMessage: '',
@@ -40,12 +59,17 @@ Page({
     migrationHasMore: false,
     migrationEntryEnabled: MIGRATION_ENTRY_ENABLED,
     migrationCompleted: false,
+    pendingCount: 0,
     fundingBlockedCount: 0,
     migrationMessage: '',
     migrating: false,
     migrationAutoRunning: false,
     migrationTotalScanned: 0,
     migrationTotalUpdated: 0,
+    membershipSales: null,
+    salesReason: '',
+    salesSaving: false,
+    showSalesConfirm: false,
   },
 
   onLoad() {
@@ -82,30 +106,183 @@ Page({
   applyStatus(res) {
     this.setData({
       migrationCompleted: !!(res && res.migrationCompleted),
+      pendingCount: Math.max(0, Number(res && res.pendingCount) || 0),
       fundingBlockedCount: Math.max(0, Number(res && res.fundingBlockedCount) || 0),
+      membershipSales: (res && res.membershipSales) || null,
     });
   },
 
+  onSalesReasonInput(e) {
+    this.setData({ salesReason: e.detail.value });
+  },
+
+  onToggleMembershipSales() {
+    if (this.data.salesSaving || !this.data.membershipSales) return;
+    if (this.data.membershipSales.purchaseEnabled === false) {
+      wx.showModal({
+        title: '恢复会员购买',
+        content: '恢复后用户可重新创建订单并发起支付。已有订单、权益、退款和售后不受影响。',
+        success: res => {
+          if (res.confirm) this.setMembershipSalesState('OPEN', '恢复会员购买');
+        },
+      });
+      return;
+    }
+    this.setData({
+      showSalesConfirm: true,
+      salesReason: '',
+    });
+  },
+
+  onCloseSalesConfirm() {
+    if (this.data.salesSaving) return;
+    this.setData({ showSalesConfirm: false });
+  },
+
+  onConfirmMembershipSalesPause() {
+    if (this.data.salesSaving) return;
+    const reason = String(this.data.salesReason || '').trim();
+    if (!reason) {
+      wx.showToast({ title: '请填写暂停原因', icon: 'none' });
+      return;
+    }
+    this.setMembershipSalesState('PAUSED', reason);
+  },
+
+  setMembershipSalesState(state, reason) {
+    if (this.data.salesSaving) return Promise.resolve(false);
+    this.setData({ salesSaving: true });
+    return api.payment.afterSales.adminSetMembershipSales({ state, reason })
+      .then(result => {
+        this.setData({
+          salesSaving: false,
+          salesReason: '',
+          showSalesConfirm: false,
+          membershipSales: (result && result.membershipSales) || this.data.membershipSales,
+        });
+        wx.showToast({
+          title: state === 'PAUSED' ? '会员购买已暂停' : '会员购买已恢复',
+          icon: 'none',
+        });
+        return true;
+      })
+      .catch(err => {
+        this.setData({ salesSaving: false });
+        api.toastError(err);
+        return false;
+      });
+  },
+
   onShowFundingBlocked() {
-    if (this.data.activeFilter === 'REFUND_FAILED') {
+    if (this.data.activeTab === TAB_AFTER_SALES && this.data.activeFilter === 'REFUND_FAILED') {
       return this.loadList();
     }
-    this.setData({ activeFilter: 'REFUND_FAILED', detail: null, actionMessage: '' });
+    this.setData({
+      activeTab: TAB_AFTER_SALES,
+      filters: FILTERS,
+      activeFilter: 'REFUND_FAILED',
+      keywordInput: '',
+      activeKeyword: '',
+      searchPlaceholder: '售后单号 / 订单号 / OpenID / 昵称',
+      emptyTitle: '当前筛选没有售后单',
+      emptyDesc: '客服目标是在 24 小时内完成审核。',
+      items: [],
+      detail: null,
+      orderDetail: null,
+      actionMessage: '',
+    });
     return this.loadList();
   },
 
-  loadList() {
-    this.setData({ loading: true, loadFailed: false, forbidden: false });
-    return api.payment.afterSales.adminList({ status: this.data.activeFilter }).then(res => {
-      this.setData({ loading: false, items: res.items || [] });
-    }).catch(err => {
+  loadList(options = {}) {
+    const append = options.append === true;
+    const page = append ? Number(this.data.page || 1) + 1 : 1;
+    const requestSeq = Number(this._listRequestSeq || 0) + 1;
+    this._listRequestSeq = requestSeq;
+    this.setData(append
+      ? { loadingMore: true }
+      : { loading: true, loadFailed: false, loadingMore: false, forbidden: false });
+    const params = {
+      status: this.data.activeFilter,
+      keyword: this.data.activeKeyword,
+      page,
+      pageSize: 20,
+    };
+    const request = this.data.activeTab === TAB_ORDERS
+      ? api.payment.adminOrders.list(params)
+      : api.payment.afterSales.adminList(params);
+    return request.then(res => {
+      if (requestSeq !== this._listRequestSeq) return;
+      const nextItems = (res.items || []).map(item => ({
+        ...item,
+        _statusTone: this.data.activeTab === TAB_ORDERS
+          ? String(item.status || '').toLowerCase()
+          : String(item.status || ''),
+      }));
       this.setData({
         loading: false,
-        loadFailed: !(err && err.errorCode === 1040),
+        loadFailed: false,
+        loadingMore: false,
+        page,
+        hasMore: !!res.hasMore,
+        items: append ? this.data.items.concat(nextItems) : nextItems,
+      });
+    }).catch(err => {
+      if (requestSeq !== this._listRequestSeq) return;
+      this.setData({
+        loading: false,
+        loadingMore: false,
+        loadFailed: !append && !(err && err.errorCode === 1040),
         forbidden: !!(err && err.errorCode === 1040),
       });
       if (!err || err.errorCode !== 1040) api.toastError(err);
     });
+  },
+
+  onLoadMore() {
+    if (this.data.loading || this.data.loadingMore || !this.data.hasMore) return;
+    this.loadList({ append: true });
+  },
+
+  onTabTap(e) {
+    const tab = e.currentTarget.dataset.tab === TAB_AFTER_SALES ? TAB_AFTER_SALES : TAB_ORDERS;
+    if (tab === this.data.activeTab) return;
+    this._listRequestSeq = Number(this._listRequestSeq || 0) + 1;
+    const orders = tab === TAB_ORDERS;
+    this.setData({
+      activeTab: tab,
+      filters: orders ? ORDER_FILTERS : FILTERS,
+      activeFilter: '',
+      keywordInput: '',
+      activeKeyword: '',
+      searchPlaceholder: orders
+        ? '订单号 / OpenID / 昵称'
+        : '售后单号 / 订单号 / OpenID / 昵称',
+      emptyTitle: orders ? '还没有会员订单' : '当前筛选没有售后单',
+      emptyDesc: orders
+        ? '可按订单号、完整 OpenID 或昵称搜索。'
+        : '客服目标是在 24 小时内完成审核。',
+      items: [],
+      detail: null,
+      orderDetail: null,
+      actionMessage: '',
+    });
+    this.loadList();
+  },
+
+  onSearchInput(e) {
+    this.setData({ keywordInput: e.detail.value });
+  },
+
+  onSearchConfirm() {
+    this.setData({ activeKeyword: String(this.data.keywordInput || '').trim() });
+    this.loadList();
+  },
+
+  onClearSearch() {
+    if (!this.data.keywordInput && !this.data.activeKeyword) return;
+    this.setData({ keywordInput: '', activeKeyword: '' });
+    this.loadList();
   },
 
   onMigrateProtection() {
@@ -234,17 +411,78 @@ Page({
   onFilterTap(e) {
     const key = e.currentTarget.dataset.key || '';
     if (key === this.data.activeFilter) return;
-    this.setData({ activeFilter: key, detail: null, actionMessage: '' });
+    this.setData({
+      activeFilter: key,
+      detail: null,
+      orderDetail: null,
+      actionMessage: '',
+      page: 1,
+    });
     this.loadList();
   },
 
   onCaseTap(e) {
     const caseId = e.currentTarget.dataset.id;
     if (!caseId || this.data.acting) return;
-    this.setData({ actionMessage: '' });
-    api.payment.afterSales.adminDetail(caseId).then(res => {
+    this.openCaseDetail(caseId);
+  },
+
+  openCaseDetail(caseId) {
+    if (!caseId || this.data.acting) return Promise.resolve(false);
+    this.setData({ actionMessage: '', orderDetail: null });
+    return api.payment.afterSales.adminDetail(caseId).then(res => {
       this.setData({ detail: res, decisionNote: '' });
-    }).catch(api.toastError);
+      return true;
+    }).catch(err => {
+      api.toastError(err);
+      return false;
+    });
+  },
+
+  onOrderTap(e) {
+    const orderId = e.currentTarget.dataset.id;
+    if (!orderId) return;
+    this.openOrderDetail(orderId);
+  },
+
+  openOrderDetail(orderId) {
+    if (!orderId) return Promise.resolve(false);
+    this.setData({ detail: null });
+    return api.payment.adminOrders.detail(orderId).then(res => {
+      this.setData({ orderDetail: res });
+      return true;
+    }).catch(err => {
+      api.toastError(err);
+      return false;
+    });
+  },
+
+  onCloseOrderDetail() {
+    this.setData({ orderDetail: null });
+  },
+
+  onOrderCaseTap(e) {
+    const caseId = e.currentTarget.dataset.id;
+    if (!caseId) return;
+    this.setData({ orderDetail: null });
+    this.openCaseDetail(caseId);
+  },
+
+  onOpenRelatedOrder() {
+    const orderId = this.data.detail
+      && this.data.detail.order
+      && this.data.detail.order.orderId;
+    if (!orderId) return;
+    this.openOrderDetail(orderId);
+  },
+
+  onCopyText(e) {
+    const value = String(e.currentTarget.dataset.value || '');
+    if (!value) return;
+    wx.setClipboardData({
+      data: value,
+      success: () => wx.showToast({ title: '已复制', icon: 'none' }),
+    });
   },
 
   refreshDetail() {

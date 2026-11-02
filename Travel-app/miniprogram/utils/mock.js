@@ -19,6 +19,9 @@ const db = {
   feedbacks: {},
   orders: {},
   afterSalesCases: {},
+  paymentConfig: {
+    membership_sales: { state: 'OPEN', reason: '', updatedAt: null, updatedBy: '' },
+  },
   searchHistory: [],
 };
 /* 暂存清单的占位 tripId（镜像 schema.PENDING_CART_TRIP_ID，2026-09-20 清单改暂存区）：
@@ -1157,17 +1160,36 @@ function mockMembershipSnapshot(nowTs = new Date()) {
   };
 }
 
+function mockMembershipSalesView() {
+  const current = db.paymentConfig.membership_sales || {};
+  const purchaseEnabled = current.state !== 'PAUSED';
+  return {
+    state: purchaseEnabled ? 'OPEN' : 'PAUSED',
+    purchaseEnabled,
+    message: purchaseEnabled
+      ? ''
+      : '会员购买暂停中，已有会员权益、订单和售后不受影响。',
+    reason: current.reason || '',
+    updatedAt: current.updatedAt || null,
+    updatedBy: current.updatedBy || '',
+  };
+}
+
 function mockMembershipPackages(snapshot) {
+  const sales = mockMembershipSalesView();
   return MOCK_MEMBERSHIP_PACKAGES.map(item => {
     const priceText = mockPriceText(item.priceFen);
     const isMemberPackage = item.type === 'MEMBER';
+    const available = sales.purchaseEnabled && (isMemberPackage || snapshot.member);
     return {
       ...item,
       priceText,
-      available: isMemberPackage || snapshot.member,
-      actionText: isMemberPackage
-        ? `${snapshot.member ? '续费' : '开通会员'} ${priceText}`
-        : (snapshot.member ? `加购 ${item.addedSlots} 个名额 ${priceText}` : '先开通会员'),
+      available,
+      actionText: !sales.purchaseEnabled
+        ? sales.message
+        : (isMemberPackage
+          ? `${snapshot.member ? '续费' : '开通会员'} ${priceText}`
+          : (snapshot.member ? `加购 ${item.addedSlots} 个名额 ${priceText}` : '先开通会员')),
     };
   });
 }
@@ -1219,6 +1241,7 @@ function mockOrderEligibility(order) {
 }
 
 function mockOrderActions(order, eligibility) {
+  const purchaseEnabled = mockMembershipSalesView().purchaseEnabled;
   const refundStatus = order.refundStatus || 'NONE';
   const createdMs = new Date(order.createdAt || 0).getTime();
   const expiresMs = order.expiresAt ? new Date(order.expiresAt).getTime() : (createdMs + 15 * 60 * 1000);
@@ -1227,11 +1250,11 @@ function mockOrderActions(order, eligibility) {
     && ['NONE', 'REQUESTED', 'UNDER_REVIEW', 'PROCESSING', 'REFUNDED', 'REJECTED', 'FAILED'].includes(refundStatus);
   const canSync = order.status === 'PAID' && ['NONE', 'REJECTED', 'FAILED'].includes(refundStatus);
   const actionFlags = {
-    canPay: order.status === 'PENDING' && !pendingExpired,
+    canPay: purchaseEnabled && order.status === 'PENDING' && !pendingExpired,
     canCancel: order.status === 'PENDING' && !pendingExpired,
     canSync,
     canAfterSales,
-    canRebuy: order.status === 'CLOSED' || pendingExpired,
+    canRebuy: purchaseEnabled && (order.status === 'CLOSED' || pendingExpired),
     afterSalesLabel: ['NONE', 'REJECTED', 'FAILED'].includes(refundStatus) ? '未到账/申请售后' : '查看售后进度',
   };
   const actions = [];
@@ -1292,6 +1315,69 @@ function mockOrderView(order) {
     paidAtText: order.paidAt
       ? `${fmt(order.paidAt)} ${pad(beijingParts(order.paidAt).hour)}:${pad(beijingParts(order.paidAt).minute)}` : '',
   };
+}
+
+function mockAdminOrderView(order, options = {}) {
+  const view = mockOrderView(order);
+  const relatedCases = Object.values(db.afterSalesCases)
+    .filter(item => item.orderId === order._id)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const latestCase = relatedCases[0] || null;
+  const user = {
+    openId: mockUser.openId,
+    nickname: mockUser.nickname,
+    avatarUrl: mockUser.avatarUrl,
+    member: new Date(mockUser.memberExpiresAt || 0).getTime() > Date.now(),
+    memberExpiresAt: mockUser.memberExpiresAt || null,
+    memberExpiresAtText: mockUser.memberExpiresAt
+      ? new Date(new Date(mockUser.memberExpiresAt).getTime() + 8 * 60 * 60 * 1000)
+        .toISOString().slice(0, 10)
+      : '',
+    taskPackCount: Math.max(0, Number(mockUser.taskPackCount) || 0),
+    taskPackSlots: Math.max(0, Number(mockUser.taskPackSlots) || 0),
+    lastReminderCreatedAt: mockUser.lastReminderCreatedAt || null,
+  };
+  const result = {
+    ...view,
+    orderId: order._id,
+    grantStatusLabel: view.grantStatus === 'GRANTED'
+      ? '已发放'
+      : (view.grantStatus === 'FAILED' ? '发放失败' : (view.grantStatus === 'REVERTED' ? '已回收' : '未发放')),
+    entitlementStatusLabel: ({
+      PENDING: '待支付',
+      PAID_GRANTED: '权益已到账',
+      PAID_GRANT_FAILED: '权益发放异常',
+      PAID_GRANT_UNKNOWN: '权益待核验',
+      CLOSED: '订单已关闭',
+      REFUNDED: '权益已回收',
+    })[view.entitlementStatus] || '状态待核验',
+    paymentChannelLabel: view.paymentChannel === 'APPLE'
+      ? 'Apple'
+      : (view.paymentChannel === 'WECHAT_VIRTUAL' ? '微信虚拟支付' : '微信支付'),
+    user,
+    cases: {
+      count: relatedCases.length,
+      latestCaseId: latestCase ? latestCase._id : '',
+      latestCaseNo: latestCase ? latestCase.caseNo : '',
+      latestStatus: latestCase ? latestCase.status : '',
+      latestStatusLabel: latestCase ? mockCaseView(latestCase).statusLabel : '',
+    },
+  };
+  if (options.detail) {
+    result.transactionId = order.transactionId || '';
+    result.paymentState = {
+      tradeState: order.paymentResult && order.paymentResult.tradeState || '',
+      amountFen: order.paymentResult && order.paymentResult.amountFen || 0,
+    };
+    result.entitlementGrant = order.entitlementGrant ? {
+      ...order.entitlementGrant,
+      memberDaysAdded: Math.round(
+        Math.max(0, Number(order.entitlementGrant.memberDaysAddedMs) || 0) / 86400000
+      ),
+    } : null;
+    result.relatedCases = relatedCases.map(mockCaseView);
+  }
+  return result;
 }
 
 function mockCaseView(item) {
@@ -2198,6 +2284,7 @@ const handlers = {
       ...mockUser,
       subscribeQuota: subscribeSeq,
       membership: mockMembershipSnapshot(),
+      membershipSales: mockMembershipSalesView(),
     },
   }),
   'user.updateProfile': (data) => {
@@ -2216,6 +2303,7 @@ const handlers = {
         ...mockUser,
         subscribeQuota: subscribeSeq,
         membership: mockMembershipSnapshot(),
+        membershipSales: mockMembershipSalesView(),
       },
     };
   },
@@ -2227,14 +2315,25 @@ const handlers = {
   /* ----- 会员 / 提醒名额与售后（镜像 reminder + payment） ----- */
   'membership.status': () => {
     const current = mockMembershipSnapshot();
+    const sales = mockMembershipSalesView();
     return {
       success: true,
       membership: current,
       packages: mockMembershipPackages(current),
+      sales,
       enforced: true,
     };
   },
   'membership.createOrder': (data) => {
+    const sales = mockMembershipSalesView();
+    if (!sales.purchaseEnabled) {
+      return {
+        success: false,
+        error: '会员购买暂停中，请稍后再试',
+        errorCode: 1032,
+        sales,
+      };
+    }
     const current = mockMembershipSnapshot();
     const pkg = mockPackageOf(data.packageId);
     const requestId = String(data.requestId || '');
@@ -2325,12 +2424,65 @@ const handlers = {
     const items = Object.values(db.orders)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .map(mockOrderView);
-    return { success: true, items, count: items.length };
+    return {
+      success: true,
+      items,
+      count: items.length,
+      sales: mockMembershipSalesView(),
+    };
+  },
+
+  'adminOrders.list': (data) => {
+    const keyword = String(data.keyword || '').trim();
+    const page = Math.max(1, Math.floor(Number(data.page) || 1));
+    const pageSize = Math.max(1, Math.min(50, Math.floor(Number(data.pageSize) || 20)));
+    let orders = Object.values(db.orders);
+    if (data.status) orders = orders.filter(order => order.status === data.status);
+    if (keyword) {
+      orders = orders.filter(order => {
+        const caseMatch = Object.values(db.afterSalesCases)
+          .some(item => item.orderId === order._id && item.caseNo === keyword);
+        return order._id === keyword
+          || order.outTradeNo === keyword
+          || order.userId === keyword
+          || String(mockUser.nickname || '').toLowerCase().includes(keyword.toLowerCase())
+          || caseMatch;
+      });
+    }
+    orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const total = orders.length;
+    const items = orders
+      .slice((page - 1) * pageSize, page * pageSize)
+      .map(order => mockAdminOrderView(order));
+    return {
+      success: true,
+      items,
+      count: items.length,
+      total,
+      page,
+      pageSize,
+      hasMore: page * pageSize < total,
+    };
+  },
+  'adminOrders.detail': (data) => {
+    const order = db.orders[data.orderId];
+    if (!order) return { success: false, error: '订单不存在或已失效', errorCode: 1024 };
+    const view = mockAdminOrderView(order, { detail: true });
+    return { success: true, order: view, user: view.user };
   },
 
   'create': (data) => {
     const order = db.orders[data.orderId];
     if (!order) return { success: false, error: '订单不存在或已失效', errorCode: 1024 };
+    const sales = mockMembershipSalesView();
+    if (order.status !== 'PAID' && !sales.purchaseEnabled) {
+      return {
+        success: false,
+        error: '会员购买暂停中，请稍后再试',
+        errorCode: 1032,
+        sales,
+      };
+    }
     if (order.status !== 'PAID') {
       const now = new Date();
       const currentExpiryMs = new Date(mockUser.memberExpiresAt || 0).getTime();
@@ -2486,13 +2638,60 @@ const handlers = {
       .filter(item => activeStatuses.includes(item.status)).length;
     const fundingBlockedCount = Object.values(db.afterSalesCases)
       .filter(item => item.status === 'REFUND_FAILED' && item.fundingBlocked === true).length;
-    return { success: true, isAdmin: true, pendingCount, fundingBlockedCount };
+    const sales = mockMembershipSalesView();
+    return {
+      success: true,
+      isAdmin: true,
+      pendingCount,
+      fundingBlockedCount,
+      membershipSales: sales,
+    };
+  },
+  'afterSales.adminSetMembershipSales': (data) => {
+    const state = data.state === 'PAUSED' ? 'PAUSED' : 'OPEN';
+    const reason = String(data.reason || '').trim();
+    if (state === 'PAUSED' && !reason) {
+      return { success: false, error: '暂停会员购买时必须填写原因', errorCode: 1010 };
+    }
+    db.paymentConfig.membership_sales = {
+      state,
+      reason: state === 'PAUSED' ? reason : '',
+      updatedAt: new Date(),
+      updatedBy: mockUser.openId,
+    };
+    return { success: true, membershipSales: mockMembershipSalesView() };
   },
   'afterSales.adminList': (data) => {
+    const keyword = String(data.keyword || '').trim();
+    const page = Math.max(1, Math.floor(Number(data.page) || 1));
+    const pageSize = Math.max(1, Math.min(50, Math.floor(Number(data.pageSize) || 20)));
     let items = Object.values(db.afterSalesCases);
     if (data.status) items = items.filter(item => item.status === data.status);
-    items = items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(mockCaseView);
-    return { success: true, items, count: items.length };
+    if (keyword) {
+      items = items.filter(item =>
+        item.caseNo === keyword
+        || item.orderId === keyword
+        || item.outTradeNo === keyword
+        || item.userId === keyword
+        || String(mockUser.nickname || '').toLowerCase().includes(keyword.toLowerCase()));
+    }
+    items = items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const total = items.length;
+    const pageItems = items
+      .slice((page - 1) * pageSize, page * pageSize)
+      .map(item => ({
+        ...mockCaseView(item),
+        user: mockAdminOrderView(db.orders[item.orderId] || { _id: item.orderId }).user,
+      }));
+    return {
+      success: true,
+      items: pageItems,
+      count: pageItems.length,
+      total,
+      page,
+      pageSize,
+      hasMore: page * pageSize < total,
+    };
   },
   'afterSales.adminDetail': (data) => {
     const item = db.afterSalesCases[data.caseId];

@@ -31,6 +31,7 @@ function attachAnd(node) {
 }
 
 function matchOne(fieldValue, cond) {
+  if (cond instanceof RegExp) return cond.test(String(fieldValue || ''));
   if (cond && typeof cond === 'object' && cond[CMD]) {
     switch (cond[CMD]) {
       case 'in': return cond.values.some(v => sameValue(fieldValue, v));
@@ -179,6 +180,7 @@ function createDb(options = {}) {
       lt: (v) => attachAnd(cmdLt(v)),
       lte: (v) => attachAnd(cmdLte(v)),
     },
+    RegExp: ({ regexp, options } = {}) => new RegExp(String(regexp || ''), options || ''),
     /** 事务：记录逆操作，rollback 时回放 */
     startTransaction: async () => {
       const undo = [];

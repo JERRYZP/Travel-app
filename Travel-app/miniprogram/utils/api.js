@@ -163,6 +163,10 @@ const payment = {
   create: (p) => call('payment', { action: 'create', ...(p || {}) }),
   query: (p) => call('payment', { action: 'query', ...(p || {}) }),
   cancel: (p) => call('payment', { action: 'cancel', ...(p || {}) }),
+  adminOrders: {
+    list: (p) => call('payment', { action: 'adminOrders.list', ...(p || {}) }),
+    detail: (orderId) => call('payment', { action: 'adminOrders.detail', orderId }),
+  },
   afterSales: {
     submit: (p) => call('payment', { action: 'afterSales.submit', ...(p || {}) }),
     cancel: (caseId) => call('payment', { action: 'afterSales.cancel', caseId }),

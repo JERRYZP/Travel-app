@@ -11,6 +11,7 @@ const {
 const {
   REFUND_WINDOW_MS, DUPLICATE_WINDOW_MS, dateMs, isLiveEntitlement,
 } = require('./order');
+const directory = require('./admin-directory');
 
 // 售后权限只能由部署环境显式配置。未配置时关闭工作台，避免代码里的测试
 // OpenID 被误带到生产环境。
@@ -655,15 +656,67 @@ async function userCaseHistory(db, userId, orderId, limit = 20) {
   };
 }
 
-async function listCasesForAdmin(db, status = '') {
-  let query = db.collection(COLLECTIONS.AFTER_SALES_CASES);
-  if (status && Object.values(CaseStatus).includes(status)) {
-    query = query.where({ status });
+async function listCasesForAdmin(db, params = {}) {
+  const source = typeof params === 'string' ? { status: params } : (params || {});
+  const status = Object.values(CaseStatus).includes(source.status) ? source.status : '';
+  const keyword = directory.keywordOf(source.keyword);
+  const pageInfo = directory.normalizePage(source);
+  let rows = [];
+  let total = 0;
+  let keywordType = '';
+
+  if (keyword) {
+    keywordType = directory.keywordKindOf(keyword);
+    let where = null;
+    if (keywordType === 'OPENID') where = { userId: keyword };
+    if (keywordType === 'CASE_NO') where = { caseNo: keyword.toUpperCase() };
+    if (keywordType === 'ORDER_ID') where = { orderId: keyword };
+    if (keywordType === 'OUT_TRADE_NO') where = { outTradeNo: keyword.toUpperCase() };
+    if (keywordType === 'NICKNAME') {
+      const users = await directory.usersByNickname(db, keyword);
+      const ids = users.map(user => user.openId).filter(Boolean);
+      if (!ids.length) where = null;
+      else where = { userId: db.command.in(ids) };
+    }
+    if (!where) {
+      rows = [];
+    } else {
+      const res = await db.collection(COLLECTIONS.AFTER_SALES_CASES)
+        .where(where)
+        .limit(100)
+        .get();
+      rows = (res.data || [])
+        .filter(item => !status || item.status === status)
+        .sort((a, b) =>
+          new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    }
+    total = rows.length;
+    rows = rows.slice(pageInfo.skip, pageInfo.skip + pageInfo.pageSize);
+  } else {
+    let query = db.collection(COLLECTIONS.AFTER_SALES_CASES);
+    if (status) query = query.where({ status });
+    total = Number((await query.count()).total) || 0;
+    const res = await query
+      .orderBy('createdAt', 'desc')
+      .skip(pageInfo.skip)
+      .limit(pageInfo.pageSize)
+      .get();
+    rows = res.data || [];
   }
-  const res = await query.orderBy('createdAt', 'desc').limit(100).get();
+
+  const userMap = await directory.userMapByOpenIds(db, rows.map(item => item.userId));
+  const items = rows.map(item => ({
+    ...caseViewOf(item),
+    user: directory.userBriefOf(userMap[item.userId] || {}, item.userId),
+  }));
   return ok({
-    items: (res.data || []).map(caseViewOf),
-    count: (res.data || []).length,
+    items,
+    count: items.length,
+    total,
+    page: pageInfo.page,
+    pageSize: pageInfo.pageSize,
+    hasMore: pageInfo.skip + items.length < total,
+    keywordType,
   });
 }
 

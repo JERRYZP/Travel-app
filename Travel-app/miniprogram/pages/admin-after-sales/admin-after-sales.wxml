@@ -2,7 +2,7 @@
   <view style="height: {{statusBarHeight}}px;"></view>
   <view class="navbar-content" style="height: {{navBarHeight}}px;">
     <view class="navbar-back" bindtap="onBack"><svg-icon name="back-thick" size="18px" /></view>
-    <text class="navbar-title">售后管理</text>
+    <text class="navbar-title">客服工作台</text>
   </view>
 </view>
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
@@ -14,6 +14,21 @@
   </view>
 
   <block wx:else>
+    <view wx:if="{{membershipSales}}" class="sales-card {{membershipSales.purchaseEnabled ? '' : 'paused'}}">
+      <view class="sales-main">
+        <view class="sales-title-row">
+          <text class="sales-title">会员购买</text>
+          <text class="sales-status {{membershipSales.purchaseEnabled ? 'open' : 'paused'}}">{{membershipSales.purchaseEnabled ? '销售中' : '已暂停'}}</text>
+        </view>
+        <text class="sales-desc">{{membershipSales.purchaseEnabled ? '新订单与支付可用' : '新购买已暂停；已有权益不受影响'}}</text>
+        <text wx:if="{{!membershipSales.purchaseEnabled && membershipSales.reason}}" class="sales-reason">暂停原因：{{membershipSales.reason}}</text>
+        <text wx:if="{{membershipSales.readError}}" class="sales-warning">配置读取失败，当前按暂停处理</text>
+      </view>
+      <view class="sales-action {{salesSaving ? 'disabled' : ''}}" bindtap="onToggleMembershipSales">
+        {{salesSaving ? '处理中' : (membershipSales.purchaseEnabled ? '暂停' : '恢复')}}
+      </view>
+    </view>
+
     <view wx:if="{{fundingBlockedCount > 0}}" class="funding-alert">
       <view class="funding-alert-copy">
         <text class="funding-alert-title">退款资金阻断</text>
@@ -38,6 +53,32 @@
       </view>
     </view>
 
+    <view class="workspace-tabs">
+      <view class="workspace-tab {{activeTab === 'orders' ? 'active' : ''}}" bindtap="onTabTap" data-tab="orders">
+        <text>会员订单</text>
+      </view>
+      <view class="workspace-tab {{activeTab === 'afterSales' ? 'active' : ''}}" bindtap="onTabTap" data-tab="afterSales">
+        <text>售后工单</text>
+        <text wx:if="{{pendingCount > 0}}" class="tab-count">{{pendingCount > 99 ? '99+' : pendingCount}}</text>
+      </view>
+    </view>
+
+    <view class="admin-search">
+      <svg-icon name="search" size="15px" />
+      <input
+        class="admin-search-input"
+        value="{{keywordInput}}"
+        placeholder="{{searchPlaceholder}}"
+        confirm-type="search"
+        bindinput="onSearchInput"
+        bindconfirm="onSearchConfirm"
+      />
+      <view wx:if="{{keywordInput}}" class="admin-search-clear" bindtap="onClearSearch">
+        <svg-icon name="close" size="12px" />
+      </view>
+      <view class="admin-search-submit" bindtap="onSearchConfirm">搜索</view>
+    </view>
+
     <scroll-view class="filter-scroll" scroll-x enhanced show-scrollbar="{{false}}">
       <view class="filter-row">
         <view
@@ -56,27 +97,162 @@
       <view class="retry-btn" bindtap="loadList">重新加载</view>
     </view>
     <view wx:elif="{{items.length === 0}}" class="state-box">
-      <text class="state-title">当前筛选没有售后单</text>
-      <text class="state-desc">客服目标是在 24 小时内完成审核。</text>
+      <text class="state-title">{{emptyTitle}}</text>
+      <text class="state-desc">{{emptyDesc}}</text>
     </view>
 
-    <view wx:else class="case-list">
-      <view wx:for="{{items}}" wx:key="_id" class="case-card" bindtap="onCaseTap" data-id="{{item._id}}">
-        <view class="case-head">
-          <text class="case-no">{{item.caseNo}}</text>
-          <view class="case-head-right">
-            <text wx:if="{{item.systemGenerated}}" class="case-auto">系统自动</text>
-            <text wx:if="{{item.fundingBlocked}}" class="case-funding">资金不足</text>
-            <text class="case-status {{item.status === 'CANCELLED' ? 'cancelled' : ''}}">{{item.statusLabel}}</text>
+    <block wx:else>
+      <view wx:if="{{activeTab === 'orders'}}" class="order-list">
+        <view wx:for="{{items}}" wx:key="_id" class="order-card" bindtap="onOrderTap" data-id="{{item.orderId}}">
+          <view class="order-card-head">
+            <view class="order-user-line">
+              <text class="order-nickname">{{item.user.nickname || '未设置昵称'}}</text>
+              <text class="order-status tone-{{item._statusTone}}">{{item.statusLabel}}</text>
+            </view>
+            <text class="order-amount">{{item.amountText}}</text>
+          </view>
+          <view class="openid-row">
+            <text class="openid-value">OpenID {{item.user.openId}}</text>
+            <view class="copy-link" catchtap="onCopyText" data-value="{{item.user.openId}}">复制</view>
+          </view>
+          <text class="order-title">{{item.title}}</text>
+          <view class="order-tags">
+            <text class="meta-tag">{{item.paymentChannelLabel}}</text>
+            <text class="meta-tag">{{item.entitlementStatusLabel}}</text>
+            <text wx:if="{{item.refundStatusLabel}}" class="meta-tag warning">{{item.refundStatusLabel}}</text>
+            <text wx:if="{{item.cases.count > 0}}" class="meta-tag case">{{item.cases.latestStatusLabel}}</text>
+          </view>
+          <view class="order-foot">
+            <text>订单 {{item.outTradeNo}}</text>
+            <text>{{item.createdAtText}}</text>
           </view>
         </view>
-        <text class="case-title">{{item.typeLabel}} · {{item.title}}</text>
-        <text class="case-meta">订单 {{item.outTradeNo}}</text>
-        <text class="case-meta">申请时间 {{item.createdAtText}}</text>
-        <text class="case-amount">{{item.amountText}}</text>
+      </view>
+
+      <view wx:else class="case-list">
+        <view wx:for="{{items}}" wx:key="_id" class="case-card" bindtap="onCaseTap" data-id="{{item._id}}">
+          <view class="case-head">
+            <text class="case-no">{{item.caseNo}}</text>
+            <view class="case-head-right">
+              <text wx:if="{{item.systemGenerated}}" class="case-auto">系统自动</text>
+              <text wx:if="{{item.fundingBlocked}}" class="case-funding">资金不足</text>
+              <text class="case-status {{item.status === 'CANCELLED' ? 'cancelled' : ''}}">{{item.statusLabel}}</text>
+            </view>
+          </view>
+          <view class="case-user-row">
+            <text class="case-user-name">{{item.user.nickname || '未设置昵称'}}</text>
+            <text class="case-openid">{{item.user.openId}}</text>
+            <view class="copy-link" catchtap="onCopyText" data-value="{{item.user.openId}}">复制</view>
+          </view>
+          <text class="case-title">{{item.typeLabel}} · {{item.title}}</text>
+          <text class="case-meta">订单 {{item.outTradeNo}}</text>
+          <text class="case-meta">申请时间 {{item.createdAtText}}</text>
+          <text class="case-amount">{{item.amountText}}</text>
+        </view>
+      </view>
+
+      <view wx:if="{{hasMore}}" class="load-more {{loadingMore ? 'disabled' : ''}}" bindtap="onLoadMore">
+        {{loadingMore ? '加载中...' : '加载更多'}}
+      </view>
+    </block>
+  </block>
+</view>
+
+<view wx:if="{{showSalesConfirm}}" class="sales-confirm-mask" bindtap="onCloseSalesConfirm">
+  <view class="sales-confirm-sheet" catchtap="noop">
+    <view class="sales-confirm-head">
+      <text class="sales-confirm-title">暂停会员购买</text>
+      <view class="sales-confirm-close" bindtap="onCloseSalesConfirm">×</view>
+    </view>
+    <text class="sales-confirm-desc">暂停后不能再创建新订单或对待支付订单发起支付；已打开支付窗口、已付款权益、退款和售后不受影响。</text>
+    <textarea
+      class="sales-confirm-input"
+      placeholder="请填写暂停原因（必填）"
+      value="{{salesReason}}"
+      bindinput="onSalesReasonInput"
+      maxlength="160"
+      focus
+    />
+    <view class="sales-confirm-actions">
+      <view class="sales-confirm-btn cancel" bindtap="onCloseSalesConfirm">取消</view>
+      <view class="sales-confirm-btn primary {{salesSaving ? 'disabled' : ''}}" bindtap="onConfirmMembershipSalesPause">
+        {{salesSaving ? '暂停中...' : '确认暂停'}}
       </view>
     </view>
-  </block>
+  </view>
+</view>
+
+<view wx:if="{{orderDetail}}" class="detail-mask" bindtap="onCloseOrderDetail">
+  <view class="detail-sheet" catchtap="noop">
+    <view class="detail-head">
+      <text class="detail-title">会员订单详情</text>
+      <view class="detail-close" bindtap="onCloseOrderDetail">×</view>
+    </view>
+    <scroll-view class="detail-scroll" scroll-y>
+      <view class="detail-status">{{orderDetail.order.statusLabel}}</view>
+      <view class="detail-section">
+        <text class="detail-section-title">用户信息</text>
+        <view class="detail-user-head">
+          <text class="detail-user-name">{{orderDetail.user.nickname || '未设置昵称'}}</text>
+          <text class="detail-user-member {{orderDetail.user.member ? 'active' : ''}}">{{orderDetail.user.member ? '会员有效' : '非会员'}}</text>
+        </view>
+        <view class="detail-copy-row">
+          <text class="detail-break">OpenID {{orderDetail.user.openId}}</text>
+          <view class="copy-link" catchtap="onCopyText" data-value="{{orderDetail.user.openId}}">复制</view>
+        </view>
+        <text wx:if="{{orderDetail.user.memberExpiresAtText}}">会员到期：{{orderDetail.user.memberExpiresAtText}}</text>
+        <text>已购名额包：{{orderDetail.user.taskPackCount}} 包 / {{orderDetail.user.taskPackSlots}} 个名额</text>
+      </view>
+      <view class="detail-section">
+        <text class="detail-section-title">订单信息</text>
+        <text>商品：{{orderDetail.order.title}}</text>
+        <text>金额：{{orderDetail.order.amountText}}</text>
+        <view class="detail-copy-row">
+          <text class="detail-break">订单号：{{orderDetail.order.outTradeNo}}</text>
+          <view class="copy-link" catchtap="onCopyText" data-value="{{orderDetail.order.outTradeNo}}">复制</view>
+        </view>
+        <text>支付渠道：{{orderDetail.order.paymentChannelLabel}}</text>
+        <text wx:if="{{orderDetail.order.transactionId}}">微信交易号：{{orderDetail.order.transactionId}}</text>
+        <text>创建时间：{{orderDetail.order.createdAtText || '—'}}</text>
+        <text>支付时间：{{orderDetail.order.paidAtText || '—'}}</text>
+        <text wx:if="{{orderDetail.order.expiresAtText}}">支付截止：{{orderDetail.order.expiresAtText}}</text>
+        <text wx:if="{{orderDetail.order.closedAtText}}">关闭时间：{{orderDetail.order.closedAtText}}</text>
+      </view>
+      <view class="detail-section">
+        <text class="detail-section-title">权益与退款</text>
+        <text>权益状态：{{orderDetail.order.entitlementStatusLabel}}</text>
+        <text>发放状态：{{orderDetail.order.grantStatusLabel}}</text>
+        <text wx:if="{{orderDetail.order.refundStatusLabel}}">退款状态：{{orderDetail.order.refundStatusLabel}}</text>
+        <text wx:if="{{orderDetail.order.paymentState.tradeState}}">最近查单：{{orderDetail.order.paymentState.tradeState}}</text>
+        <text wx:if="{{orderDetail.order.paymentState.amountFen}}">查单金额：{{orderDetail.order.paymentState.amountFen}} 分</text>
+        <view wx:if="{{orderDetail.order.entitlementGrant}}" class="entitlement-snapshot">
+          <text>本单会员时长增量：{{orderDetail.order.entitlementGrant.memberDaysAdded || 0}} 天</text>
+          <text>本单名额包增量：{{orderDetail.order.entitlementGrant.taskPackCountAdded || 0}}</text>
+          <text>本单提醒名额增量：{{orderDetail.order.entitlementGrant.taskPackSlotsAdded || 0}}</text>
+        </view>
+      </view>
+      <view class="detail-section">
+        <text class="detail-section-title">关联售后</text>
+        <view wx:if="{{orderDetail.order.relatedCases.length > 0}}" class="related-case-list">
+          <view
+            wx:for="{{orderDetail.order.relatedCases}}"
+            wx:key="_id"
+            class="related-case-row"
+            bindtap="onOrderCaseTap"
+            data-id="{{item._id}}"
+          >
+            <view class="related-case-head">
+              <text>{{item.caseNo}}</text>
+              <text>{{item.statusLabel}}</text>
+            </view>
+            <text>{{item.typeLabel}} · {{item.createdAtText}}</text>
+          </view>
+        </view>
+        <text wx:else>本订单暂无售后记录</text>
+      </view>
+      <text class="audit-note">查看用户身份、订单和交易号均写入 admin_audit_logs。</text>
+    </scroll-view>
+  </view>
 </view>
 
 <view wx:if="{{detail}}" class="detail-mask" bindtap="onCloseDetail">
@@ -87,6 +263,19 @@
     </view>
     <scroll-view class="detail-scroll" scroll-y>
       <view class="detail-status {{detail.case.status === 'CANCELLED' ? 'cancelled' : ''}}">{{detail.case.statusLabel}}</view>
+      <view class="detail-section">
+        <text class="detail-section-title">用户信息</text>
+        <view class="detail-user-head">
+          <text class="detail-user-name">{{detail.user.nickname || '未设置昵称'}}</text>
+          <text class="detail-user-member">{{detail.user.memberExpiresAt ? '会员有效' : '非会员'}}</text>
+        </view>
+        <view class="detail-copy-row">
+          <text class="detail-break">OpenID {{detail.user.openId}}</text>
+          <view class="copy-link" catchtap="onCopyText" data-value="{{detail.user.openId}}">复制</view>
+        </view>
+        <text>已购名额包：{{detail.user.taskPackCount || 0}} 包</text>
+        <text>历史保护额度：{{detail.user.protectedTaskQuota || 0}} 个</text>
+      </view>
       <view class="detail-section">
         <text class="detail-section-title">售后信息</text>
         <text wx:if="{{detail.case.systemGenerated}}">生成方式：系统自动创建</text>
@@ -100,6 +289,7 @@
       </view>
       <view class="detail-section">
         <text class="detail-section-title">订单与权益证据</text>
+        <view class="detail-link" bindtap="onOpenRelatedOrder">查看会员订单详情</view>
         <text>优先级：{{detail.case.priorityLabel}}</text>
         <text wx:if="{{detail.order.paymentChannelLabel}}">支付渠道：{{detail.order.paymentChannelLabel}}</text>
         <text>订单状态：{{detail.order.status}} / 退款 {{detail.order.refundStatus}}</text>

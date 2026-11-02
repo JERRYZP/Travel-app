@@ -42,6 +42,7 @@ const {
 } = require('./lib/order');
 const afterSales = require('./lib/after-sales');
 const membershipSales = require('./lib/membership-sales');
+const adminOrders = require('./lib/admin-orders');
 const {
   migrateProtectionBatch,
   protectionMigrationCompleted,
@@ -1672,7 +1673,46 @@ async function approveRefund(context, event, operatorOverride = '') {
 async function adminList(context, event) {
   const denied = adminRequired(context);
   if (denied) return denied;
-  return afterSales.listCasesForAdmin(db, event.status || '');
+  const result = await afterSales.listCasesForAdmin(db, {
+    status: event.status || '',
+    keyword: event.keyword || '',
+    page: event.page,
+    pageSize: event.pageSize,
+  });
+  if (result.success && event.keyword && result.keywordType) {
+    await afterSales.logAdminAction(db, context.OPENID, 'SEARCH_ADMIN_AFTER_SALES', null, {
+      keywordType: result.keywordType,
+      status: event.status || '',
+    });
+  }
+  return result;
+}
+
+async function adminOrderList(context, event) {
+  const denied = adminRequired(context);
+  if (denied) return denied;
+  const result = await adminOrders.listOrdersForAdmin(db, event);
+  if (result.success && event.keyword && result.keywordType) {
+    await afterSales.logAdminAction(db, context.OPENID, 'SEARCH_ADMIN_ORDERS', null, {
+      keywordType: result.keywordType,
+      status: event.status || '',
+    });
+  }
+  return result;
+}
+
+async function adminOrderDetail(context, event) {
+  const denied = adminRequired(context);
+  if (denied) return denied;
+  const result = await adminOrders.getOrderForAdmin(db, event.orderId);
+  if (!result.success) return result;
+  await afterSales.logAdminAction(db, context.OPENID, 'VIEW_ADMIN_ORDER_DETAIL', {
+    _id: '',
+    orderId: result.order.orderId,
+  }, {
+    hasTransactionId: !!result.order.transactionId,
+  });
+  return result;
 }
 
 async function adminDetail(context, event) {
@@ -2147,6 +2187,10 @@ exports.main = async (event = {}) => {
       }
       case 'afterSales.adminSetMembershipSales':
         return await setMembershipSales(context, event);
+      case 'adminOrders.list':
+        return await adminOrderList(context, event);
+      case 'adminOrders.detail':
+        return await adminOrderDetail(context, event);
       case 'afterSales.adminList':
         return await adminList(context, event);
       case 'afterSales.adminDetail':
