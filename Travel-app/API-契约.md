@@ -2,6 +2,7 @@
 
 > 面向：前端（微信小程序页面开发）
 > 2026-11-02 更新：新增 `tripShare.create/status/revoke/open` 与 PAGE-018 行程只读分享。分享令牌只从公开路径传入，普通行程接口仅返回 `shareActive`；主人接口可通过 `ownerNickname` 读取应用内昵称用于会话标题，接收方数据只含城市、日期、天数和景点名称。
+> 2026-11-02 更新：客服工作台新增 `adminReminderQuality.stats`。接口按北京时间 `13:00 / 21:00` 最近一个完整 8 小时时段统计提醒准时送达质量，并返回前 5 个完整自然日的加权基线；仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用。
 > 2026-11-02 更新：客服工作台新增会员限制模式切换。运行期真身为 `payment_config/membership_enforcement`，管理员可切 `off/test/all` 并即时生效；切 `all` 前服务端强制核验两项上线迁移。
 > 2026-11-02 更新：新增客服工作台。管理员可通过 `adminOrders.list/detail` 查询全部会员订单，售后列表补全昵称、完整 OpenID 与关键词搜索；会员购买总开关保留在页面顶部。
 > 2026-11-02 更新：新增会员购买总开关 `payment_config/membership_sales`。暂停只阻止新订单和新发起支付；已支付订单继续查单与发权益，会员状态、订单、退款和售后不受影响。
@@ -1232,12 +1233,39 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 { action: 'afterSales.adminMigrateEntitlementLedger', cursor?, dryRun? }
 { action: 'adminOrders.list', keyword?, status?, timeRange?, page?, pageSize? }
 { action: 'adminOrders.stats' }
+{ action: 'adminReminderQuality.stats' }
 { action: 'adminOrders.detail', orderId }
 ```
 
 - 仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用；未配置时工作台关闭，不存在代码内置兜底账号。
 - `adminOrders.list` 返回订单、当前昵称、完整 OpenID、支付渠道、权益状态和关联售后摘要。`keyword` 支持商户订单号、订单 ID、完整 OpenID、售后单号和昵称；只有昵称允许部分匹配。`timeRange=7d|30d|90d|all` 按北京时间自然日过滤订单创建时间，缺省或非法值按 `30d`；时间范围在数据库查询阶段生效，同时作用于搜索、状态筛选和分页。分页参数默认 `page=1&pageSize=20`，单页最大 50。
 - `adminOrders.stats` 返回北京时间当日的 `{ dateKey, totalOrders, paidOrders, paidAmountFen, paidAmountText, refundedAmountFen, refundedAmountText, netAmountFen, netAmountText }`。`totalOrders` 统计当日创建的全部订单；`paidOrders / paidAmountFen` 统计这些订单中已写入 `paidAt` 的订单及支付金额；`refundedAmountFen` 只汇总已完成退款，优先读取 `refundedAmountFen`，历史单缺失时按订单金额；`netAmountFen = paidAmountFen - refundedAmountFen`。统计独立于列表搜索和筛选。
+- `adminReminderQuality.stats` 返回：
+  ```javascript
+  {
+    quality: {
+      timezone: 'Asia/Shanghai',
+      threshold: { onTimeRate: 99, delayToleranceSeconds: 120 },
+      currentWindow: {
+        startAt, endAt, nextUpdateAt, label, updatedLabel, durationHours,
+        expectedCount, onTimeCount, lateCount, missedCount,
+        skippedCount, unknownCount, onTimeRate,
+        status, reasonCodes
+      },
+      baseline5d: {
+        startDate, endDate, daysWithData, expectedCount,
+        onTimeRate
+      },
+      dataTruncated,
+      generatedAt
+    }
+  }
+  ```
+- 质量统计只读 `reminder_events` 与仍在保留期内的 `reminder_tasks`，按任务而不是发送尝试计数。一个任务的全部 offset 都在各自 `scheduledAt` 后 120 秒内发送成功，才算 `onTime`；多 offset 任务只要一项失败，整项不能计入准时。
+- `currentWindow` 固定选择最近一个已完成的 8 小时时段：`13:00` 选择 `05:00-13:00`，`21:00` 选择 `13:00-21:00`；13 点前继续选择前一日 `13:00-21:00`。`nextUpdateAt` 是下一个北京时间 `13:00 / 21:00` 边界，页面在保持可见时据此刷新。
+- `status` 只有三种业务结果：当前时段没有任务为 `EMPTY`；`currentWindow.onTimeRate < 99` 为 `ALERT`；其余为 `HEALTHY`。不再返回“关注”状态。未送达、跳过和证据缺失只通过计算送达率进入结果，不得在页面额外增加与阈值无关的红色条件。
+- `baseline5d` 固定为昨日之前的 5 个北京时间自然日，不包含昨日；`onTimeRate` 按任务数加权，`daysWithData` 只计算存在到期任务的日期。昨日未送达数、P95 延迟、任务数和固定阈值均不进入页面展示契约。
+- 响应只包含聚合值，不返回 OpenID、userId、taskId、单任务明细或错误原文。统计接口不写库、不新增定时任务；`reminder_events.releaseAt` 与 `reminder_tasks.releaseAt` 索引必须先核验。
 - `adminOrders.detail` 返回本人订单管理详情，包括用户会员状态、支付渠道、微信交易号、权益发放快照和关联售后记录。订单不存在统一返回 `1024`。
 - `afterSales.adminList` 的 `items[].user` 返回当前昵称、完整 OpenID、会员到期和已购名额；同样支持分页与关键词搜索。
 - 管理员搜索订单写 `SEARCH_ADMIN_ORDERS`，搜索售后写 `SEARCH_ADMIN_AFTER_SALES`，查看订单详情写 `VIEW_ADMIN_ORDER_DETAIL`。审计只记录关键词类型和状态，不记录原始搜索词；订单详情审计只记录交易号是否存在，不记录交易号全文。
@@ -1420,7 +1448,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-014** 会员与提醒名额 | `membership.status`、`membership.createOrder`、`membership.orders`、`payment.create/query/cancel`；支付前确认、持久支付状态和订单入口；“我的”页常驻会员状态卡 |
 | **PAGE-015** 订单与退款详情 | `membership.orders`、`membership.orderDetail`；列表最多 50 笔，详情按本人单笔读取，主订单状态与退款状态分离，支持继续支付、取消、同步、申请售后和重新购买 |
 | **PAGE-016** 用户售后申请 | `membership.orderDetail`、`payment.afterSales.submit/cancel/list/detail/syncRights`；未到账、重复支付、未使用退款、权益不符和其他问题，未处理与无远端退款记录的异常单可取消 |
-| **PAGE-017** 客服工作台 | `payment.adminOrders.list/detail`、`payment.afterSales.admin*`；仅 `AFTER_SALES_ADMIN_OPENIDS` 可见，服务端二次鉴权并写审计日志 |
+| **PAGE-017** 客服工作台 | `payment.adminReminderQuality.stats`、`payment.adminOrders.list/detail`、`payment.afterSales.admin*`；仅 `AFTER_SALES_ADMIN_OPENIDS` 可见，服务端二次鉴权，敏感操作写审计日志 |
 | **PAGE-018** 行程只读分享 | 主人：`tripShare.create/status/revoke`；接收方：`tripShare.open` |
 | **PAGE-013** 分享场景页 | `spots.list`（today）、`spots.batch`（national-day-2026）；点击景点后 `spots.detail` |
 | **PAGE-010-1** 提醒设置 | `subscribe.get` + 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`；缺口按钮为「补授权次数+1」，点击一次最多申请 1 条（模板未配置时「去授权」置灰） |

@@ -36,7 +36,7 @@
 | `pages/membership-orders` | 当前用户最近 50 笔订单，点击通过本人单笔接口进入订单详情 |
 | `pages/membership-order-detail` | 订单主状态、独立退款状态、权益快照和可执行动作 |
 | `pages/membership-after-sales` | 用户提交未到账、重复支付、未使用退款等售后申请 |
-| `pages/admin-after-sales` | 管理员客服工作台：会员购买开关、会员订单查询、售后工单、审计操作与老用户保护额度迁移 |
+| `pages/admin-after-sales` | 管理员客服工作台：提醒质量、会员购买开关、会员限制、会员订单查询、售后工单、审计操作与老用户保护额度迁移 |
 | `pages/help-feedback` | 帮助与反馈二级入口：在线客服、意见反馈、信息纠错、我的反馈 |
 | `pages/my-feedback` | 当前用户最近 50 条反馈/纠错记录，只读 |
 | `pages/legal` | 隐私政策与用户服务协议 |
@@ -116,6 +116,7 @@ reminder.membership.createOrder
 - 售后证据、审核结果和退款单号存 `after_sales_cases`；敏感查看与审核操作写 `admin_audit_logs`。
 - 客服工作台通过 `adminOrders.list/detail` 查询全部会员订单，并在读取时按 `orders.userId -> users.openId` 补全昵称、会员状态和已购名额；订单不冗余保存昵称。售后列表同样按 `userId` 补全用户信息。
 - 客服工作台通过 `adminOrders.stats` 读取北京时间当日统计：当日创建订单数、已支付数、已支付金额、已完成退款金额和净赚金额。净赚按当日创建订单的 `paidAmountFen - refundedAmountFen` 计算；退款优先使用订单快照，历史单缺失快照时按原金额，处理中退款不扣。统计不受搜索、筛选和分页影响。
+- 客服工作台通过 `adminReminderQuality.stats` 读取最近一个完整 8 小时时段的提醒质量。该接口只读 `reminder_events` 和 `reminder_tasks`，按任务聚合全部 offset 的实际发送延迟、未送达、跳过与证据缺失；前 5 日加权基线不包含昨日。页面在每日 `13:00 / 21:00` 边界自动刷新，只展示当前送达率和前 5 日均值，不在客户端重算 99% 或 120 秒阈值。
 - 客服工作台订单列表用 `timeRange=7d|30d|90d|all` 按北京时间订单创建时间过滤，默认 `30d`；搜索、状态和分页共用同一时间窗口，全部历史通过 `all` 显式读取。
 - 售后工作台仅对 `AFTER_SALES_ADMIN_OPENIDS` 开放，所有操作服务端二次鉴权。
 

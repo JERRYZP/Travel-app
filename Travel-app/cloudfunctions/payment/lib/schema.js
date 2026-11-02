@@ -12,6 +12,7 @@ const COLLECTIONS = {
   AFTER_SALES_CASES: 'after_sales_cases',
   ADMIN_AUDIT_LOGS: 'admin_audit_logs',
   REMINDER_TASKS: 'reminder_tasks',
+  REMINDER_EVENTS: 'reminder_events',
   PAYMENT_RECONCILE_STATE: 'payment_reconcile_state',
   PAYMENT_CONFIG: 'payment_config',
 };
