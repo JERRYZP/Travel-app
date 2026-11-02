@@ -19,6 +19,8 @@ const tripShareCover = require('../../utils/trip-share-cover.js');
 const NAV_BAR_RPX = 88;
 /* 胶囊底边 → 正文第一块。只留很小呼吸位，不再让固定导航块额外撑高。 */
 const PAGE_GAP_RPX = 8;
+/* 设计微调按真实 CSS 像素追加，避免不同屏宽下被 rpx 四舍五入吃掉。 */
+const EXTRA_TOP_PX = 2;
 /* 滚多少像素把导航栏底色从全透明推到不透明 */
 const NAV_FADE_PX = 50;
 const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
@@ -1316,7 +1318,7 @@ function pageTopOf(statusBarHeight, menuButton, windowWidth) {
   const capsuleBottomRpx = capsuleBottom > 0 ? capsuleBottom * 750 / width : 0;
   /* 大屏上固定导航块常比胶囊更低；正文应贴近胶囊，而不是贴近透明导航盒。 */
   const contentBaseRpx = capsuleBottomRpx > 0 ? capsuleBottomRpx : navBottomRpx;
-  return Math.ceil(contentBaseRpx + PAGE_GAP_RPX);
+  return Math.ceil(contentBaseRpx + PAGE_GAP_RPX + EXTRA_TOP_PX * 750 / width);
 }
 
 /** 解析服务端时间戳（毫秒数或 ISO 字符串）；拿不到就返回 0。 */

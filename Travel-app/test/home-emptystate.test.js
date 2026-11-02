@@ -737,6 +737,10 @@ console.log('=== 11. 顶部布局：横幅在文档流里 / 导航栏安全间�
     'pageTop 优先使用胶囊底边，缺失时才回退导航块底边');
   eq(/const PAGE_GAP_RPX = 8;/.test(JS), true,
     '正文与胶囊底边只保留 8rpx 呼吸位');
+  eq(/const EXTRA_TOP_PX = 2;/.test(JS), true,
+    '在呼吸位基础上精确下移 2 个 CSS 像素');
+  eq(/EXTRA_TOP_PX \* 750 \/ width/.test(JS), true,
+    '2px 微调按当前屏宽换算为 rpx');
   eq(/\.page-body \{[^}]*padding-right:\s*30rpx[^}]*padding-left:\s*30rpx/.test(WXSS), true,
     '正文只在模板声明 padding-top，样式表不重复覆盖');
   eq(/\.quota-warning-banner \{[^}]*margin-top:\s*0/.test(WXSS), true,
