@@ -181,7 +181,7 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 云端已验证：
 
 - 2026-11-02 客户端 `2.1.0` 已审核通过并全量发布；累计观察到 8 笔已支付订单，用户完成付费流程自测且客服工作台正常。`reminder` 的 `MEMBERSHIP_ENFORCEMENT_MODE` 已切换为 `all`，配置更新时间为 15:10:02。
-- 2026-11-02 16:15 已部署运行期会员限制开关：`payment_config/membership_enforcement={mode:"all"}` 由管理员 OpenID 写入并回读确认；`payment` / `reminder` 均为 `Active`，部署保留原环境变量键，`membership.status` 返回 `enforced=true`、购买状态 `OPEN`、免费/会员额度 5 / 15。开发者工具工作台已从“待部署”刷新为“全部用户”。
+- 2026-11-02 16:15 已部署运行期会员限制开关：`payment_config/membership_enforcement={mode:"all"}` 由管理员 OpenID 写入并回读确认；`payment` / `reminder` 均为 `Active`，部署保留原环境变量键，`membership.status` 返回 `enforced=true`、购买状态 `OPEN`、免费/会员额度 5 / 15。开发者工具工作台已从“待部署”刷新为“全部用户”；16:18:10 的真实新任务写入 `quotaPool=ENTITLEMENT`，部署后 30 分钟日志中两函数均无非 202 失败状态码。
 - 2026-11-02 客服工作台订单统计与时间筛选已通过云端冒烟：今日 36 单、已支付 23 单、支付 ¥69、退款 ¥6、净赚 ¥63；`adminOrders.list(timeRange=all)` 返回历史 70 单，并包含用户昵称、完整 OpenID 和分页字段。
 - 2026-11-02 两笔历史 Apple 未支付订单已由部署后的定时补偿在 16:16:01 关闭，`closeReason=VIRTUAL_PAY_EXPIRED_UNPAID`；当前待支付订单为 0。
 - 2026-11-02 部署后核验发现 `PROTECTION_MIGRATION_COMPLETE` 审计标记缺失，工作台返回 `migrationCompleted=false`；9419 个用户中 9361 个已有 `protectionMigratedAt`，权益账本迁移完成标记为 `true`。该问题不阻断当前数据库配置 `all` 生效，但会阻断后台后续切回 `all`。

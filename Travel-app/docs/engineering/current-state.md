@@ -59,11 +59,11 @@
 - 2026-11-02 客服工作台后端已部署：原售后管理升级为“会员订单 / 售后工单”双页签，会员购买开关固定在页面最顶部；管理员可按订单号、订单 ID、售后单号、完整 OpenID 和昵称搜索，订单与售后卡补全昵称和 OpenID，并提供订单详情及双向售后联动。新版 `payment`（18 个文件）已部署为 `Active`，真实管理员 `adminOrders.list/detail`、售后昵称搜索和 `membership.status=OPEN` 冒烟均通过，15 分钟内无 5xx；`paymentReconcileEveryTwoMinutes` 保持启用。**客户端 `2.1.0` 已上传、审核通过并进入灰度。**
 - 2026-11-02 微信审核因支付确认层“点击支付即同意”默认同意协议被驳回；客户端已改为默认未勾选的主动协议选择，未勾选时不可支付，协议链接仍可独立打开。修复后客户端 `2.1.0` 于 12:58 上传，审核通过并进入灰度；上午灰度观察到 5 笔成功支付、2 笔退款，客服工作台正常。实际审核通过并参与灰度的代码已由本提交和 `v2.1.0` tag 固化，尚未全量发布，本次不需要部署云函数。
 - 2026-11-02 客户端全量发布后累计观察到 8 笔已支付订单，用户完成付费流程自测且结果正常。`reminder` 的 `MEMBERSHIP_ENFORCEMENT_MODE` 已于 15:10:02 从 `test` 切换为 `all`，云端配置回读确认其他环境变量保持不变，包括 `MEMBERSHIP_TEST_OPENIDS`；当前观察全量会员提醒名额限制，未部署新代码。
-- 2026-11-02 会员限制模式后台开关已部署：`payment_config/membership_enforcement={mode:"all"}` 已创建并回读确认，`membership_sales` 仍为 `OPEN`；`payment` 与 `reminder` 于 16:14 / 16:15 更新为 `Active`，管理员接口返回 `membershipEnforcement.source=DB`、`mode=all`，`membership.status` 返回 `enforced=true`。客服工作台已刷新为“全部用户”，不再显示“待部署”。
+- 2026-11-02 会员限制模式后台开关已部署：`payment_config/membership_enforcement={mode:"all"}` 已创建并回读确认，`membership_sales` 仍为 `OPEN`；`payment` 与 `reminder` 于 16:14 / 16:15 更新为 `Active`，管理员接口返回 `membershipEnforcement.source=DB`、`mode=all`，`membership.status` 返回 `enforced=true`。客服工作台已刷新为“全部用户”，不再显示“待部署”。部署后 16:18:10 出现真实新建提醒，`quotaPool=ENTITLEMENT`，确认新配置已进入实际写路径。
 - 2026-11-02 客服工作台当日统计已部署并通过云端冒烟：2026-11-02 16:15 的统计为今日 36 单、已支付 23 单、支付 ¥69、退款 ¥6、净赚 ¥63；统计接口独立于搜索、筛选和分页。
 - 2026-11-02 客服工作台时间筛选已部署并通过云端冒烟：`timeRange=all` 返回历史 70 单，接口包含昵称、完整 OpenID 与分页字段；工作台时间下拉与服务端查询一致。
 - 2026-11-02 Apple 未支付订单收口已部署：两笔遗留 `PENDING` 虚拟支付订单在 16:16:01 的补偿轮次自动变为 `CLOSED`，`closeReason=VIRTUAL_PAY_EXPIRED_UNPAID`，查询当前 `PENDING` 订单为 0。
-- 2026-11-02 部署后复核发现保护额度完成标记不一致：工作台返回 `migrationCompleted=false`，`admin_audit_logs` 查不到 `PROTECTION_MIGRATION_COMPLETE`，但 9419 个用户中 9361 个已有 `protectionMigratedAt`；权益账本完成标记为 `true`。这不改变当前数据库配置 `all` 的生效状态，但后台从其他模式切回 `all` 会被迁移闸门拦截，需单独治理。
+- 2026-11-02 部署后复核发现保护额度完成标记不一致：工作台返回 `migrationCompleted=false`，`admin_audit_logs` 查不到 `PROTECTION_MIGRATION_COMPLETE`，但 9419 个用户中 9361 个已有 `protectionMigratedAt`；权益账本完成标记为 `true`。这不改变当前数据库配置 `all` 的生效状态，但后台从其他模式切回 `all` 会被迁移闸门拦截，需单独治理。部署后 30 分钟日志检查中，`payment` 与 `reminder` 均无非 202 失败状态码。
 
 ## 当前配置
 
@@ -180,7 +180,7 @@
 
 | 项 | 状态 | 说明 |
 | --- | --- | --- |
-| 云函数 `reminder` | **已部署本轮新版**（2026-11-02 16:15） | `Active`、Nodejs16.13；读取 `payment_config/membership_enforcement`，环境变量键与部署前哈希一致；`membership.status` 冒烟返回 `enforced=true` |
+| 云函数 `reminder` | **已部署本轮新版**（2026-11-02 16:15） | `Active`、Nodejs16.13；读取 `payment_config/membership_enforcement`，环境变量键与部署前哈希一致；`membership.status` 返回 `enforced=true`，16:18:10 的真实新任务写入 `quotaPool=ENTITLEMENT` |
 | 云函数 `spots` / `notifier` | **仍是旧版**（2026-10-27）；`spots` 的 `aliases` 等本轮改动仍待部署 | 不在本次支付加固部署范围内 |
 | 索引 `spots.spotId` / `release_rules.spotId` / `reminder_tasks.userId+itemId` | **已建**（2026-10-27，用户操作） | 控制台操作，即时生效 |
 | 客户端第一批（固定 30s TTL、spots 缓存、add-trip 去重） | **已发版**（2026-10-27，用户操作） | 发布源为未提交工作区，与 git 无对应提交；需补 tag 对齐 |
