@@ -33,7 +33,7 @@
       <view class="enforcement-main">
         <view class="enforcement-title-row">
           <text class="enforcement-title">会员限制</text>
-          <text class="enforcement-source">{{membershipEnforcement.source === 'DB' ? '后台配置' : '环境变量兜底'}}</text>
+          <text class="enforcement-source">{{membershipEnforcement.sourceLabel}}</text>
         </view>
         <text class="enforcement-desc {{membershipEnforcement.readError ? 'warning' : ''}}">{{membershipEnforcement.shortDescription || membershipEnforcement.description}}</text>
       </view>
@@ -42,10 +42,10 @@
         mode="selector"
         range="{{enforcementPickerLabels}}"
         value="{{enforcementPickerIndex}}"
-        disabled="{{enforcementSaving}}"
+        disabled="{{enforcementSaving || membershipEnforcement.unavailable}}"
         bindchange="onEnforcementModeChange"
       >
-        <view class="enforcement-select {{enforcementSaving ? 'disabled' : ''}}">
+        <view class="enforcement-select {{enforcementSaving || membershipEnforcement.unavailable ? 'disabled' : ''}}">
           <text class="enforcement-select-value">{{enforcementSaving ? '处理中' : membershipEnforcement.modeLabel}}</text>
           <svg-icon name="chevron-down-muted" size="10px" />
         </view>

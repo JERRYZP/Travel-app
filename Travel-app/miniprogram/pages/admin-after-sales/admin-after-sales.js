@@ -26,6 +26,30 @@ function enforcementPickerOf(current) {
   };
 }
 
+function enforcementViewOf(res) {
+  const current = res && res.membershipEnforcement;
+  if (current) {
+    const sourceLabel = current.source === 'DB'
+      ? '后台配置'
+      : (current.readError || current.source === 'INVALID' ? '配置异常' : '环境变量兜底');
+    return {
+      ...current,
+      sourceLabel,
+      unavailable: current.unavailable === true,
+    };
+  }
+  if (!res || res.isAdmin !== true) return null;
+  return {
+    mode: '',
+    modeLabel: '待部署',
+    shortDescription: '服务端尚未更新，暂不可切换',
+    source: 'UNAVAILABLE',
+    sourceLabel: '待部署',
+    readError: false,
+    unavailable: true,
+  };
+}
+
 const FILTERS = [
   { key: '', label: '全部' },
   { key: 'SUBMITTED', label: '待审核' },
@@ -123,7 +147,7 @@ Page({
   },
 
   applyStatus(res) {
-    const membershipEnforcement = (res && res.membershipEnforcement) || null;
+    const membershipEnforcement = enforcementViewOf(res);
     const migrationCompleted = !!(res && res.migrationCompleted);
     const entitlementMigrationCompleted = !!(res && res.entitlementMigrationCompleted);
     const enforcementPicker = enforcementPickerOf(membershipEnforcement);
@@ -202,6 +226,10 @@ Page({
 
   onEnforcementModeChange(e) {
     if (this.data.enforcementSaving || !this.data.membershipEnforcement) return;
+    if (this.data.membershipEnforcement.unavailable) {
+      wx.showToast({ title: '服务端尚未更新，暂不可切换', icon: 'none' });
+      return;
+    }
     const selectedIndex = Number(e && e.detail && e.detail.value);
     const currentPicker = enforcementPickerOf(this.data.membershipEnforcement);
     this.setData({ enforcementPickerIndex: currentPicker.index });

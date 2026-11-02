@@ -219,15 +219,40 @@ async function run() {
   const originalWx = global.wx;
   let pageDefinition = null;
   let modalOptions = null;
+  let toastOptions = null;
   global.getApp = () => ({ globalData: { statusBarHeight: 20, navBarHeight: 44 } });
   global.Page = definition => { pageDefinition = definition; };
   global.wx = {
     showModal(options) { modalOptions = options; },
-    showToast() {},
+    showToast(options) { toastOptions = options; },
   };
   try {
     delete require.cache[require.resolve('../miniprogram/pages/admin-after-sales/admin-after-sales.js')];
     require('../miniprogram/pages/admin-after-sales/admin-after-sales.js');
+    const previewContext = {
+      data: {},
+      setData(patch) { Object.assign(this.data, patch); },
+    };
+    pageDefinition.applyStatus.call(previewContext, {
+      isAdmin: true,
+      membershipSales: { purchaseEnabled: true },
+    });
+    eq(
+      previewContext.data.membershipEnforcement.sourceLabel,
+      '待部署',
+      '旧云函数未返回配置时展示待部署状态'
+    );
+    eq(
+      previewContext.data.membershipEnforcement.unavailable,
+      true,
+      '待部署状态禁用切换'
+    );
+    pageDefinition.onEnforcementModeChange.call({
+      data: previewContext.data,
+      setData(patch) { Object.assign(this.data, patch); },
+    }, { detail: { value: 1 } });
+    eq(toastOptions && toastOptions.title, '服务端尚未更新，暂不可切换', '待部署状态不发起切换');
+
     const pageContext = {
       data: {
         membershipEnforcement: { mode: 'all', modeLabel: '全量用户' },
