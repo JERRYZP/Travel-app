@@ -96,8 +96,8 @@
         <text class="order-stat-label">已支付</text>
       </view>
       <view class="order-stat">
-        <text class="order-stat-value amount">{{orderStats ? orderStats.paidAmountText : '—'}}</text>
-        <text class="order-stat-label">支付金额</text>
+        <text class="order-stat-value amount">{{orderStats ? orderStats.netAmountText : '—'}}</text>
+        <text class="order-stat-label">当日净赚</text>
       </view>
     </view>
     <view
