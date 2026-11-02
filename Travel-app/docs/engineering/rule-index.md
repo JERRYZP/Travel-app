@@ -58,6 +58,7 @@
 | `RULE-DEPLOY-001` | `CLAUDE.md` 157-174 | 部署依赖、顺序和未验证状态 | `.claude/rules/deployment.md`、`docs/engineering/current-state.md` | `extracted` |
 | `RULE-ADMIN-001` | 2026-10-06 新增 | 只读 Web 管理后台、事件账本与统计口径 | `docs/engineering/admin-console.md`、`API-契约.md`、`数据库索引.md` | `extracted` |
 | `RULE-ADMIN-002` | 2026-11-02 客服工作台 | 会员购买开关置顶；会员订单与售后双页签；昵称/OpenID 展示、搜索、订单详情和管理员审计 | `产品文档.md` PAGE-017、`API-契约.md`、`数据库索引.md` | `delegated` |
+| `RULE-ADMIN-003` | 2026-11-02 客服工作台提醒质量 | 每日 13:00 / 21:00 更新最近完成 8 小时时段的任务级 2 分钟内送达率；页面只直出当前送达率和前 5 日加权均值，低于 99% 才标红 | `产品文档.md` PAGE-017、`API-契约.md`、`docs/engineering/reminder-troubleshooting.md`、`数据库索引.md` | `delegated` |
 
 ## Phase 3 验收结果
 

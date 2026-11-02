@@ -44,6 +44,7 @@ const afterSales = require('./lib/after-sales');
 const membershipSales = require('./lib/membership-sales');
 const membershipEnforcement = require('./lib/membership-enforcement');
 const adminOrders = require('./lib/admin-orders');
+const adminReminderQuality = require('./lib/admin-reminder-quality');
 const {
   migrateProtectionBatch,
   protectionMigrationCompleted,
@@ -1761,6 +1762,12 @@ async function adminOrderStats(context) {
   return adminOrders.dailyStatsForAdmin(db);
 }
 
+async function adminReminderQualityStats(context) {
+  const denied = adminRequired(context);
+  if (denied) return denied;
+  return adminReminderQuality.statsForAdmin(db);
+}
+
 async function adminOrderDetail(context, event) {
   const denied = adminRequired(context);
   if (denied) return denied;
@@ -2264,6 +2271,8 @@ exports.main = async (event = {}) => {
         return await adminOrderList(context, event);
       case 'adminOrders.stats':
         return await adminOrderStats(context);
+      case 'adminReminderQuality.stats':
+        return await adminReminderQualityStats(context);
       case 'adminOrders.detail':
         return await adminOrderDetail(context, event);
       case 'afterSales.adminList':

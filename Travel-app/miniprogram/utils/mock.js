@@ -2514,6 +2514,57 @@ const handlers = {
     };
   },
 
+  'adminReminderQuality.stats': () => {
+    const yesterday = addDays(toDateStr(new Date()), -1);
+    const now = new Date();
+    const hour = beijingParts(now).hour;
+    const windowLabel = hour < 13
+      ? '昨日 13:00-21:00'
+      : (hour < 21 ? '今日 05:00-13:00' : '今日 13:00-21:00');
+    const updatedLabel = hour < 13 ? '21:00' : (hour < 21 ? '13:00' : '21:00');
+    const nextUpdateAt = hour < 13
+      ? parseBeijing(toDateStr(now), '13:00')
+      : (hour < 21
+        ? parseBeijing(toDateStr(now), '21:00')
+        : new Date(parseBeijing(addDays(toDateStr(now), 1), '13:00')));
+    return {
+      success: true,
+      quality: {
+        timezone: 'Asia/Shanghai',
+        threshold: { onTimeRate: 99, delayToleranceSeconds: 120 },
+        currentWindow: {
+          label: windowLabel,
+          updatedLabel,
+          nextUpdateAt: nextUpdateAt.toISOString(),
+          durationHours: 8,
+          expectedCount: 12,
+          onTimeCount: 12,
+          lateCount: 0,
+          missedCount: 0,
+          skippedCount: 0,
+          unknownCount: 0,
+          onTimeRate: 100,
+          status: 'HEALTHY',
+          reasonCodes: [],
+        },
+        yesterday: {
+          dateKey: yesterday,
+          expectedCount: 30,
+          missedCount: 0,
+        },
+        baseline5d: {
+          startDate: addDays(yesterday, -5),
+          endDate: addDays(yesterday, -1),
+          daysWithData: 5,
+          expectedCount: 58,
+          onTimeRate: 99.4,
+        },
+        dataTruncated: false,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+  },
+
   'adminOrders.list': (data) => {
     const keyword = String(data.keyword || '').trim();
     const page = Math.max(1, Math.floor(Number(data.page) || 1));

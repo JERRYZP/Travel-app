@@ -18,6 +18,11 @@ const ORDER_TIME_RANGES = [
   { key: '90d', label: '近 90 天' },
   { key: 'all', label: '全部' },
 ];
+const QUALITY_STATUS = {
+  HEALTHY: { label: '正常', tone: 'healthy' },
+  ALERT: { label: '异常', tone: 'alert' },
+  EMPTY: { label: '无数据', tone: 'empty' },
+};
 
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -56,6 +61,48 @@ function enforcementViewOf(res) {
   };
 }
 
+function qualityRateText(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  const text = number.toFixed(2).replace(/\.?0+$/, '');
+  return `${text}%`;
+}
+
+function qualityPlaceholder(kind) {
+  const failed = kind === 'failed';
+  const pending = kind === 'pending';
+  return {
+    statusLabel: failed ? '不可用' : (pending ? '待部署' : '统计中'),
+    statusTone: failed ? 'failed' : (pending ? 'pending' : 'loading'),
+    rateText: '—',
+    sampleText: failed ? '质量数据读取失败' : (pending ? '服务端尚未更新' : '等待更新'),
+    baselineText: '—',
+    issueText: failed ? '质量数据读取失败' : (pending ? '部署后自动显示' : ''),
+    showRetry: failed,
+  };
+}
+
+function reminderQualityViewOf(payload) {
+  const current = (payload && payload.currentWindow) || {};
+  const status = current.status || 'EMPTY';
+  const statusView = QUALITY_STATUS[status] || QUALITY_STATUS.EMPTY;
+  const baseline = payload && payload.baseline5d ? payload.baseline5d : {};
+  let issueText = '';
+  if (status === 'EMPTY') {
+    issueText = '当前时段无提醒';
+  }
+  return {
+    statusLabel: statusView.label,
+    statusTone: statusView.tone,
+    rateText: qualityRateText(current.onTimeRate),
+    sampleText: current.updatedLabel ? `截至 ${current.updatedLabel}` : '等待更新',
+    baselineText: qualityRateText(baseline.onTimeRate),
+    issueText,
+    showRetry: false,
+  };
+}
+
 const FILTERS = [
   { key: '', label: '全部' },
   { key: 'SUBMITTED', label: '待审核' },
@@ -89,6 +136,7 @@ Page({
     orderStatsLoading: false,
     orderStatsFailed: false,
     orderStatsPendingBackend: false,
+    reminderQuality: qualityPlaceholder('loading'),
     filters: ORDER_FILTERS,
     activeFilter: '',
     keywordInput: '',
@@ -152,15 +200,26 @@ Page({
     this.loadList();
   },
 
-  onUnload() { this._migrationStopRequested = true; },
+  onHide() {
+    this.clearReminderQualityTimer();
+  },
+
+  onUnload() {
+    this._migrationStopRequested = true;
+    this.clearReminderQualityTimer();
+  },
 
   loadMigrationStatus() {
     return api.payment.afterSales.adminStatus().then(res => {
       this.applyStatus(res);
+      if (res && res.isAdmin) this.loadReminderQuality();
       if (res && res.isAdmin && this.data.activeTab === TAB_ORDERS) {
         this.loadOrderStats();
       }
-    }).catch(() => {});
+      return res;
+    }).catch(() => {
+      this.setData({ reminderQuality: qualityPlaceholder('failed') });
+    });
   },
 
   loadStatus() {
@@ -193,6 +252,51 @@ Page({
       });
       return false;
     });
+  },
+
+  loadReminderQuality() {
+    if (this._qualityLoading) return Promise.resolve(false);
+    this._qualityLoading = true;
+    this.setData({ reminderQuality: qualityPlaceholder('loading') });
+    return api.payment.adminReminderQuality.stats().then(res => {
+      const quality = res && res.quality;
+      if (!quality) throw new Error('quality payload missing');
+      this.setData({ reminderQuality: reminderQualityViewOf(quality) });
+      this.scheduleReminderQualityRefresh(quality);
+      return true;
+    }).catch(err => {
+      this.clearReminderQualityTimer();
+      const pendingBackend = !!(err && err.errorCode === 1099);
+      this.setData({
+        reminderQuality: qualityPlaceholder(pendingBackend ? 'pending' : 'failed'),
+      });
+      return false;
+    }).then(result => {
+      this._qualityLoading = false;
+      return result;
+    });
+  },
+
+  scheduleReminderQualityRefresh(quality) {
+    this.clearReminderQualityTimer();
+    const nextUpdateAt = Date.parse(quality && quality.currentWindow
+      && quality.currentWindow.nextUpdateAt);
+    if (!Number.isFinite(nextUpdateAt)) return;
+    const delay = Math.max(1000, nextUpdateAt - Date.now() + 500);
+    this._qualityRefreshTimer = setTimeout(() => {
+      this._qualityRefreshTimer = null;
+      if (!this.data.forbidden) this.loadReminderQuality();
+    }, delay);
+  },
+
+  clearReminderQualityTimer() {
+    if (!this._qualityRefreshTimer) return;
+    clearTimeout(this._qualityRefreshTimer);
+    this._qualityRefreshTimer = null;
+  },
+
+  onRetryReminderQuality() {
+    return this.loadReminderQuality();
   },
 
   applyStatus(res) {

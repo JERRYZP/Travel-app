@@ -168,6 +168,9 @@ const payment = {
     stats: () => call('payment', { action: 'adminOrders.stats' }),
     detail: (orderId) => call('payment', { action: 'adminOrders.detail', orderId }),
   },
+  adminReminderQuality: {
+    stats: () => call('payment', { action: 'adminReminderQuality.stats' }),
+  },
   afterSales: {
     submit: (p) => call('payment', { action: 'afterSales.submit', ...(p || {}) }),
     cancel: (caseId) => call('payment', { action: 'afterSales.cancel', caseId }),

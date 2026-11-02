@@ -14,42 +14,70 @@
   </view>
 
   <block wx:else>
-    <view wx:if="{{membershipSales}}" class="admin-control-card sales-card {{membershipSales.purchaseEnabled ? '' : 'paused'}}">
-      <view class="sales-main">
-        <view class="sales-title-row">
-          <text class="sales-title">会员购买</text>
-          <text class="sales-status {{membershipSales.purchaseEnabled ? 'open' : 'paused'}}">{{membershipSales.purchaseEnabled ? '销售中' : '已暂停'}}</text>
+    <view class="top-dashboard">
+      <view class="admin-control-card quality-card tone-{{reminderQuality.statusTone}}">
+        <view class="quality-head">
+          <text class="quality-title">提醒质量</text>
+          <text class="quality-status">{{reminderQuality.statusLabel}}</text>
         </view>
-        <text class="sales-desc">{{membershipSales.purchaseEnabled ? '新订单与支付可用' : '新购买已暂停；已有权益不受影响'}}</text>
-        <text wx:if="{{!membershipSales.purchaseEnabled && membershipSales.reason}}" class="sales-reason">暂停原因：{{membershipSales.reason}}</text>
-        <text wx:if="{{membershipSales.readError}}" class="sales-warning">配置读取失败，当前按暂停处理</text>
+        <view class="quality-primary">
+          <text class="quality-rate">{{reminderQuality.rateText}}</text>
+          <view class="quality-primary-copy">
+            <view class="quality-caption-row">
+              <text class="quality-caption">2 分钟内送达率</text>
+              <text class="quality-sample">{{reminderQuality.sampleText}}</text>
+            </view>
+          </view>
+        </view>
+        <view class="quality-baseline">
+          <text class="quality-baseline-label">前 5 日均值</text>
+          <text class="quality-baseline-value">{{reminderQuality.baselineText}}</text>
+        </view>
+        <view wx:if="{{reminderQuality.showRetry}}" class="quality-foot">
+          <text class="quality-issue">{{reminderQuality.issueText}}</text>
+          <text class="quality-retry" bindtap="onRetryReminderQuality">重试</text>
+        </view>
       </view>
-      <view class="sales-action {{salesSaving ? 'disabled' : ''}}" bindtap="onToggleMembershipSales">
-        {{salesSaving ? '处理中' : (membershipSales.purchaseEnabled ? '暂停' : '恢复')}}
-      </view>
-    </view>
 
-    <view wx:if="{{membershipEnforcement}}" class="admin-control-card enforcement-card">
-      <view class="enforcement-main">
-        <view class="enforcement-title-row">
-          <text class="enforcement-title">会员限制</text>
-          <text class="enforcement-source">{{membershipEnforcement.sourceLabel}}</text>
+      <view class="dashboard-control-stack">
+        <view wx:if="{{membershipSales}}" class="admin-control-card sales-card {{membershipSales.purchaseEnabled ? '' : 'paused'}}">
+          <view class="sales-main">
+            <view class="sales-title-row">
+              <text class="sales-title">会员购买</text>
+              <text class="sales-status {{membershipSales.purchaseEnabled ? 'open' : 'paused'}}">{{membershipSales.purchaseEnabled ? '销售中' : '已暂停'}}</text>
+            </view>
+            <text class="sales-desc">{{membershipSales.purchaseEnabled ? '新订单与支付可用' : '新购买已暂停；已有权益不受影响'}}</text>
+            <text wx:if="{{!membershipSales.purchaseEnabled && membershipSales.reason}}" class="sales-reason">暂停原因：{{membershipSales.reason}}</text>
+            <text wx:if="{{membershipSales.readError}}" class="sales-warning">配置读取失败，当前按暂停处理</text>
+          </view>
+          <view class="sales-action {{salesSaving ? 'disabled' : ''}}" bindtap="onToggleMembershipSales">
+            {{salesSaving ? '处理中' : (membershipSales.purchaseEnabled ? '暂停' : '恢复')}}
+          </view>
         </view>
-        <text class="enforcement-desc {{membershipEnforcement.readError ? 'warning' : ''}}">{{membershipEnforcement.shortDescription || membershipEnforcement.description}}</text>
+
+        <view wx:if="{{membershipEnforcement}}" class="admin-control-card enforcement-card">
+          <view class="enforcement-main">
+            <view class="enforcement-title-row">
+              <text class="enforcement-title">会员限制</text>
+              <text class="enforcement-source">{{membershipEnforcement.sourceLabel}}</text>
+            </view>
+            <text class="enforcement-desc {{membershipEnforcement.readError ? 'warning' : ''}}">{{membershipEnforcement.shortDescription || membershipEnforcement.description}}</text>
+          </view>
+          <picker
+            class="enforcement-picker"
+            mode="selector"
+            range="{{enforcementPickerLabels}}"
+            value="{{enforcementPickerIndex}}"
+            disabled="{{enforcementSaving || membershipEnforcement.unavailable}}"
+            bindchange="onEnforcementModeChange"
+          >
+            <view class="enforcement-select {{enforcementSaving || membershipEnforcement.unavailable ? 'disabled' : ''}}">
+              <text class="enforcement-select-value">{{enforcementSaving ? '处理中' : membershipEnforcement.modeLabel}}</text>
+              <svg-icon name="chevron-down-muted" size="10px" />
+            </view>
+          </picker>
+        </view>
       </view>
-      <picker
-        class="enforcement-picker"
-        mode="selector"
-        range="{{enforcementPickerLabels}}"
-        value="{{enforcementPickerIndex}}"
-        disabled="{{enforcementSaving || membershipEnforcement.unavailable}}"
-        bindchange="onEnforcementModeChange"
-      >
-        <view class="enforcement-select {{enforcementSaving || membershipEnforcement.unavailable ? 'disabled' : ''}}">
-          <text class="enforcement-select-value">{{enforcementSaving ? '处理中' : membershipEnforcement.modeLabel}}</text>
-          <svg-icon name="chevron-down-muted" size="10px" />
-        </view>
-      </picker>
     </view>
 
     <view wx:if="{{fundingBlockedCount > 0}}" class="funding-alert">
