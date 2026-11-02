@@ -1,6 +1,6 @@
 # 会员支付、售后与提醒名额
 
-> 2026-11-02 当前状态：会员购买断路器已创建 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），并部署 `payment` / `reminder`。客服工作台后端已部署到新版 `payment`：真实管理员订单列表/详情、售后昵称搜索和 `membership.status=OPEN` 冒烟通过，`paymentReconcileEveryTwoMinutes` 保持启用。客户端 `2.1.0` 已上传、审核通过并进入灰度，上午观察到 5 笔成功支付、2 笔退款且客服工作台正常；实际灰度包已用 `v2.1.0` tag 固化，尚未全量发布。真实停售切换未执行，会员限制仍保持 `test`。
+> 2026-11-02 当前状态：会员购买断路器已创建 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），并部署 `payment` / `reminder`。客服工作台后端已部署到新版 `payment`：真实管理员订单列表/详情、售后昵称搜索和 `membership.status=OPEN` 冒烟通过，`paymentReconcileEveryTwoMinutes` 保持启用。客户端 `2.1.0` 已审核通过并全量发布，累计观察到 8 笔已支付订单，用户完成付费流程自测且客服工作台正常。`reminder` 的 `MEMBERSHIP_ENFORCEMENT_MODE` 已于 15:10:02 切换为 `all`，其他环境变量保持不变。真实停售切换未执行。
 >
 > 权威业务口径以 `产品文档.md` 为准，接口以 `API-契约.md` 为准，索引以 `数据库索引.md` 为准。
 
@@ -171,7 +171,7 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 
 云端已验证：
 
-- 2026-11-02 客户端 `2.1.0` 已上传、审核通过并进入灰度；灰度观察到 5 笔成功支付、2 笔退款，客服工作台正常。审核修复对应代码已提交并以 `v2.1.0` tag 固化，尚未全量发布。
+- 2026-11-02 客户端 `2.1.0` 已审核通过并全量发布；累计观察到 8 笔已支付订单，用户完成付费流程自测且客服工作台正常。`reminder` 的 `MEMBERSHIP_ENFORCEMENT_MODE` 已切换为 `all`，配置更新时间为 15:10:02。
 - 2026-11-02 已将含会员购买断路器和客服工作台的 `payment`（18 个文件）部署到 `cloud1`；`payment` 为 `Active`，部署包包含 `adminOrders.list/detail`。真实管理员接口冒烟返回会员订单、当前昵称、完整 OpenID 和订单详情；售后昵称搜索可用；`membership.status` 返回 `sales.state=OPEN`。部署后 15 分钟无 `payment` 5xx，`paymentReconcileEveryTwoMinutes = 0 */2 * * * * *` 保持启用。
 - 2026-11-01 已将 `payment`（15 个文件）与 `reminder`（19 个文件）部署到 `cloud1`；部署前已完整备份 `users`、`orders`、`reminder_tasks`、`after_sales_cases`、`admin_audit_logs`，备份清单包含文件 SHA-256。
 - 2026-11-01 复核发现 `payment_reconcile_state` 实际不存在，定时补偿报 `-502005` 后中断，导致已到账退款仍停留“退款中”。工作区已补自动创建与无游标降级，并增加退款队列隔离与状态收口回归；新版 `payment` 部署前该问题仍存在于线上。
@@ -188,11 +188,11 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 
 仍未完成：
 
-- `2.1.0` 的 Android/iOS 分渠道覆盖矩阵仍需补全；灰度已有 5 笔支付、2 笔退款，但不能替代沙箱异常场景验收。
+- `2.1.0` 的 Android/iOS 分渠道覆盖矩阵仍需补全；当前已有 8 笔支付样本，但不能替代沙箱异常场景验收。
 - iOS 现网 Apple 支付、Apple 退款问询和最终平台退款售后记录真机验收。
 - 微信支付真实签名回调、微信退款真实签名回调。
 - 退款回调失败场景与重复回调的真实环境验证。
 - `unpay` 环境真实退款回调端到端验证。
-- 正式环境 `MEMBERSHIP_ENFORCEMENT_MODE=all` 切换须在正式版覆盖稳定并完成验收后另行取得明确授权。
+- `MEMBERSHIP_ENFORCEMENT_MODE=all` 已切换，需继续观察全量提醒创建、额度和付费续提交流程。
 
 ⚠️ 测试通过、已提交、已部署、真机验证是不同状态，不能互相替代。
