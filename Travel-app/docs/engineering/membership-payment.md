@@ -74,7 +74,7 @@ iOS Apple 内购订单在订单展示接口中返回 `paymentChannel=APPLE`。�
 - 虚拟支付退款推送处理 `xpay_refund_notify`；iOS 退款问询处理 `xpay_subscribe_ios_refund_query_notify`，后者必须在 3 秒内返回。Apple 退款查单返回 `status=5`（商户侧扣款完成）时先幂等补建/更新“处理中”售后记录，不提前回收权益；只有查单到 `status=8`（用户侧收款完成）才标记已退款并按订单快照回收。
 - 订单固化支付渠道与虚拟支付环境：API v3 在首次拉起支付前写入 `paymentProvider=WECHAT_PAY_V3`；虚拟支付写入 `paymentProvider=VIRTUAL_PAY`、`virtualEnv` 和 `virtualProductId`。历史订单查单、退款按订单快照选择渠道、环境和 AppKey。
 - 日志记录路由、`outTradeNo` / `outRefundNo`、公钥 ID、时间戳、原始 body SHA-256、验签结果和失败原因；不记录私钥、APIv3 密钥或完整签名。
-- 15 分钟未支付的本地订单会关闭；客户端确认取消后再次购买必须使用新的 `requestId`、订单 ID 和 `outTradeNo`。同一请求重试返回同一订单；不同请求只有在 `productType + specVersion + addedSlots + memberDays + amountFen` 全部一致且未过期时才复用待支付订单，旧规格订单条件关闭，不能按相同价格误复用。
+- 15 分钟未支付的本地订单会关闭；Apple 查单长期返回 `INIT/CREATED` 时，补偿在本地过期后按 `VIRTUAL_PAY_EXPIRED_UNPAID` 关闭，后续若平台确认实际支付仍可从 `CLOSED` 收口为 `PAID`。客户端确认取消后再次购买必须使用新的 `requestId`、订单 ID 和 `outTradeNo`。同一请求重试返回同一订单；不同请求只有在 `productType + specVersion + addedSlots + memberDays + amountFen` 全部一致且未过期时才复用待支付订单，旧规格订单条件关闭，不能按相同价格误复用。
 - 虚拟支付当前没有可调用的平台关单接口；取消时先查单，只有平台未支付或已关闭才关闭本地订单。API v3 仍在确认未支付后调用微信关单接口。
 - 创建订单前使用 OpenID 确定性文档 ID 确保用户记录存在，避免并发首购生成重复用户后支付成功无法发放权益。
 - 提醒提交、行程项重新开启提醒、创建订单、权益发放和退款回收共用用户文档上的短期额度锁；锁含所有者和过期时间，有限重试并在 `finally` 释放。提醒修改先完成全部字段校验，再在同一事务内修改 `remindOn`、删除旧任务、创建新任务和更新 `lastReminderCreatedAt`。

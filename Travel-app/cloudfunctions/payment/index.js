@@ -798,6 +798,15 @@ async function syncVirtualOrder(order, config = virtualPay.configOf()) {
   await persistVirtualQuery(order, queried).catch(err => {
     console.error('[payment] persist virtual query failed', { orderId: order._id, message: err.message });
   });
+  const orderStatus = virtualPay.statusOf(queried);
+  const stillUnpaid = [
+    virtualPay.VirtualOrderStatus.INIT,
+    virtualPay.VirtualOrderStatus.CREATED,
+  ].includes(orderStatus);
+  if (stillUnpaid && isOrderExpired(order)) {
+    const closed = await markOrderClosed(db, order, 'VIRTUAL_PAY_EXPIRED_UNPAID');
+    return ok(await paymentResultView(closed));
+  }
   return ok(await paymentResultView(order));
 }
 

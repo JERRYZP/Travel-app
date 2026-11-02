@@ -210,6 +210,67 @@ async function testAccessTokenRefresh() {
   }
 }
 
+async function testExpiredUnpaidVirtualOrderCloses() {
+  console.log('\n=== 2a. Apple 未支付订单过期后由补偿关闭 ===');
+  const db = createDb();
+  const now = Date.now();
+  db._seed(COLLECTIONS.ORDERS, [{
+    _id: 'ov-expired-unpaid',
+    userId: 'openid-expired-unpaid',
+    outTradeNo: 'TVIRTEXPIREDUNPAID',
+    paymentProvider: 'VIRTUAL_PAY',
+    virtualEnv: 0,
+    packageId: 'member',
+    productType: 'MEMBER',
+    title: '会员 30 天',
+    amountFen: 300,
+    memberDays: 30,
+    status: OrderStatus.PENDING,
+    refundStatus: RefundStatus.NONE,
+    grantStatus: GrantStatus.NONE,
+    createdAt: new Date(now - 16 * 60 * 1000),
+    expiresAt: new Date(now - 60 * 1000),
+  }]);
+
+  const previousEnv = { ...process.env };
+  const originalQueryPaymentOrder = virtualPay.queryPaymentOrder;
+  Object.assign(process.env, {
+    PAYMENT_PROVIDER: 'VIRTUAL_PAY',
+    WECHAT_APP_ID: 'wx05c160a589b97d76',
+    WECHAT_APP_SECRET: 'app-secret',
+    WECHAT_VIRTUAL_PAY_ENV: '0',
+    WECHAT_VIRTUAL_PAY_OFFER_ID: 'offer-test',
+    WECHAT_VIRTUAL_PAY_PRODUCTION_APP_KEY: '12345',
+    WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER: 'member-product',
+    WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK: 'pack-product',
+  });
+  virtualPay.queryPaymentOrder = async ({ order }) => ({
+    order_id: order.outTradeNo,
+    order_type: virtualPay.VirtualOrderType.APPLE,
+    status: virtualPay.VirtualOrderStatus.CREATED,
+    order_fee: 300,
+  });
+  try {
+    const payment = loadPayment(db);
+    const summary = await payment._test.reconcile({
+      batchSize: 10,
+      totalBudgetMs: 1000,
+      queueBudgetMs: 500,
+      now: Date.now,
+    });
+    const order = db._dump(COLLECTIONS.ORDERS)[0];
+    eq(summary.queues.pendingPayments.updated, 1, '未支付 Apple 订单由待支付补偿收口');
+    eq(order.status, OrderStatus.CLOSED, '平台确认未支付且本地过期后关闭订单');
+    eq(order.closeReason, 'VIRTUAL_PAY_EXPIRED_UNPAID', '关闭原因标记虚拟支付过期未支付');
+    eq(order.virtualOrderStatus, virtualPay.VirtualOrderStatus.CREATED,
+      '关闭前保留平台未支付状态证据');
+  } finally {
+    virtualPay.queryPaymentOrder = originalQueryPaymentOrder;
+    for (const key of Object.keys(process.env)) if (!(key in previousEnv)) delete process.env[key];
+    Object.assign(process.env, previousEnv);
+  }
+}
+
 function testNotifyParsing() {
   console.log('\n=== 3. 消息推送解析与响应 ===');
   const xml = '<xml><Event>xpay_goods_deliver_notify</Event><OpenId>openid-1</OpenId>' +
@@ -816,6 +877,7 @@ async function testRefundBalanceFailureMessage() {
 async function run() {
   await testProviderAndSignatures();
   await testAccessTokenRefresh();
+  await testExpiredUnpaidVirtualOrderCloses();
   testNotifyParsing();
   await testVirtualMessageIntegration();
   await testRefundNotification();
