@@ -7,9 +7,23 @@ const MIGRATION_BATCH_DELAY_MS = 300;
 const MIGRATION_ENTRY_ENABLED = false;
 const TAB_ORDERS = 'orders';
 const TAB_AFTER_SALES = 'afterSales';
+const ENFORCEMENT_OPTIONS = [
+  { mode: 'off', label: '关闭', caption: '不限制' },
+  { mode: 'test', label: '测试', caption: '白名单' },
+  { mode: 'all', label: '全量', caption: '所有用户' },
+];
 
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function enforcementOptionsOf(current, migrationsReady) {
+  const activeMode = current && current.mode;
+  return ENFORCEMENT_OPTIONS.map(item => ({
+    ...item,
+    active: activeMode === item.mode,
+    disabled: item.mode === 'all' && !migrationsReady,
+  }));
 }
 
 const FILTERS = [
@@ -70,6 +84,10 @@ Page({
     salesReason: '',
     salesSaving: false,
     showSalesConfirm: false,
+    membershipEnforcement: null,
+    enforcementModes: enforcementOptionsOf(null, false),
+    enforcementSaving: false,
+    entitlementMigrationCompleted: false,
   },
 
   onLoad() {
@@ -104,11 +122,20 @@ Page({
   },
 
   applyStatus(res) {
+    const membershipEnforcement = (res && res.membershipEnforcement) || null;
+    const migrationCompleted = !!(res && res.migrationCompleted);
+    const entitlementMigrationCompleted = !!(res && res.entitlementMigrationCompleted);
     this.setData({
-      migrationCompleted: !!(res && res.migrationCompleted),
+      migrationCompleted,
+      entitlementMigrationCompleted,
       pendingCount: Math.max(0, Number(res && res.pendingCount) || 0),
       fundingBlockedCount: Math.max(0, Number(res && res.fundingBlockedCount) || 0),
       membershipSales: (res && res.membershipSales) || null,
+      membershipEnforcement,
+      enforcementModes: enforcementOptionsOf(
+        membershipEnforcement,
+        migrationCompleted && entitlementMigrationCompleted
+      ),
     });
   },
 
@@ -168,6 +195,60 @@ Page({
       })
       .catch(err => {
         this.setData({ salesSaving: false });
+        api.toastError(err);
+        return false;
+      });
+  },
+
+  onEnforcementModeTap(e) {
+    if (this.data.enforcementSaving || !this.data.membershipEnforcement) return;
+    const mode = String((e && e.currentTarget && e.currentTarget.dataset.mode) || '');
+    const option = ENFORCEMENT_OPTIONS.find(item => item.mode === mode);
+    if (!option || this.data.membershipEnforcement.mode === mode) return;
+    if (mode === 'all'
+      && (!this.data.migrationCompleted || !this.data.entitlementMigrationCompleted)) {
+      wx.showToast({ title: '上线前迁移未完成，暂不能切全量', icon: 'none' });
+      return;
+    }
+    const currentLabel = this.data.membershipEnforcement.modeLabel || '环境变量';
+    const impact = mode === 'all'
+      ? '所有用户之后新建的提醒都会占用 5 / 15 个名额。'
+      : (mode === 'test'
+        ? '只有测试 OpenID 之后新建的提醒占用名额。'
+        : '所有用户之后新建的提醒都进入历史保护池。');
+    wx.showModal({
+      title: `切换为${option.label}`,
+      content: `从“${currentLabel}”切换。${impact}已有提醒保持原池别，不会重新计数。`,
+      confirmText: '确认切换',
+      confirmColor: '#8A5A12',
+      success: res => {
+        if (res.confirm) this.setMembershipEnforcement(mode);
+      },
+    });
+  },
+
+  setMembershipEnforcement(mode) {
+    if (this.data.enforcementSaving) return Promise.resolve(false);
+    this.setData({ enforcementSaving: true });
+    return api.payment.afterSales.adminSetMembershipEnforcement({ mode })
+      .then(result => {
+        const membershipEnforcement = result && result.membershipEnforcement;
+        this.setData({
+          enforcementSaving: false,
+          membershipEnforcement: membershipEnforcement || this.data.membershipEnforcement,
+          enforcementModes: enforcementOptionsOf(
+            membershipEnforcement,
+            this.data.migrationCompleted && this.data.entitlementMigrationCompleted
+          ),
+        });
+        wx.showToast({
+          title: `会员限制已切为${membershipEnforcement ? membershipEnforcement.modeLabel : '新模式'}`,
+          icon: 'none',
+        });
+        return true;
+      })
+      .catch(err => {
+        this.setData({ enforcementSaving: false });
         api.toastError(err);
         return false;
       });

@@ -138,6 +138,10 @@ const ERRORS = {
   TASK_LIMIT_EXCEEDED: { code: 1026, message: '提醒名额不足，请先开通会员或加购名额' },
   TASK_QUOTA_BUSY: { code: 1031, message: '提醒名额正在更新，请稍后重试' },
   MEMBERSHIP_SALES_PAUSED: { code: 1032, message: '会员购买暂停中，请稍后再试' },
+  MEMBERSHIP_ENFORCEMENT_NOT_READY: {
+    code: 1033,
+    message: '上线前数据迁移未完成，不能切换全量会员限制',
+  },
   MEMBERSHIP_REQUIRED: { code: 1022, message: '请先开通会员再加购提醒名额' },
   PAYMENT_NOT_READY: { code: 1023, message: '支付通道准备中，请稍后再试' },
   ORDER_NOT_FOUND: { code: 1024, message: '订单不存在或已失效' },

@@ -162,7 +162,7 @@ Access Token 使用内存缓存并提前 5 分钟刷新；微信返回 `40001/40
 5. 以 `dryRun=false` 重新从头执行同一迁移。每批最多 50 人，必须沿返回的 `nextCursor` 继续到 `hasMore=false`；不可跳批，也不能把 dry-run 的游标当作已写入结果。
 6. 保持 `MEMBERSHIP_ENFORCEMENT_MODE=test`，用白名单 OpenID 真机验证支付、权益到账、退款回收、并发提醒和恢复支付。
 7. 上传体验版并提交审核；审核等待期和发布初期继续保持 `test`，非白名单任务进入历史保护池。
-8. 支付白名单已于 2026-11-01 删除，新版客户端新订单全量使用虚拟支付；完成正式版覆盖与支付验收后，再另行评估切到 `MEMBERSHIP_ENFORCEMENT_MODE=all`。
+8. 支付白名单已于 2026-11-01 删除，新版客户端新订单全量使用虚拟支付；完成正式版覆盖与支付验收后，再另行评估通过客服工作台把 `payment_config/membership_enforcement.mode` 切到 `all`。若后台开关尚未部署，才由 `MEMBERSHIP_ENFORCEMENT_MODE` 兜底。
 
 ## 8. 测试顺序
 
@@ -175,7 +175,7 @@ Access Token 使用内存缓存并提前 5 分钟刷新；微信返回 `40001/40
 5. 发布现网道具，配置现网 AppKey 和 `WECHAT_VIRTUAL_PAY_ENV=0`，先在测试白名单验证。
 6. iOS 使用真实现网环境、iOS 15+ 和微信 8.0.68+ 验证 Apple 支付、Apple 退款问询和最终退款推送；Apple 无沙箱。确认问询阶段不建单，最终 `xpay_refund_notify` 查单成功后售后工作台出现一条“平台退款 / 系统自动”记录，重复推送不新增第二条。
 7. 验证 Android/iOS、首次购买、续费、加购、取消、支付成功回调丢失、重复推送、退款失败重试和权益回收；另用客户端调用伪造 `xpay_*` 事件和 HTTP 形态，确认均不会产生查单或权益变化。
-8. 只有以上通过后，才删除 `PAYMENT_VIRTUAL_PAY_TEST_OPENIDS` 完成支付全量，并评估是否由 `MEMBERSHIP_ENFORCEMENT_MODE=test` 切到 `all`。
+8. 只有以上通过后，才删除 `PAYMENT_VIRTUAL_PAY_TEST_OPENIDS` 完成支付全量，并评估是否由会员限制 `test` 切到 `all`；有后台开关时应通过 `payment_config/membership_enforcement` 切换。
 
 ## 9. 回退
 

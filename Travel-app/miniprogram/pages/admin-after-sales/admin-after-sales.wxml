@@ -29,6 +29,30 @@
       </view>
     </view>
 
+    <view wx:if="{{membershipEnforcement}}" class="enforcement-card">
+      <view class="enforcement-head">
+        <view class="enforcement-title-row">
+          <text class="enforcement-title">会员限制</text>
+          <text class="enforcement-status mode-{{membershipEnforcement.mode || 'env'}}">{{membershipEnforcement.modeLabel}}</text>
+        </view>
+        <text class="enforcement-source">{{enforcementSaving ? '切换中' : (membershipEnforcement.source === 'DB' ? '后台配置' : '环境变量兜底')}}</text>
+      </view>
+      <text class="enforcement-desc">{{membershipEnforcement.description}}</text>
+      <view class="enforcement-options {{enforcementSaving ? 'disabled' : ''}}">
+        <view
+          wx:for="{{enforcementModes}}"
+          wx:key="mode"
+          class="enforcement-option {{item.active ? 'active' : ''}} {{item.disabled ? 'disabled' : ''}}"
+          data-mode="{{item.mode}}"
+          bindtap="onEnforcementModeTap"
+        >
+          <text class="enforcement-option-label">{{item.label}}</text>
+          <text class="enforcement-option-caption">{{item.caption}}</text>
+        </view>
+      </view>
+      <text wx:if="{{membershipEnforcement.readError}}" class="enforcement-warning">后台配置异常，reminder 当前按环境变量兜底</text>
+    </view>
+
     <view wx:if="{{fundingBlockedCount > 0}}" class="funding-alert">
       <view class="funding-alert-copy">
         <text class="funding-alert-title">退款资金阻断</text>

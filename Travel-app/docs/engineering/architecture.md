@@ -104,6 +104,7 @@ reminder.membership.createOrder
 - 支付渠道按环境开关选择；缺省为微信支付 API v3，`PAYMENT_PROVIDER=VIRTUAL_PAY` 才启用虚拟支付。历史订单保存渠道后继续走原渠道，避免切环境后错误查单或退款。订单展示接口返回派生后的 `paymentChannel=APPLE|WECHAT_VIRTUAL|WECHAT_PAY`，供客户端稳定识别 iOS 退款路径，不暴露原始支付结果。
 - 订单只由 `payment` 云函数在渠道回调或主动查单确认后置为 `PAID`；客户端不能自行改会员。虚拟支付发货和退款推送必须再次查询微信订单，不信任客户端或推送正文直接发权益。
 - 会员购买总开关存于 `payment_config/membership_sales`，由 `reminder` 与 `payment` 共同读取。暂停只阻止新订单和待支付订单新发起支付；已支付查单、回调发权益、退款和售后不经过该闸门。
+- 会员限制模式存于 `payment_config/membership_enforcement`，由 `payment` 管理端写入、`reminder` 每次创建或展示额度时读取。配置缺失或读取失败才回退环境变量；后台切换不需要重新部署，已有任务保留原 `quotaPool`。
 - 订单创建必须带 `requestId`，以 OpenID + 请求号生成确定性订单 ID；待支付复用严格匹配完整规格，同请求改商品拒绝。售后同样以请求号幂等，并在订单上维护唯一 `activeAfterSalesCaseId`。
 - API v3 回调必须校验微信支付公钥 ID 和原始 body 签名并解密；虚拟支付使用云开发消息推送事件，回包使用 `ErrCode/ErrMsg`，iOS 退款问询额外返回 `IosRefundQueryResponse`。
 - `orders.status` 保持 `PENDING/PAID/CLOSED`；退款生命周期独立写入 `refundStatus`，历史 `REFUNDED` 只兼容展示。

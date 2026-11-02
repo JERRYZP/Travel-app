@@ -42,11 +42,13 @@ const {
 } = require('./lib/order');
 const afterSales = require('./lib/after-sales');
 const membershipSales = require('./lib/membership-sales');
+const membershipEnforcement = require('./lib/membership-enforcement');
 const adminOrders = require('./lib/admin-orders');
 const {
   migrateProtectionBatch,
   protectionMigrationCompleted,
   migrateEntitlementLedgerBatch,
+  entitlementMigrationCompleted,
 } = require('./lib/migration');
 const wxpay = require('./lib/wxpay-v3');
 const paymentProvider = require('./lib/payment-provider');
@@ -1010,6 +1012,49 @@ async function setMembershipSales(context, event) {
   });
   const current = await membershipSales.read(db);
   return ok({ membershipSales: membershipSales.adminView(current) });
+}
+
+async function setMembershipEnforcement(context, event) {
+  const denied = adminRequired(context);
+  if (denied) return denied;
+  const mode = membershipEnforcement.normalizedMode(event.mode);
+  if (!mode) return fail(ERRORS.BAD_PARAM);
+
+  if (mode === membershipEnforcement.EnforcementMode.ALL) {
+    const [protectionReady, entitlementReady] = await Promise.all([
+      protectionMigrationCompleted(db).catch(() => false),
+      entitlementMigrationCompleted(db).catch(() => false),
+    ]);
+    if (!protectionReady || !entitlementReady) {
+      return fail(ERRORS.MEMBERSHIP_ENFORCEMENT_NOT_READY);
+    }
+  }
+
+  const previous = await membershipEnforcement.read(db);
+  const nowTs = new Date();
+  await db.runTransaction(async transaction => {
+    await membershipEnforcement.write(transaction, {
+      mode,
+      updatedBy: context.OPENID,
+      now: nowTs,
+    });
+    await transaction.collection(COLLECTIONS.ADMIN_AUDIT_LOGS).add({
+      data: {
+        adminOpenId: context.OPENID,
+        action: 'SET_MEMBERSHIP_ENFORCEMENT',
+        caseId: '',
+        orderId: '',
+        details: {
+          mode,
+          previousMode: previous.mode || '',
+          previousSource: previous.source || '',
+        },
+        createdAt: nowTs,
+      },
+    });
+  });
+  const current = await membershipEnforcement.read(db);
+  return ok({ membershipEnforcement: membershipEnforcement.adminView(current) });
 }
 
 async function adminCaseBundle(caseItem) {
@@ -2171,22 +2216,35 @@ exports.main = async (event = {}) => {
             fundingBlockedCount: 0,
           });
         }
-        const [migrationCompleted, pendingCount, fundingBlockedCount, sales] = await Promise.all([
-          protectionMigrationCompleted(db),
+        const [
+          migrationCompleted,
+          entitlementMigrationReady,
+          pendingCount,
+          fundingBlockedCount,
+          sales,
+          enforcement,
+        ] = await Promise.all([
+          protectionMigrationCompleted(db).catch(() => false),
+          entitlementMigrationCompleted(db).catch(() => false),
           afterSales.countActiveCases(db).catch(() => 0),
           afterSales.countFundingBlockedCases(db).catch(() => 0),
           membershipSales.read(db),
+          membershipEnforcement.read(db),
         ]);
         return ok({
           isAdmin: true,
           migrationCompleted,
+          entitlementMigrationCompleted: entitlementMigrationReady,
           pendingCount,
           fundingBlockedCount,
           membershipSales: membershipSales.adminView(sales),
+          membershipEnforcement: membershipEnforcement.adminView(enforcement),
         });
       }
       case 'afterSales.adminSetMembershipSales':
         return await setMembershipSales(context, event);
+      case 'afterSales.adminSetMembershipEnforcement':
+        return await setMembershipEnforcement(context, event);
       case 'adminOrders.list':
         return await adminOrderList(context, event);
       case 'adminOrders.detail':

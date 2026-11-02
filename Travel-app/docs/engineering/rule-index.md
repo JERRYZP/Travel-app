@@ -44,6 +44,7 @@
 | `RULE-REMINDERCFG-001` | `CLAUDE.md` 122-127 | 系统权限、订阅额度、PAGE-008 硬闸门 | `docs/engineering/domain-rules.md`、`.claude/rules/frontend.md` | `extracted` |
 | `RULE-REMINDERCFG-002` | `产品文档.md` 3.5 / PAGE-002 | 轻量提醒入口订阅授权补充后继续原动线 | `产品文档.md` `REMINDER-RULE-009`、`docs/engineering/domain-rules.md` | `delegated` |
 | `RULE-MEMBER-001` | `产品文档.md` PAGE-008 / PAGE-014 | 免费 5 个提醒名额、会员 30 天 15 个、有效会员可加购 10 个、老用户固定保护额度、仅超额时出现付费 | `产品文档.md`、`docs/engineering/domain-rules.md`、`docs/engineering/membership-payment.md` | `delegated` |
+| `RULE-MEMBER-002` | 2026-11-02 会员限制模式切换 | `payment_config/membership_enforcement` 是运行期唯一真身；后台可切 `off/test/all`，切全量前必须完成保护额度与权益账本迁移；环境变量只作配置缺失或读取失败时的兼容兜底 | `产品文档.md` PAGE-017、`API-契约.md`、`.claude/rules/deployment.md`、`docs/engineering/membership-payment.md`、`数据库索引.md` | `delegated` |
 | `RULE-PAY-001` | `API-契约.md` 会员与支付 | 订单金额服务端决定；API v3 与虚拟支付双通道、按订单固化渠道；请求号幂等、额度锁、持久化补偿游标；退款生命周期与本单权益快照回收；售后工作台审计 | `API-契约.md`、`.claude/rules/deployment.md`、`docs/engineering/membership-payment.md`、`docs/engineering/payment-v3-runbook.md`、`docs/engineering/payment-virtual-runbook.md` | `delegated` |
 | `RULE-SALES-001` | 2026-11-02 会员购买断路器 | 独立停售开关只阻止新下单和新发起支付；已付款、查单、权益、退款和售后继续；唯一配置为 `payment_config/membership_sales` | `API-契约.md`、`.claude/rules/deployment.md`、`docs/engineering/membership-payment.md`、`数据库索引.md` | `delegated` |
 | `RULE-NOTIFYOPS-001` | `CLAUDE.md` 128-137 | 状态收敛、台账自愈、发送链路 | `docs/engineering/reminder-troubleshooting.md`、`.claude/rules/deployment.md` | `delegated` |

@@ -85,6 +85,10 @@ const ERRORS = {
   CASE_NOT_FOUND: { code: 1030, message: '售后记录不存在' },
   TASK_QUOTA_BUSY: { code: 1031, message: '提醒名额正在更新，请稍后重试' },
   MEMBERSHIP_SALES_PAUSED: { code: 1032, message: '会员购买暂停中，请稍后再试' },
+  MEMBERSHIP_ENFORCEMENT_NOT_READY: {
+    code: 1033,
+    message: '上线前数据迁移未完成，不能切换全量会员限制',
+  },
   FORBIDDEN: { code: 1040, message: '无权限' },
   SERVER_ERROR: { code: 1500, message: '服务异常，请稍后重试' },
   UNKNOWN_ACTION: { code: 1099, message: 'unknown action' },

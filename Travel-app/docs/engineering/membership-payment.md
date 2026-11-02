@@ -1,6 +1,6 @@
 # 会员支付、售后与提醒名额
 
-> 2026-11-02 当前状态：会员购买断路器已创建 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），并部署 `payment` / `reminder`。客服工作台后端已部署到新版 `payment`：真实管理员订单列表/详情、售后昵称搜索和 `membership.status=OPEN` 冒烟通过，`paymentReconcileEveryTwoMinutes` 保持启用。客户端 `2.1.0` 已审核通过并全量发布，累计观察到 8 笔已支付订单，用户完成付费流程自测且客服工作台正常。`reminder` 的 `MEMBERSHIP_ENFORCEMENT_MODE` 已于 15:10:02 切换为 `all`，其他环境变量保持不变。真实停售切换未执行。
+> 2026-11-02 当前状态：会员购买断路器已创建 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），并部署 `payment` / `reminder`。客服工作台后端已部署到新版 `payment`：真实管理员订单列表/详情、售后昵称搜索和 `membership.status=OPEN` 冒烟通过，`paymentReconcileEveryTwoMinutes` 保持启用。客户端 `2.1.0` 已审核通过并全量发布，累计观察到 8 笔已支付订单，用户完成付费流程自测且客服工作台正常。生产 `reminder` 当前通过 `MEMBERSHIP_ENFORCEMENT_MODE=all` 全量运行；工作区已新增 `payment_config/membership_enforcement` 后台切换能力，**尚未部署**。真实停售切换未执行。
 >
 > 权威业务口径以 `产品文档.md` 为准，接口以 `API-契约.md` 为准，索引以 `数据库索引.md` 为准。
 
@@ -47,12 +47,21 @@ iOS Apple 内购订单在订单展示接口中返回 `paymentChannel=APPLE`。�
 
 ### 会员购买断路器
 
-- `payment_config/membership_sales` 是唯一配置真身，`state=OPEN|PAUSED`。它独立于 `MEMBERSHIP_ENFORCEMENT_MODE`，不能拿会员限制灰度代替停售。
+- `payment_config/membership_sales` 是唯一配置真身，`state=OPEN|PAUSED`。它独立于会员限制模式，不能拿限制模式代替停售。
 - 暂停后，`membership.createOrder` 和待支付订单的 `payment.create` 返回 `1032`；不能创建新订单或从服务端新拉起支付。
 - 已经进入微信/Apple 支付窗口的订单仍可能完成，必须继续接收回调、主动查单、发权益和自动补偿；不得因停售拒绝已付款订单。
 - 已生效会员、提醒名额、订单列表、订单详情、退款和售后全部不受停售影响。待支付订单仍可查看、取消和同步，但 `canPay/canRebuy=false`。
 - 配置文档缺失时默认开放；配置集合读取失败时新购买失败关闭，但会员状态与订单读取继续。上线前必须先创建 `payment_config` 集合。
 - 管理切换仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用；暂停必须填写原因，切换写 `admin_audit_logs`。
+
+### 会员限制模式开关
+
+- `payment_config/membership_enforcement` 是运行期唯一真身，`mode=off|test|all`。`payment` 负责管理员写入，`reminder` 在额度状态和新建任务时读取。
+- `off` 让新任务进入历史保护池；`test` 只限制 `MEMBERSHIP_TEST_OPENIDS`；`all` 让所有新任务进入免费/会员/加购新增池。
+- 切换只影响之后新建任务，已有任务保留原 `quotaPool`，不追溯重算。一次任务提交使用同一份模式快照，避免切换中途出现半旧半新。
+- 切 `all` 前服务端强制检查保护额度迁移和权益账本迁移，任一未完成返回 `1033`。所有切换写 `SET_MEMBERSHIP_ENFORCEMENT` 审计。
+- 配置缺失、非法或读取失败时，`reminder` 回退 `MEMBERSHIP_ENFORCEMENT_MODE`。后台显示“环境变量兜底”，不猜测当前有效模式。
+- 客服工作台顺序固定为会员购买开关、会员限制模式、资金阻断、页签与列表；购买开关保持在页面最顶部。
 
 - 支付回调与退款回调都使用微信支付公钥模式，校验 `Wechatpay-Timestamp`、`Wechatpay-Nonce`、`Wechatpay-Signature`、`Wechatpay-Serial`。
 - `cloud1` 的 HTTP 路由已用错误签名请求验证可达并返回 401；真实签名的支付/退款回调样本尚未观察到，因此回调代码路径存在不等于端到端已通过。当前真实支付与退款到账由客户端查单、定时补偿和主动退款查询完成。
@@ -194,5 +203,6 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 - 退款回调失败场景与重复回调的真实环境验证。
 - `unpay` 环境真实退款回调端到端验证。
 - `MEMBERSHIP_ENFORCEMENT_MODE=all` 已切换，需继续观察全量提醒创建、额度和付费续提交流程。
+- 会员限制模式后台开关尚未部署。部署时应先创建 `payment_config/membership_enforcement` 接管当前 `all`，再部署 `payment` / `reminder` 和上传客户端，最后在真机完成 `off/test/all` 切换、迁移闸门与边界提醒验证。
 
 ⚠️ 测试通过、已提交、已部署、真机验证是不同状态，不能互相替代。

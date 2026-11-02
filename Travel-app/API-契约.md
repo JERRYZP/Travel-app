@@ -1,6 +1,7 @@
 # Travel-app 前端接口契约 V1.3
 
 > 面向：前端（微信小程序页面开发）
+> 2026-11-02 更新：客服工作台新增会员限制模式切换。运行期真身为 `payment_config/membership_enforcement`，管理员可切 `off/test/all` 并即时生效；切 `all` 前服务端强制核验两项上线迁移。
 > 2026-11-02 更新：新增客服工作台。管理员可通过 `adminOrders.list/detail` 查询全部会员订单，售后列表补全昵称、完整 OpenID 与关键词搜索；会员购买总开关保留在页面顶部。
 > 2026-11-02 更新：新增会员购买总开关 `payment_config/membership_sales`。暂停只阻止新订单和新发起支付；已支付订单继续查单与发权益，会员状态、订单、退款和售后不受影响。
 > 2026-10-30 更新：会员支付新增独立退款生命周期、订单详情、用户售后申请和小程序售后工作台；`membership.orders` 返回当前用户最近 50 笔会员 / 提醒名额订单及可执行动作，退款结果以微信支付回调或主动查单为准。
@@ -52,6 +53,7 @@
 | 1020 | 反馈内容为空 | Toast「请填写反馈内容」 |
 | 1026 | 提醒名额不足 | 进入会员页或提醒页内付费入口；保留原清单并展示真实缺口 |
 | 1032 | 会员购买暂停中 | 关闭支付入口；保留清单和会员/订单/售后状态，稍后由服务端恢复 |
+| 1033 | 上线迁移未完成，不能切全量 | 保持原会员限制模式；先完成对应迁移 |
 | 1099 | 未知 action | Toast |
 | 1500 | 服务端异常 | Toast「服务异常，请稍后重试」 |
 
@@ -940,7 +942,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - 加购名额包时，会员有效期至少延长到支付成功后 30 天。不自动续费，会员到期不删除已有提醒。
 - 用户权益账本同时保存 `taskPackCount`（展示用包数）与 `taskPackSlots`（实际生效的名额总数）。旧用户没有 `taskPackSlots` 时只按历史每包 5 个兼容读取，迁移后以服务端计算值为准。
 - 老用户保护池与新增池彼此独立：任务创建时若用户尚未进入会员限制（`off`，或 `test` 模式下不在白名单），任务进入历史保护池；只有 `test` 白名单或 `all` 模式下新建的任务进入免费/会员/加购新增池。无 `quotaPool` 字段的旧任务一律兼容为保护池。`taskLimit / taskUsed / taskRemaining` 只描述新增池，`protectedTaskUsed` 单独返回保护池占用。
-- `reminder` 的会员限制受 `MEMBERSHIP_ENFORCEMENT_MODE=off|test|all` 控制，默认 `test`；`MEMBERSHIP_TEST_OPENIDS` 可覆盖白名单。正式发布前不得切 `all`。
+- `reminder` 的会员限制运行期唯一真身为 `payment_config/membership_enforcement`，文档字段 `mode=off|test|all`。管理端切换后立即影响新任务；已有任务继续按原 `quotaPool` 计数。`MEMBERSHIP_ENFORCEMENT_MODE` 只在配置缺失、非法或读取失败时兜底，`MEMBERSHIP_TEST_OPENIDS` 继续控制 `test` 白名单。
+- 切 `all` 前服务端必须同时确认保护额度迁移和权益账本迁移完成标记；任一缺失返回 `1033`，不得写入新模式。
 - 会员购买开关独立于会员限制灰度。唯一真身是 `payment_config/membership_sales`；`state=OPEN|PAUSED`。暂停后 `membership.createOrder` 与待支付订单的 `payment.create` 返回 `1032`，但 `payment.query`、支付回调、权益发放、退款和售后继续执行。配置读取失败时新购买按暂停处理。
 - 支付成功唯一依据是服务端取得微信支付 `trade_state=SUCCESS`；`wx.requestPayment.success` 只代表客户端流程结束。
 - 主订单状态固定 `PENDING / PAID / CLOSED`；退款生命周期独立存于 `refundStatus`，不混入主状态。
@@ -1139,6 +1142,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```javascript
 { action: 'afterSales.adminStatus' }
 { action: 'afterSales.adminSetMembershipSales', state: 'OPEN' | 'PAUSED', reason }
+{ action: 'afterSales.adminSetMembershipEnforcement', mode: 'off' | 'test' | 'all' }
 { action: 'afterSales.adminList', status?, keyword?, page?, pageSize? }
 { action: 'afterSales.adminDetail', caseId }
 { action: 'afterSales.adminApproveRefund', caseId }
@@ -1157,8 +1161,9 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - `adminOrders.detail` 返回本人订单管理详情，包括用户会员状态、支付渠道、微信交易号、权益发放快照和关联售后记录。订单不存在统一返回 `1024`。
 - `afterSales.adminList` 的 `items[].user` 返回当前昵称、完整 OpenID、会员到期和已购名额；同样支持分页与关键词搜索。
 - 管理员搜索订单写 `SEARCH_ADMIN_ORDERS`，搜索售后写 `SEARCH_ADMIN_AFTER_SALES`，查看订单详情写 `VIEW_ADMIN_ORDER_DETAIL`。审计只记录关键词类型和状态，不记录原始搜索词；订单详情审计只记录交易号是否存在，不记录交易号全文。
-- `adminStatus` 返回 `{ isAdmin, migrationCompleted, pendingCount, fundingBlockedCount, membershipSales }`。`pendingCount` 是未结束售后单数量，用户已取消的单不计入；`fundingBlockedCount` 是其中因商户基本账户余额不足而未能发起退款的数量；`membershipSales` 含当前购买状态、暂停原因、更新时间和配置读取失败标记，供客服工作台展示。非管理员不返回购买配置。
+- `adminStatus` 返回 `{ isAdmin, migrationCompleted, entitlementMigrationCompleted, pendingCount, fundingBlockedCount, membershipSales, membershipEnforcement }`。`pendingCount` 是未结束售后单数量，用户已取消的单不计入；`fundingBlockedCount` 是其中因商户基本账户余额不足而未能发起退款的数量；`membershipSales` 含当前购买状态、暂停原因、更新时间和配置读取失败标记；`membershipEnforcement` 返回当前模式、模式文案、说明、配置来源、更新时间和读取失败标记。非管理员不返回购买或限制配置。
 - `adminSetMembershipSales` 仅管理员可调用。暂停时必须填写原因；恢复时清空暂停原因。切换写 `admin_audit_logs`，不得依赖客户端隐藏按钮。
+- `adminSetMembershipEnforcement` 仅管理员可调用，只接受 `off / test / all`。切换写 `SET_MEMBERSHIP_ENFORCEMENT` 审计，记录前后模式；切 `all` 时两项迁移未完成返回 `1033`。配置文档缺失时提醒链路继续使用环境变量兜底，后台显式展示该来源，不猜测运行模式。
 - 管理员可按 `CANCELLED` 筛选并查看“用户已取消”、取消时间和取消前异常原因；取消单不显示同意退款、驳回或重试退款操作。
 - 上线前迁移完成后正式工作台已关闭迁移入口；若未来重新开启，工作台可据 `migrationCompleted=true` 自动隐藏。
 - `adminDetail` 返回订单、用户权益、支付渠道、支付查单结果、权益发放快照、支付后新增提醒数、重复支付证据和历史售后记录。系统自动补建的平台退款记录会返回 `systemGenerated=true`、退款单号和退款金额。
@@ -1167,7 +1172,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - 发起退款返回余额不足时，售后单持久保存 `failureReason`、`failureCode=BASIC_ACCOUNT_INSUFFICIENT`、`fundingBlocked=true` 和 `fundingBlockedAt`。管理员补足基本账户后可在原售后单重新发起；重试开始或退款成功后清除阻断字段。不得把退款金额改成扣除手续费后的金额。
 - 退款成功后按本订单 `entitlementGrant` 快照回收本单新增会员时长和名额包，不影响其他订单，也不删除用户已有提醒。
 - 权益发放失败的订单收到退款结果时只记录订单和售后退款状态，不修改用户会员期限、包数或名额总数；只有确认曾成功发放的订单才允许按快照回收。
-- `adminMigrateProtection` 按默认 `_id` 游标每批最多处理 50 位用户；最后一批完成后写入全局完成标记，之后重复调用返回 `alreadyCompleted=true` 且不再更新用户。迁移未完成前不得切 `MEMBERSHIP_ENFORCEMENT_MODE=all`。
+- `adminMigrateProtection` 按默认 `_id` 游标每批最多处理 50 位用户；最后一批完成后写入全局完成标记，之后重复调用返回 `alreadyCompleted=true` 且不再更新用户。迁移未完成前不得把会员限制切到 `all`。
 - `adminMigrateEntitlementLedger` 同样按 `users._id` 每批最多 50 人。必须先以 `dryRun=true` 分批读取差异；正式迁移把历史包最低按 5 个、新包按订单快照累计到 `taskPackCount/taskPackSlots`。可确认的历史已发放订单标记 `legacyBackfill`，无法确认发放状态的订单标记人工核查并创建高优先级售后，不得自动重复发放。
 
 ---

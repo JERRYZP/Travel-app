@@ -19,6 +19,7 @@ const time = require('./time');
 const userDomain = require('./user');
 const quotaLock = require('./quota-lock');
 const membershipSales = require('./membership-sales');
+const membershipEnforcement = require('./membership-enforcement');
 
 const FREE_TASK_SLOTS = 5;
 const MEMBER_TASK_SLOTS = 15;
@@ -40,10 +41,6 @@ const TASK_QUOTA_POOL = Object.freeze({
   PROTECTED: 'PROTECTED',
   ENTITLEMENT: 'ENTITLEMENT',
 });
-const ENFORCEMENT_OFF = 'off';
-const ENFORCEMENT_TEST = 'test';
-const ENFORCEMENT_ALL = 'all';
-const DEFAULT_ENFORCEMENT_MODE = ENFORCEMENT_TEST;
 const DEFAULT_TEST_OPENIDS = Object.freeze([
   'oZ6IFxvYK1mKzBaehMcOPIl_CgN0',
   'oZ6IFxi1K98ihzn5DH6KP5Jx9_bs',
@@ -108,14 +105,15 @@ function packageOf(packageId) {
  * - test：只限制 MEMBERSHIP_TEST_OPENIDS（缺省为内部测试账号）；
  * - all：全部用户启用会员提醒名额限制。
  *
- * 未配置时默认 test；配置值非法时回退为 off，避免拼写错误把未发布功能扩散到全量用户。
+ * 运行期由 payment_config/membership_enforcement 控制；配置缺失或读取失败时
+ * 回退 MEMBERSHIP_ENFORCEMENT_MODE，未配置默认 test，非法环境变量回退 off。
  */
 function enforcementModeOf() {
-  const raw = String(process.env.MEMBERSHIP_ENFORCEMENT_MODE || DEFAULT_ENFORCEMENT_MODE)
-    .trim()
-    .toLowerCase();
-  if ([ENFORCEMENT_OFF, ENFORCEMENT_TEST, ENFORCEMENT_ALL].includes(raw)) return raw;
-  return ENFORCEMENT_OFF;
+  return membershipEnforcement.envModeOf();
+}
+
+function enforcementState(db) {
+  return membershipEnforcement.read(db);
 }
 
 function testOpenIdsOf() {
@@ -127,10 +125,18 @@ function testOpenIdsOf() {
 }
 
 function shouldEnforceFor(userId) {
-  const mode = enforcementModeOf();
-  if (mode === ENFORCEMENT_ALL) return true;
-  if (mode === ENFORCEMENT_OFF) return false;
-  return testOpenIdsOf().has(userId);
+  return membershipEnforcement.shouldEnforceForMode(
+    enforcementModeOf(),
+    userId,
+    testOpenIdsOf()
+  );
+}
+
+function shouldEnforceForState(state, userId) {
+  const mode = state && state.mode
+    ? state.mode
+    : enforcementModeOf();
+  return membershipEnforcement.shouldEnforceForMode(mode, userId, testOpenIdsOf());
 }
 
 function activeTaskOf(task, nowTs) {
@@ -157,8 +163,11 @@ function quotaPoolOfTask(task = {}) {
 }
 
 /** 新建提醒时确定池别；只有真正进入会员限制的用户才占新增池。 */
-function newTaskQuotaPoolOf(userId) {
-  return shouldEnforceFor(userId)
+function newTaskQuotaPoolOf(userId, enforcement) {
+  const enforced = enforcement
+    ? shouldEnforceForState(enforcement, userId)
+    : shouldEnforceFor(userId);
+  return enforced
     ? TASK_QUOTA_POOL.ENTITLEMENT
     : TASK_QUOTA_POOL.PROTECTED;
 }
@@ -426,8 +435,11 @@ function packageViews(snapshot, sales = null) {
   });
 }
 
-async function status(db, userId, nowTs = time.now()) {
-  const [userRes, taskRes, latestTaskRes, sales] = await Promise.all([
+async function status(db, userId, nowTs = time.now(), options = {}) {
+  const enforcementPromise = options.enforcementState
+    ? Promise.resolve(options.enforcementState)
+    : enforcementState(db);
+  const [userRes, taskRes, latestTaskRes, sales, enforcement] = await Promise.all([
     db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
     db.collection(COLLECTIONS.REMINDER_TASKS)
       .where({
@@ -443,6 +455,7 @@ async function status(db, userId, nowTs = time.now()) {
       .limit(1)
       .get(),
     membershipSales.read(db),
+    enforcementPromise,
   ]);
 
   const user = (userRes.data || [])[0] || {};
@@ -476,7 +489,7 @@ async function status(db, userId, nowTs = time.now()) {
     membership: snapshot,
     packages: packageViews(snapshot, salesView),
     sales: salesView,
-    enforced: shouldEnforceFor(userId),
+    enforced: shouldEnforceForState(enforcement, userId),
   });
 }
 
@@ -484,12 +497,14 @@ async function status(db, userId, nowTs = time.now()) {
  * 创建任务前校验容量。返回 null 表示允许；否则返回统一失败结构。
  * 所有会新建提醒任务的入口都必须调用本函数。
  */
-async function capacityError(db, userId, neededTasks, nowTs = time.now()) {
+async function capacityError(db, userId, neededTasks, nowTs = time.now(), options = {}) {
   const needed = Math.max(0, Number(neededTasks) || 0);
   if (needed === 0) return null;
-  if (!shouldEnforceFor(userId)) return null;
+  const enforcement = options.enforcementState
+    || await enforcementState(db);
+  if (!shouldEnforceForState(enforcement, userId)) return null;
 
-  const res = await status(db, userId, nowTs);
+  const res = await status(db, userId, nowTs, { enforcementState: enforcement });
   const membership = res.membership;
   if (needed <= membership.taskRemaining) return null;
 
@@ -760,7 +775,9 @@ module.exports = {
   PACKAGES,
   packageOf,
   enforcementModeOf,
+  enforcementState,
   shouldEnforceFor,
+  shouldEnforceForState,
   DEFAULT_TEST_OPENIDS,
   isMemberAt,
   normalizeUser,

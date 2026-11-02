@@ -282,6 +282,7 @@ async function updateReminder(db, userId, {
       .slice()
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
 
+    let enforcementState = null;
     if (!currentTask) {
       if (requireSubscription === true) {
         const subscriptionError = await taskDomain.subscriptionAccessError(
@@ -292,7 +293,14 @@ async function updateReminder(db, userId, {
         );
         if (subscriptionError) return subscriptionError;
       }
-      const capacityError = await membership.capacityError(db, userId, 1, lockNowTs);
+      enforcementState = await membership.enforcementState(db);
+      const capacityError = await membership.capacityError(
+        db,
+        userId,
+        1,
+        lockNowTs,
+        { enforcementState }
+      );
       if (capacityError) return capacityError;
     }
 
@@ -305,7 +313,7 @@ async function updateReminder(db, userId, {
 
     const quotaPool = currentTask
       ? membership.quotaPoolOfExistingTask(currentTask)
-      : membership.newTaskQuotaPoolOf(userId);
+      : membership.newTaskQuotaPoolOf(userId, enforcementState);
     const transaction = await db.startTransaction();
     let rebuiltTaskId = null;
     try {

@@ -21,6 +21,7 @@ const db = {
   afterSalesCases: {},
   paymentConfig: {
     membership_sales: { state: 'OPEN', reason: '', updatedAt: null, updatedBy: '' },
+    membership_enforcement: { mode: 'all', updatedAt: null, updatedBy: '' },
   },
   searchHistory: [],
 };
@@ -1175,6 +1176,29 @@ function mockMembershipSalesView() {
   };
 }
 
+function mockMembershipEnforcementView() {
+  const current = db.paymentConfig.membership_enforcement || {};
+  const mode = ['off', 'test', 'all'].includes(current.mode) ? current.mode : '';
+  const labels = { off: '已关闭', test: '测试账号', all: '全量用户' };
+  const descriptions = {
+    off: '所有新提醒进入历史保护池，不占免费或会员名额。',
+    test: '仅测试 OpenID 的新提醒受名额限制，其他用户进入保护池。',
+    all: '所有用户的新提醒都受 5 / 15 个名额限制。',
+  };
+  return {
+    mode,
+    modeLabel: mode ? labels[mode] : '环境变量',
+    description: mode
+      ? descriptions[mode]
+      : '尚未写入后台配置，reminder 暂按环境变量执行。',
+    configured: !!mode,
+    source: mode ? 'DB' : 'UNSET',
+    updatedAt: current.updatedAt || null,
+    updatedBy: current.updatedBy || '',
+    readError: false,
+  };
+}
+
 function mockMembershipPackages(snapshot) {
   const sales = mockMembershipSalesView();
   return MOCK_MEMBERSHIP_PACKAGES.map(item => {
@@ -2316,12 +2340,13 @@ const handlers = {
   'membership.status': () => {
     const current = mockMembershipSnapshot();
     const sales = mockMembershipSalesView();
+    const enforcement = mockMembershipEnforcementView();
     return {
       success: true,
       membership: current,
       packages: mockMembershipPackages(current),
       sales,
-      enforced: true,
+      enforced: enforcement.mode === 'all',
     };
   },
   'membership.createOrder': (data) => {
@@ -2642,9 +2667,12 @@ const handlers = {
     return {
       success: true,
       isAdmin: true,
+      migrationCompleted: true,
+      entitlementMigrationCompleted: true,
       pendingCount,
       fundingBlockedCount,
       membershipSales: sales,
+      membershipEnforcement: mockMembershipEnforcementView(),
     };
   },
   'afterSales.adminSetMembershipSales': (data) => {
@@ -2660,6 +2688,18 @@ const handlers = {
       updatedBy: mockUser.openId,
     };
     return { success: true, membershipSales: mockMembershipSalesView() };
+  },
+  'afterSales.adminSetMembershipEnforcement': (data) => {
+    const mode = String(data.mode || '').trim().toLowerCase();
+    if (!['off', 'test', 'all'].includes(mode)) {
+      return { success: false, error: '参数不合法', errorCode: 1010 };
+    }
+    db.paymentConfig.membership_enforcement = {
+      mode,
+      updatedAt: new Date(),
+      updatedBy: mockUser.openId,
+    };
+    return { success: true, membershipEnforcement: mockMembershipEnforcementView() };
   },
   'afterSales.adminList': (data) => {
     const keyword = String(data.keyword || '').trim();

@@ -579,7 +579,14 @@ async function submitLocked(db, userId, event, lock) {
 
   /* 提醒名额是创建提醒任务的硬闸门。必须在建行程之前校验：
      超限时不能留下“行程建了、提醒没建”的半成品，也不能清空用户的清单。 */
-  const capacityError = await membership.capacityError(db, userId, reminderItems.length, nowTs);
+  const enforcementState = await membership.enforcementState(db);
+  const capacityError = await membership.capacityError(
+    db,
+    userId,
+    reminderItems.length,
+    nowTs,
+    { enforcementState }
+  );
   if (capacityError) return capacityError;
 
   /* ① + ② 建/合并行程。日期段 = 清单里各项 visitDate 的并集，
@@ -638,7 +645,7 @@ async function submitLocked(db, userId, event, lock) {
           offsets: [...offsets].sort((a, b) => b - a),
           channels,
           backendStatus: ReminderBackendStatus.WAITING,
-          quotaPool: membership.newTaskQuotaPoolOf(userId),
+          quotaPool: membership.newTaskQuotaPoolOf(userId, enforcementState),
           triggeredAt: null,
           missedReason: null,
           cleanAt: null,
