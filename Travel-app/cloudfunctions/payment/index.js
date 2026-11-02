@@ -1746,6 +1746,12 @@ async function adminOrderList(context, event) {
   return result;
 }
 
+async function adminOrderStats(context) {
+  const denied = adminRequired(context);
+  if (denied) return denied;
+  return adminOrders.dailyStatsForAdmin(db);
+}
+
 async function adminOrderDetail(context, event) {
   const denied = adminRequired(context);
   if (denied) return denied;
@@ -2247,6 +2253,8 @@ exports.main = async (event = {}) => {
         return await setMembershipEnforcement(context, event);
       case 'adminOrders.list':
         return await adminOrderList(context, event);
+      case 'adminOrders.stats':
+        return await adminOrderStats(context);
       case 'adminOrders.detail':
         return await adminOrderDetail(context, event);
       case 'afterSales.adminList':

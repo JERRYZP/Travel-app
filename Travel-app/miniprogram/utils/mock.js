@@ -2465,6 +2465,44 @@ const handlers = {
     };
   },
 
+  'adminOrders.stats': () => {
+    const now = new Date();
+    const shifted = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    const startMs = Date.UTC(
+      shifted.getUTCFullYear(),
+      shifted.getUTCMonth(),
+      shifted.getUTCDate()
+    ) - 8 * 60 * 60 * 1000;
+    const start = new Date(startMs);
+    const end = new Date(startMs + DAY_MS);
+    const orders = Object.values(db.orders).filter(order => {
+      const createdMs = new Date(order.createdAt || 0).getTime();
+      return createdMs >= start.getTime() && createdMs < end.getTime();
+    });
+    const paidOrders = orders.filter(order => {
+      const paidMs = new Date(order.paidAt || 0).getTime();
+      return Number.isFinite(paidMs) && paidMs > 0;
+    });
+    const paidAmountFen = paidOrders.reduce(
+      (sum, order) => sum + Math.max(0, Number(order.amountFen) || 0),
+      0
+    );
+    return {
+      success: true,
+      stats: {
+        dateKey: [
+          shifted.getUTCFullYear(),
+          String(shifted.getUTCMonth() + 1).padStart(2, '0'),
+          String(shifted.getUTCDate()).padStart(2, '0'),
+        ].join('-'),
+        totalOrders: orders.length,
+        paidOrders: paidOrders.length,
+        paidAmountFen,
+        paidAmountText: mockPriceText(paidAmountFen),
+      },
+    };
+  },
+
   'adminOrders.list': (data) => {
     const keyword = String(data.keyword || '').trim();
     const page = Math.max(1, Math.floor(Number(data.page) || 1));

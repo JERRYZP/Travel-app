@@ -74,6 +74,10 @@ Page({
     statusBarHeight: 20,
     navBarHeight: 44,
     activeTab: TAB_ORDERS,
+    orderStats: null,
+    orderStatsLoading: false,
+    orderStatsFailed: false,
+    orderStatsPendingBackend: false,
     filters: ORDER_FILTERS,
     activeFilter: '',
     keywordInput: '',
@@ -139,11 +143,42 @@ Page({
   loadMigrationStatus() {
     return api.payment.afterSales.adminStatus().then(res => {
       this.applyStatus(res);
+      if (res && res.isAdmin && this.data.activeTab === TAB_ORDERS) {
+        this.loadOrderStats();
+      }
     }).catch(() => {});
   },
 
   loadStatus() {
     return this.loadMigrationStatus();
+  },
+
+  loadOrderStats() {
+    if (this.data.activeTab !== TAB_ORDERS) return Promise.resolve(false);
+    if (this.data.orderStatsLoading) return Promise.resolve(false);
+    this.setData({
+      orderStatsLoading: true,
+      orderStatsFailed: false,
+      orderStatsPendingBackend: false,
+    });
+    return api.payment.adminOrders.stats().then(res => {
+      this.setData({
+        orderStats: (res && res.stats) || null,
+        orderStatsLoading: false,
+        orderStatsFailed: false,
+        orderStatsPendingBackend: false,
+      });
+      return true;
+    }).catch(err => {
+      const pendingBackend = !!(err && err.errorCode === 1099);
+      this.setData({
+        orderStats: null,
+        orderStatsLoading: false,
+        orderStatsFailed: !pendingBackend,
+        orderStatsPendingBackend: pendingBackend,
+      });
+      return false;
+    });
   },
 
   applyStatus(res) {
@@ -380,6 +415,7 @@ Page({
       actionMessage: '',
     });
     this.loadList();
+    if (orders) this.loadOrderStats();
   },
 
   onSearchInput(e) {

@@ -165,6 +165,7 @@ const payment = {
   cancel: (p) => call('payment', { action: 'cancel', ...(p || {}) }),
   adminOrders: {
     list: (p) => call('payment', { action: 'adminOrders.list', ...(p || {}) }),
+    stats: () => call('payment', { action: 'adminOrders.stats' }),
     detail: (orderId) => call('payment', { action: 'adminOrders.detail', orderId }),
   },
   afterSales: {

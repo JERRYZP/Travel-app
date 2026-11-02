@@ -86,6 +86,30 @@
       </view>
     </view>
 
+    <view wx:if="{{activeTab === 'orders'}}" class="order-stats">
+      <view class="order-stat">
+        <text class="order-stat-value">{{orderStats ? orderStats.totalOrders : '—'}}</text>
+        <text class="order-stat-label">今日订单</text>
+      </view>
+      <view class="order-stat">
+        <text class="order-stat-value">{{orderStats ? orderStats.paidOrders : '—'}}</text>
+        <text class="order-stat-label">已支付</text>
+      </view>
+      <view class="order-stat">
+        <text class="order-stat-value amount">{{orderStats ? orderStats.paidAmountText : '—'}}</text>
+        <text class="order-stat-label">支付金额</text>
+      </view>
+    </view>
+    <view
+      wx:if="{{activeTab === 'orders' && orderStatsPendingBackend}}"
+      class="order-stats-note"
+    >统计服务待部署</view>
+    <view
+      wx:elif="{{activeTab === 'orders' && orderStatsFailed}}"
+      class="order-stats-note action"
+      bindtap="loadOrderStats"
+    >统计加载失败，点击重试</view>
+
     <view class="admin-search">
       <svg-icon name="search" size="15px" />
       <input

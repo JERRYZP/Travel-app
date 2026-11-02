@@ -13,6 +13,9 @@ const afterSales = require('./after-sales');
 const directory = require('./admin-directory');
 
 const MAX_SEARCH_ROWS = 100;
+const ORDER_PAGE_SIZE = 100;
+const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const VALID_ORDER_STATUSES = new Set(Object.values(OrderStatus));
 const STATUS_LABEL = {
   PENDING: '待支付',
@@ -46,6 +49,68 @@ const ENTITLEMENT_LABEL = {
 
 function amountText(value) {
   return `¥${((Number(value) || 0) / 100).toFixed(2).replace(/\.00$/, '')}`;
+}
+
+function beijingDayRange(nowTs = new Date()) {
+  const nowMs = new Date(nowTs).getTime();
+  const shifted = new Date(nowMs + BEIJING_OFFSET_MS);
+  const startMs = Date.UTC(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth(),
+    shifted.getUTCDate()
+  ) - BEIJING_OFFSET_MS;
+  const dateKey = [
+    shifted.getUTCFullYear(),
+    String(shifted.getUTCMonth() + 1).padStart(2, '0'),
+    String(shifted.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+  return {
+    dateKey,
+    start: new Date(startMs),
+    end: new Date(startMs + DAY_MS),
+  };
+}
+
+async function ordersCreatedInDay(db, range) {
+  const rows = [];
+  let offset = 0;
+  while (true) {
+    const res = await db.collection(COLLECTIONS.ORDERS)
+      .where({
+        createdAt: db.command.gte(range.start).and(db.command.lt(range.end)),
+      })
+      .orderBy('createdAt', 'asc')
+      .skip(offset)
+      .limit(ORDER_PAGE_SIZE)
+      .get();
+    const page = res.data || [];
+    rows.push(...page);
+    if (page.length < ORDER_PAGE_SIZE) break;
+    offset += page.length;
+  }
+  return rows;
+}
+
+async function dailyStatsForAdmin(db, nowTs = new Date()) {
+  const range = beijingDayRange(nowTs);
+  const orders = await ordersCreatedInDay(db, range);
+  const paidOrders = orders.filter(order => {
+    const paidMs = new Date(order.paidAt || 0).getTime();
+    return Number.isFinite(paidMs) && paidMs > 0;
+  });
+  const paidAmountFen = paidOrders.reduce(
+    (sum, order) => sum + Math.max(0, Number(order.amountFen) || 0),
+    0
+  );
+  return ok({
+    stats: {
+      dateKey: range.dateKey,
+      totalOrders: orders.length,
+      paidOrders: paidOrders.length,
+      paidAmountFen,
+      paidAmountText: amountText(paidAmountFen),
+    },
+  });
 }
 
 function channelLabel(channel) {
@@ -239,7 +304,9 @@ module.exports = {
   REFUND_LABEL,
   GRANT_LABEL,
   ENTITLEMENT_LABEL,
+  beijingDayRange,
   orderViewOf,
+  dailyStatsForAdmin,
   listOrdersForAdmin,
   getOrderForAdmin,
 };

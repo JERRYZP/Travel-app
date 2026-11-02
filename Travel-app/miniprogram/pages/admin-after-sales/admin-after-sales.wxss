@@ -58,6 +58,14 @@
 .workspace-tab.active { color: var(--color-ink); }
 .workspace-tab.active::after { position: absolute; right: 28%; bottom: -1rpx; left: 28%; height: 4rpx; border-radius: 999rpx; background: #B8904A; content: ''; }
 .tab-count { min-width: 30rpx; height: 30rpx; padding: 0 8rpx; border-radius: 999rpx; box-sizing: border-box; background: #A7462B; color: #FFFDF7; font-size: 17rpx; line-height: 30rpx; text-align: center; }
+.order-stats { display: grid; grid-template-columns: repeat(3, 1fr); margin-bottom: 10rpx; padding: 14rpx 8rpx; border: 1rpx solid var(--color-border); border-radius: 14rpx; background: var(--color-surface); }
+.order-stat { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4rpx; }
+.order-stat:nth-child(2), .order-stat:nth-child(3) { border-left: 1rpx solid var(--color-border); }
+.order-stat-value { max-width: 100%; overflow: hidden; color: var(--color-ink); font-size: 29rpx; font-weight: 700; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.order-stat-value.amount { color: #8A5A12; }
+.order-stat-label { color: var(--color-muted); font-size: 18rpx; line-height: 1.3; white-space: nowrap; }
+.order-stats-note { margin-bottom: 12rpx; color: var(--color-muted); font-size: 18rpx; line-height: 1.4; text-align: center; }
+.order-stats-note.action { color: #8A5A12; font-weight: 600; }
 .admin-search { display: flex; align-items: center; gap: 14rpx; min-height: 72rpx; padding: 0 14rpx 0 20rpx; border: 1rpx solid var(--color-border); border-radius: 14rpx; box-sizing: border-box; background: var(--color-surface); }
 .admin-search-input { flex: 1; min-width: 0; height: 70rpx; color: var(--color-text); font-size: 22rpx; }
 .admin-search-clear { flex-shrink: 0; width: 44rpx; height: 44rpx; display: flex; align-items: center; justify-content: center; }

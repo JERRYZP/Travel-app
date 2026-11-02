@@ -17,6 +17,7 @@ const USER_A = 'openid_customer_a_123456789012345';
 const USER_B = 'openid_customer_b_123456789012345';
 const ROOT = path.resolve(__dirname, '..');
 const ADMIN = 'openid_customer_service_admin';
+const FIXED_NOW = Date.parse('2026-11-02T07:30:00.000Z');
 
 function loadPayment(db, openId) {
   const originalLoad = Module._load;
@@ -52,7 +53,7 @@ const eq = (actual, expected, message) => {
 };
 
 function seed(db) {
-  const now = Date.now();
+  const now = FIXED_NOW;
   db._seed(COLLECTIONS.USERS, [
     {
       _id: 'user_a',
@@ -169,6 +170,16 @@ async function run() {
   eq(firstPage.items[0].paymentChannelLabel, '微信虚拟支付', '订单展示支付渠道');
   eq(firstPage.items[0].cases.latestStatusLabel, '客服审核中', '订单展示关联售后状态');
 
+  console.log('\n=== 1a. 当日订单统计（北京时间） ===');
+  const dayRange = adminOrders.beijingDayRange(new Date('2026-11-01T16:00:00.000Z'));
+  eq(dayRange.dateKey, '2026-11-02', '北京时间零点归属第二天');
+  eq(dayRange.start.toISOString(), '2026-11-01T16:00:00.000Z', '北京时间当日从 UTC 16 点开始');
+  const stats = await adminOrders.dailyStatsForAdmin(db, new Date(FIXED_NOW));
+  eq(stats.stats.totalOrders, 3, '统计当日全部订单');
+  eq(stats.stats.paidOrders, 1, '统计当日已支付订单');
+  eq(stats.stats.paidAmountFen, 300, '汇总当日已支付金额');
+  eq(stats.stats.paidAmountText, '¥3', '金额按展示格式返回');
+
   console.log('\n=== 2. 订单状态筛选与搜索 ===');
   const paid = await adminOrders.listOrdersForAdmin(db, { status: 'PAID', page: 1, pageSize: 20 });
   eq(paid.total, 1, '按已支付筛选');
@@ -263,6 +274,8 @@ async function run() {
   eq(wxml.includes('sales-confirm-sheet'), true, '暂停原因在二次确认弹层中输入');
   eq(wxml.includes('onConfirmMembershipSalesPause'), true, '暂停操作需要二次确认');
   eq(wxml.includes('membershipSales.readError'), true, '配置读取失败在管理端显式告警');
+  eq(wxml.includes('order-stats'), true, '会员订单页展示当日数据统计');
+  eq(js.includes('api.payment.adminOrders.stats'), true, '页面接入订单统计接口');
 
   console.log('\n=== 6. 云函数路由、鉴权与审计 ===');
   process.env.AFTER_SALES_ADMIN_OPENIDS = ADMIN;
@@ -275,6 +288,9 @@ async function run() {
   });
   eq(routedList.success, true, '管理员可调用订单列表路由');
   eq(routedList.items[0].user.openId, USER_A, '路由返回完整用户信息');
+  const routedStats = await adminPayment.main({ action: 'adminOrders.stats' });
+  eq(routedStats.success, true, '管理员可调用订单统计路由');
+  eq(routedStats.stats.totalOrders >= 0, true, '订单统计返回数值');
   const routedDetail = await adminPayment.main({
     action: 'adminOrders.detail',
     orderId: 'ord_alpha_001',
@@ -287,6 +303,8 @@ async function run() {
     pageSize: 20,
   });
   eq(denied.errorCode, 1040, '普通用户不能查询管理员订单列表');
+  const deniedStats = await userPayment.main({ action: 'adminOrders.stats' });
+  eq(deniedStats.errorCode, 1040, '普通用户不能查询订单统计');
   const audits = db._dump(COLLECTIONS.ADMIN_AUDIT_LOGS);
   eq(audits.some(item => item.action === 'SEARCH_ADMIN_ORDERS'), true, '订单搜索写入审计');
   eq(audits.some(item => item.action === 'VIEW_ADMIN_ORDER_DETAIL'), true, '订单详情写入审计');
