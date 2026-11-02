@@ -59,10 +59,11 @@
 - 2026-11-02 客服工作台后端已部署：原售后管理升级为“会员订单 / 售后工单”双页签，会员购买开关固定在页面最顶部；管理员可按订单号、订单 ID、售后单号、完整 OpenID 和昵称搜索，订单与售后卡补全昵称和 OpenID，并提供订单详情及双向售后联动。新版 `payment`（18 个文件）已部署为 `Active`，真实管理员 `adminOrders.list/detail`、售后昵称搜索和 `membership.status=OPEN` 冒烟均通过，15 分钟内无 5xx；`paymentReconcileEveryTwoMinutes` 保持启用。**客户端 `2.1.0` 已上传、审核通过并进入灰度。**
 - 2026-11-02 微信审核因支付确认层“点击支付即同意”默认同意协议被驳回；客户端已改为默认未勾选的主动协议选择，未勾选时不可支付，协议链接仍可独立打开。修复后客户端 `2.1.0` 于 12:58 上传，审核通过并进入灰度；上午灰度观察到 5 笔成功支付、2 笔退款，客服工作台正常。实际审核通过并参与灰度的代码已由本提交和 `v2.1.0` tag 固化，尚未全量发布，本次不需要部署云函数。
 - 2026-11-02 客户端全量发布后累计观察到 8 笔已支付订单，用户完成付费流程自测且结果正常。`reminder` 的 `MEMBERSHIP_ENFORCEMENT_MODE` 已于 15:10:02 从 `test` 切换为 `all`，云端配置回读确认其他环境变量保持不变，包括 `MEMBERSHIP_TEST_OPENIDS`；当前观察全量会员提醒名额限制，未部署新代码。
-- 2026-11-02 工作区新增会员限制模式后台开关：`payment_config/membership_enforcement` 成为运行期真身，客服工作台可切 `off/test/all`，切换即时影响新任务并写 `SET_MEMBERSHIP_ENFORCEMENT` 审计；切 `all` 前服务端强制核验两项上线迁移。配置缺失或读取失败时 `reminder` 仍回退 `MEMBERSHIP_ENFORCEMENT_MODE`。当前仅为代码和本地测试完成，**尚未部署、尚未创建云端配置文档**。
-- 2026-11-02 工作区为客服工作台增加会员订单当日统计：按北京时间统计今日创建订单数、已支付数、已支付金额、已完成退款金额和净赚金额；统计接口独立于搜索、筛选和分页。当前代码和本地测试完成，**新版 `payment` 尚未部署**。
-- 2026-11-02 客服工作台订单列表增加近 7 天 / 近 30 天 / 近 90 天 / 全部时间下拉，默认近 30 天；搜索、状态筛选和时间范围共用同一服务端窗口。搜索框与状态/时间筛选区改为导航栏下吸顶。当前代码和本地测试完成，**新版 `payment` 尚未部署**。
-- 2026-11-02 修复 Apple 未支付待支付单不收口：虚拟支付查单返回 `INIT/CREATED` 时，若本地订单已超过 15 分钟，补偿将订单置为 `CLOSED`，关闭原因 `VIRTUAL_PAY_EXPIRED_UNPAID`。代码和本地测试完成，**尚未部署**，部署后现有遗留待支付单会在后续补偿轮次关闭。
+- 2026-11-02 会员限制模式后台开关已部署：`payment_config/membership_enforcement={mode:"all"}` 已创建并回读确认，`membership_sales` 仍为 `OPEN`；`payment` 与 `reminder` 于 16:14 / 16:15 更新为 `Active`，管理员接口返回 `membershipEnforcement.source=DB`、`mode=all`，`membership.status` 返回 `enforced=true`。客服工作台已刷新为“全部用户”，不再显示“待部署”。
+- 2026-11-02 客服工作台当日统计已部署并通过云端冒烟：2026-11-02 16:15 的统计为今日 36 单、已支付 23 单、支付 ¥69、退款 ¥6、净赚 ¥63；统计接口独立于搜索、筛选和分页。
+- 2026-11-02 客服工作台时间筛选已部署并通过云端冒烟：`timeRange=all` 返回历史 70 单，接口包含昵称、完整 OpenID 与分页字段；工作台时间下拉与服务端查询一致。
+- 2026-11-02 Apple 未支付订单收口已部署：两笔遗留 `PENDING` 虚拟支付订单在 16:16:01 的补偿轮次自动变为 `CLOSED`，`closeReason=VIRTUAL_PAY_EXPIRED_UNPAID`，查询当前 `PENDING` 订单为 0。
+- 2026-11-02 部署后复核发现保护额度完成标记不一致：工作台返回 `migrationCompleted=false`，`admin_audit_logs` 查不到 `PROTECTION_MIGRATION_COMPLETE`，但 9419 个用户中 9361 个已有 `protectionMigratedAt`；权益账本完成标记为 `true`。这不改变当前数据库配置 `all` 的生效状态，但后台从其他模式切回 `all` 会被迁移闸门拦截，需单独治理。
 
 ## 当前配置
 
@@ -114,10 +115,10 @@
 - `feedback`：管理员 openid 白名单与 `feedback.adminStatus` 入口校验已提交，待部署确认；帮助与反馈、我的反馈页面依赖现有 `feedback.list` 契约。
 - `notifier`：已兼容旧任务走旧「活动开始通知」、新任务走新「预约开始提醒」；按任务实际模板发送和核销额度。应先部署，使旧任务和随后产生的新模板任务都有正确分流；当前已确认 `status_release_idx = backendStatus + releaseAt` 已存在，但云端触发器、测试发送和真机模板授权仍未完成闭环核对。
 - `reminder`：新提醒任务会写入当前模板 `_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA`；`lib/quota.js` 已兼容旧任务按旧模板记账。应在 notifier 之后部署，最后再发布小程序端。
-- `payment`：2026-11-01 已分次部署本轮全链路加固和退款资金阻断修复。当前版本包含订单/售后幂等、权益账本快照、退款精确回收、虚拟支付商品复核、补偿队列隔离，以及基本账户余额不足的稳定错误码与售后告警；本次部署保留原有 21 个环境变量，未切换生产支付或会员灰度开关。`payment_reconcile_state` 若仍缺失，运行时会尝试自动创建并降级为无游标扫描，仍需继续观察退款补偿日志和真机复验。
-- 会员购买断路器：`payment_config/membership_sales=OPEN` 已创建并设为仅管理端可读写，`payment` 与 `reminder` 已于 2026-11-02 部署并通过只读冒烟；`paymentReconcileEveryTwoMinutes` 已恢复。包含管理开关和停售态 UI 的客户端已随 `2.1.0` 进入灰度，尚未全量发布。
-- 客服工作台：`users_nickname`、`orders_created_at`、`orders_status_created_at`、`after_sales_case_no` 已创建并核验，含 `adminOrders.*` 的新版 `payment` 已于 2026-11-02 部署并通过管理员冒烟；`paymentReconcileEveryTwoMinutes` 保持启用。客户端 `2.1.0` 已随灰度版本上线，客服工作台实际使用正常。
-- 会员限制模式后台开关：需要重新部署 `payment`（新增管理员写入口与审计）和 `reminder`（读取运行期配置），并上传含控制卡的小程序客户端。首次部署前可创建 `payment_config/membership_enforcement={mode:"all"}` 接管当前环境变量；文档缺失不会中断线上，仍按环境变量兜底。部署与配置写入仍需用户单独授权。
+- `payment`：2026-11-02 16:14 已整包更新本轮版本，运行时仍为 Nodejs16.13、20 个环境变量键完整，`paymentReconcileEveryTwoMinutes = 0 */2 * * * * *` 保持启用。当前版本包含后台会员限制模式、当日统计、7 / 30 / 90 天 / 全部筛选、Apple 超时待支付关闭、订单/售后幂等、权益账本快照、退款精确回收、虚拟支付商品复核和补偿队列隔离；管理员与订单接口冒烟通过。
+- 会员购买断路器：`payment_config/membership_sales=OPEN` 已创建并设为仅管理端可读写，`payment` 与 `reminder` 已于 2026-11-02 部署并通过只读冒烟；`paymentReconcileEveryTwoMinutes` 已恢复。包含管理开关和停售态 UI 的客户端 `2.1.0` 已全量发布。
+- 客服工作台：`users_nickname`、`orders_created_at`、`orders_status_created_at`、`after_sales_case_no` 已创建并核验，含 `adminOrders.*` 的新版 `payment` 已于 2026-11-02 部署并通过管理员冒烟；`paymentReconcileEveryTwoMinutes` 保持启用。客户端 `2.1.0` 已全量发布，客服工作台实际使用正常。
+- 会员限制模式后台开关：`payment`、`reminder` 和云端配置文档均已部署，客户端已全量包含控制卡。运行期真身为 `payment_config/membership_enforcement`，当前 `mode=all`；环境变量只作兜底。保护额度完成标记缺失，后台后续从其他模式切回 `all` 前必须先完成迁移审计治理。
 - 2026-11-02 当前索引数量：`users` 5 个、`orders` 11 个、`after_sales_cases` 10 个。
 - 小程序端：提交后重新编译；仅部署云函数不能替代小程序端发布。
 
@@ -179,15 +180,16 @@
 
 | 项 | 状态 | 说明 |
 | --- | --- | --- |
-| 云函数 `reminder` | **已部署本轮新版**（2026-11-01） | 19 个文件；会员状态、首页 bootstrap 和迁移管理入口已通过云端只读冒烟，本轮真机待验收 |
+| 云函数 `reminder` | **已部署本轮新版**（2026-11-02 16:15） | `Active`、Nodejs16.13；读取 `payment_config/membership_enforcement`，环境变量键与部署前哈希一致；`membership.status` 冒烟返回 `enforced=true` |
 | 云函数 `spots` / `notifier` | **仍是旧版**（2026-10-27）；`spots` 的 `aliases` 等本轮改动仍待部署 | 不在本次支付加固部署范围内 |
 | 索引 `spots.spotId` / `release_rules.spotId` / `reminder_tasks.userId+itemId` | **已建**（2026-10-27，用户操作） | 控制台操作，即时生效 |
 | 客户端第一批（固定 30s TTL、spots 缓存、add-trip 去重） | **已发版**（2026-10-27，用户操作） | 发布源为未提交工作区，与 git 无对应提交；需补 tag 对齐 |
 | 客户端第二批（首页自适应窗口 + 写操作后强制刷新） | **体验版 `1.1.1` 已上传**（2026-11-01） | 正式版尚未发布；真机待验收 |
-| 会员、提醒名额、支付与售后（客户端 + `reminder` + `payment`） | **客户端全量发布，`payment` / `reminder` 已部署，生产账本迁移已完成** | 累计观察到 8 笔已支付订单；`MEMBERSHIP_ENFORCEMENT_MODE=all` 已于 15:10:02 生效，客服工作台正常 |
-| 会员限制模式后台开关 | **代码完成，尚未部署** | 工作区新增 `payment_config/membership_enforcement`、右侧下拉切换、迁移闸门与审计；旧版 `payment` 未返回配置时显示禁用「待部署」卡，部署前生产继续由环境变量 `all` 控制 |
-| 客服工作台当日订单统计 | **代码完成，尚未部署** | 会员订单页新增今日订单、已支付数、当日净赚；净赚扣除已完成退款，旧版 `payment` 未提供统计接口时显示 `—` 和「统计服务待部署」 |
-| 客服工作台订单时间筛选与吸顶 | **代码完成，尚未部署** | 订单默认近 30 天，可切近 7 天 / 近 90 天 / 全部；搜索与状态/时间筛选吸顶在导航栏下方 |
+| 会员、提醒名额、支付与售后（客户端 + `reminder` + `payment`） | **客户端全量发布，`payment` / `reminder` 已部署；权益账本迁移完成，保护额度完成标记待治理** | 累计观察到 8 笔已支付订单；数据库配置 `membership_enforcement.mode=all` 已接管；工作台显示 2026-11-02 的 36 单、23 笔已支付、净赚 ¥63 |
+| 会员限制模式后台开关 | **已部署并通过云端/开发者工具冒烟** | `payment_config/membership_enforcement={mode:"all"}` 已创建；管理员返回 `source=DB`，页面显示“全部用户”；保护额度完成标记缺失，模式切回 `all` 的迁移闸门仍需治理 |
+| 客服工作台当日订单统计 | **已部署并通过云端冒烟** | 统计今日 36 单、已支付 23 单、支付 ¥69、退款 ¥6、净赚 ¥63 |
+| 客服工作台订单时间筛选与吸顶 | **已部署并通过云端冒烟** | 默认近 30 天，可切近 7 天 / 近 90 天 / 全部；`timeRange=all` 返回历史 70 单；搜索与筛选区吸顶在导航栏下方 |
+| 遗留 Apple 待支付单收口 | **已部署并通过定时补偿验证** | 两笔历史 `PENDING` 于 16:16:01 自动关闭，原因为 `VIRTUAL_PAY_EXPIRED_UNPAID`；当前待支付订单为 0 |
 | 生产数据备份与迁移 | **已完成**（2026-11-01） | `users 6587`、`orders 18`、`reminder_tasks 23979`、售后 `13`、审计日志 `188`；dry-run 133 批/6605 人，正式迁移 133 批/6620 人，人工核查 0、历史补签 1 |
 
 ⚠️ **测试通过、已部署、真机已验证是三个不同状态，不能互相替代。** 会员支付已取得真实购买、退款驳回、真实成功退款、权益回收和关闭小程序后补偿到账结果；仍未观察到真实签名 HTTP 支付/退款回调，不能写成“回调链路已联调完成”。
