@@ -109,11 +109,11 @@
           <view wx:if="{{item.result === 'FAILED'}}" class="tc-menu-item" catchtap="onRecover" data-item-id="{{item.itemId}}">
             <svg-icon name="refresh" size="14px" /><text>约其他日</text>
           </view>
-          <!-- ⚠️ 文案必须是「删除这天」而不是「删除行程」：它删的是**这一个行程项**
-               （`tripItem.remove`），看着就是一条记录。首页已废止整趟行程的删除，
-               这里再写「行程」会让用户以为整个行程要没了。 -->
+          <!-- ⚠️ 文案必须是「删除这条」而不是「删除这天」或「删除行程」：它删的是
+               **这一个行程项**（`tripItem.remove`），不是某一天的全部行程项，
+               更不是整趟行程。首页已废止整趟行程的删除。 -->
           <view class="tc-menu-item" catchtap="onRemove" data-item-id="{{item.itemId}}">
-            <svg-icon name="trash" size="14px" /><text>删除这天</text>
+            <svg-icon name="trash" size="14px" /><text>删除这条</text>
           </view>
         </view>
       </view>
