@@ -729,14 +729,14 @@ console.log('=== 11. 顶部布局：横幅在文档流里 / 导航栏安全间�
      这一条曾经漏过，改完当场就是「横幅看不见」。 */
   eq(/class="page-body" style="padding-top: \{\{pageTop\}\}rpx;"/.test(WXML), true,
     '正文让出导航栏高度（否则内容钻到标题底下）');
-  /* 微信原生胶囊实际 bottom 可能高于导航块，正文必须取两者较大值；
+  /* 大屏上固定导航块比胶囊更低，正文不能再被导航块透明区撑高；
      横幅出现时它就是第一块，后面的卡片自然下移。 */
   eq(/function pageTopOf\(statusBarHeight, menuButton, windowWidth\)/.test(JS), true,
     'pageTop 运行时读取胶囊位置和屏宽');
-  eq(/Math\.max\(navBottomRpx, capsuleBottomRpx\) \+ PAGE_GAP_RPX/.test(JS), true,
-    'pageTop = max(导航块底边, 胶囊底边) + 安全间距');
-  eq(/const PAGE_GAP_RPX = 16;/.test(JS), true,
-    '正文与胶囊底边保持 16rpx 安全间距');
+  eq(/capsuleBottomRpx > 0 \? capsuleBottomRpx : navBottomRpx/.test(JS), true,
+    'pageTop 优先使用胶囊底边，缺失时才回退导航块底边');
+  eq(/const PAGE_GAP_RPX = 8;/.test(JS), true,
+    '正文与胶囊底边只保留 8rpx 呼吸位');
   eq(/\.page-body \{[^}]*padding-right:\s*30rpx[^}]*padding-left:\s*30rpx/.test(WXSS), true,
     '正文只在模板声明 padding-top，样式表不重复覆盖');
   eq(/\.quota-warning-banner \{[^}]*margin-top:\s*0/.test(WXSS), true,

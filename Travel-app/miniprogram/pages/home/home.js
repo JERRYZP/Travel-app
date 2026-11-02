@@ -17,8 +17,8 @@ const tripShareCover = require('../../utils/trip-share-cover.js');
 
 /* 导航块高度（rpx）= `.navbar-content` 的 height，两处必须一致。 */
 const NAV_BAR_RPX = 88;
-/* 胶囊底边 → 正文第一块。用真实胶囊位置兜底，避免不同屏宽/状态栏下钻到组件下面。 */
-const PAGE_GAP_RPX = 16;
+/* 胶囊底边 → 正文第一块。只留很小呼吸位，不再让固定导航块额外撑高。 */
+const PAGE_GAP_RPX = 8;
 /* 滚多少像素把导航栏底色从全透明推到不透明 */
 const NAV_FADE_PX = 50;
 const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
@@ -1314,7 +1314,9 @@ function pageTopOf(statusBarHeight, menuButton, windowWidth) {
   const navBottomRpx = status * 750 / width + NAV_BAR_RPX;
   const capsuleBottom = Number(menuButton && menuButton.bottom) || 0;
   const capsuleBottomRpx = capsuleBottom > 0 ? capsuleBottom * 750 / width : 0;
-  return Math.ceil(Math.max(navBottomRpx, capsuleBottomRpx) + PAGE_GAP_RPX);
+  /* 大屏上固定导航块常比胶囊更低；正文应贴近胶囊，而不是贴近透明导航盒。 */
+  const contentBaseRpx = capsuleBottomRpx > 0 ? capsuleBottomRpx : navBottomRpx;
+  return Math.ceil(contentBaseRpx + PAGE_GAP_RPX);
 }
 
 /** 解析服务端时间戳（毫秒数或 ISO 字符串）；拿不到就返回 0。 */
