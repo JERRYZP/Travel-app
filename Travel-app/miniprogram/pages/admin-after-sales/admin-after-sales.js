@@ -8,22 +8,22 @@ const MIGRATION_ENTRY_ENABLED = false;
 const TAB_ORDERS = 'orders';
 const TAB_AFTER_SALES = 'afterSales';
 const ENFORCEMENT_OPTIONS = [
-  { mode: 'off', label: '关闭', caption: '不限制' },
-  { mode: 'test', label: '测试', caption: '白名单' },
-  { mode: 'all', label: '全量', caption: '所有用户' },
+  { mode: 'off', label: '关闭' },
+  { mode: 'test', label: '测试' },
+  { mode: 'all', label: '全量' },
 ];
 
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function enforcementOptionsOf(current, migrationsReady) {
+function enforcementPickerOf(current) {
   const activeMode = current && current.mode;
-  return ENFORCEMENT_OPTIONS.map(item => ({
-    ...item,
-    active: activeMode === item.mode,
-    disabled: item.mode === 'all' && !migrationsReady,
-  }));
+  const index = ENFORCEMENT_OPTIONS.findIndex(item => item.mode === activeMode);
+  return {
+    labels: ENFORCEMENT_OPTIONS.map(item => item.label),
+    index: index >= 0 ? index : 0,
+  };
 }
 
 const FILTERS = [
@@ -85,7 +85,8 @@ Page({
     salesSaving: false,
     showSalesConfirm: false,
     membershipEnforcement: null,
-    enforcementModes: enforcementOptionsOf(null, false),
+    enforcementPickerLabels: ENFORCEMENT_OPTIONS.map(item => item.label),
+    enforcementPickerIndex: 0,
     enforcementSaving: false,
     entitlementMigrationCompleted: false,
   },
@@ -125,6 +126,7 @@ Page({
     const membershipEnforcement = (res && res.membershipEnforcement) || null;
     const migrationCompleted = !!(res && res.migrationCompleted);
     const entitlementMigrationCompleted = !!(res && res.entitlementMigrationCompleted);
+    const enforcementPicker = enforcementPickerOf(membershipEnforcement);
     this.setData({
       migrationCompleted,
       entitlementMigrationCompleted,
@@ -132,10 +134,8 @@ Page({
       fundingBlockedCount: Math.max(0, Number(res && res.fundingBlockedCount) || 0),
       membershipSales: (res && res.membershipSales) || null,
       membershipEnforcement,
-      enforcementModes: enforcementOptionsOf(
-        membershipEnforcement,
-        migrationCompleted && entitlementMigrationCompleted
-      ),
+      enforcementPickerLabels: enforcementPicker.labels,
+      enforcementPickerIndex: enforcementPicker.index,
     });
   },
 
@@ -200,11 +200,14 @@ Page({
       });
   },
 
-  onEnforcementModeTap(e) {
+  onEnforcementModeChange(e) {
     if (this.data.enforcementSaving || !this.data.membershipEnforcement) return;
-    const mode = String((e && e.currentTarget && e.currentTarget.dataset.mode) || '');
-    const option = ENFORCEMENT_OPTIONS.find(item => item.mode === mode);
-    if (!option || this.data.membershipEnforcement.mode === mode) return;
+    const selectedIndex = Number(e && e.detail && e.detail.value);
+    const currentPicker = enforcementPickerOf(this.data.membershipEnforcement);
+    this.setData({ enforcementPickerIndex: currentPicker.index });
+    const option = ENFORCEMENT_OPTIONS[selectedIndex];
+    if (!option || this.data.membershipEnforcement.mode === option.mode) return;
+    const mode = option.mode;
     if (mode === 'all'
       && (!this.data.migrationCompleted || !this.data.entitlementMigrationCompleted)) {
       wx.showToast({ title: '上线前迁移未完成，暂不能切全量', icon: 'none' });
@@ -233,13 +236,13 @@ Page({
     return api.payment.afterSales.adminSetMembershipEnforcement({ mode })
       .then(result => {
         const membershipEnforcement = result && result.membershipEnforcement;
+        const nextMembershipEnforcement = membershipEnforcement || this.data.membershipEnforcement;
+        const enforcementPicker = enforcementPickerOf(nextMembershipEnforcement);
         this.setData({
           enforcementSaving: false,
-          membershipEnforcement: membershipEnforcement || this.data.membershipEnforcement,
-          enforcementModes: enforcementOptionsOf(
-            membershipEnforcement,
-            this.data.migrationCompleted && this.data.entitlementMigrationCompleted
-          ),
+          membershipEnforcement: nextMembershipEnforcement,
+          enforcementPickerLabels: enforcementPicker.labels,
+          enforcementPickerIndex: enforcementPicker.index,
         });
         wx.showToast({
           title: `会员限制已切为${membershipEnforcement ? membershipEnforcement.modeLabel : '新模式'}`,

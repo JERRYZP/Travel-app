@@ -1185,12 +1185,20 @@ function mockMembershipEnforcementView() {
     test: '仅测试 OpenID 的新提醒受名额限制，其他用户进入保护池。',
     all: '所有用户的新提醒都受 5 / 15 个名额限制。',
   };
+  const shortDescriptions = {
+    off: '新提醒不进入名额池',
+    test: '仅测试账号受名额限制',
+    all: '全部新提醒受名额限制',
+  };
   return {
     mode,
     modeLabel: mode ? labels[mode] : '环境变量',
     description: mode
       ? descriptions[mode]
       : '尚未写入后台配置，reminder 暂按环境变量执行。',
+    shortDescription: mode
+      ? shortDescriptions[mode]
+      : '尚未接管，暂按环境变量执行',
     configured: !!mode,
     source: mode ? 'DB' : 'UNSET',
     updatedAt: current.updatedAt || null,

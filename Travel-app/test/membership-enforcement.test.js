@@ -130,6 +130,7 @@ async function run() {
   eq(enabled.membershipEnforcement.mode, 'all', '切换结果返回新模式');
   const status = await adminPayment.main({ action: 'afterSales.adminStatus' });
   eq(status.membershipEnforcement.mode, 'all', '工作台状态返回当前限制模式');
+  eq(status.membershipEnforcement.shortDescription, '全部新提醒受名额限制', '工作台返回单行简述');
   eq(status.entitlementMigrationCompleted, true, '工作台返回权益账本迁移状态');
   const audits = db._dump(COLLECTIONS.ADMIN_AUDIT_LOGS)
     .filter(item => item.action === 'SET_MEMBERSHIP_ENFORCEMENT');
@@ -186,17 +187,70 @@ async function run() {
     'utf8'
   );
   eq(
-    wxml.indexOf('class="sales-card') < wxml.indexOf('class="enforcement-card'),
+    wxml.indexOf('class="admin-control-card sales-card')
+      < wxml.indexOf('class="admin-control-card enforcement-card'),
     true,
     '会员购买开关仍在会员限制控制上方'
   );
-  eq(wxml.includes('onEnforcementModeTap'), true, '工作台提供限制模式切换入口');
+  eq(
+    wxml.includes('class="admin-control-card sales-card'),
+    true,
+    '会员购买使用统一横条卡片高度'
+  );
+  eq(
+    wxml.includes('class="admin-control-card enforcement-card'),
+    true,
+    '会员限制使用同一横条卡片高度'
+  );
+  eq(wxml.includes('onEnforcementModeChange'), true, '工作台使用下拉切换限制模式');
+  eq(wxml.includes('mode="selector"'), true, '限制模式使用原生下拉选择器');
+  eq(wxml.includes('class="enforcement-select'), true, '下拉选择器位于模式卡片右侧');
+  eq(wxml.includes('onEnforcementModeTap'), false, '旧三段点击入口已移除');
   const api = fs.readFileSync(path.join(root, 'miniprogram/utils/api.js'), 'utf8');
   eq(
     api.includes('afterSales.adminSetMembershipEnforcement'),
     true,
     '客户端 API 已接入后台切换接口'
   );
+
+  console.log('\n=== 5. 下拉选择只弹二次确认，不直接写入 ===');
+  const originalGetApp = global.getApp;
+  const originalPage = global.Page;
+  const originalWx = global.wx;
+  let pageDefinition = null;
+  let modalOptions = null;
+  global.getApp = () => ({ globalData: { statusBarHeight: 20, navBarHeight: 44 } });
+  global.Page = definition => { pageDefinition = definition; };
+  global.wx = {
+    showModal(options) { modalOptions = options; },
+    showToast() {},
+  };
+  try {
+    delete require.cache[require.resolve('../miniprogram/pages/admin-after-sales/admin-after-sales.js')];
+    require('../miniprogram/pages/admin-after-sales/admin-after-sales.js');
+    const pageContext = {
+      data: {
+        membershipEnforcement: { mode: 'all', modeLabel: '全量用户' },
+        migrationCompleted: true,
+        entitlementMigrationCompleted: true,
+        enforcementPickerIndex: 2,
+        enforcementSaving: false,
+      },
+      setData(patch) { Object.assign(this.data, patch); },
+    };
+    pageDefinition.onEnforcementModeChange.call(pageContext, { detail: { value: 1 } });
+    eq(modalOptions && modalOptions.title, '切换为测试', '下拉后先打开二次确认');
+    eq(
+      modalOptions && modalOptions.content.includes('已有提醒保持原池别'),
+      true,
+      '二次确认说明影响范围'
+    );
+    eq(pageContext.data.enforcementPickerIndex, 2, '确认前下拉显示恢复到当前模式');
+  } finally {
+    global.getApp = originalGetApp;
+    global.Page = originalPage;
+    global.wx = originalWx;
+  }
 
   if (fail > 0) {
     console.error(`\n${fail} membership enforcement assertion(s) failed`);

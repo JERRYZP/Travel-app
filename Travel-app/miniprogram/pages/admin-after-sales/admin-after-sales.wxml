@@ -14,7 +14,7 @@
   </view>
 
   <block wx:else>
-    <view wx:if="{{membershipSales}}" class="sales-card {{membershipSales.purchaseEnabled ? '' : 'paused'}}">
+    <view wx:if="{{membershipSales}}" class="admin-control-card sales-card {{membershipSales.purchaseEnabled ? '' : 'paused'}}">
       <view class="sales-main">
         <view class="sales-title-row">
           <text class="sales-title">会员购买</text>
@@ -29,28 +29,27 @@
       </view>
     </view>
 
-    <view wx:if="{{membershipEnforcement}}" class="enforcement-card">
-      <view class="enforcement-head">
+    <view wx:if="{{membershipEnforcement}}" class="admin-control-card enforcement-card">
+      <view class="enforcement-main">
         <view class="enforcement-title-row">
           <text class="enforcement-title">会员限制</text>
-          <text class="enforcement-status mode-{{membershipEnforcement.mode || 'env'}}">{{membershipEnforcement.modeLabel}}</text>
+          <text class="enforcement-source">{{membershipEnforcement.source === 'DB' ? '后台配置' : '环境变量兜底'}}</text>
         </view>
-        <text class="enforcement-source">{{enforcementSaving ? '切换中' : (membershipEnforcement.source === 'DB' ? '后台配置' : '环境变量兜底')}}</text>
+        <text class="enforcement-desc {{membershipEnforcement.readError ? 'warning' : ''}}">{{membershipEnforcement.shortDescription || membershipEnforcement.description}}</text>
       </view>
-      <text class="enforcement-desc">{{membershipEnforcement.description}}</text>
-      <view class="enforcement-options {{enforcementSaving ? 'disabled' : ''}}">
-        <view
-          wx:for="{{enforcementModes}}"
-          wx:key="mode"
-          class="enforcement-option {{item.active ? 'active' : ''}} {{item.disabled ? 'disabled' : ''}}"
-          data-mode="{{item.mode}}"
-          bindtap="onEnforcementModeTap"
-        >
-          <text class="enforcement-option-label">{{item.label}}</text>
-          <text class="enforcement-option-caption">{{item.caption}}</text>
+      <picker
+        class="enforcement-picker"
+        mode="selector"
+        range="{{enforcementPickerLabels}}"
+        value="{{enforcementPickerIndex}}"
+        disabled="{{enforcementSaving}}"
+        bindchange="onEnforcementModeChange"
+      >
+        <view class="enforcement-select {{enforcementSaving ? 'disabled' : ''}}">
+          <text class="enforcement-select-value">{{enforcementSaving ? '处理中' : membershipEnforcement.modeLabel}}</text>
+          <svg-icon name="chevron-down-muted" size="10px" />
         </view>
-      </view>
-      <text wx:if="{{membershipEnforcement.readError}}" class="enforcement-warning">后台配置异常，reminder 当前按环境变量兜底</text>
+      </picker>
     </view>
 
     <view wx:if="{{fundingBlockedCount > 0}}" class="funding-alert">

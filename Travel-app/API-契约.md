@@ -1161,7 +1161,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - `adminOrders.detail` 返回本人订单管理详情，包括用户会员状态、支付渠道、微信交易号、权益发放快照和关联售后记录。订单不存在统一返回 `1024`。
 - `afterSales.adminList` 的 `items[].user` 返回当前昵称、完整 OpenID、会员到期和已购名额；同样支持分页与关键词搜索。
 - 管理员搜索订单写 `SEARCH_ADMIN_ORDERS`，搜索售后写 `SEARCH_ADMIN_AFTER_SALES`，查看订单详情写 `VIEW_ADMIN_ORDER_DETAIL`。审计只记录关键词类型和状态，不记录原始搜索词；订单详情审计只记录交易号是否存在，不记录交易号全文。
-- `adminStatus` 返回 `{ isAdmin, migrationCompleted, entitlementMigrationCompleted, pendingCount, fundingBlockedCount, membershipSales, membershipEnforcement }`。`pendingCount` 是未结束售后单数量，用户已取消的单不计入；`fundingBlockedCount` 是其中因商户基本账户余额不足而未能发起退款的数量；`membershipSales` 含当前购买状态、暂停原因、更新时间和配置读取失败标记；`membershipEnforcement` 返回当前模式、模式文案、说明、配置来源、更新时间和读取失败标记。非管理员不返回购买或限制配置。
+- `adminStatus` 返回 `{ isAdmin, migrationCompleted, entitlementMigrationCompleted, pendingCount, fundingBlockedCount, membershipSales, membershipEnforcement }`。`pendingCount` 是未结束售后单数量，用户已取消的单不计入；`fundingBlockedCount` 是其中因商户基本账户余额不足而未能发起退款的数量；`membershipSales` 含当前购买状态、暂停原因、更新时间和配置读取失败标记；`membershipEnforcement` 返回当前模式、模式文案、完整说明、单行简述、配置来源、更新时间和读取失败标记。非管理员不返回购买或限制配置。
 - `adminSetMembershipSales` 仅管理员可调用。暂停时必须填写原因；恢复时清空暂停原因。切换写 `admin_audit_logs`，不得依赖客户端隐藏按钮。
 - `adminSetMembershipEnforcement` 仅管理员可调用，只接受 `off / test / all`。切换写 `SET_MEMBERSHIP_ENFORCEMENT` 审计，记录前后模式；切 `all` 时两项迁移未完成返回 `1033`。配置文档缺失时提醒链路继续使用环境变量兜底，后台显式展示该来源，不猜测运行模式。
 - 管理员可按 `CANCELLED` 筛选并查看“用户已取消”、取消时间和取消前异常原因；取消单不显示同意退款、驳回或重试退款操作。

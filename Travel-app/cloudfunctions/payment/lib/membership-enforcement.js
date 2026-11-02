@@ -24,6 +24,11 @@ const MODE_DESCRIPTION = Object.freeze({
   [EnforcementMode.TEST]: '仅测试 OpenID 的新提醒受名额限制，其他用户进入保护池。',
   [EnforcementMode.ALL]: '所有用户的新提醒都受 5 / 15 个名额限制。',
 });
+const MODE_SHORT_DESCRIPTION = Object.freeze({
+  [EnforcementMode.OFF]: '新提醒不进入名额池',
+  [EnforcementMode.TEST]: '仅测试账号受名额限制',
+  [EnforcementMode.ALL]: '全部新提醒受名额限制',
+});
 
 function normalizedMode(value) {
   const mode = String(value || '').trim().toLowerCase();
@@ -100,6 +105,9 @@ function adminView(current) {
       description: state.readError
         ? '后台配置读取失败，reminder 暂按环境变量执行。'
         : '尚未写入后台配置，reminder 暂按环境变量执行。',
+      shortDescription: state.readError
+        ? '配置异常，暂按环境变量执行'
+        : '尚未接管，暂按环境变量执行',
       configured: state.configured === true,
       source: state.source || 'UNSET',
       updatedAt: state.updatedAt || null,
@@ -111,6 +119,7 @@ function adminView(current) {
     mode: state.mode,
     modeLabel: MODE_LABEL[state.mode],
     description: MODE_DESCRIPTION[state.mode],
+    shortDescription: MODE_SHORT_DESCRIPTION[state.mode],
     configured: state.configured === true,
     source: state.source || 'DB',
     updatedAt: state.updatedAt || null,
@@ -125,6 +134,7 @@ module.exports = {
   VALID_MODES,
   MODE_LABEL,
   MODE_DESCRIPTION,
+  MODE_SHORT_DESCRIPTION,
   normalizedMode,
   read,
   write,
