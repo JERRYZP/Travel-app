@@ -43,6 +43,7 @@
 | `RULE-WXML-001` | `CLAUDE.md` 121 | WXML 选中态与 setData 引用 | `.claude/rules/frontend.md`、`docs/engineering/frontend-pitfalls.md` | `extracted` |
 | `RULE-REMINDERCFG-001` | `CLAUDE.md` 122-127 | 系统权限、订阅额度、PAGE-008 硬闸门 | `docs/engineering/domain-rules.md`、`.claude/rules/frontend.md` | `extracted` |
 | `RULE-REMINDERCFG-002` | `产品文档.md` 3.5 / PAGE-002 | 轻量提醒入口订阅授权补充后继续原动线 | `产品文档.md` `REMINDER-RULE-009`、`docs/engineering/domain-rules.md` | `delegated` |
+| `RULE-QUICKREMINDER-001` | 2026-11-02 快捷设提醒流程 | 景点页/详情/分享/首页“约其他日”使用 `planQuickDates + quickCommit` 一次性提交，不写主流程 `reminder_cart`；旧版 pending 同景点行可续用，已落行程仍拦截 | `产品文档.md`、`API-契约.md`、`docs/engineering/domain-rules.md`、`docs/engineering/frontend-pitfalls.md` | `delegated` |
 | `RULE-MEMBER-001` | `产品文档.md` PAGE-008 / PAGE-014 | 免费 5 个提醒名额、会员 30 天 15 个、有效会员可加购 10 个、老用户固定保护额度、仅超额时出现付费 | `产品文档.md`、`docs/engineering/domain-rules.md`、`docs/engineering/membership-payment.md` | `delegated` |
 | `RULE-MEMBER-002` | 2026-11-02 会员限制模式切换 | `payment_config/membership_enforcement` 是运行期唯一真身；后台可切 `off/test/all`，切全量前必须完成保护额度与权益账本迁移；环境变量只作配置缺失或读取失败时的兼容兜底 | `产品文档.md` PAGE-017、`API-契约.md`、`.claude/rules/deployment.md`、`docs/engineering/membership-payment.md`、`数据库索引.md` | `delegated` |
 | `RULE-PAY-001` | `API-契约.md` 会员与支付 | 订单金额服务端决定；API v3 与虚拟支付双通道、按订单固化渠道；请求号幂等、额度锁、持久化补偿游标；退款生命周期与本单权益快照回收；售后工作台审计 | `API-契约.md`、`.claude/rules/deployment.md`、`docs/engineering/membership-payment.md`、`docs/engineering/payment-v3-runbook.md`、`docs/engineering/payment-virtual-runbook.md` | `delegated` |
@@ -60,6 +61,7 @@
 | `RULE-ADMIN-002` | 2026-11-02 客服工作台 | 会员购买开关置顶；会员订单与售后双页签；昵称/OpenID 展示、搜索、订单详情和管理员审计 | `产品文档.md` PAGE-017、`API-契约.md`、`数据库索引.md` | `delegated` |
 | `RULE-SHARE-001` | 2026-11-02 行程只读分享 | PAGE-018 只分享当前未结束整趟行程；链接只带 32 字节令牌，`endDate + 7 天` 当日仍有效；接收方不可编辑、复制或二次转发，公开投影不夹带身份与票务/提醒状态。主人应用内昵称只用于会话标题，Canvas 封面只画公开行程信息 | `产品文档.md` PAGE-018 / SHARE-RULE-008~009、`API-契约.md`、`数据库索引.md`、`docs/engineering/domain-rules.md` | `delegated` |
 | `RULE-ADMIN-003` | 2026-11-02 客服工作台提醒质量 | 每日 13:00 / 21:00 更新最近完成 8 小时时段的任务级 2 分钟内送达率；页面只直出当前送达率和前 5 日加权均值，低于 99% 才标红 | `产品文档.md` PAGE-017、`API-契约.md`、`docs/engineering/reminder-troubleshooting.md`、`数据库索引.md` | `delegated` |
+| `RULE-RESOURCE-001` | 2026-11-02 调用量结构性优化 | 静态景点快照出云函数；页面级 bootstrap；写命令返回规范视图；`user_runtime` 只是可重建读模型；`off/shadow/on` 灰度后才能启用 | `API-契约.md` 8.8、`docs/engineering/architecture.md`、`.claude/rules/deployment.md`、`数据库索引.md` | `delegated` |
 
 ## Phase 3 验收结果
 

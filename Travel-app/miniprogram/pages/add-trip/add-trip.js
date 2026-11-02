@@ -546,6 +546,8 @@ Page({
         timelineEvents: this.decorateEvents(activeTab ? (tabs.find(t => t.key === activeTab) || {}).events || [] : []),
         timelineEmpty: res.empty,
         timelineEmptyReason: res.emptyReason,
+        cartCount: Number(res.cartSummary && res.cartSummary.count) || 0,
+        cartReminderCount: Number(res.cartSummary && res.cartSummary.reminderCount) || 0,
       }, () => {
         setTimeout(() => {
           /* 面板与日期标题都渲染完再量吸顶偏移，否则量到 0 高 */
@@ -556,7 +558,9 @@ Page({
       /* 先清理范围外草稿再刷新清单条；清理失败也要刷新，不能挡住主流程。 */
       this.pruneCartToTimelineScope()
         .catch(() => null)
-        .then(() => this.loadCart());
+        .then(result => {
+          if (result && result.cartSummary) this.applyCartSummary(result.cartSummary);
+        });
     }).catch(err => {
       wx.hideLoading();
       api.toastError(err);
@@ -655,10 +659,7 @@ Page({
         wx.showToast({ title: '这一天没有可加入的项', icon: 'none' });
       }
       this.setData({ submitting: false });
-      /* ⚠️ reloadPreview 里只更新事件；清单条计数要单独刷，否则批量加完
-         底部还显示「0 项」，看起来也是没生效 */
-      this.reloadPreview();
-      this.loadCart();
+      this.applyCartMutation(res);
     }).catch(err => {
       api.toastError(err);
       this.setData({ submitting: false });
@@ -694,7 +695,7 @@ Page({
         icon: 'none',
       });
       this.setData({ submitting: false });
-      this.reloadPreview();
+      this.applyCartMutation(res);
     }).catch(err => {
       api.toastError(err);
       this.setData({ submitting: false });
@@ -716,14 +717,51 @@ Page({
         timelineEvents: this.decorateEvents(activeTab ? (tabs.find(t => t.key === activeTab) || {}).events || [] : []),
         timelineEmpty: res.empty,
         timelineEmptyReason: res.emptyReason,
+        cartCount: Number(res.cartSummary && res.cartSummary.count) || 0,
+        cartReminderCount: Number(res.cartSummary && res.cartSummary.reminderCount) || 0,
       }, () => {
         /* 面板高度只跟「出游日 Tab 行」在不在有关，这里顺手复量一次，避免生成后
            下拉一次、Tab 行出现/消失导致日期标题吸在面板腰上。 */
         this.measureTimelineHeadTop();
         this.revealTimelineTab(activeTab);
       });
-      this.loadCart();
     }).catch(() => { this.loadCart(); });
+  },
+
+  applyCartSummary(summary) {
+    if (!summary) return;
+    this.setData({
+      cartCount: Number(summary.count) || 0,
+      cartReminderCount: Number(summary.reminderCount) || 0,
+    });
+  },
+
+  /** 服务端命令直接返回受影响事件的规范状态，页面不再读回整条时间线。 */
+  applyCartMutation(result) {
+    this.applyCartSummary(result && result.cartSummary);
+    const patches = (result && result.statusPatches) || [];
+    if (patches.length === 0) return;
+    const patchMap = {};
+    patches.forEach(row => {
+      patchMap[`${row.spotId}|${row.visitDate}`] = row;
+    });
+    const apply = events => (events || []).map(event => {
+      const patch = patchMap[`${event.spotId}|${event.visitDate}`];
+      if (!patch) return event;
+      return Object.assign({}, event, {
+        status: patch.status,
+        button: patch.button || event.button,
+      });
+    });
+    const timelineTabs = (this.data.timelineTabs || []).map(tab =>
+      Object.assign({}, tab, { events: apply(tab.events) }));
+    const timelineDays = (this.data.timelineDays || []).map(day =>
+      Object.assign({}, day, { events: apply(day.events) }));
+    this.setData({
+      timelineTabs,
+      timelineDays,
+      timelineEvents: apply(this.data.timelineEvents),
+    });
   },
 
   /* ===== 清单（暂存区） ===== */
@@ -752,7 +790,12 @@ Page({
     this.setData({ showCartPopup: false });
   },
 
-  onInlineCartChange() {
+  onInlineCartChange(e) {
+    const result = e && e.detail && e.detail.result;
+    if (result) {
+      this.applyCartMutation(result);
+      return;
+    }
     this.loadCart();
     if (this.data.showTimeline) this.reloadPreview();
   },

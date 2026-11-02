@@ -29,9 +29,12 @@ paths:
 修改数据后：
 
 ```bash
+node scripts/build-spots-snapshot.js
 python3 scripts/sync-seed-copies.py
 npm test
 ```
+
+`miniprogram/data/spots-snapshot.js`、`cloud-assets/data/spots-snapshot.json` 和 manifest 都是上述脚本的生成物，禁止手改；`npm test` 会以 `--check` 阻止过期快照。
 
 修改 mock 镜像后必须重点验证：
 

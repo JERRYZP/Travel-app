@@ -15,6 +15,8 @@ const EnforcementMode = Object.freeze({
 });
 const VALID_MODES = Object.freeze(Object.values(EnforcementMode));
 const DEFAULT_ENV_MODE = EnforcementMode.TEST;
+const DEFAULT_CACHE_MS = 45 * 1000;
+const configCache = new WeakMap();
 
 function normalizedMode(value) {
   const mode = String(value || '').trim().toLowerCase();
@@ -40,19 +42,28 @@ function envFallbackState(reason = '', readError = false) {
   };
 }
 
-async function read(db) {
+async function read(db, options = {}) {
+  const cacheMs = options.cache === true ? DEFAULT_CACHE_MS : 0;
+  const cached = cacheMs > 0 ? configCache.get(db) : null;
+  if (cached && Date.now() - cached.at < cacheMs) return cached.value;
   try {
     const res = await db.collection(COLLECTIONS.PAYMENT_CONFIG)
       .where({ _id: ENFORCEMENT_CONFIG_ID })
       .limit(1)
       .get();
     const current = (res.data || [])[0];
-    if (!current) return envFallbackState();
+    if (!current) {
+      const value = envFallbackState();
+      if (cacheMs > 0) configCache.set(db, { at: Date.now(), value });
+      return value;
+    }
     const mode = normalizedMode(current.mode);
     if (!mode) {
-      return envFallbackState('会员限制模式配置无效，暂按环境变量执行');
+      const value = envFallbackState('会员限制模式配置无效，暂按环境变量执行');
+      if (cacheMs > 0) configCache.set(db, { at: Date.now(), value });
+      return value;
     }
-    return {
+    const value = {
       mode,
       configured: true,
       source: 'DB',
@@ -61,9 +72,18 @@ async function read(db) {
       updatedBy: current.updatedBy || '',
       readError: false,
     };
+    if (cacheMs > 0) configCache.set(db, { at: Date.now(), value });
+    return value;
   } catch (err) {
-    return envFallbackState('会员限制模式读取失败，暂按环境变量执行', true);
+    const value = envFallbackState('会员限制模式读取失败，暂按环境变量执行', true);
+    if (cacheMs > 0) configCache.set(db, { at: Date.now(), value });
+    return value;
   }
+}
+
+function invalidate(db) {
+  if (db) configCache.delete(db);
+  else configCache.clear?.();
 }
 
 function shouldEnforceForMode(mode, userId, testOpenIds) {
@@ -80,5 +100,6 @@ module.exports = {
   normalizedMode,
   envModeOf,
   read,
+  invalidate,
   shouldEnforceForMode,
 };

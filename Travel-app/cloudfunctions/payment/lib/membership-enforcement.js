@@ -8,6 +8,8 @@
 const { COLLECTIONS } = require('./schema');
 
 const ENFORCEMENT_CONFIG_ID = 'membership_enforcement';
+const DEFAULT_CACHE_MS = 45 * 1000;
+const configCache = new WeakMap();
 const EnforcementMode = Object.freeze({
   OFF: 'off',
   TEST: 'test',
@@ -47,25 +49,34 @@ function unconfiguredState(overrides = {}) {
   };
 }
 
-async function read(db) {
+async function read(db, options = {}) {
+  const cacheMs = options.cache === true ? DEFAULT_CACHE_MS : 0;
+  const cached = cacheMs > 0 ? configCache.get(db) : null;
+  if (cached && Date.now() - cached.at < cacheMs) return cached.value;
   try {
     const res = await db.collection(COLLECTIONS.PAYMENT_CONFIG)
       .where({ _id: ENFORCEMENT_CONFIG_ID })
       .limit(1)
       .get();
     const current = (res.data || [])[0];
-    if (!current) return unconfiguredState();
+    if (!current) {
+      const value = unconfiguredState();
+      if (cacheMs > 0) configCache.set(db, { at: Date.now(), value });
+      return value;
+    }
     const mode = normalizedMode(current.mode);
     if (!mode) {
-      return unconfiguredState({
+      const value = unconfiguredState({
         configured: true,
         source: 'INVALID',
         updatedAt: current.updatedAt || null,
         updatedBy: current.updatedBy || '',
         readError: true,
       });
+      if (cacheMs > 0) configCache.set(db, { at: Date.now(), value });
+      return value;
     }
-    return {
+    const value = {
       mode,
       configured: true,
       source: 'DB',
@@ -73,12 +84,20 @@ async function read(db) {
       updatedBy: current.updatedBy || '',
       readError: false,
     };
+    if (cacheMs > 0) configCache.set(db, { at: Date.now(), value });
+    return value;
   } catch (err) {
-    return unconfiguredState({
+    const value = unconfiguredState({
       source: 'ERROR',
       readError: true,
     });
+    if (cacheMs > 0) configCache.set(db, { at: Date.now(), value });
+    return value;
   }
+}
+
+function invalidate(db) {
+  if (db) configCache.delete(db);
 }
 
 async function write(target, { mode, updatedBy, now }) {
@@ -137,6 +156,7 @@ module.exports = {
   MODE_SHORT_DESCRIPTION,
   normalizedMode,
   read,
+  invalidate,
   write,
   adminView,
 };

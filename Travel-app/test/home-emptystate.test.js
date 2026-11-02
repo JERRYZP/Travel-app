@@ -336,10 +336,11 @@ console.log('=== 5. 删除只到「天」为止，整趟行程的删除入口已
   eq(/const t = emptyHome \? null : this\.data\.primaryTrip/.test(JS), true,
     '空白首页不再用旧 primaryTrip 预填 PAGE-005');
 
-  /* 卡片菜单里那条删的是**一个行程项**，文案不能写成「删除行程」——那会让人
-     以为整趟都要没了。 */
+  /* 卡片菜单里那条删的是**一个行程项**：既不能写成「删除行程」让人以为整趟
+     都要没了，也不能写成「删除这天」与日期标题的整天删除混淆。 */
   const CARD_WXML = fs.readFileSync(path.join(ROOT, 'miniprogram/components/trip-card/trip-card.wxml'), 'utf8');
-  eq(/删除这天/.test(CARD_WXML), true, '行程项菜单文案为「删除这天」');
+  eq(/>删除这条</.test(CARD_WXML), true, '行程项菜单文案为「删除这条」');
+  eq(/>删除这天</.test(CARD_WXML), false, '行程项菜单不得写成「删除这天」');
   eq(/>删除行程</.test(CARD_WXML), false, '行程项菜单不再写「删除行程」');
 
   /* 删除后的提示同理：用户删的是一条/一天，服务端顺手清掉空行程也不该说「行程已删除」 */
@@ -536,7 +537,7 @@ console.log('=== 8. 行程项卡的提醒状态（四态上卡）与菜单显示
     '已有 FAILED 状态不得默认出现即时气泡');
   eq(/\{\{recoverable \? '还有其他日期可约' : '换个日期再约\?'\}\}/.test(CARD_WXML), true,
     '有候选时提示候选，无候选时仍提示换日期');
-  eq(/删除这天/.test(CARD_WXML), true, '删除项文案是「删除这天」而非「删除行程」');
+  eq(/>删除这条</.test(CARD_WXML), true, '删除项文案是「删除这条」而非「删除这天」或「删除行程」');
   const HOME_JS = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.js'), 'utf8');
   eq(/const itemPatch = this\.tripItemPatch\(item\);\s*this\.setData\(Object\.assign\(/.test(HOME_JS), true,
     'markResult 返回后先局部刷新当前卡片，不等第二次 bootstrap 才出现挽回入口');

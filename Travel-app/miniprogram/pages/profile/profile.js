@@ -3,6 +3,10 @@ const api = require('../../utils/api.js');
 const notify = require('../../utils/notify.js');
 const oa = require('../../utils/official-account.js');
 
+const PROFILE_BOOTSTRAP_TTL_MS = 5 * 60 * 1000;
+const ADMIN_STATUS_CACHE_KEY = 'profileAdminStatusV1';
+const ADMIN_STATUS_TTL_MS = 24 * 60 * 60 * 1000;
+
 function reminderHintOf(health) {
   if (health.permissionState === 'none') return { text: '未开启', state: 'none' };
   if (health.permissionState === 'partial') return { text: '部分开启', state: 'partial' };
@@ -49,17 +53,56 @@ Page({
 
   onShow() {
     this.loadUser();
-    this.loadNotifyHint();
+    if (this.profileCacheFresh()) this.loadNotifyHint();
     this.loadAdminEntries();
   },
 
   /* 无感登录：profile 首次调用即自动建号（自动昵称+默认头像），页面常驻登录态 */
-  loadUser() {
-    api.reminder.user.profile().then(res => {
+  profileCacheFresh() {
+    return !!this._profileCache
+      && this._profileLoadedAt > 0
+      && Date.now() - this._profileLoadedAt < PROFILE_BOOTSTRAP_TTL_MS;
+  },
+
+  loadUser(options) {
+    const force = !!(options && options.force);
+    if (!force && this.profileCacheFresh()) return Promise.resolve(this._profileCache);
+    const bootstrap = typeof api.reminder.user.bootstrap === 'function'
+      ? api.reminder.user.bootstrap()
+      : Promise.reject(new Error('user.bootstrap unavailable'));
+    return bootstrap.then(res => {
+      this._profileCache = res;
+      this._profileLoadedAt = Date.now();
       this.applyUser(res.user || {});
+      this.applySubscriptionHint(res.subscription);
+      return res;
     }).catch(() => {
-      this.applyUser({ nickname: '', avatarUrl: '', memberLevel: 'NORMAL', points: 0 });
+      /* 旧云函数尚未部署 user.bootstrap 时仍可正常进入个人页。 */
+      return api.reminder.user.profile().then(res => {
+        this._profileCache = res;
+        this._profileLoadedAt = Date.now();
+        this.applyUser(res.user || {});
+        return res;
+      }).then(res => {
+        this.loadNotifyHint();
+        return res;
+      }).catch(() => {
+        this.applyUser({ nickname: '', avatarUrl: '', memberLevel: 'NORMAL', points: 0 });
+        this.loadNotifyHint();
+        return null;
+      });
     });
+  },
+
+  applySubscriptionHint(subscription) {
+    if (!subscription) return;
+    const systemOk = notify.getSystemNotifyOk();
+    const hint = reminderHintOf({
+      permissionState: systemOk ? 'all' : 'none',
+      quotaLevel: subscription.level || (Number(subscription.quota) > 0 ? 'ready' : 'exhausted'),
+      shortfall: subscription.shortfall || 0,
+    });
+    this.setData({ notifyHint: hint.text, notifyState: hint.state });
   },
 
   applyUser(user) {
@@ -89,6 +132,11 @@ Page({
 
   /* 提醒设置状态：权限三态 + 授权额度健康度（onShow 刷新，从内页返回即时更新） */
   loadNotifyHint() {
+    const cached = this._profileCache && this._profileCache.subscription;
+    if (cached && this.profileCacheFresh()) {
+      this.applySubscriptionHint(cached);
+      return Promise.resolve();
+    }
     notify.getReminderHealth().then(health => {
       const hint = reminderHintOf(health);
       this.setData({ notifyHint: hint.text, notifyState: hint.state });
@@ -109,10 +157,27 @@ Page({
   },
 
   loadAdminEntries() {
-    return api.payment.afterSales.adminStatus().then(res => {
-      this.applyAfterSalesAdminStatus(res);
-    }).catch(() => {
-      this.applyAfterSalesAdminStatus(null);
+    try {
+      const cached = wx.getStorageSync(ADMIN_STATUS_CACHE_KEY);
+      if (cached && cached.savedAt && Date.now() - cached.savedAt < ADMIN_STATUS_TTL_MS) {
+        this.applyAfterSalesAdminStatus(cached.payment);
+        return Promise.resolve(cached.payment || null);
+      }
+    } catch (e) {}
+    return Promise.all([
+      api.payment.afterSales.adminStatus().catch(() => null),
+      api.feedback.adminStatus().catch(() => null),
+    ]).then(([paymentStatus, feedbackStatus]) => {
+      this._feedbackAdmin = !!(feedbackStatus && feedbackStatus.isAdmin);
+      this.applyAfterSalesAdminStatus(paymentStatus);
+      try {
+        wx.setStorageSync(ADMIN_STATUS_CACHE_KEY, {
+          savedAt: Date.now(),
+          payment: paymentStatus,
+          feedback: feedbackStatus,
+        });
+      } catch (e) {}
+      return paymentStatus;
     });
   },
 
@@ -165,14 +230,19 @@ Page({
   onAdminEntry() {
     if (this._adminEntryChecking) return;
     this._adminEntryChecking = true;
-    api.feedback.adminStatus().then(res => {
+    const enter = isAdmin => {
       this._adminEntryChecking = false;
-      if (res && res.isAdmin) {
-        wx.navigateTo({ url: '/pages/admin-feedback/admin-feedback' });
+      if (isAdmin) wx.navigateTo({ url: '/pages/admin-feedback/admin-feedback' });
+    };
+    try {
+      const cached = wx.getStorageSync(ADMIN_STATUS_CACHE_KEY);
+      if (cached && cached.feedback && Date.now() - cached.savedAt < ADMIN_STATUS_TTL_MS) {
+        enter(cached.feedback.isAdmin === true);
+        return;
       }
-    }).catch(() => {
-      /* 校验失败按无权限处理；反馈管理页自身仍会再次鉴权。 */
-      this._adminEntryChecking = false;
-    });
+    } catch (e) {}
+    api.feedback.adminStatus()
+      .then(res => enter(!!(res && res.isAdmin)))
+      .catch(() => enter(false));
   },
 });

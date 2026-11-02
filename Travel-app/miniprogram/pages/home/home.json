@@ -14,5 +14,7 @@
     "snackbar": "/components/snackbar/snackbar",
     "van-loading": "/components/vendor/vant/loading/index"
   },
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark",
   "navigationStyle": "custom"
 }

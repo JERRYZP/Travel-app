@@ -319,6 +319,8 @@ async function preview(db, userId, { startDate, endDate, spotIds = [], segments 
     events,
     byDeparture: groupByDeparture(events, nowTs, startDate),
     bySpot: groupBySpot(events, nowTs),
+    cartSummary: cart.summarize(cartRes.data || []),
+    cartVersion: cart.cartVersionOf(cartRes.data || []),
     closedSpots,
     closedDaySkips,
     empty: events.length === 0,

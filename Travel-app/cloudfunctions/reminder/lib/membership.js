@@ -112,8 +112,8 @@ function enforcementModeOf() {
   return membershipEnforcement.envModeOf();
 }
 
-function enforcementState(db) {
-  return membershipEnforcement.read(db);
+function enforcementState(db, options = {}) {
+  return membershipEnforcement.read(db, options);
 }
 
 function testOpenIdsOf() {
@@ -438,10 +438,17 @@ function packageViews(snapshot, sales = null) {
 async function status(db, userId, nowTs = time.now(), options = {}) {
   const enforcementPromise = options.enforcementState
     ? Promise.resolve(options.enforcementState)
-    : enforcementState(db);
+    : enforcementState(db, { cache: options.configCache === true });
+  const hasUser = Object.prototype.hasOwnProperty.call(options, 'user');
+  const hasActiveTasks = Object.prototype.hasOwnProperty.call(options, 'activeTasks');
+  const hasLatestTask = Object.prototype.hasOwnProperty.call(options, 'latestTask');
   const [userRes, taskRes, latestTaskRes, sales, enforcement] = await Promise.all([
-    db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
-    db.collection(COLLECTIONS.REMINDER_TASKS)
+    hasUser
+      ? Promise.resolve({ data: options.user ? [options.user] : [] })
+      : db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
+    hasActiveTasks
+      ? Promise.resolve({ data: Array.isArray(options.activeTasks) ? options.activeTasks : [] })
+      : db.collection(COLLECTIONS.REMINDER_TASKS)
       .where({
         userId,
         backendStatus: ReminderBackendStatus.WAITING,
@@ -449,12 +456,14 @@ async function status(db, userId, nowTs = time.now(), options = {}) {
       })
       .get(),
     // 退款“是否使用过”的证据必须覆盖历史任务，不能只看未来 WAITING。
-    db.collection(COLLECTIONS.REMINDER_TASKS)
-      .where({ userId })
-      .orderBy('createdAt', 'desc')
-      .limit(1)
-      .get(),
-    membershipSales.read(db),
+    hasLatestTask
+      ? Promise.resolve({ data: options.latestTask ? [options.latestTask] : [] })
+      : db.collection(COLLECTIONS.REMINDER_TASKS)
+        .where({ userId })
+        .orderBy('createdAt', 'desc')
+        .limit(1)
+        .get(),
+    membershipSales.read(db, { cache: options.configCache === true }),
     enforcementPromise,
   ]);
 

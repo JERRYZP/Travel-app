@@ -19,7 +19,8 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 const calls = {
   add: [], commit: [], remove: [], updates: [], toasts: [], loading: [], access: [],
-  navigations: [], payments: [], authRequests: [], planDates: [], addDates: [],
+  navigations: [], payments: [], authRequests: [], planDates: [], planQuickDates: [], addDates: [],
+  quickCommit: [],
 };
 let accessResult = { action: 'ready' };
 let commitOverride = null;
@@ -92,6 +93,10 @@ const apiStub = {
           },
         });
       },
+      planQuickDates(data) {
+        calls.planQuickDates.push(JSON.parse(JSON.stringify(data)));
+        return apiStub.reminder.cart.planDates(data);
+      },
       addDates(data) {
         calls.addDates.push(JSON.parse(JSON.stringify(data)));
         return apiStub.reminder.cart.planDates(data).then(plan =>
@@ -128,25 +133,12 @@ const apiStub = {
       },
       commit(data) {
         calls.commit.push(data);
-        if (commitError) {
-          if (commitError.errorCode === 1008 && commitError.subscription) {
-            authAvailableQuota = Number(commitError.subscription.availableQuota) || 0;
-            authLedgerQuota = Number(commitError.subscription.quota) || authAvailableQuota;
-          }
-          return Promise.reject(commitError);
-        }
-        if (commitOverride) return Promise.resolve(Object.assign({}, commitOverride));
-        const disabled = data && data.disableReminders === true;
-        const count = Array.isArray(data && data.cartIds) ? data.cartIds.length : 1;
-        return Promise.resolve({
-          success: true,
-          createdItems: count,
-          createdTasks: disabled ? 0 : count,
-          addedTripItemCount: count,
-          noReminder: disabled ? count : 0,
-          disableReminders: disabled,
-          tripId: 'trip-1',
-        });
+        return commitResult(data, false);
+      },
+      quickCommit(data) {
+        calls.commit.push(data);
+        calls.quickCommit.push(JSON.parse(JSON.stringify(data)));
+        return commitResult(data, true);
       },
       remove(cartId) {
         calls.remove.push(cartId);
@@ -180,6 +172,30 @@ const apiStub = {
     },
   },
 };
+
+function commitResult(data, quickCommit) {
+        if (commitError) {
+          if (commitError.errorCode === 1008 && commitError.subscription) {
+            authAvailableQuota = Number(commitError.subscription.availableQuota) || 0;
+            authLedgerQuota = Number(commitError.subscription.quota) || authAvailableQuota;
+          }
+          return Promise.reject(commitError);
+        }
+        if (commitOverride) return Promise.resolve(Object.assign({}, commitOverride));
+        const disabled = data && data.disableReminders === true;
+        const count = quickCommit
+          ? (Array.isArray(data && data.visitDates) ? data.visitDates.length : 1)
+          : (Array.isArray(data && data.cartIds) ? data.cartIds.length : 1);
+        return Promise.resolve({
+          success: true,
+          createdItems: count,
+          createdTasks: disabled ? 0 : count,
+          addedTripItemCount: count,
+          noReminder: disabled ? count : 0,
+          disableReminders: disabled,
+          tripId: 'trip-1',
+        });
+}
 
 const notifyStub = {
   SUBSCRIBE_TEMPLATE_ID: 'test-template',
@@ -330,7 +346,7 @@ function instantiateComponent(def) {
   hub.onDateConfirm({ detail: { visitDate: '2026-10-03' } });
   await wait(20);
   eq(calls.commit[0].disableReminders, true, '加入时由最终提交明确不提醒');
-  eq(calls.commit[0].cartId, 'cart-new', '只提交本次新增的清单项');
+  eq(calls.commit[0].visitDates.join(','), '2026-10-03', '快捷入口直接提交本次日期，不写主流程清单');
   eq(calls.commit[0].channels, undefined, '仅加行程不传提醒通道');
   eq(calls.toasts[calls.toasts.length - 1], '已加入行程，未设置提醒', '成功文案与实际动作一致');
   eq(calls.toasts.includes('提醒已开启'), false, '不再误报提醒已开启');
@@ -343,7 +359,7 @@ function instantiateComponent(def) {
   hub.onDateConfirm({ detail: { visitDate: '2026-10-04' } });
   await wait(20);
   eq(calls.commit[0].channels[0], 'OFFICIAL_ACCOUNT', '授权足额时创建提醒任务');
-  eq(calls.commit[0].cartId, 'cart-new', '提醒补录同样只提交本次项');
+  eq(calls.commit[0].visitDates.join(','), '2026-10-04', '提醒补录同样只提交本次日期');
   eq(calls.toasts[calls.toasts.length - 1], '提醒已设置，放票前见', '提醒成功文案明确');
 
   calls.add = []; calls.commit = []; calls.toasts = [];
@@ -364,11 +380,11 @@ function instantiateComponent(def) {
   hub.data.dateAction = { spotId: 'gugong', remindOn: true };
   const cancelledAuthFlow = hub.onDateConfirm({ detail: { visitDate: '2026-10-06' } });
   await wait(20);
-  eq(calls.add.length, 1, '先暂存本次清单项');
+  eq(calls.add.length, 0, '快捷入口不再先写主流程清单');
   eq(calls.commit.length, 0, '授权不足时绝不提交提醒');
   await hub.onReminderAuthClose();
   await cancelledAuthFlow;
-  eq(calls.remove.join(','), 'cart-new', '中止后回滚本次暂存项');
+  eq(calls.remove.length, 0, '未写暂存清单，中止时无需回滚');
   eq(calls.toasts[calls.toasts.length - 1], '已取消，本次未设置提醒', '明确告知用户未设置提醒');
 
   console.log('\n=== 3.2 景点页勾了提醒但已过放票时间，不得谎报提醒成功 ===');
@@ -414,9 +430,9 @@ function instantiateComponent(def) {
   eq(hub.data.dateMultiple, true, '景点页启用日期多选');
   hub.onDateConfirm({ detail: { visitDates: ['2026-11-03', '2026-11-05'] } });
   await wait(30);
-  eq(calls.add.length, 2, '两个日期分别加入本次暂存清单');
+  eq(calls.add.length, 0, '两个日期都不写主流程清单');
   eq(calls.commit.length, 1, '多日期只发起一次提交');
-  eq(calls.commit[0].cartIds.join(','), 'cart-multi-1,cart-multi-2', '只提交本次两个日期');
+  eq(calls.commit[0].visitDates.join(','), '2026-11-03,2026-11-05', '只提交本次两个日期');
   eq(calls.commit[0].cartId, undefined, '多日期不误用单条 cartId');
   eq(calls.authRequests.length, 0, '授权足够时不再打开补授权浮层');
   eq(calls.toasts[calls.toasts.length - 1], '已加入 2 个日期 · 已设置 2 个提醒',
@@ -532,7 +548,7 @@ function instantiateComponent(def) {
   await paidThenAuthFlow;
   eq(calls.authRequests.length, 1, '用户只补了实际缺少的 1 次授权');
   eq(calls.commit.length, 1, '权益和授权齐备后自动重提原提醒');
-  eq(calls.commit[0].cartId, 'cart-paid-auth', '自动重提仍只消费原暂存项');
+  eq(calls.commit[0].visitDates.join(','), '2026-11-24', '自动重提仍使用原景点日期');
   eq(hub.data.showReminderAuth, false, '完成后关闭设置提醒浮层');
   eq(calls.toasts[calls.toasts.length - 1], '提醒已设置，放票前见',
     '支付后不要求再次点击底部按钮，直接反馈完成');
@@ -589,7 +605,7 @@ function instantiateComponent(def) {
   await hub.onReminderAuthContinue();
   await mixedDateFlow;
   eq(calls.commit.length, 1, '用户确认后才提交完整日期集合');
-  eq(calls.commit[0].cartIds.join(','), 'cart-mixed-1,cart-mixed-2',
+  eq(calls.commit[0].visitDates.join(','), '2026-11-04,2026-11-10',
     '过期日期仍按用户确认加入行程');
   eq(calls.toasts[calls.toasts.length - 1],
     '已加入 2 个日期 · 已设置 1 个提醒，1 项已过期',
@@ -597,7 +613,7 @@ function instantiateComponent(def) {
   planDatesOverride = null;
   commitOverride = null;
 
-  console.log('\n=== 3.8.1 部分日期失效时可返回重选并清理本次暂存 ===');
+  console.log('\n=== 3.8.1 部分日期失效时可返回重选且不产生暂存 ===');
   calls.add = []; calls.commit = []; calls.toasts = []; calls.remove = [];
   calls.authRequests = []; calls.planDates = []; calls.addDates = [];
   addIdQueue = ['cart-reselect-1', 'cart-reselect-2'];
@@ -629,8 +645,7 @@ function instantiateComponent(def) {
   await hub.onReminderAuthReselect();
   await reselectFlow;
   eq(calls.commit.length, 0, '重选日期时不提交任何提醒');
-  eq(calls.remove.join(','), 'cart-reselect-1,cart-reselect-2',
-    '重选时清理本次全部暂存项');
+  eq(calls.remove.length, 0, '快捷入口未写暂存项，重选时无需清理');
   eq(hub.data.showDateSheet, true, '重选后重新打开日期选择器');
   planDatesOverride = null;
 
@@ -660,7 +675,7 @@ function instantiateComponent(def) {
   eq(hub.data.showReminderAuth, true, '竞态失败后仍停留在设置提醒浮层');
   eq(hub.data.reminderAuth.shortfall, 1, '浮层刷新真实剩余缺口');
   eq(hub.data.reminderCheckoutReady, false, '授权不足时不能重试提交');
-  eq(calls.remove.length, 0, '暂存项保留到用户处理授权');
+  eq(calls.remove.length, 0, '快捷入口不写暂存项，补授权无需保留草稿');
 
   commitError = null;
   await hub.onReminderAuthPrimary();
@@ -668,7 +683,7 @@ function instantiateComponent(def) {
   await hub.onReminderAuthContinue();
   await wait(20);
   eq(calls.commit.length, 2, '用户确认后重试原提交');
-  eq(calls.commit[1].cartId, 'cart-race-auth', '重试仍只消费原暂存项');
+  eq(calls.commit[1].visitDates.join(','), '2026-11-18', '重试仍使用原景点日期');
   eq(hub.data.showReminderAuth, false, '重试成功后关闭浮层');
   eq(calls.toasts[calls.toasts.length - 1], '提醒已设置，放票前见',
     '最终由服务端成功结果给出提醒完成反馈');
@@ -728,7 +743,7 @@ function instantiateComponent(def) {
   await hub.onReminderAuthClose();
   await wait(10);
   eq(hub.data.showReminderAuth, false, '用户可以关闭统一提醒检查浮层');
-  eq(calls.remove.join(','), 'cart-limit-1,cart-limit-2,cart-limit-3', '关闭时清理本次未提交的临时清单');
+  eq(calls.remove.length, 0, '快捷入口未写临时清单，关闭时无需清理');
 
   console.log('\n=== 3.3 会员超额原地支付后自动设置提醒 ===');
   calls.add = []; calls.commit = []; calls.remove = []; calls.navigations = []; calls.payments = []; calls.toasts = [];
@@ -778,8 +793,8 @@ function instantiateComponent(def) {
   await wait(20);
   eq(calls.payments[0].packageId, 'task_pack_5', '在景点浮层原地购买服务端指定套餐');
   eq(calls.commit.length, failedCommitCount + 1, '支付确认后自动重提本次提醒');
-  eq(calls.commit[calls.commit.length - 1].cartId, 'cart-limit-member',
-    '支付后只继续原暂存项');
+  eq(calls.commit[calls.commit.length - 1].visitDates.join(','), '2026-11-18',
+    '支付后只继续原景点日期');
   eq(hub.data.showReminderAuth, false, '支付并设置提醒后关闭统一提醒检查浮层');
   eq(hub.data.taskLimitPayConfirm, null, '支付成功后关闭确认层');
   eq(calls.toasts[calls.toasts.length - 1], '提醒已设置，放票前见',
@@ -796,11 +811,10 @@ function instantiateComponent(def) {
     requested: 1,
     shortfall: 1,
   };
-  hub._taskLimitCartIds = ['cart-benefits'];
   hub._taskLimitClosing = false;
   await hub.onReminderAuthBenefits();
   await wait(10);
-  eq(calls.remove.join(','), 'cart-benefits', '权益入口同样清理本次临时清单');
+  eq(calls.remove.length, 0, '快捷入口未写临时清单，权益入口无需清理');
   eq(String(calls.navigations[0] || '').includes('packageId=task_pack_5'), true, '权益入口仍保留当前套餐意向');
   eq(calls.payments.length, 0, '权益入口不会发起支付');
   commitError = null;
@@ -877,7 +891,7 @@ function instantiateComponent(def) {
   await hub.onReminderAuthClose();
   await cancelMultiFlow;
   eq(calls.commit.length, 0, '授权取消时多日期不提交');
-  eq(calls.remove.join(','), 'cart-cancel-1,cart-cancel-2', '授权取消时回滚本次全部暂存项');
+  eq(calls.remove.length, 0, '未写暂存清单，授权取消时无需回滚');
 
   console.log('\n=== 4. 首页“约其他日”复用单日期提醒流程 ===');
   const home = instantiate(loadPage('miniprogram/pages/home/home.js'));
@@ -894,7 +908,7 @@ function instantiateComponent(def) {
   eq(home.data.dateAction.remindOn, true, '首页挽回默认设置提醒');
 
   calls.add = []; calls.commit = []; calls.toasts = []; calls.loading = [];
-  calls.planDates = []; calls.addDates = []; calls.navigations = [];
+  calls.planDates = []; calls.planQuickDates = []; calls.addDates = []; calls.quickCommit = []; calls.navigations = [];
   authAvailableQuota = 1; authLedgerQuota = 1;
   membershipStatusOverride = null;
   const okFlow = home.onRecoverConfirm({ detail: { visitDate: '2026-10-06' } });
@@ -902,7 +916,7 @@ function instantiateComponent(def) {
   eq(calls.loading[0], 'show:正在设置...', '提交期间有加载反馈');
   eq(calls.loading[calls.loading.length - 1], 'hide', '完成后收起加载');
   eq(calls.planDates[0].visitDates.join(','), '2026-10-06', '共享流程只提交首页选中的一个日期');
-  eq(calls.addDates[0].visitDates.join(','), '2026-10-06', '服务端日期预检同样只针对一个日期');
+  eq(calls.quickCommit[0].visitDates.join(','), '2026-10-06', '快捷提交同样只针对一个日期');
   eq(calls.toasts[calls.toasts.length - 1], '提醒已设置，放票前见', '约其他日复用景点页成功反馈');
   eq(home.data.recoveryPromptIds.length, 0, '提交成功后收起即时挽回气泡');
   eq(homeReloads, 1, '共享流程完成后刷新首页聚合数据');
@@ -922,6 +936,7 @@ function instantiateComponent(def) {
   authAvailableQuota = 1; authLedgerQuota = 1;
   await home.onReminderAuthPrimary();
   await wait(20);
+  await home.onReminderAuthContinue();
   await authFlow;
   eq(calls.authRequests.length, 1, '一次点击只补一次授权');
   eq(calls.commit.length, 1, '补齐授权后继续原单日期提交');
@@ -958,6 +973,7 @@ function instantiateComponent(def) {
   await home.onReminderAuthPay();
   eq(Boolean(home.data.taskLimitPayConfirm), true, '首页原浮层内打开支付确认');
   eq(calls.navigations.length, 0, '支付确认前不发生会员页跳转');
+  paymentResult = { status: 'PAID_GRANTED', orderId: 'order-home-limit' };
   membershipStatusOverride = Object.assign({}, membershipStatusOverride, {
     membership: Object.assign({}, membershipStatusOverride.membership, {
       member: true,
@@ -967,6 +983,7 @@ function instantiateComponent(def) {
   });
   await home.onReminderAuthPayConfirm();
   await wait(20);
+  await home.onReminderAuthContinue();
   await limitFlow;
   eq(calls.payments.length, 1, '用户主动确认后才发起支付');
   eq(calls.commit.length, 1, '权益到账后自动继续原单日期提醒');

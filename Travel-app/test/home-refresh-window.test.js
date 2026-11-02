@@ -37,7 +37,7 @@ const ttl = (releaseAts) => w.ttlOf(homeWith(releaseAts), NOW);
 console.log('=== 1. 窗口常量就是三个档位 ===');
 eq(w.WINDOW_HOT_MS, 30 * 1000, '热 = 30 秒');
 eq(w.WINDOW_WARM_MS, 60 * 1000, '温 = 60 秒');
-eq(w.WINDOW_COLD_MS, 180 * 1000, '冷 = 180 秒');
+eq(w.WINDOW_COLD_MS, 5 * 60 * 1000, '冷 = 5 分钟');
 eq(w.DEFAULT_TTL_MS, w.WINDOW_HOT_MS, '异常兜底 = 30 秒（宁可多问）');
 
 console.log('=== 2. 放票窗口内 → 30 秒 ===');
@@ -50,7 +50,7 @@ console.log('=== 3. 今天稍晚还有票 → 60 秒 ===');
 eq(ttl([at(61)]), w.WINDOW_WARM_MS, '61 分钟后放票（今天）→ 温');
 eq(ttl([at(300)]), w.WINDOW_WARM_MS, '5 小时后放票（今天）→ 温');
 
-console.log('=== 4. 今天已经没有要翻的状态 → 180 秒 ===');
+console.log('=== 4. 今天已经没有要翻的状态 → 5 分钟 ===');
 eq(ttl([at(-30)]), w.WINDOW_COLD_MS, '30 分钟前放完、今天没有下一场 → 冷');
 eq(ttl([at(1200)]), w.WINDOW_COLD_MS, '明天以后的放票（不在今天）→ 冷');
 eq(ttl([]), w.WINDOW_COLD_MS, '一个放票时刻都没有 → 冷');

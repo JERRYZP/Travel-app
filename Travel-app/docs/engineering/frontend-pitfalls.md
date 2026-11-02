@@ -12,7 +12,7 @@
 - 首页标记、删除、撤销后使用 `loadHome({ silent: true })`，避免列表塌缩导致页面跳回顶部。
 - 时间线加入清单后不能只改数字，列表和按钮状态必须按真实结果刷新。
 - 时间线生成成功后必须把暂存清单收敛到本次日期段 × 景点集合（`cart.pruneScope`）。只清预览、不清清单会把上一批草稿继续展示并一起提交；反过来也不能把同范围草稿误清。
-- 轻量提醒入口不能先申请授权再写 `cart.add`：先让服务端决定 `remindOn`，才能避免放票已过时白弹授权。取消或异常时回滚 `cart.add` 必须返回 Promise 并等待完成，否则用户立即重试会看到“已在清单里”。
+- 轻量提醒入口不得先写主流程 `reminder_cart`，也不得用 `cart.addDates + cart.commit` 模拟提交：先走 `cart.planQuickDates` 预检，授权与名额通过后由 `cart.quickCommit` 一次事务直接创建行程项和任务。旧版遗留的同景点 pending 行由 quickCommit 消费，其他主流程草稿不得受影响；取消授权不产生清单残留。
 - 首页行程项提醒开关必须先授权、再写接口；写操作未完成前保持锁。拒绝授权时不得调用 `tripItem.updateReminder`，关闭已有提醒不需要新增授权。
 - 景点选择状态只以 `spotId` 为键：云端 `spots.batch` 不保证按传入 ID 顺序返回，禁止用 `selectedSpotIds` 的下标去删 `selectedSpots`，否则会误删其他卡片并留下删不掉的项。
 - PAGE-003 的搜索框与景点列表在同一页：关键词只过滤同一份 `allSpots`，不能另起一套 `searchResults` 或隐藏已选模块；选择后必须同时刷新 `selectedSpots`、`allSpots`、`visibleSpots` 三处，否则会出现数据已选但按钮或已选卡片没更新。
@@ -43,7 +43,7 @@
 ## 会员与支付
 
 - 付费入口只在本次提交会导致未来 `WAITING` 任务超过当前提醒名额时出现；没超额时不得展示会员价格、横幅或升级入口。
-- 轻量入口的会员浮层必须复用 `membershipPay` 和共同的 `payment-confirm-sheet`，不能自建订单或复制支付状态机。只有服务端确认 `PAID_GRANTED` 后，才能重提本次原 `cartId/cartIds` 并提示提醒设置成功。
+- 轻量入口的会员浮层必须复用 `membershipPay` 和共同的 `payment-confirm-sheet`，不能自建订单或复制支付状态机。只有服务端确认 `PAID_GRANTED` 后，才能用本次原 `spotId/visitDates` 重提 `cart.quickCommit` 并提示提醒设置成功。
 - 设置提醒浮层内的名额支付成功后必须自动继续被中断的提交；若授权仍有缺口，保留浮层并在补齐后自动完成，不要求用户重新找到底部提交按钮。取消支付保留清单、日期、提前量与授权状态，不追加营销弹窗。
 - `cart.commit` 的服务端订阅额度二次校验失败（`1008`）不是普通 Toast 错误：页面必须刷新授权卡、保留原暂存项，并在用户补齐后重试同一个 `cartId/cartIds`。
 - 行程项开启提醒收到 `1008` 时不能从异步 catch 里直接调用 `wx.requestSubscribeMessage`，此时已丢失用户手势上下文；保留原状态并提示用户重新点击，由下一次点击重新走授权闸门。
@@ -102,9 +102,12 @@
 ## 首页首屏（2026-09-30 三层渲染）
 
 - 首页先出内容再原地替换：**缓存层**（`utils/home-cache.js` 回放上次的 bootstrap 返回体）→ **骨架层**（`utils/empty-preview.js` 的本地切片）→ **实况层**（云端返回）。
-- 首页的 30/60/180 秒复用窗口不能挡住写操作后的新状态：`cart.commit`、行程项提醒开关、`subscribe.add` 成功后必须递增 `app.globalData.homeDataVersion`；`home.js` 只复用“版本号不旧于当前值”的缓存。否则设完提醒或补完授权返回首页，额度预警和临近放票横幅会被旧缓存压住。
+- 首页的 30 秒 / 60 秒 / 5 分钟复用窗口不能挡住写操作后的新状态：`cart.commit`、行程项提醒开关、`subscribe.add` 成功后必须递增 `app.globalData.homeDataVersion`；`home.js` 只复用“版本号不旧于当前值”的缓存。否则设完提醒或补完授权返回首页，额度预警和临近放票横幅会被旧缓存压住。
 - ⚠️ 骨架层必须用 `wx:elif` 接在空态块之后，**不能是独立的 `wx:if`**：WXML 的 `wx:else` 绑的是紧邻的上一个 `wx:if/wx:elif`，中间插一个独立 `wx:if` 会让下面的行程墙 `wx:else` 改绑到骨架块上，结果空态和行程墙同时渲染且不报错。
 - 骨架层期间 `loading` 必须保持 `true`，**不能渲染空态块**：否则返回用户会先看到「你还没有行程」再跳变成状态墙，比白屏更糟。
 - 缓存只做首屏填充，**不参与任何业务判定**；缓存与实况必须共用同一个 `buildHomeData()` 纯函数，再逐键比对后只写变化的字段（`applyHomeData`）——这是「不跳变」的结构性保证。
 - `empty-preview.js` 的本地切片是 `data/spots.json` 的只读投影，漂移由 `test/home-optimistic.test.js` 钉死（含一条自动推导「哪些字段影响渲染」的探针）。
 - 首页热门景点预览改为**首屏渲染之后**单独拉（`loadHotSpots`）：它要付一次 `spots` 云函数冷启动，塞进 bootstrap 会让用户等两次冷启动。云端结果仍走 `applyHomeData`，内容一致时零 setData。
+- 景点列表、详情、搜索和批量读取统一走 `utils/spots-static.js` 的包内/缓存快照；不要恢复页面级 `spots.*` 云函数调用。远程快照同步每天最多一次，失败必须静默留在包内版本。
+- `profile` 和 `setup` 使用页面级 bootstrap 与 5 分钟内存窗口；只有写操作、支付结果变化、授权补齐或缓存过期才重新取云。不要恢复每次 `onShow` 无条件多接口并发。
+- 写命令返回 `cartSummary` / `statusPatches` 后应原地补丁；不要为了确认一次点击再串行重拉 `timeline.preview` 和 `cart.list`。

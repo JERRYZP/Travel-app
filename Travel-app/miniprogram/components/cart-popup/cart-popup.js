@@ -175,28 +175,28 @@ Component({
     /** 写入提醒开关并刷新 */
     applyRemind(cartId, remindOn) {
       this.closeDropdown();
-      api.reminder.cart.updateRemindOn({ cartId, remindOn }).then(() => {
+      api.reminder.cart.updateRemindOn({ cartId, remindOn }).then(result => {
         this.loadCart();
-        this.triggerEvent('change');
+        this.triggerEvent('change', { result });
       }).catch(err => api.toastError(err));
     },
 
     onRemove(e) {
       const cartId = e.currentTarget.dataset.id;
       this.closeDropdown();
-      api.reminder.cart.remove(cartId).then(() => {
+      api.reminder.cart.remove(cartId).then(result => {
         this.loadCart();
-        this.triggerEvent('change');
+        this.triggerEvent('change', { result });
       }).catch(err => api.toastError(err));
     },
 
     onClearTap() { this.closeDropdown(); this.setData({ showClearDialog: true }); },
 
     onClearConfirm() {
-      api.reminder.cart.clear().then(() => {
+      api.reminder.cart.clear().then(result => {
         this.setData({ showClearDialog: false });
         this.loadCart();
-        this.triggerEvent('change');
+        this.triggerEvent('change', { result });
       }).catch(err => api.toastError(err));
     },
 
