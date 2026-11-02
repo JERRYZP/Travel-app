@@ -1,6 +1,8 @@
 # Travel-app 前端接口契约 V1.3
 
 > 面向：前端（微信小程序页面开发）
+> 2026-11-02 更新：新增客服工作台。管理员可通过 `adminOrders.list/detail` 查询全部会员订单，售后列表补全昵称、完整 OpenID 与关键词搜索；会员购买总开关保留在页面顶部。
+> 2026-11-02 更新：新增会员购买总开关 `payment_config/membership_sales`。暂停只阻止新订单和新发起支付；已支付订单继续查单与发权益，会员状态、订单、退款和售后不受影响。
 > 2026-10-30 更新：会员支付新增独立退款生命周期、订单详情、用户售后申请和小程序售后工作台；`membership.orders` 返回当前用户最近 50 笔会员 / 提醒名额订单及可执行动作，退款结果以微信支付回调或主动查单为准。
 > 2026-10-28 更新：`spots.list` / `detail` / `batch` 的景点卡新增 `aliases`，供 PAGE-003 在页面内做名称 / 简称 / 别名 / spotId 的本地模糊过滤。PAGE-003 与 PAGE-004 已合并为单页，页面不再调用 `spots.search`、`spots.searchHistory`、`spots.clearSearchHistory`；这三个接口保留兼容。
 > 2026-10-27 更新：新增会员与提醒名额 `membership.*`、`payment.*`；该功能初始价格为会员 ¥2/30 天提升至 10 个，加购 ¥2 记录 5 个名额并在会员有效期内生效；2026-10-30 新订单价格调整为 ¥3，历史订单继续按原金额处理。支付与权益只由服务端订单确认后发放，不承诺平台自动广告可被关闭。
@@ -49,6 +51,7 @@
 | 1017 | 已过放票时间，提醒无法开启或取消 | Toast 同文案（菜单此时已不渲染该入口，兜底旧版本小程序） |
 | 1020 | 反馈内容为空 | Toast「请填写反馈内容」 |
 | 1026 | 提醒名额不足 | 进入会员页或提醒页内付费入口；保留原清单并展示真实缺口 |
+| 1032 | 会员购买暂停中 | 关闭支付入口；保留清单和会员/订单/售后状态，稍后由服务端恢复 |
 | 1099 | 未知 action | Toast |
 | 1500 | 服务端异常 | Toast「服务异常，请稍后重试」 |
 
@@ -838,10 +841,17 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
       taskRemaining: 3,
       ownedTaskPackCount: 0,
       ownedTaskPackSlots: 0
+    },
+    membershipSales: {
+      state: "OPEN",
+      purchaseEnabled: true,
+      message: ""
     }
   }
 }
 ```
+
+- `membershipSales` 与 `membership.status.sales` 同口径，供 PAGE-010 在不增加额外请求时把“开通/升级”降级为“查看”；不能由客户端自行推断。
 
 #### `user.updateProfile` — 保存头像/昵称/手机号（编辑资料页）
 
@@ -931,6 +941,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - 用户权益账本同时保存 `taskPackCount`（展示用包数）与 `taskPackSlots`（实际生效的名额总数）。旧用户没有 `taskPackSlots` 时只按历史每包 5 个兼容读取，迁移后以服务端计算值为准。
 - 老用户保护池与新增池彼此独立：任务创建时若用户尚未进入会员限制（`off`，或 `test` 模式下不在白名单），任务进入历史保护池；只有 `test` 白名单或 `all` 模式下新建的任务进入免费/会员/加购新增池。无 `quotaPool` 字段的旧任务一律兼容为保护池。`taskLimit / taskUsed / taskRemaining` 只描述新增池，`protectedTaskUsed` 单独返回保护池占用。
 - `reminder` 的会员限制受 `MEMBERSHIP_ENFORCEMENT_MODE=off|test|all` 控制，默认 `test`；`MEMBERSHIP_TEST_OPENIDS` 可覆盖白名单。正式发布前不得切 `all`。
+- 会员购买开关独立于会员限制灰度。唯一真身是 `payment_config/membership_sales`；`state=OPEN|PAUSED`。暂停后 `membership.createOrder` 与待支付订单的 `payment.create` 返回 `1032`，但 `payment.query`、支付回调、权益发放、退款和售后继续执行。配置读取失败时新购买按暂停处理。
 - 支付成功唯一依据是服务端取得微信支付 `trade_state=SUCCESS`；`wx.requestPayment.success` 只代表客户端流程结束。
 - 主订单状态固定 `PENDING / PAID / CLOSED`；退款生命周期独立存于 `refundStatus`，不混入主状态。
 
@@ -941,6 +952,11 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 返回：{
   success: true,
   enforced: Boolean, // 当前 OpenID 是否受提醒名额限制
+  sales: {
+    state: 'OPEN' | 'PAUSED',
+    purchaseEnabled: Boolean,
+    message: String
+  },
   membership: {
     member: Boolean,
     memberLevel: 'NORMAL' | 'MEMBER',
@@ -972,6 +988,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 }
 ```
 
+- 停售期间套餐仍可展示价格和权益，但 `available=false`；客户端不得从 `sales.state` 自行推导订单或权益状态。
+
 #### `membership.createOrder`
 
 ```javascript
@@ -990,6 +1008,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - 只有 `productType + specVersion + addedSlots + memberDays + amountFen` 全部一致且未过期的 `PENDING` 订单才可复用；旧规格订单只按 `status=PENDING` 条件关闭，不能覆盖并发回调已经置为 `PAID` 的订单。客户端取消或服务端关闭后再次购买必须生成新的 `requestId`、订单 ID 和 `outTradeNo`。
 - 新订单严格保存 `addedSlots=10`、`taskPackCountAdded=1`、`taskPackSlotsAdded=10`。旧订单缺少 `addedSlots` 时按 5 个兼容，缺少新增包数快照时按 1 包兼容；兼容值仅用于历史订单，不回写新订单规则。
 - 提醒名额不足统一返回错误码 `1026`，携带 `taskLimit`、`membership` 和 `packages`；失败时不得创建行程、任务或清空清单。
+- 会员购买暂停时返回 `1032` 和 `sales`，不得创建订单。停售只阻止新交易，不得关闭、删除或回收既有订单和权益。
 
 #### `membership.orders`
 
@@ -998,6 +1017,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 返回：{
   success: true,
   count: 2,
+  sales: { state, purchaseEnabled, message },
   items: [{
     _id, outTradeNo, packageId, productType, title,
     amountFen, amountText, addedSlots, memberDays,
@@ -1024,6 +1044,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```
 
 - 只允许查询当前 OpenID 的订单，最多 50 条，按 `createdAt` 倒序。
+- `sales.purchaseEnabled=false` 时，待支付订单的 `canPay/canRebuy=false`，`canCancel/canSync/canAfterSales` 保持按订单状态计算。
 - 不返回 `paymentResult`、微信交易号、密钥或其他支付内部字段。
 - `paymentChannel` 由服务端根据订单固化的 `paymentProvider` 和虚拟支付 `channelOrderType` 派生；iOS Apple 内购为 `APPLE`，安卓虚拟支付为 `WECHAT_VIRTUAL`，旧微信支付为 `WECHAT_PAY`。客户端不得用当前设备平台推断历史订单渠道。
 - 退款资格以 `users.lastReminderCreatedAt` 为主，并从 `reminder_tasks.createdAt` 复核；提醒创建后即使被删除仍算已使用。
@@ -1045,6 +1066,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 { action: 'query', orderId }  // 主动查单并返回 entitlementStatus
 { action: 'cancel', orderId } // 先查单；API v3 在确认未支付后向微信关单，虚拟支付无外部关单 API 时只关闭本地订单
 ```
+
+- `payment.create` 只有在待支付订单准备发起新支付时才读取会员购买开关。`state=PAUSED` 返回 `1032`；已经进入微信/Apple 支付窗口后完成的支付、支付回调、`payment.query` 和权益补偿不受阻断。
 
 ```javascript
 返回：{
@@ -1115,7 +1138,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 ```javascript
 { action: 'afterSales.adminStatus' }
-{ action: 'afterSales.adminList', status? }
+{ action: 'afterSales.adminSetMembershipSales', state: 'OPEN' | 'PAUSED', reason }
+{ action: 'afterSales.adminList', status?, keyword?, page?, pageSize? }
 { action: 'afterSales.adminDetail', caseId }
 { action: 'afterSales.adminApproveRefund', caseId }
 { action: 'afterSales.adminReject', caseId, decisionNote }
@@ -1124,10 +1148,17 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 { action: 'afterSales.adminSyncRefund', caseId }
 { action: 'afterSales.adminMigrateProtection', cursor? }
 { action: 'afterSales.adminMigrateEntitlementLedger', cursor?, dryRun? }
+{ action: 'adminOrders.list', keyword?, status?, page?, pageSize? }
+{ action: 'adminOrders.detail', orderId }
 ```
 
 - 仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用；未配置时工作台关闭，不存在代码内置兜底账号。
-- `adminStatus` 返回 `{ isAdmin, migrationCompleted, pendingCount, fundingBlockedCount }`。`pendingCount` 是未结束售后单数量，用户已取消的单不计入；`fundingBlockedCount` 是其中因商户基本账户余额不足而未能发起退款的数量，供「我的」入口和工作台顶部持续告警。非管理员数量固定返回 0。
+- `adminOrders.list` 返回订单、当前昵称、完整 OpenID、支付渠道、权益状态和关联售后摘要。`keyword` 支持商户订单号、订单 ID、完整 OpenID、售后单号和昵称；只有昵称允许部分匹配。分页参数默认 `page=1&pageSize=20`，单页最大 50。
+- `adminOrders.detail` 返回本人订单管理详情，包括用户会员状态、支付渠道、微信交易号、权益发放快照和关联售后记录。订单不存在统一返回 `1024`。
+- `afterSales.adminList` 的 `items[].user` 返回当前昵称、完整 OpenID、会员到期和已购名额；同样支持分页与关键词搜索。
+- 管理员搜索订单写 `SEARCH_ADMIN_ORDERS`，搜索售后写 `SEARCH_ADMIN_AFTER_SALES`，查看订单详情写 `VIEW_ADMIN_ORDER_DETAIL`。审计只记录关键词类型和状态，不记录原始搜索词；订单详情审计只记录交易号是否存在，不记录交易号全文。
+- `adminStatus` 返回 `{ isAdmin, migrationCompleted, pendingCount, fundingBlockedCount, membershipSales }`。`pendingCount` 是未结束售后单数量，用户已取消的单不计入；`fundingBlockedCount` 是其中因商户基本账户余额不足而未能发起退款的数量；`membershipSales` 含当前购买状态、暂停原因、更新时间和配置读取失败标记，供客服工作台展示。非管理员不返回购买配置。
+- `adminSetMembershipSales` 仅管理员可调用。暂停时必须填写原因；恢复时清空暂停原因。切换写 `admin_audit_logs`，不得依赖客户端隐藏按钮。
 - 管理员可按 `CANCELLED` 筛选并查看“用户已取消”、取消时间和取消前异常原因；取消单不显示同意退款、驳回或重试退款操作。
 - 上线前迁移完成后正式工作台已关闭迁移入口；若未来重新开启，工作台可据 `migrationCompleted=true` 自动隐藏。
 - `adminDetail` 返回订单、用户权益、支付渠道、支付查单结果、权益发放快照、支付后新增提醒数、重复支付证据和历史售后记录。系统自动补建的平台退款记录会返回 `systemGenerated=true`、退款单号和退款金额。
@@ -1304,7 +1335,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-014** 会员与提醒名额 | `membership.status`、`membership.createOrder`、`membership.orders`、`payment.create/query/cancel`；支付前确认、持久支付状态和订单入口；“我的”页常驻会员状态卡 |
 | **PAGE-015** 订单与退款详情 | `membership.orders`、`membership.orderDetail`；列表最多 50 笔，详情按本人单笔读取，主订单状态与退款状态分离，支持继续支付、取消、同步、申请售后和重新购买 |
 | **PAGE-016** 用户售后申请 | `membership.orderDetail`、`payment.afterSales.submit/cancel/list/detail/syncRights`；未到账、重复支付、未使用退款、权益不符和其他问题，未处理与无远端退款记录的异常单可取消 |
-| **PAGE-017** 售后管理 | `payment.afterSales.admin*`；仅 `AFTER_SALES_ADMIN_OPENIDS` 可见，服务端二次鉴权并写审计日志 |
+| **PAGE-017** 客服工作台 | `payment.adminOrders.list/detail`、`payment.afterSales.admin*`；仅 `AFTER_SALES_ADMIN_OPENIDS` 可见，服务端二次鉴权并写审计日志 |
 | **PAGE-013** 分享场景页 | `spots.list`（today）、`spots.batch`（national-day-2026）；点击景点后 `spots.detail` |
 | **PAGE-010-1** 提醒设置 | `subscribe.get` + 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`；缺口按钮为「补授权次数+1」，点击一次最多申请 1 条（模板未配置时「去授权」置灰） |
 | **PAGE-010-4** 帮助与反馈 | 微信原生客服 `button open-type="contact"`；无云函数调用 |

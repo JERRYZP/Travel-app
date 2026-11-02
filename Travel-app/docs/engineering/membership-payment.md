@@ -1,6 +1,6 @@
 # 会员支付、售后与提醒名额
 
-> 2026-11-01 当前状态：会员支付全链路加固代码已完成并部署 `payment` / `reminder`；生产集合、补偿游标和关键索引已创建并核验，名额账本备份、dry-run 与正式迁移均已完成；体验版 `1.1.4` 已上传，**尚未提交审核，也尚未切到会员限制全量**。`payment` 支付白名单已删除，新版客户端新订单全量使用虚拟支付；`MEMBERSHIP_ENFORCEMENT_MODE=test` 保持不变。Android 沙箱、iOS 现网 Apple 支付/平台退款记录仍待真机验收，**微信支付与退款的真实签名 HTTP 回调仍未证实**。新订单价格已于 2026-10-30 调整为 ¥3，文末 ¥2 购买/退款记录仅为调价前历史证据。
+> 2026-11-02 当前状态：会员购买断路器已创建 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），并部署 `payment` / `reminder`；云端只读冒烟通过，`paymentReconcileEveryTwoMinutes` 已恢复并核验。包含管理开关和停售态 UI 的新客户端尚未上传，真实停售切换未执行。2026-11-01 的支付全链路加固、生产集合、账本迁移与体验版 `1.1.4` 状态继续有效；会员限制仍保持 `test`，未切全量。
 >
 > 权威业务口径以 `产品文档.md` 为准，接口以 `API-契约.md` 为准，索引以 `数据库索引.md` 为准。
 
@@ -44,6 +44,15 @@ API v3 事实链：
 ```
 
 iOS Apple 内购订单在订单展示接口中返回 `paymentChannel=APPLE`。会员页购买说明和支付确认层按设备区分文案：iOS 明确退款申请与审核由 Apple 独立处理，小程序客服无法决定结果，确认层只在条件句中提示可在 App Store 购买记录申请；Android 保留 24 小时未使用、客服核实口径。订单详情提供完整说明。Apple 审核期间会员与提醒名额继续有效，拒绝退款时不回收；只有 Apple 确认退款并推送退款结果、服务端再次查单确认后，才按订单权益快照回收，且不删除已有提醒。
+
+### 会员购买断路器
+
+- `payment_config/membership_sales` 是唯一配置真身，`state=OPEN|PAUSED`。它独立于 `MEMBERSHIP_ENFORCEMENT_MODE`，不能拿会员限制灰度代替停售。
+- 暂停后，`membership.createOrder` 和待支付订单的 `payment.create` 返回 `1032`；不能创建新订单或从服务端新拉起支付。
+- 已经进入微信/Apple 支付窗口的订单仍可能完成，必须继续接收回调、主动查单、发权益和自动补偿；不得因停售拒绝已付款订单。
+- 已生效会员、提醒名额、订单列表、订单详情、退款和售后全部不受停售影响。待支付订单仍可查看、取消和同步，但 `canPay/canRebuy=false`。
+- 配置文档缺失时默认开放；配置集合读取失败时新购买失败关闭，但会员状态与订单读取继续。上线前必须先创建 `payment_config` 集合。
+- 管理切换仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用；暂停必须填写原因，切换写 `admin_audit_logs`。
 
 - 支付回调与退款回调都使用微信支付公钥模式，校验 `Wechatpay-Timestamp`、`Wechatpay-Nonce`、`Wechatpay-Signature`、`Wechatpay-Serial`。
 - `cloud1` 的 HTTP 路由已用错误签名请求验证可达并返回 401；真实签名的支付/退款回调样本尚未观察到，因此回调代码路径存在不等于端到端已通过。当前真实支付与退款到账由客户端查单、定时补偿和主动退款查询完成。
@@ -112,15 +121,26 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 - 老用户保护额度迁移已完成，正式工作台关闭迁移卡；后端仍支持按 50 人一批应急迁移。若未来重新开启入口，最后一批完成后会在 `admin_audit_logs` 写入全局完成标记，所有管理员端隐藏迁移卡，重复调用直接返回；迁移永远不会删除或改写提醒任务。
 - 本轮新增名额账本迁移 `afterSales.adminMigrateEntitlementLedger`：先分批执行 `dryRun=true` 输出差异，再按 `users._id` 游标每批 50 人正式迁移。历史包最低按 5 个、新包按权益快照累计；可确认的历史已发放订单标记 `legacyBackfill`，无法确认的订单标记人工核查并创建高优先级售后，不自动重复发放。
 
+### 客服工作台
+
+- 小程序客服工作台使用 `adminOrders.list/detail` 查询全部会员订单，使用 `afterSales.admin*` 管理售后；两端复用 `AFTER_SALES_ADMIN_OPENIDS` 白名单。
+- 会员购买开关固定在工作台最顶部，下面为「会员订单 / 售后工单」双页签。
+- 订单和售后均按 `userId -> users.openId` 关联当前昵称、完整 OpenID、会员到期和已购名额；订单不冗余保存昵称。
+- 搜索支持订单号、订单 ID、售后单号、完整 OpenID 和昵称。前四类精确匹配，昵称部分匹配；搜索结果必须在服务端二次鉴权后才返回。
+- 查看订单详情写 `VIEW_ADMIN_ORDER_DETAIL`，搜索订单和售后分别写 `SEARCH_ADMIN_ORDERS` / `SEARCH_ADMIN_AFTER_SALES`。审计不记录原始搜索词和交易号全文。
+
 ## 4. 代码边界
 
 - 唯一提醒名额规则：`cloudfunctions/reminder/lib/membership.js`
+- 会员购买开关：`cloudfunctions/{reminder,payment}/lib/membership-sales.js`
 - 订单创建：`reminder.membership.createOrder`
 - 权益硬闸门：`cart.commit`、`tripItem.updateReminder`
 - 支付、查单、退款、定时补偿：`cloudfunctions/payment/index.js`
 - 订单状态与权益发放：`cloudfunctions/payment/lib/order.js`
 - 用户确定性创建与额度锁：`cloudfunctions/{reminder,payment}/lib/user.js`、`quota-lock.js`
 - 售后资格、重复支付证据、管理员历史：`cloudfunctions/payment/lib/after-sales.js`
+- 客服工作台订单查询：`cloudfunctions/payment/lib/admin-orders.js`
+- 客服用户搜索与昵称补全：`cloudfunctions/payment/lib/admin-directory.js`
 - 老用户迁移：`cloudfunctions/payment/lib/migration.js`
 - 会员购买页：`miniprogram/pages/membership/`
 - 设置提醒内付费入口：`miniprogram/pages/setup/`
@@ -142,6 +162,8 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 - `test/payment-reconcile.test.js`
 - `test/payment-refund-callback.test.js`
 - `test/membership.test.js`
+- `test/membership-sales.test.js`
+- `test/admin-orders.test.js`
 - `test/membership-ux.test.js`
 - `test/membership-pay.test.js`
 - `test/order-refresh.test.js`

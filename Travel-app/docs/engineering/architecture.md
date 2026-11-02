@@ -36,7 +36,7 @@
 | `pages/membership-orders` | 当前用户最近 50 笔订单，点击通过本人单笔接口进入订单详情 |
 | `pages/membership-order-detail` | 订单主状态、独立退款状态、权益快照和可执行动作 |
 | `pages/membership-after-sales` | 用户提交未到账、重复支付、未使用退款等售后申请 |
-| `pages/admin-after-sales` | 管理员售后工作台、审计操作与老用户保护额度迁移 |
+| `pages/admin-after-sales` | 管理员客服工作台：会员购买开关、会员订单查询、售后工单、审计操作与老用户保护额度迁移 |
 | `pages/help-feedback` | 帮助与反馈二级入口：在线客服、意见反馈、信息纠错、我的反馈 |
 | `pages/my-feedback` | 当前用户最近 50 条反馈/纠错记录，只读 |
 | `pages/legal` | 隐私政策与用户服务协议 |
@@ -103,6 +103,7 @@ reminder.membership.createOrder
 - 老用户历史保护池 `protectedTaskQuota=max(5, 迁移时未来 WAITING 提醒数)`，迁移由管理员分批触发。是否占用新增池由任务创建时的会员灰度决定：`off` / `test` 非白名单写入保护池，`test` 白名单 / `all` 才写新增池。
 - 支付渠道按环境开关选择；缺省为微信支付 API v3，`PAYMENT_PROVIDER=VIRTUAL_PAY` 才启用虚拟支付。历史订单保存渠道后继续走原渠道，避免切环境后错误查单或退款。订单展示接口返回派生后的 `paymentChannel=APPLE|WECHAT_VIRTUAL|WECHAT_PAY`，供客户端稳定识别 iOS 退款路径，不暴露原始支付结果。
 - 订单只由 `payment` 云函数在渠道回调或主动查单确认后置为 `PAID`；客户端不能自行改会员。虚拟支付发货和退款推送必须再次查询微信订单，不信任客户端或推送正文直接发权益。
+- 会员购买总开关存于 `payment_config/membership_sales`，由 `reminder` 与 `payment` 共同读取。暂停只阻止新订单和待支付订单新发起支付；已支付查单、回调发权益、退款和售后不经过该闸门。
 - 订单创建必须带 `requestId`，以 OpenID + 请求号生成确定性订单 ID；待支付复用严格匹配完整规格，同请求改商品拒绝。售后同样以请求号幂等，并在订单上维护唯一 `activeAfterSalesCaseId`。
 - API v3 回调必须校验微信支付公钥 ID 和原始 body 签名并解密；虚拟支付使用云开发消息推送事件，回包使用 `ErrCode/ErrMsg`，iOS 退款问询额外返回 `IosRefundQueryResponse`。
 - `orders.status` 保持 `PENDING/PAID/CLOSED`；退款生命周期独立写入 `refundStatus`，历史 `REFUNDED` 只兼容展示。
@@ -110,6 +111,7 @@ reminder.membership.createOrder
 - 虚拟支付 `/xpay/query_order` 没有商品 ID/数量字段；商品身份在下单签名前按套餐配置校验，发放前按订单固化 `virtualProductId` 复核。
 - 2 分钟补偿使用 `payment_reconcile_state` 的 `failedGrants / pendingPayments / refundProcessing / autoChecking` 四条独立游标，每队列有批量与时间预算，避免固定前 100 条造成尾部饥饿。
 - 售后证据、审核结果和退款单号存 `after_sales_cases`；敏感查看与审核操作写 `admin_audit_logs`。
+- 客服工作台通过 `adminOrders.list/detail` 查询全部会员订单，并在读取时按 `orders.userId -> users.openId` 补全昵称、会员状态和已购名额；订单不冗余保存昵称。售后列表同样按 `userId` 补全用户信息。
 - 售后工作台仅对 `AFTER_SALES_ADMIN_OPENIDS` 开放，所有操作服务端二次鉴权。
 
 ## 数据真身与镜像

@@ -45,6 +45,7 @@
 | `RULE-REMINDERCFG-002` | `产品文档.md` 3.5 / PAGE-002 | 轻量提醒入口订阅授权补充后继续原动线 | `产品文档.md` `REMINDER-RULE-009`、`docs/engineering/domain-rules.md` | `delegated` |
 | `RULE-MEMBER-001` | `产品文档.md` PAGE-008 / PAGE-014 | 免费 5 个提醒名额、会员 30 天 15 个、有效会员可加购 10 个、老用户固定保护额度、仅超额时出现付费 | `产品文档.md`、`docs/engineering/domain-rules.md`、`docs/engineering/membership-payment.md` | `delegated` |
 | `RULE-PAY-001` | `API-契约.md` 会员与支付 | 订单金额服务端决定；API v3 与虚拟支付双通道、按订单固化渠道；请求号幂等、额度锁、持久化补偿游标；退款生命周期与本单权益快照回收；售后工作台审计 | `API-契约.md`、`.claude/rules/deployment.md`、`docs/engineering/membership-payment.md`、`docs/engineering/payment-v3-runbook.md`、`docs/engineering/payment-virtual-runbook.md` | `delegated` |
+| `RULE-SALES-001` | 2026-11-02 会员购买断路器 | 独立停售开关只阻止新下单和新发起支付；已付款、查单、权益、退款和售后继续；唯一配置为 `payment_config/membership_sales` | `API-契约.md`、`.claude/rules/deployment.md`、`docs/engineering/membership-payment.md`、`数据库索引.md` | `delegated` |
 | `RULE-NOTIFYOPS-001` | `CLAUDE.md` 128-137 | 状态收敛、台账自愈、发送链路 | `docs/engineering/reminder-troubleshooting.md`、`.claude/rules/deployment.md` | `delegated` |
 | `RULE-AUTH-001` | `CLAUDE.md` 138-139 | 无感登录、资料编辑与反馈管理 | `docs/engineering/architecture.md` | `extracted` |
 | `RULE-DIFF-001` | `CLAUDE.md` 140-143 | 难度真身、mock/seed 与数据确认 | `.claude/rules/data-contracts.md` | `extracted` |
@@ -55,6 +56,7 @@
 | `RULE-COMMAND-001` | `CLAUDE.md` 150-155 | 安装、构建、运行、测试和静态检查 | 根 `CLAUDE.md` | `root-current` |
 | `RULE-DEPLOY-001` | `CLAUDE.md` 157-174 | 部署依赖、顺序和未验证状态 | `.claude/rules/deployment.md`、`docs/engineering/current-state.md` | `extracted` |
 | `RULE-ADMIN-001` | 2026-10-06 新增 | 只读 Web 管理后台、事件账本与统计口径 | `docs/engineering/admin-console.md`、`API-契约.md`、`数据库索引.md` | `extracted` |
+| `RULE-ADMIN-002` | 2026-11-02 客服工作台 | 会员购买开关置顶；会员订单与售后双页签；昵称/OpenID 展示、搜索、订单详情和管理员审计 | `产品文档.md` PAGE-017、`API-契约.md`、`数据库索引.md` | `delegated` |
 
 ## Phase 3 验收结果
 

@@ -1,8 +1,7 @@
 # Travel-app 当前工程状态
 
-> 当前分支：`main`（本轮由 `codex/membership-payment-wip` 快进）
-> 版本以 `git log -1` 为准；本文件记录工作区状态，提交和部署状态分开判断。
-> 更新时间：2026-11-01
+> 当前分支与版本以 `git status`、`git log -1` 为准；本文件记录工作区状态，提交和部署状态分开判断。
+> 更新时间：2026-11-02
 
 ## 当前定位
 
@@ -56,6 +55,8 @@
 - 2026-11-01 合并 `codex/ux1012`：首页补齐最近一段已结束行程的摘要卡、全部行程结束后摘要卡不退场、首页与预约时间线的日期标题吸顶；相关改动已进入本地发布候选，尚未部署或真机验收。
 - 2026-11-01 合并只读 Web 管理后台：新增 `admin-web/` 与 `cloudfunctions/admin/`，并接入 `reminder_events` 事件账本和 `reminder_daily_stats` 日汇总。管理后台不是小程序体验版运行依赖，云函数与索引仍需单独部署。
 - 2026-11-01 合并首页与发送链路降本：`home.bootstrap` 预取任务触及 100 条上限时退回逐趟查询，避免截断导致排序错误；`notifier` 合并待发与过期扫描、降低空转读取，并保留每小时 cleanup 节流。
+- 2026-11-02 会员购买断路器已部署：创建 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），更新 `payment`（16 个文件）与 `reminder`（21 个文件）；云端 `membership.status` 冒烟返回 `sales.state=OPEN` 且会员套餐可购买。开发者工具整包部署清空了 `payment` 定时触发器，已恢复并核验 `paymentReconcileEveryTwoMinutes = 0 */2 * * * * *`。新管理页客户端尚未上传，未执行真实停售切换。
+- 2026-11-02 工作区新增客服工作台：原售后管理升级为“会员订单 / 售后工单”双页签，会员购买开关固定在页面最顶部；管理员可按订单号、订单 ID、售后单号、完整 OpenID 和昵称搜索，订单与售后卡补全昵称和 OpenID，并提供订单详情及双向售后联动。后端新增 `adminOrders.list/detail`，相关测试已通过；**新版 `payment` 与客户端尚未部署/上传**。
 
 ## 当前配置
 
@@ -108,6 +109,9 @@
 - `notifier`：已兼容旧任务走旧「活动开始通知」、新任务走新「预约开始提醒」；按任务实际模板发送和核销额度。应先部署，使旧任务和随后产生的新模板任务都有正确分流；当前已确认 `status_release_idx = backendStatus + releaseAt` 已存在，但云端触发器、测试发送和真机模板授权仍未完成闭环核对。
 - `reminder`：新提醒任务会写入当前模板 `_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA`；`lib/quota.js` 已兼容旧任务按旧模板记账。应在 notifier 之后部署，最后再发布小程序端。
 - `payment`：2026-11-01 已分次部署本轮全链路加固和退款资金阻断修复。当前版本包含订单/售后幂等、权益账本快照、退款精确回收、虚拟支付商品复核、补偿队列隔离，以及基本账户余额不足的稳定错误码与售后告警；本次部署保留原有 21 个环境变量，未切换生产支付或会员灰度开关。`payment_reconcile_state` 若仍缺失，运行时会尝试自动创建并降级为无游标扫描，仍需继续观察退款补偿日志和真机复验。
+- 会员购买断路器：`payment_config/membership_sales=OPEN` 已创建并设为仅管理端可读写，`payment` 与 `reminder` 已于 2026-11-02 部署并通过只读冒烟；`paymentReconcileEveryTwoMinutes` 已恢复。包含管理开关和停售态 UI 的小程序尚未上传，**不得把后端已部署写成客户端已可用**。
+- 客服工作台：上线前先创建 `users(nickname)`、`orders(createdAt)`、`orders(status,createdAt)`、`after_sales_cases(caseNo)` 索引，再部署含 `adminOrders.*` 的新版 `payment`；随后上传小程序。当前仅完成工作区代码和本地验证。
+- 2026-11-02 已创建并核验客服工作台索引：`users_nickname`、`orders_created_at`、`orders_status_created_at`、`after_sales_case_no`。当前 `users` 5 个索引、`orders` 11 个、`after_sales_cases` 10 个；新版 `payment` 与客户端仍未部署/上传。
 - 小程序端：提交后重新编译；仅部署云函数不能替代小程序端发布。
 
 ## 数据库索引（2026-10-13：三条「必须」索引已建）
