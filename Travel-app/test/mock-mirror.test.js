@@ -138,6 +138,25 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
       spotId: 'gugong',
       visitDates: [pastVisit, futureVisit],
     })).added, 0, '重复日期不会重复写入');
+    const quickPlan = await c('cart.planQuickDates', {
+      spotId: 'gugong',
+      visitDates: [pastVisit, futureVisit],
+    });
+    eq(quickPlan.summary.addable, 2, 'mock 快捷预检复用旧暂存行');
+    eq(quickPlan.resumeCartCount, 2, 'mock 标记两条可续用暂存行');
+    const quickCommit = await c('cart.quickCommit', {
+      spotId: 'gugong',
+      visitDates: [pastVisit, futureVisit],
+      channels: ['OFFICIAL_ACCOUNT'],
+      offsets: [5],
+    });
+    eq(quickCommit.createdItems, 2, 'mock 快捷提交直接落两条行程项');
+    eq(quickCommit.createdTasks, 1, 'mock 快捷提交仅未来日期建提醒');
+    eq((await c('cart.list', {})).summary.count, 0, 'mock 快捷提交后主流程清单无残留');
+    eq((await c('cart.planQuickDates', {
+      spotId: 'gugong',
+      visitDates: [pastVisit, futureVisit],
+    })).summary.existing, 2, 'mock 已落行程后仍拦截重复');
   }
 
   /* ============ 3b. 指定弱提醒景点显式提升为强提醒 ============ */
@@ -309,10 +328,10 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     eq(mk.item.ticketState, 'SUCCESS', '标记「抢到了」');
     eq(mk.backupPrompt, null, '无备选 → 不追问');
     eq(mk.item.undoUntil !== null, true, '给出撤销截止时刻');
-    /* ⚠️ 这条锁的是「已约到只剩删除这天」（2026-09-23 用户口径）：
+    /* ⚠️ 这条锁的是「已约到只剩删除这条」（2026-09-23 用户口径）：
        markResult 的前置是 nowTs >= releaseAt，所以 SUCCESS ⟹ canSetReminder === false
        —— 构造上成立，不是特判。想要别的日期走「约其他日」，不是回来改提醒。 */
-    eq(mk.item.canSetReminder, false, '已约到 → 菜单里只剩「删除这天」');
+    eq(mk.item.canSetReminder, false, '已约到 → 菜单里只剩「删除这条」');
     eq(mk.item.ticketState, 'SUCCESS', '票务结果不受提醒状态影响');
     eq(mk.item.ticketState, 'SUCCESS', '票务结果不受提醒失败影响');
 
@@ -492,7 +511,7 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     eq(JSON.stringify(m2.__internals.backupGroupProgress(items)),
       JSON.stringify(cloudItem.backupGroupProgress(items)), '进度口径一致（备选去重 / 免预约不计）');
 
-    /* 提醒开关判据（2026-09-23）：这一条是「已约到只剩删除这天」的根据，
+    /* 提醒开关判据（2026-09-23）：这一条是「已约到只剩删除这条」的根据，
        云端与 mock 必须逐输入一致——不一致的表现是模拟器里能开、真机上开不了。 */
     CASES.forEach(c => {
       const cloud = cloudItem.canSetReminder({

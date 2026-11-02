@@ -2,7 +2,8 @@
  * 景区详情 / 分享场景共用的提醒提交流程。
  *
  * 页面只需在 data 中维护 dateAction、日历字段和 entryContext；
- * 本模块统一处理 cart.add、授权、commit、回滚与首次分享动作上报。
+ * 本模块统一处理景点快捷设提醒的日期预检、授权、一次性提交与首次分享动作上报。
+ * 快捷入口不写主流程 reminder_cart；旧版遗留的同景点日期暂存行由服务端提交时消费。
  */
 
 const api = require('./api.js');
@@ -20,28 +21,31 @@ function visitDatesOf(detail) {
   return [...new Set(source.filter(Boolean).map(String))].sort();
 }
 
-function cartScope(cartIds) {
-  return cartIds.length === 1 ? { cartId: cartIds[0] } : { cartIds };
-}
-
 function removeCartItems(cartIds) {
   return Promise.all((cartIds || []).map(cartId =>
     api.reminder.cart.remove(cartId).catch(() => {})
   ));
 }
 
-function commitWithCartContext(payload, cartIds, dateCount) {
-  return api.reminder.cart.commit(payload).catch(err => {
+function commitQuickWithContext(payload, dateCount) {
+  return api.reminder.cart.quickCommit(payload).catch(err => {
     if (err && typeof err === 'object') {
-      err._taskLimitCartIds = cartIds.slice();
+      err._taskLimitCartIds = [];
       err._taskLimitResume = {
+        operation: 'quickCommit',
         payload: Object.assign({}, payload),
-        cartIds: cartIds.slice(),
         dateCount,
       };
     }
     throw err;
   });
+}
+
+function resumeOperation(resume) {
+  if (!resume || !resume.payload) return Promise.resolve(null);
+  return resume.operation === 'quickCommit'
+    ? api.reminder.cart.quickCommit(resume.payload)
+    : api.reminder.cart.commit(resume.payload);
 }
 
 function successTitleOf(result, dateCount) {
@@ -448,10 +452,10 @@ function tripOnlyReminderCheckout(page) {
   if (page.data.taskLimitPaying) return Promise.resolve(false);
   page.setData({ taskLimitPaying: true, taskLimitPayFeedback: '正在改为仅加行程...' });
   wx.showLoading({ title: '正在加入行程...' });
-  return api.reminder.cart.commit(Object.assign(
-    { disableReminders: true },
-    cartScope(resume.cartIds)
-  )).then(res => {
+  return resumeOperation({
+    ...resume,
+    payload: Object.assign({}, resume.payload, { disableReminders: true }),
+  }).then(res => {
     wx.hideLoading();
     page._taskLimitCartIds = [];
     page._taskLimitResume = null;
@@ -560,112 +564,102 @@ function onDateConfirm(page, e) {
   page.setData({ showDateSheet: false });
   wx.showLoading({ title: action.remindOn ? '正在设置...' : '正在添加...' });
 
-  const addDates = () => api.reminder.cart.addDates({
-    spotId: action.spotId,
-    visitDates,
-  });
-  const commitTripOnly = (addRes, expired) => {
-    const cartIds = addRes.addedCartIds || [];
-    if (!cartIds.length) return { res: null, mode: '', noAddedDates: true };
-    return api.reminder.cart.commit(Object.assign(
-      { disableReminders: true },
-      cartScope(cartIds)
-    )).then(res => ({
+  const commitDates = (dates, disableReminders, expired) => {
+    const payload = {
+      spotId: action.spotId,
+      visitDates: dates,
+      disableReminders: !!disableReminders,
+    };
+    if (!disableReminders) {
+      payload.channels = ['OFFICIAL_ACCOUNT'];
+      payload.offsets = [5];
+    }
+    return api.reminder.cart.quickCommit(payload).then(res => ({
       res,
-      mode: 'trip-only',
+      mode: disableReminders ? 'trip-only' : 'reminder',
       expired: !!expired,
-      dateCount: visitDates.length,
+      dateCount: dates.length,
     }));
   };
   const reviewPlan = plan => reminderDatePlan.viewOf(plan);
+  const eligibleDatesOf = plan => (plan.dates || [])
+    .filter(row => row.status === 'REMINDABLE' || row.status === 'TRIP_ONLY')
+    .map(row => row.visitDate);
   const chooseDetachedPlan = planView => openDatePlanReview(page, planView).then(choice => {
     if (choice.action === 'trip-only') return { action: 'trip-only' };
     if (choice.action === 'reselect') return { action: 'reselect' };
     return { action: 'cancelled' };
   });
-  const removeThen = (cartIds, value) => removeCartItems(cartIds).then(() => value);
-  const runReminderFlow = plan => {
+  const runReminderFlow = (plan, commitVisitDates) => {
     const initialPlanView = reviewPlan(plan);
-    if (plan.summary.addable === 0) {
+    if (commitVisitDates.length === 0) {
       return chooseDetachedPlan(initialPlanView).then(choice => {
-        if (choice.action === 'trip-only') {
-          return addDates().then(res => commitTripOnly(res, plan.summary.releasePassed > 0));
-        }
         if (choice.action === 'reselect') return { res: null, mode: '', reopenDateSheet: true };
         return { res: null, mode: '' };
       });
     }
 
-    return addDates().then(addRes => {
-      const cartIds = addRes.addedCartIds || [];
-      if (!cartIds.length) {
-        const existingOnly = reviewPlan(addRes);
-        return chooseDetachedPlan(existingOnly).then(choice => (
-          choice.action === 'reselect'
-            ? { res: null, mode: '', reopenDateSheet: true }
-            : { res: null, mode: '' }
-        ));
-      }
-      const planView = reviewPlan(addRes);
-      if (addRes.summary.reminder === 0) {
-        return chooseDetachedPlan(planView).then(choice => {
-          if (choice.action === 'trip-only') {
-            return commitTripOnly(addRes, addRes.summary.releasePassed > 0);
-          }
-          if (choice.action === 'reselect') {
-            return removeThen(cartIds, { res: null, mode: '', reopenDateSheet: true });
-          }
-          return removeThen(cartIds, { res: null, mode: '' });
-        });
-      }
-
-      return openReminderAuth(page, addRes.summary.reminder, {
-        forceSheet: !!planView,
-        datePlan: planView,
-        continueText: planView ? planView.continueText : '开启行程放票提醒',
-      }).catch(err =>
-        removeCartItems(cartIds).then(() => { throw err; })
-      ).then(access => {
-        if (access.action === 'ready') {
-          const payload = Object.assign({
-            channels: ['OFFICIAL_ACCOUNT'],
-            offsets: [5],
-          }, cartScope(cartIds));
-          return commitWithCartContext(payload, cartIds, visitDates.length).then(res => ({
-            res,
-            mode: 'reminder',
-            dateCount: visitDates.length,
-          }));
+    const planView = reviewPlan(plan);
+    if (plan.summary.reminder === 0) {
+      return chooseDetachedPlan(planView).then(choice => {
+        if (choice.action === 'trip-only') {
+          return commitDates(commitVisitDates, true, plan.summary.releasePassed > 0);
         }
-        if (access.action === 'trip-only') {
-          return commitTripOnly(addRes, addRes.summary.releasePassed > 0);
+        if (choice.action === 'reselect') {
+          return { res: null, mode: '', reopenDateSheet: true };
         }
-        if (access.action === 'reselect') {
-          return removeThen(cartIds, { res: null, mode: '', reopenDateSheet: true });
-        }
-        if (access.action === 'completed') return { res: null, alreadyFinished: true };
-        return removeCartItems(cartIds).then(() => {
-          if (access.action === 'settings') notify.openReminderAccessSettings(access);
-          else if (access.action === 'cancelled') notify.showReminderAccessCancelled(access);
-          return { res: null, mode: '' };
-        });
+        return { res: null, mode: '' };
       });
+    }
+
+    return openReminderAuth(page, plan.summary.reminder, {
+      forceSheet: !!planView,
+      datePlan: planView,
+      continueText: planView ? planView.continueText : '开启行程放票提醒',
+    }).then(access => {
+      if (access.action === 'ready') {
+        return commitQuickWithContext({
+          spotId: action.spotId,
+          visitDates: commitVisitDates,
+          channels: ['OFFICIAL_ACCOUNT'],
+          offsets: [5],
+        }, commitVisitDates.length).then(res => ({
+          res,
+          mode: 'reminder',
+          dateCount: commitVisitDates.length,
+        }));
+      }
+      if (access.action === 'trip-only') {
+        return commitDates(commitVisitDates, true, plan.summary.releasePassed > 0);
+      }
+      if (access.action === 'reselect') {
+        return { res: null, mode: '', reopenDateSheet: true };
+      }
+      if (access.action === 'completed') return { res: null, alreadyFinished: true };
+      if (access.action === 'settings') notify.openReminderAccessSettings(access);
+      else if (access.action === 'cancelled') notify.showReminderAccessCancelled(access);
+      return { res: null, mode: '' };
     });
   };
 
-  const task = action.remindOn
-    ? api.reminder.cart.planDates({ spotId: action.spotId, visitDates }).then(runReminderFlow)
-    : addDates().then(addRes => {
-      if (!addRes.addedCartIds || !addRes.addedCartIds.length) {
-        const existingOnly = reviewPlan(addRes);
+  const task = api.reminder.cart.planQuickDates({
+    spotId: action.spotId,
+    visitDates,
+  }).then(plan => {
+    const commitVisitDates = eligibleDatesOf(plan);
+    if (!action.remindOn) {
+      if (commitVisitDates.length === 0) {
+        const existingOnly = reviewPlan(plan);
         return chooseDetachedPlan(existingOnly).then(choice => (
           choice.action === 'reselect'
             ? { res: null, mode: '', reopenDateSheet: true }
             : { res: null, mode: '' }
         ));
       }
-      return commitTripOnly(addRes, false);
-    });
+      return commitDates(commitVisitDates, true, false);
+    }
+    return runReminderFlow(plan, commitVisitDates);
+  });
 
   return task.then(result => {
     return finishDateFlow(page, result);
@@ -892,7 +886,7 @@ function resumeReminderCommit(page, options) {
       });
       return true;
     }
-    return api.reminder.cart.commit(resume.payload).then(res => {
+    return resumeOperation(resume).then(res => {
       wx.hideLoading();
       const hadOpenCheckout = !!page._reminderAuthResolve;
       page._taskLimitCartIds = [];

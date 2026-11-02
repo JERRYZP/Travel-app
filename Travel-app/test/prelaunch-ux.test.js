@@ -247,8 +247,13 @@ function resetWx(patch = {}) {
   eq(/membershipEntry\.openTaskLimit/.test(homeRecoverSrc), false,
     '首页挽回不再因提醒名额错误直接跳会员页');
   eq(/reminderFlow\.onDateConfirm/.test(hubSrc), true, '景点页使用共享提醒流程');
-  eq(/openReminderAuth\(page, addRes\.summary\.reminder/.test(reminderFlowSrc), true,
+  eq(/openReminderAuth\(page, plan\.summary\.reminder/.test(reminderFlowSrc), true,
     '共享提醒流程按本次实际待建提醒数打开固定授权浮层');
+  eq(/api\.reminder\.cart\.planQuickDates\(/.test(reminderFlowSrc)
+    && /api\.reminder\.cart\.quickCommit\(/.test(reminderFlowSrc), true,
+    '共享提醒流程使用一次性快捷预检与提交，不写主流程清单');
+  eq(/cart\.addDates/.test(reminderFlowSrc), false,
+    '共享提醒流程不再先写 reminder_cart');
   eq(/notify\.confirmReminderAccess/.test(reminderFlowSrc), false,
     '景点轻量入口不再循环弹出系统 ActionSheet');
   eq(/disableReminders: true/.test(reminderFlowSrc), true, '共享提醒流程支持仅加行程');

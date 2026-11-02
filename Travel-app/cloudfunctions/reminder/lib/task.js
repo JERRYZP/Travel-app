@@ -12,6 +12,7 @@ const time = require('./time');
 const events = require('./events');
 const tripItem = require('./trip-item');
 const cart = require('./cart');
+const datePlan = require('./date-plan');
 const trip = require('./trip');
 const membership = require('./membership');
 const {
@@ -118,12 +119,18 @@ function worstReminderHealthOf(tasks, quotaOf, nowTs = time.now()) {
 }
 
 /** 当前模板的订阅授权状态：台账、待发送占用、可用额度与健康度。 */
-async function subscriptionStatus(db, userId, templateId) {
+async function subscriptionStatus(db, userId, templateId, options = {}) {
   const tpl = templateId || DEFAULT_SUBSCRIBE_TEMPLATE_ID;
   const nowTs = time.now();
+  const prefetchedUser = options && Object.prototype.hasOwnProperty.call(options, 'user')
+    ? Promise.resolve({ data: options.user ? [options.user] : [] })
+    : null;
+  const prefetchedTasks = options && Object.prototype.hasOwnProperty.call(options, 'activeTasks')
+    ? Promise.resolve({ data: Array.isArray(options.activeTasks) ? options.activeTasks : [] })
+    : null;
   const [userRes, taskRes] = await Promise.all([
-    db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
-    db.collection(COLLECTIONS.REMINDER_TASKS).where({
+    prefetchedUser || db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
+    prefetchedTasks || db.collection(COLLECTIONS.REMINDER_TASKS).where({
       userId,
       backendStatus: ReminderBackendStatus.WAITING,
       releaseAt: db.command.gt(new Date(nowTs)),
@@ -524,14 +531,66 @@ async function submit(db, userId, event = {}) {
   );
 }
 
+/**
+ * 景点页快捷设提醒：授权通过后直接创建行程项与任务。
+ *
+ * 不先写 reminder_cart，因此快捷入口不会污染主流程清单。历史上已经存在的
+ * pending cart 行会在本事务中直接消费，避免用户因残留草稿再次被“已添加”卡住。
+ */
+async function submitQuick(db, userId, event = {}) {
+  return membership.withQuotaLock(db, userId, lock =>
+    submitQuickLocked(db, userId, event, lock)
+  );
+}
+
+async function submitQuickLocked(db, userId, event, lock) {
+  if (!event || event.tripId || event.cartId || Array.isArray(event.cartIds)) {
+    return fail(ERRORS.BAD_PARAM);
+  }
+  const plan = await cart.planQuickDates(db, userId, event || {});
+  if (plan.success === false) return plan;
+
+  const dates = plan.dates || [];
+  if (dates.length === 0) return fail(ERRORS.BAD_PARAM);
+  const inTrip = dates.filter(row => row.status === datePlan.DATE_PLAN_STATUS.IN_TRIP);
+  if (inTrip.length > 0) {
+    return fail(
+      { code: 1002, message: '这个日期已经在首页行程中' },
+      { existingDates: inTrip.map(row => row.visitDate) }
+    );
+  }
+  const inLegacyCart = dates.filter(row => row.status === datePlan.DATE_PLAN_STATUS.IN_CART);
+  if (inLegacyCart.length > 0) {
+    return fail(ERRORS.REMINDER_EXISTS, {
+      existingDates: inLegacyCart.map(row => row.visitDate),
+    });
+  }
+
+  const disableReminders = event.disableReminders === true;
+  const cartItems = dates.map(row => ({
+    _id: row.resumeCartId || '',
+    userId,
+    tripId: PENDING_CART_TRIP_ID,
+    spotId: plan.spotId,
+    visitDate: row.visitDate,
+    releaseAt: row.releaseAt,
+    /* 快捷入口的“设提醒”意图要保留到提交层：
+       放票刚过的日期仍计入 wantedReminderItems，由同一套逻辑降级并返回 expiredReminder。 */
+    remindOn: !disableReminders && plan.reservationRequired !== false && !!row.releaseAt,
+    reservationRequired: plan.reservationRequired !== false,
+  }));
+  return commitCartItems(db, userId, event, cartItems, {
+    lock,
+    source: 'reminder.cart.quickCommit',
+  });
+}
+
 async function submitLocked(db, userId, event, lock) {
   const tripId = event.tripId || '';
   const cartId = event.cartId || '';
   const cartIds = Array.isArray(event.cartIds)
     ? [...new Set(event.cartIds.filter(Boolean).map(String))]
     : [];
-  const channels = event.channels || [];
-  const offsets = event.offsets || [];
   const disableReminders = event.disableReminders === true;
 
   if (cartId && cartIds.length) return fail(ERRORS.BAD_PARAM);
@@ -551,6 +610,18 @@ async function submitLocked(db, userId, event, lock) {
   const cartItems = cartRes.data || [];
   if (cartItems.length === 0) return fail(ERRORS.CART_EMPTY);
 
+  return commitCartItems(db, userId, event, cartItems, {
+    lock,
+    source: 'reminder.cart.commit',
+  });
+}
+
+async function commitCartItems(db, userId, event, cartItems, options = {}) {
+  const lock = options.lock;
+  const tripId = event.tripId || '';
+  const channels = event.channels || [];
+  const offsets = event.offsets || [];
+  const disableReminders = event.disableReminders === true;
   const nowTs = time.now();
   const pastRelease = i => !!i.releaseAt && new Date(i.releaseAt).getTime() <= nowTs.getTime();
   const wantedReminderItems = cartItems.filter(i =>
@@ -656,7 +727,9 @@ async function submitLocked(db, userId, event, lock) {
         createdTasks.push({ _id: taskRes._id, ...taskData });
       }
 
-      await transaction.collection(COLLECTIONS.REMINDER_CART).doc(cartItem._id).remove();
+      if (cartItem._id) {
+        await transaction.collection(COLLECTIONS.REMINDER_CART).doc(cartItem._id).remove();
+      }
     }
     if (createdTasks.length > 0) {
       await membership.markReminderCreated(db, userId, nowTs, {
@@ -672,7 +745,9 @@ async function submitLocked(db, userId, event, lock) {
   }
 
   await events.recordEvents(db, createdTasks.map(t =>
-    events.taskEvent(events.EVENT_TYPES.TASK_CREATED, t, nowTs, { source: 'reminder.cart.commit' })
+    events.taskEvent(events.EVENT_TYPES.TASK_CREATED, t, nowTs, {
+      source: options.source || 'reminder.cart.commit',
+    })
   ));
 
   const noReminder = disableReminders ? cartItems.length : cartItems.length - reminderItems.length;
@@ -914,6 +989,7 @@ module.exports = {
   buildStandbyText,
   sweepOverdue,
   submit,
+  submitQuick,
   list,
   remove,
   clear,

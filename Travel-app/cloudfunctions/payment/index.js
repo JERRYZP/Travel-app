@@ -19,7 +19,10 @@
 const crypto = require('crypto');
 const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
-const db = cloud.database();
+const rawDb = cloud.database();
+const { createResourceMonitor } = require('./lib/resource-metrics');
+const resource = createResourceMonitor('payment', rawDb);
+const db = resource.db;
 
 const {
   COLLECTIONS, ERRORS, OrderStatus, RefundStatus, GrantStatus, MembershipSalesState,
@@ -1019,6 +1022,7 @@ async function setMembershipSales(context, event) {
       },
     });
   });
+  membershipSales.invalidate(db);
   const current = await membershipSales.read(db);
   return ok({ membershipSales: membershipSales.adminView(current) });
 }
@@ -1062,6 +1066,7 @@ async function setMembershipEnforcement(context, event) {
       },
     });
   });
+  membershipEnforcement.invalidate(db);
   const current = await membershipEnforcement.read(db);
   return ok({ membershipEnforcement: membershipEnforcement.adminView(current) });
 }
@@ -2032,6 +2037,40 @@ async function runReconcileQueue({
   };
 }
 
+/**
+ * 空转短路：四队列都为空时，只做三次 limit(1) 探测，不读写游标。
+ */
+async function hasReconcileWork() {
+  const [pending, failedGrant, activeCase] = await Promise.all([
+    db.collection(COLLECTIONS.ORDERS)
+      .where({ status: OrderStatus.PENDING })
+      .limit(1)
+      .get()
+      .catch(() => null),
+    db.collection(COLLECTIONS.ORDERS)
+      .where({ status: OrderStatus.PAID, grantStatus: GrantStatus.FAILED })
+      .limit(1)
+      .get()
+      .catch(() => null),
+    db.collection(COLLECTIONS.AFTER_SALES_CASES)
+      .where({
+        status: db.command.in([
+          CaseStatus.PROCESSING,
+          CaseStatus.REFUND_FAILED,
+          CaseStatus.AUTO_CHECKING,
+        ]),
+      })
+      .limit(1)
+      .get()
+      .catch(() => null),
+  ]);
+  /* 探测失败时不能误判为空，否则会跳过一个可能仍有积压的队列。 */
+  if (!pending || !failedGrant || !activeCase) return true;
+  return (pending.data || []).length > 0
+    || (failedGrant.data || []).length > 0
+    || (activeCase.data || []).length > 0;
+}
+
 async function reconcile(options = {}) {
   const config = wxpay.configOf();
   const legacyReady = wxpay.hasApiConfig(config);
@@ -2042,6 +2081,14 @@ async function reconcile(options = {}) {
   const totalBudgetMs = Math.max(1, Number(options.totalBudgetMs) || RECONCILE_TOTAL_BUDGET_MS);
   const queueBudgetMs = Math.max(1, Number(options.queueBudgetMs) || RECONCILE_QUEUE_BUDGET_MS);
   const deadline = now() + totalBudgetMs;
+  if (options.skipWhenIdle !== false && !(await hasReconcileWork())) {
+    return ok({
+      skipped: true,
+      reason: 'NO_RECONCILE_WORK',
+      queues: {},
+      errors: 0,
+    });
+  }
   const summary = {
     paymentScanned: 0,
     paymentUpdated: 0,
@@ -2168,7 +2215,7 @@ async function reconcile(options = {}) {
 
 /* ============================== 路由 ============================== */
 
-exports.main = async (event = {}) => {
+async function main(event = {}) {
   const context = cloud.getWXContext() || {};
   if (isVirtualMessageEvent(event)) {
     if (!isTrustedVirtualMessageContext(context)) {
@@ -2311,6 +2358,11 @@ exports.main = async (event = {}) => {
     });
     return fail(ERRORS.SERVER_ERROR);
   }
+}
+
+exports.main = event => {
+  const action = event && (event.action || event.Event || event.type || event.Type);
+  return resource.run(String(action || 'tick'), rawDb, () => main(event));
 };
 
 // 仅导出给纯 Node 回归测试，不进入客户端 API 契约。
@@ -2320,6 +2372,7 @@ exports._test = {
   cancelAfterSales,
   isExplicitRefundNotFoundError,
   reconcile,
+  hasReconcileWork,
   runReconcileQueue,
   syncOrder,
   handleHttpCallback,

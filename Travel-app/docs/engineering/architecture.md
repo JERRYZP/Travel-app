@@ -49,10 +49,19 @@
 ## 首页数据流
 
 1. 小程序调用 `reminder.home.bootstrap`。
-2. 云函数并行读取行程、行程项、提醒任务、用户和公开景点卡。
+2. 默认旧链路并行读取行程、行程项、提醒任务、用户和公开景点卡；`HOME_RUNTIME_MODE=on` 时优先读取 `user_runtime` 的单用户派生快照，缺失、失效或过期再从源集合重建。
 3. 服务端完成行程拆分、状态推导、提醒状态装饰、可挽回候选和额度预警。
 4. 前端只渲染服务端结果；票务状态和提醒送达状态不得在页面侧重新推导。
 5. `trip_items` 是首页、票务结果、提醒关联和删除动线的事实来源。
+6. `user_runtime` 是可丢弃、可重建的读模型，不是事实来源；所有用户写操作成功后标记失效，`notifier` 的状态转换和支付权益变更也负责标记失效。
+
+## 景点静态快照
+
+- `data/spots.json` 与 `data/rules.json` 仍是唯一数据真身。
+- `scripts/build-spots-snapshot.js` 生成 `miniprogram/data/spots-snapshot.js`、`cloud-assets/data/spots-snapshot.json` 和 manifest。
+- 小程序列表、搜索、详情、批量和搜索历史优先读取包内快照；启动后每天最多检查一次 `static/v1/data/` 的新版快照。
+- 远程快照不可用时继续使用包内版本，`spots` 云函数只保留旧客户端兼容和紧急回退。
+- 修改景点规则后必须重新生成快照；`npm test` 会用 `--check` 阻止提交过期产物。
 
 ## 分享与深链
 
@@ -68,13 +77,13 @@ trips
   └── trip_items
         └── reminder_tasks
 
-reminder_cart 是提交前的暂存区，不属于正式行程。
-景点页多日期先由 `cart.planDates` 只读预检，再由 `cart.addDates` 原子写入可新增项；最终 `cart.commit` 统一校验订阅额度、提醒名额并创建行程项与任务。
+reminder_cart 只承载主流程“生成时间线 → 确认行程清单”的提交前暂存区，不属于正式行程。
+景点页/详情/分享/首页“约其他日”的快捷入口先由 `cart.planQuickDates` 只读预检，授权与提醒名额通过后由 `cart.quickCommit` 一次性创建行程项与任务，全程不写 reminder_cart。旧版遗留的 pending 同景点日期行由 quickCommit 续用并消费。
 ```
 
 - `trip_items`：行程 + 景点 + 出行日的最小执行单元。
 - `reminder_tasks`：由明确开启提醒且存在 `releaseAt` 的行程项派生，挂 `itemId`；新任务写入 `templateId`，旧任务缺字段时发送侧回退旧订阅模板。无固定放票时刻的行程项只落 `trip_items`，不创建任务。
-- `reminder_cart`：提交前清单；提交成功后才创建/合并正式行程并清空。
+- `reminder_cart`：主流程提交前清单；提交成功后才创建/合并正式行程并清空。快捷设提醒不进入此暂存区。
 
 ## 会员、支付与售后
 

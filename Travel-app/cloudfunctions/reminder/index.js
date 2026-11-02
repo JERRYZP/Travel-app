@@ -10,9 +10,12 @@
 
 const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
-const db = cloud.database();
+const rawDb = cloud.database();
 
-const { COLLECTIONS, V1, ERRORS, ChannelType, PENDING_CART_TRIP_ID, ok, fail } = require('./lib/schema');
+const {
+  COLLECTIONS, V1, ERRORS, ChannelType, PENDING_CART_TRIP_ID,
+  ReminderBackendStatus, EventSelectStatus, ok, fail,
+} = require('./lib/schema');
 const time = require('./lib/time');
 const trip = require('./lib/trip');
 const timeline = require('./lib/timeline');
@@ -23,23 +26,41 @@ const itemActions = require('./lib/trip-item-actions');
 const recovery = require('./lib/recovery');
 const membership = require('./lib/membership');
 const userDomain = require('./lib/user');
+const userRuntime = require('./lib/user-runtime');
 const {
   DEFAULT_SUBSCRIBE_TEMPLATE_ID,
   subscribeQuotaOf,
   totalSubscribeQuota,
 } = require('./lib/quota');
+const { createResourceMonitor } = require('./lib/resource-metrics');
+
+const resource = createResourceMonitor('reminder', rawDb);
+const db = resource.db;
+const USER_RUNTIME_MUTATIONS = new Set([
+  'trip.create', 'trip.updateSpots', 'trip.updateRange', 'trip.remove',
+  'timeline.generate',
+  'tripItem.markResult', 'tripItem.undoResult', 'tripItem.updateReminder',
+  'tripItem.remove', 'tripItem.removeVisitDate',
+  'cart.addDates', 'cart.add', 'cart.addAll',
+  'cart.updateRemindOn', 'cart.commit', 'cart.quickCommit', 'cart.remove', 'cart.clear',
+  'cart.pruneScope',
+  'task.submit', 'task.list', 'task.remove', 'task.clear',
+  'user.updateProfile', 'user.updateNotifyPrefs', 'subscribe.add',
+]);
 
 /* home.bootstrap 分段计时用（见 homeBootstrap）：
    标记「本实例是否还没处理过任何请求」。这个模块在云函数冷启动时求值一次，
    所以第一次调用打 true 就是新实例的首个请求。 */
 let moduleFirstCall = true;
 
-exports.main = async (event) => {
+async function main(event) {
   const { action } = event || {};
   const { OPENID } = cloud.getWXContext();
 
   // admin.seed 允许在无登录态的控制台调试中执行
-  if (!OPENID && action !== 'admin.seed') return fail(ERRORS.UNAUTHORIZED);
+  if (!OPENID && action !== 'admin.seed' && action !== 'admin.runtimeBackfill') {
+    return fail(ERRORS.UNAUTHORIZED);
+  }
   const userId = OPENID;
 
   try {
@@ -93,22 +114,99 @@ exports.main = async (event) => {
       /* ======== 提醒清单 ======== */
       case 'cart.planDates':
         return await cart.planDates(db, userId, event);
-      case 'cart.addDates':
-        return await cart.addDates(db, userId, event);
-      case 'cart.add':
-        return await cart.add(db, userId, event);
+      case 'cart.planQuickDates':
+        return await cart.planQuickDates(db, userId, event);
+      case 'cart.addDates': {
+        const result = await cart.addDates(db, userId, event);
+        if (!result.success) return result;
+        return ok({
+          ...result,
+          statusPatches: (result.items || []).map(row => ({
+            cartId: row.cartId,
+            spotId: result.spotId,
+            visitDate: row.visitDate,
+            status: EventSelectStatus.IN_CART,
+            button: timeline.buttonOf(EventSelectStatus.IN_CART, {
+              reservationRequired: row.reservationRequired !== false,
+              remindable: !!row.releaseAt,
+            }),
+          })),
+        });
+      }
+      case 'cart.add': {
+        const result = await cart.add(db, userId, event);
+        if (!result.success) return result;
+        const previewEvent = {
+          reservationRequired: result.reservationRequired !== false,
+          remindable: !!result.releaseAt,
+        };
+        return ok({
+          ...result,
+          statusPatches: [{
+            cartId: result.cartId,
+            spotId: result.spotId,
+            visitDate: result.visitDate,
+            status: EventSelectStatus.IN_CART,
+            button: timeline.buttonOf(EventSelectStatus.IN_CART, previewEvent),
+          }],
+        });
+      }
       case 'cart.addAll': {
         // CART-RULE-004「一键加入清单」：仅作用于当前 Tab。
         // 服务端按同一份输入重新算一遍预览事件，避免信任前端传来的事件与状态。
         // scope: 'departure'（scopeKey = visitDate）| 'spot'（scopeKey = spotId）
         const tl = await timeline.preview(db, userId, event);
         if (!tl.success) return tl;
-        return await cart.addBatch(db, userId, event.tripId, tl.events, event.scope, event.scopeKey);
+        const result = await cart.addBatch(
+          db, userId, event.tripId, tl.events, event.scope, event.scopeKey
+        );
+        if (!result.success) return result;
+        const eventMap = new Map((tl.events || []).map(ev => [
+          `${ev.spotId}|${ev.visitDate}`,
+          ev,
+        ]));
+        const statusPatches = (result.affectedKeys || []).map(row => {
+          const event = eventMap.get(`${row.spotId}|${row.visitDate}`) || {};
+          return {
+            ...row,
+            status: EventSelectStatus.IN_CART,
+            button: timeline.buttonOf(EventSelectStatus.IN_CART, event),
+          };
+        });
+        return ok({ ...result, statusPatches });
       }
-      case 'cart.remove':
-        return await cart.remove(db, userId, event.cartId);
-      case 'cart.clear':
-        return await cart.clear(db, userId, event.tripId || null);
+      case 'cart.remove': {
+        const result = await cart.remove(db, userId, event.cartId);
+        if (!result.success) return result;
+        return ok({
+          ...result,
+          statusPatches: [{
+            spotId: result.spotId,
+            visitDate: result.visitDate,
+            status: EventSelectStatus.SELECTABLE,
+            button: timeline.buttonOf(EventSelectStatus.SELECTABLE, {
+              reservationRequired: result.reservationRequired !== false,
+              remindable: !!result.releaseAt,
+            }),
+          }],
+        });
+      }
+      case 'cart.clear': {
+        const result = await cart.clear(db, userId, event.tripId || null);
+        if (!result.success) return result;
+        return ok({
+          ...result,
+          statusPatches: (result.removedRows || []).map(row => ({
+            spotId: row.spotId,
+            visitDate: row.visitDate,
+            status: EventSelectStatus.SELECTABLE,
+            button: timeline.buttonOf(EventSelectStatus.SELECTABLE, {
+              reservationRequired: row.reservationRequired !== false,
+              remindable: !!row.releaseAt,
+            }),
+          })),
+        });
+      }
       case 'cart.pruneScope':
         // CART-RULE-007：生成时间线成功后，把暂存区收敛到本次日期段 × 景点集合
         return await cart.pruneScope(db, userId, event);
@@ -116,10 +214,17 @@ exports.main = async (event) => {
         return await cart.list(db, userId, event.tripId || null, {
           includeMembership: event.includeMembership === true,
         });
+      case 'cart.bootstrap':
+        return await cartBootstrap(userId);
       case 'cart.updateRemindOn':
         return await cart.updateRemindOn(db, userId, event.cartId, event.remindOn === true);
       case 'cart.commit': {
         const res = await task.submit(db, userId, { ...event, requireSubscription: true });
+        if (!res.success) return res;
+        return ok(res);
+      }
+      case 'cart.quickCommit': {
+        const res = await task.submitQuick(db, userId, { ...event, requireSubscription: true });
         if (!res.success) return res;
         return ok(res);
       }
@@ -173,6 +278,8 @@ exports.main = async (event) => {
           },
         });
       }
+      case 'user.bootstrap':
+        return await userBootstrap(userId);
       case 'user.updateProfile':
         return await updateUserProfile(userId, event);
       case 'user.updateNotifyPrefs':
@@ -197,6 +304,8 @@ exports.main = async (event) => {
       /* ======== 运维 ======== */
       case 'admin.seed':
         return await seed();
+      case 'admin.runtimeBackfill':
+        return await backfillRuntime(event);
       case 'admin.cleanup': {
         const r = await task.cleanup(db);
         // 14 天前的历史任务被物理删除后，行程同样按「无任务即作废」口径清理
@@ -213,6 +322,20 @@ exports.main = async (event) => {
     console.error(`[reminder] action=${action} failed`, err);
     return fail({ code: 1500, message: err.message });
   }
+}
+
+exports.main = event => {
+  const action = String((event && event.action) || 'unknown');
+  return resource.run(action, rawDb, async () => {
+    const result = await main(event);
+    if (userRuntime.modeOf() !== userRuntime.RuntimeMode.OFF
+      && result && result.success !== false
+      && USER_RUNTIME_MUTATIONS.has(action)) {
+      const userId = cloud.getWXContext().OPENID;
+      if (userId) await userRuntime.invalidate(rawDb, userId);
+    }
+    return result;
+  });
 };
 
 /**
@@ -231,165 +354,276 @@ exports.main = async (event) => {
  * @returns 8.2 的返回体 + 一个版本兼容期的 homeMode
  */
 async function homeBootstrap(db, userId, event = {}) {
-  /* ⚠️ 默认 **不** 取热门景点（2026-09-30 改）。
-     理由：`hotSpots` 的唯一消费方是首页空态的三行预览，而它是靠
-     `cloud.callFunction({name:'spots'})` 拿到的 —— 等于一次用户请求要串两个
-     云函数的冷启动。对已有行程的用户（绝大多数）这份数据从来不会被渲染。
-     现在改由前端在**已知是空态**时显式传 `includeSpots: true`，并且只在首屏
-     渲染之后发，让两次冷启动从「相加」变成「取最大」。
-     契约同步见 API-契约.md 8.2。 */
+  const mode = userRuntime.modeOf();
   const includeSpots = event.includeSpots === true;
-  const nowTs = time.now();
-  const today = time.todayStr();
-  /* 分段计时（2026-09-30）：首页 5 秒排查用。
-     ⚠️ 只打各段毫秒与各表行数，**不打 openid** —— 行数为 0 就说明是新用户，
-     足以区分新老路径，不需要把用户标识写进日志。
-     `firstCallInInstance` 只能说明「是本实例的第一次调用」，不是「冷启动」；
-     连续观察它为 true 那批的耗时分布，就是冷启动分布。 */
   const t0 = Date.now();
-  const timing = { firstCallInInstance: moduleFirstCall, includeSpots: !!includeSpots };
+  const timing = { firstCallInInstance: moduleFirstCall, includeSpots };
   moduleFirstCall = false;
-  const tParallel = Date.now();
 
-  /* 第一波并行：五路互不依赖的读。
-     ⚠️ `reminder_tasks` 也在这里（2026-09-30 从串行段提前）：它没有任何前置依赖，
-     此前却排在 Promise.all 之后单独 await，白等一个 RTT。
-     这里**刻意不加 `.catch(() => [])`**：读失败静默降级成空数组，等于让过期任务
-     永远显示成「待提醒」—— 正是下面那段注释要防的 2026-09-14 那个坑。
-     读失败就让整个 bootstrap 失败，前端至少会保留缓存/骨架，不会给出错的结论。 */
-  const [items, carts, spotsCall, userRes, taskRes] = await Promise.all([
+  if (mode === userRuntime.RuntimeMode.ON) {
+    try {
+      return await runtimeHomeBootstrap(db, userId, event, t0, timing);
+    } catch (err) {
+      console.error('[home-runtime] read-failed; fallback legacy', err && err.message);
+    }
+  }
+  if (mode === userRuntime.RuntimeMode.SHADOW) {
+    const legacyPromise = legacyHomeBootstrap(db, userId, event, t0, timing);
+    const shadowPromise = runtimeHomeBootstrap(
+      db, userId, { ...event, __shadow: true }, t0, { ...timing }
+    )
+      .catch(err => ({ success: false, error: err && err.message }));
+    const [legacy, shadow] = await Promise.all([legacyPromise, shadowPromise]);
+    if (shadow && shadow.success !== false) {
+      const comparableShadow = { ...shadow, serverNow: legacy.serverNow };
+      const legacyHash = userRuntime.normalizedHash(userRuntime.comparisonShape(legacy));
+      const shadowHash = userRuntime.normalizedHash(userRuntime.comparisonShape(comparableShadow));
+      console.log('[home-runtime-shadow]', JSON.stringify({
+        match: legacyHash === shadowHash,
+        legacyHash,
+        shadowHash,
+      }));
+    }
+    return legacy;
+  }
+  return legacyHomeBootstrap(db, userId, event, t0, timing);
+}
+
+async function runtimeHomeBootstrap(db, userId, event, t0, timing) {
+  let doc = event.runtimeBypass === true ? null : await userRuntime.read(db, userId);
+  if (!userRuntime.isUsable(doc)) {
+    const sources = await loadHomeSources(db, userId);
+    const initial = await composeHomeBootstrap(db, userId, sources, event, t0, timing, {
+      runtimeVersion: 'runtime:rebuilding',
+    });
+    const builtAt = time.now();
+    const compact = compactRuntimeSources(sources, initial.history, builtAt);
+    doc = await userRuntime.write(db, userId, compact, builtAt);
+    return {
+      ...initial,
+      runtimeVersion: `runtime:${builtAt.getTime()}`,
+    };
+  }
+  return composeHomeBootstrap(db, userId, doc.sources, event, t0, timing, {
+    runtimeVersion: `runtime:${new Date(doc.builtAt).getTime()}`,
+  });
+}
+
+function compactRuntimeSources(sources, history, nowTs) {
+  const today = time.todayStr(nowTs);
+  const trips = (sources.trips || []).filter(tripRow => tripRow.endDate >= today);
+  const tripIds = new Set(trips.map(tripRow => tripRow._id));
+  const items = (sources.items || []).filter(row => tripIds.has(row.tripId));
+  const itemIds = new Set(items.map(row => row._id));
+  const allTasks = (sources.allTasks || []).filter(row => itemIds.has(row.itemId));
+  const carts = (sources.carts || []).filter(row =>
+    row.tripId === PENDING_CART_TRIP_ID || tripIds.has(row.tripId));
+  return {
+    user: sources.user || {},
+    items,
+    allTasks,
+    carts,
+    trips,
+    history: history || [],
+  };
+}
+
+async function legacyHomeBootstrap(db, userId, event, t0, timing) {
+  const sourceStartedAt = Date.now();
+  const sources = await loadHomeSources(db, userId);
+  timing.parallelMs = Date.now() - sourceStartedAt;
+  return composeHomeBootstrap(db, userId, sources, event, t0, timing, {
+    runtimeVersion: 'legacy',
+  });
+}
+
+async function loadHomeSources(db, userId) {
+  const [items, carts, userRes, taskRes] = await Promise.all([
     item.listItemsByUser(db, userId),
-    /* 清单只为 `trip.list` 的 removeIfEmpty 内存判定而读：
-       一次全量读换掉它原本的 3N 次逐趟 count。
-       ⚠️ `reminder_cart` 需要单字段 `userId` 索引（见 数据库索引.md 第二节）。 */
     db.collection(COLLECTIONS.REMINDER_CART)
       .where({ userId }).get()
       .then(r => r.data || [])
       .catch(() => []),
-    includeSpots
-      ? cloud.callFunction({ name: 'spots', data: { action: 'list' } }).catch(() => null)
-      : Promise.resolve(null),
     db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
     db.collection(COLLECTIONS.REMINDER_TASKS).where({ userId }).get(),
   ]);
   const allTasks = taskRes.data || [];
-
-  /* 第二波：行程。它要用第一波读到的 items / carts / tasks 做 removeIfEmpty 的
-     内存判定，所以只能等第一波 —— 但换来的是消掉 3N 次 count 和 N 次串行查询。
-     它与紧随其后的 `loadSpotContext` 互不依赖，中间没有额外等待。 */
   const tripsRes = await trip.list(db, userId, { items, tasks: allTasks, carts });
-  timing.parallelMs = Date.now() - tParallel;
+  return {
+    items,
+    carts,
+    user: (userRes.data || [])[0] || {},
+    allTasks,
+    trips: (tripsRes && tripsRes.trips) || [],
+  };
+}
 
-  const trips = (tripsRes && tripsRes.trips) || [];
-
-  /* 读取时兜底收敛（REMINDER-RULE-004）：
-     V2 首页不再调 task.list，而 task.list 原本是 sweepOverdue 的唯一读取侧调用方。
-     少了这一步，一旦 notifier 的定时链路出问题（缺索引 / 缺环境变量 / 触发器停用），
-     过期任务会静默显示成「待提醒」且毫无提示 —— 正是 2026-09-14 踩过的坑。
-     幂等，写库失败也不影响本次响应。 */
+async function composeHomeBootstrap(db, userId, sources, event, t0, timing, options = {}) {
+  const includeSpots = event.includeSpots === true;
+  const nowTs = time.now();
+  const today = time.todayStr(nowTs);
+  const items = sources.items || [];
+  const allTasks = sources.allTasks || [];
+  const trips = sources.trips || [];
+  const user = sources.user || {};
+  const hasStoredHistory = Object.prototype.hasOwnProperty.call(sources, 'history');
   const tSpotCtx = Date.now();
-  const { spotMap, ruleMap } = await item.loadSpotContext(db, items.map(i => i.spotId));
+  const spotsPromise = includeSpots
+    ? (resource.childCall(), cloud.callFunction({ name: 'spots', data: { action: 'list' } }).catch(() => null))
+    : Promise.resolve(null);
+  const [{ spotMap, ruleMap }, spotsCall] = await Promise.all([
+    item.loadSpotContext(db, items.map(row => row.spotId)),
+    spotsPromise,
+  ]);
   timing.spotCtxMs = Date.now() - tSpotCtx;
 
   const tSweep = Date.now();
-  await task.sweepOverdue(db, allTasks, nowTs, userId, (t) => {
-    const spot = spotMap[t.spotId];
-    return spot ? item.deriveReleaseAt(spot, ruleMap[t.spotId], t.visitDate) : null;
-  });
+  const swept = event.__shadow ? 0 : await task.sweepOverdue(
+    db, allTasks, nowTs, userId, taskRow => {
+      const spot = spotMap[taskRow.spotId];
+      return spot ? item.deriveReleaseAt(spot, ruleMap[taskRow.spotId], taskRow.visitDate) : null;
+    }
+  );
   timing.sweepMs = Date.now() - tSweep;
-
+  if (swept > 0 && options.runtimeVersion) {
+    await userRuntime.invalidate(db, userId, nowTs);
+  }
   timing.trips = trips.length;
   timing.items = items.length;
   timing.tasks = allTasks.length;
   timing.totalMs = Date.now() - t0;
   console.log('[bootstrap-timing]', JSON.stringify(timing));
 
-  const user = (userRes.data || [])[0] || {};
-  /* 每个模板只能用自己台账里的剩余次数。旧模板任务与新模板任务混在一起时，
-     取最危险的一组给首页预警，避免把 A 模板余额拿去掩盖 B 模板的缺口。 */
   const quotaHealth = task.worstReminderHealthOf(
     allTasks,
-    (templateId) => subscribeQuotaOf(user, templateId),
+    templateId => subscribeQuotaOf(user, templateId),
     nowTs
   );
-
   const taskMap = item.taskMapByItemId(allTasks);
-  const decorated = items.map(it => item.decorateItem({
-    item: it,
-    spot: spotMap[it.spotId],
-    rule: ruleMap[it.spotId],
-    task: taskMap[it._id] || null,
+  const decorated = items.map(row => item.decorateItem({
+    item: row,
+    spot: spotMap[row.spotId],
+    rule: ruleMap[row.spotId],
+    task: taskMap[row._id] || null,
     nowTs,
   }));
-
-  /* 「还有别的日期可约」——候选与它要解释的那条行程项**同一次响应**到达
-     （`lib/recovery.js` 的 `recoverableMapOf`，那里记着为什么不能挪回页面侧）。
-     算在这里的另一个好处：bootstrap 已经把 spot/rule 上下文和全部行程项读齐了，
-     逐条走 `tripItem.recoveryCandidates` 会把同一批数据重复查 N 遍。 */
   const recoverableIds = Object.keys(recovery.recoverableMapOf({
     decorated, trips, spotMap, ruleMap, nowTs,
   }));
 
-  // 行程按结束日拆进行中 / 历史（读取时计算，不落库、不依赖定时任务）
   const activeTrips = [];
-  const historyTrips = [];
-  for (const t of trips) {
-    const mine = decorated.filter(d => d.tripId === t._id);
-    const progress = item.backupGroupProgress(mine);
+  const historyTrips = hasStoredHistory ? [...(sources.history || [])] : [];
+  for (const tripRow of trips) {
+    const mine = decorated.filter(row => row.tripId === tripRow._id);
     const entry = {
-      _id: t._id,
-      city: t.city,
-      startDate: t.startDate,
-      endDate: t.endDate,
-      name: t.name,
-      progress,
+      _id: tripRow._id,
+      city: tripRow.city,
+      startDate: tripRow.startDate,
+      endDate: tripRow.endDate,
+      name: tripRow.name,
+      progress: item.backupGroupProgress(mine),
       itemCount: mine.length,
-      /* 2026-09-21：首页「+ 新增提醒」要拿它预填 add-trip 的景点标签。
-         只给 id，页面再走 spots.batch 取名字——这里多查一次会让 bootstrap 变重，
-         而预填只发生在用户点按钮之后，没有必要让每次首页加载都背上它。 */
-      spotIds: [...new Set(mine.map(i => i.spotId))],
+      spotIds: [...new Set(mine.map(row => row.spotId))],
     };
-    // 结束日**当天仍属于进行中**，用户还能回看和补标；次日才归入历史
-    if (t.endDate >= today) activeTrips.push({ ...entry, items: item.sortItems(mine) });
-    else historyTrips.push(entry);
+    if (tripRow.endDate >= today) activeTrips.push({ ...entry, items: item.sortItems(mine) });
+    else if (!hasStoredHistory) historyTrips.push(entry);
   }
   activeTrips.sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
   historyTrips.sort((a, b) => String(b.startDate).localeCompare(String(a.startDate)));
-
-  // 全局摘要卡用最近的一趟；历史区只给统计，不重复整张卡
   const primaryTripId = activeTrips.length ? activeTrips[0]._id : '';
-  const scrollTargetId = item.scrollTargetOf(decorated, nowTs);
 
   return ok({
     serverNow: nowTs,
+    runtimeVersion: options.runtimeVersion || 'legacy',
     primaryTripId,
-    scrollTargetId,
+    scrollTargetId: item.scrollTargetOf(decorated, nowTs),
     trips: activeTrips,
     history: historyTrips,
     stickyBanner: task.buildReleaseBanner(decorated, nowTs),
-    /* 摘要卡底部的「即将提醒」胶囊（设计稿 UI/V.0.2-0919）。
-       ⚠️ 与 stickyBanner **平级、独立**：横幅受 BANNER_WINDOW_HOURS(1h) 限制只覆盖眼下，
-       胶囊不限窗口，回答的是「后面还有哪几场」。塞进 stickyBanner 会让没有 1h 内放票
-       的行程一颗胶囊都不显示——那正是设计稿上要展示的情况。 */
     releasePills: task.buildReleasePills(decorated, nowTs, 2),
     reminderQuotaWarning: task.buildReminderQuotaWarning(quotaHealth, nowTs),
     membership: membership.snapshotFromTasks(user, allTasks, nowTs),
-    /* 「没抢到」之后还能换哪些日期（决策文档 4.3）。
-       ⚠️ **必须在这一次响应里给**：页面侧另开一次请求去算候选，会与已经带着
-       `result = FAILED` 的这份返回体错序——卡片先按「不可挽回」渲染，挽回线
-       （气泡 + 菜单项）就永远不出现。真身 `lib/recovery.js` 的 `recoverableMapOf`。 */
     recoverableIds,
-    // 兼容期：新首页靠 trips.length 判断要不要出创建引导，旧前端仍读 homeMode
     homeMode: decorated.length === 0 ? 1 : 2,
     hotSpots: spotsCall && spotsCall.result && Array.isArray(spotsCall.result.data)
       ? spotsCall.result.data : [],
-    // 旧字段保留一个版本，避免未升级的调用方读不到东西；新首页不消费
     groups: [],
     counts: { active: 0, expired: 0 },
     banner: null,
     cart: null,
     tripTasks: null,
     showGroupTabs: false,
+  });
+}
+
+/**
+ * 用户页一次初始化：资料、会员、名额和订阅健康共享同一批用户 / 任务读取。
+ */
+async function userBootstrap(userId) {
+  const nowTs = time.now();
+  const profile = await getOrCreateUser(userId);
+  if (profile.success === false) return profile;
+  const rawUser = profile.user;
+  const [activeTaskRes, latestTaskRes] = await Promise.all([
+    db.collection(COLLECTIONS.REMINDER_TASKS)
+      .where({
+        userId,
+        backendStatus: ReminderBackendStatus.WAITING,
+        releaseAt: db.command.gt(nowTs),
+      })
+      .get(),
+    db.collection(COLLECTIONS.REMINDER_TASKS)
+      .where({ userId })
+      .orderBy('createdAt', 'desc')
+      .limit(1)
+      .get(),
+  ]);
+  const activeTasks = activeTaskRes.data || [];
+  const latestTask = (latestTaskRes.data || [])[0] || null;
+  const [current, subscription] = await Promise.all([
+    membership.status(db, userId, nowTs, {
+      user: rawUser,
+      activeTasks,
+      latestTask,
+      configCache: true,
+    }),
+    task.subscriptionStatus(db, userId, DEFAULT_SUBSCRIBE_TEMPLATE_ID, {
+      user: rawUser,
+      activeTasks,
+    }),
+  ]);
+  if (current.success === false) return current;
+  return ok({
+    user: {
+      ...rawUser,
+      membership: current.membership,
+      membershipSales: current.sales,
+    },
+    membership: current.membership,
+    packages: current.packages,
+    sales: current.sales,
+    subscription,
+    capabilities: {
+      /* 管理端白名单分属 payment / feedback 部署单元，客户端可缓存一次能力探测。 */
+      adminStatusKnown: false,
+    },
+    runtimeVersion: `legacy:${nowTs.getTime()}`,
+  });
+}
+
+/**
+ * 设置提醒页一次初始化：清单、会员与订阅授权合并在同一个云函数调用内。
+ */
+async function cartBootstrap(userId) {
+  const [cartResult, subscription] = await Promise.all([
+    cart.list(db, userId, null, { includeMembership: true }),
+    task.subscriptionStatus(db, userId, DEFAULT_SUBSCRIBE_TEMPLATE_ID),
+  ]);
+  if (cartResult.success === false) return cartResult;
+  return ok({
+    ...cartResult,
+    subscription,
+    runtimeVersion: `legacy:${Date.now()}`,
   });
 }
 
@@ -522,4 +756,42 @@ async function seed() {
   }
 
   return ok({ report, message: `seed 完成：${report.spots.inserted + report.spots.updated} 景点 / ${report.rules.inserted + report.rules.updated} 规则` });
+}
+
+/**
+ * 受环境 token 保护的首页读模型分批预建。
+ * 客户端不可用；用于 shadow 前给老用户预热，按系统 _id 游标幂等推进。
+ */
+async function backfillRuntime(event = {}) {
+  const expected = String(process.env.RUNTIME_BACKFILL_TOKEN || '');
+  if (!expected || String(event.token || '') !== expected) return fail(ERRORS.FORBIDDEN);
+  const limit = Math.max(1, Math.min(50, Number(event.limit) || 20));
+  let query = db.collection(COLLECTIONS.USERS);
+  if (event.cursor) query = query.where({ _id: db.command.gt(String(event.cursor)) });
+  const res = await query.orderBy('_id', 'asc').limit(limit).get();
+  const users = res.data || [];
+  let built = 0;
+  const errors = [];
+  for (const stored of users) {
+    if (!stored.openId) continue;
+    try {
+      const result = await runtimeHomeBootstrap(
+        db,
+        stored.openId,
+        { runtimeBypass: true, __shadow: true },
+        Date.now(),
+        { firstCallInInstance: false, includeSpots: false }
+      );
+      if (result && result.success !== false) built += 1;
+    } catch (err) {
+      errors.push({ userId: stored._id, message: err && err.message });
+    }
+  }
+  return ok({
+    scanned: users.length,
+    built,
+    errors,
+    nextCursor: users.length ? users[users.length - 1]._id : null,
+    hasMore: users.length === limit,
+  });
 }

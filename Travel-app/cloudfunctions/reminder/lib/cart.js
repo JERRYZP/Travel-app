@@ -9,6 +9,10 @@
  * 所以用户点「加入清单」时**还没有行程**——清单行统一挂占位 tripId
  * （PENDING_CART_TRIP_ID），提交时才由 trip.create 建/合并行程并整批改挂。
  *
+ * ⚠️ 2026-11-02 起景点页/详情/分享/首页“约其他日”的快捷入口**不走本清单写路径**：
+ * 它们调用 planQuickDates + task.submitQuick 一次性提交，新日期不会出现在主流程清单里。
+ * 本文件的 planDates/addDates/add 只服务主流程和旧客户端兼容。
+ *
  * 清单同时承载需预约项和免预约项：
  * - 需预约项：releaseAt 必有，remindOn 可勾选；
  * - 免预约项：releaseAt=null，remindOn 恒 false；
@@ -53,6 +57,16 @@ function summarize(items) {
       ? `已选 ${items.length} 项，其中 ${reminderCount} 个将设提醒`
       : `已选 ${items.length} 项，均无需提醒`,
   };
+}
+
+function cartVersionOf(items) {
+  const rows = items || [];
+  let latest = 0;
+  rows.forEach(row => {
+    const ms = new Date(row && (row.updatedAt || row.createdAt) || 0).getTime();
+    if (Number.isFinite(ms) && ms > latest) latest = ms;
+  });
+  return `cart:${rows.length}:${latest}`;
 }
 
 /** 清单分组标题用「M月D日 · 周X」。 */
@@ -135,7 +149,14 @@ async function loadDatePlanContext(db, userId, { spotId, visitDates }) {
     cartDates,
     tripDates,
   });
-  return { spot, rule, dates, plan };
+  return {
+    spot,
+    rule,
+    dates,
+    plan,
+    cartRows: cartRes.data || [],
+    tripRows: itemRes.data || [],
+  };
 }
 
 /** 只读预检：一次返回所有日期的提醒资格、重复项和汇总。 */
@@ -147,6 +168,72 @@ async function planDates(db, userId, payload) {
     spotName: context.spot.name,
     dates: context.plan.dates,
     summary: context.plan.summary,
+  });
+}
+
+/**
+ * 景点页快捷设提醒的只读预检。
+ *
+ * 与 cart.planDates 不同：已有暂存清单行不视为最终冲突，而是由 quickCommit
+ * 在同一个提交中直接消费。这样景点快捷入口不需要先把数据写进主流程清单。
+ * 真正已落成 trip_items 的日期仍必须拦截。
+ */
+async function planQuickDates(db, userId, payload) {
+  const context = await loadDatePlanContext(db, userId, payload || {});
+  if (context.success === false) return context;
+
+  const base = datePlan.build({
+    spot: context.spot,
+    rule: context.rule,
+    visitDates: context.dates,
+    nowTs: time.now(),
+    cartDates: new Set(),
+    tripDates: new Set(),
+  });
+  const tripDates = new Set((context.tripRows || []).map(row => row.visitDate));
+  const cartByDate = new Map();
+  const legacyCartDates = new Set();
+  (context.cartRows || []).forEach(row => {
+    if (row.tripId && row.tripId !== PENDING_CART_TRIP_ID) {
+      legacyCartDates.add(row.visitDate);
+    } else if (!cartByDate.has(row.visitDate)) {
+      cartByDate.set(row.visitDate, row);
+    }
+  });
+  const dates = base.dates.map(row => {
+    const resumeCart = cartByDate.get(row.visitDate);
+    if (tripDates.has(row.visitDate)) {
+      return {
+        ...row,
+        status: datePlan.DATE_PLAN_STATUS.IN_TRIP,
+        reason: datePlan.DATE_PLAN_REASON.IN_TRIP,
+        addable: false,
+        reminderAllowed: false,
+      };
+    }
+    if (legacyCartDates.has(row.visitDate)) {
+      return {
+        ...row,
+        status: datePlan.DATE_PLAN_STATUS.IN_CART,
+        reason: datePlan.DATE_PLAN_REASON.IN_CART,
+        addable: false,
+        reminderAllowed: false,
+      };
+    }
+    return {
+      ...row,
+      resumeCartId: resumeCart ? resumeCart._id : '',
+      resumeCart: !!resumeCart,
+    };
+  });
+  const summary = datePlan.summarize(dates);
+  return ok({
+    spotId: context.spot.spotId,
+    spotName: context.spot.name,
+    reservationRequired: context.spot.reservationRequired !== false,
+    dates,
+    summary,
+    resumeCartCount: dates.filter(row => !!row.resumeCartId).length,
   });
 }
 
@@ -180,6 +267,8 @@ async function addDates(db, userId, payload) {
       added.push({
         cartId: res._id,
         visitDate: row.visitDate,
+        releaseAt: row.releaseAt,
+        reservationRequired: spot.reservationRequired !== false,
         remindOn: row.reminderAllowed,
         status: row.status,
         reason: row.reason,
@@ -190,6 +279,9 @@ async function addDates(db, userId, payload) {
     await transaction.rollback();
     throw err;
   }
+  const current = await db.collection(COLLECTIONS.REMINDER_CART)
+    .where({ userId, tripId: PENDING_CART_TRIP_ID }).get();
+  const currentItems = current.data || [];
 
   return ok({
     spotId: spot.spotId,
@@ -201,6 +293,8 @@ async function addDates(db, userId, payload) {
     added: added.length,
     addedReminders: added.filter(row => row.remindOn).length,
     addedTripOnly: added.filter(row => !row.remindOn).length,
+    cartSummary: summarize(currentItems),
+    cartVersion: cartVersionOf(currentItems),
   });
 }
 
@@ -251,9 +345,12 @@ async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn 
   }
 
   // 逻辑唯一约束 (userId, tripId, spotId, visitDate) —— 在暂存区里就是 (userId, spotId, visitDate)
-  const exist = await db.collection(COLLECTIONS.REMINDER_CART)
-    .where({ userId, tripId: targetTripId, spotId, visitDate }).get();
-  if ((exist.data || []).length > 0) return fail(ERRORS.REMINDER_EXISTS);
+  const cartRes = await db.collection(COLLECTIONS.REMINDER_CART)
+    .where({ userId, tripId: targetTripId }).get();
+  const currentItems = cartRes.data || [];
+  if (currentItems.some(row => row.spotId === spotId && row.visitDate === visitDate)) {
+    return fail(ERRORS.REMINDER_EXISTS);
+  }
 
   /* 已落为行程项的不再进入清单 —— 按 (userId, spotId, visitDate) 跨行程查。
      纯预览态下预览本身看不到「已在行程」（预览不查已落库数据），
@@ -262,19 +359,29 @@ async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn 
     .where({ userId, spotId, visitDate }).get();
   if ((itemRes.data || []).length > 0) return fail(ERRORS.REMINDER_EXISTS);
 
-  const res = await db.collection(COLLECTIONS.REMINDER_CART).add({
-    data: {
-      userId,
-      tripId: targetTripId,
-      spotId,
-      visitDate,
-      releaseAt: resolvedReleaseAt,
-      remindOn: resolvedRemindOn,
-      reservationRequired,
-      createdAt: nowTs,
-    },
+  const row = {
+    userId,
+    tripId: targetTripId,
+    spotId,
+    visitDate,
+    releaseAt: resolvedReleaseAt,
+    remindOn: resolvedRemindOn,
+    reservationRequired,
+    createdAt: nowTs,
+  };
+  const res = await db.collection(COLLECTIONS.REMINDER_CART).add({ data: row });
+  const nextItems = currentItems.concat(row);
+  return ok({
+    cartId: res._id,
+    spotId,
+    visitDate,
+    releaseAt: resolvedReleaseAt,
+    reservationRequired,
+    remindOn: resolvedRemindOn,
+    remindBlockedReason,
+    cartSummary: summarize(nextItems),
+    cartVersion: cartVersionOf(nextItems),
   });
-  return ok({ cartId: res._id, remindOn: resolvedRemindOn, remindBlockedReason });
 }
 
 /** CART-RULE-004 批量加入：仅作用于当前选中的 Tab */
@@ -285,26 +392,112 @@ async function addBatch(db, userId, tripId, events, scope, scopeKey) {
     ? (e) => e.visitDate === scopeKey
     : (e) => e.spotId === scopeKey;
 
-  const selectable = events.filter(e => e.status === EventSelectStatus.SELECTABLE && inScope(e));
+  const selectable = events
+    .filter(e => e.status === EventSelectStatus.SELECTABLE && inScope(e))
+    .filter((event, index, list) => list.findIndex(other =>
+      other.spotId === event.spotId && other.visitDate === event.visitDate) === index);
   let added = 0;
   let addedReminders = 0;
   let addedTripOnly = 0;
   const skipped = [];
-  for (const e of selectable) {
-    const r = await add(db, userId, {
-      tripId,
-      spotId: e.spotId,
-      visitDate: e.visitDate,
-      releaseAt: e.releaseAt,
-      remindOn: e.remindOnDefault,
+  const affectedKeys = [];
+  const targetTripId = cartTripIdOf(tripId);
+  if (selectable.length === 0) {
+    const current = await db.collection(COLLECTIONS.REMINDER_CART)
+      .where({ userId, tripId: targetTripId }).get();
+    const currentItems = current.data || [];
+    return ok({
+      added,
+      addedReminders,
+      addedTripOnly,
+      skipped,
+      total: 0,
+      scope,
+      scopeKey,
+      affectedKeys,
+      cartSummary: summarize(currentItems),
+      cartVersion: cartVersionOf(currentItems),
     });
-    if (r.success) {
-      added += 1;
-      if (r.remindOn) addedReminders += 1;
-      else addedTripOnly += 1;
-    }
-    else skipped.push({ spotId: e.spotId, visitDate: e.visitDate, reason: r.error });
   }
+
+  const spotIds = [...new Set(selectable.map(event => event.spotId).filter(Boolean))];
+  const visitDates = [...new Set(selectable.map(event => event.visitDate).filter(Boolean))];
+  const [{ spotMap, ruleMap }, cartRes, itemRes] = await Promise.all([
+    item.loadSpotContext(db, spotIds),
+    db.collection(COLLECTIONS.REMINDER_CART)
+      .where({ userId, tripId: targetTripId }).get(),
+    db.collection(COLLECTIONS.TRIP_ITEMS)
+      .where({
+        userId,
+        spotId: db.command.in(spotIds),
+        visitDate: db.command.in(visitDates),
+      })
+      .get(),
+  ]);
+  const currentItems = cartRes.data || [];
+  const cartKeys = new Set(currentItems.map(row => `${row.spotId}|${row.visitDate}`));
+  const itemKeys = new Set((itemRes.data || []).map(row => `${row.spotId}|${row.visitDate}`));
+  const nowTs = time.now();
+  const toWrite = [];
+
+  selectable.forEach(event => {
+    const key = `${event.spotId}|${event.visitDate}`;
+    const spot = spotMap[event.spotId];
+    if (!spot) {
+      skipped.push({ spotId: event.spotId, visitDate: event.visitDate, reason: ERRORS.SPOT_NOT_FOUND.message });
+      return;
+    }
+    if (cartKeys.has(key) || itemKeys.has(key)) {
+      skipped.push({ spotId: event.spotId, visitDate: event.visitDate, reason: ERRORS.REMINDER_EXISTS.message });
+      return;
+    }
+    const rule = ruleMap[event.spotId] || null;
+    const reservationRequired = spot.reservationRequired !== false;
+    let releaseAt = null;
+    let remindOn = false;
+    if (reservationRequired) {
+      releaseAt = item.deriveReleaseAt(spot, rule, event.visitDate);
+      const releasePassed = !!releaseAt && new Date(releaseAt).getTime() <= nowTs.getTime();
+      remindOn = !!releaseAt
+        && !releasePassed
+        && (typeof event.remindOnDefault === 'boolean'
+          ? event.remindOnDefault
+          : tripItem.defaultRemindOn(spot));
+    }
+    toWrite.push({
+      userId,
+      tripId: targetTripId,
+      spotId: event.spotId,
+      visitDate: event.visitDate,
+      releaseAt,
+      remindOn,
+      reservationRequired,
+      createdAt: nowTs,
+    });
+    cartKeys.add(key);
+  });
+
+  if (toWrite.length > 0) {
+    const transaction = await db.startTransaction();
+    try {
+      for (const row of toWrite) {
+        const result = await transaction.collection(COLLECTIONS.REMINDER_CART).add({ data: row });
+        added += 1;
+        if (row.remindOn) addedReminders += 1;
+        else addedTripOnly += 1;
+        affectedKeys.push({
+          cartId: result && result._id,
+          spotId: row.spotId,
+          visitDate: row.visitDate,
+        });
+      }
+      await transaction.commit();
+    } catch (err) {
+      try { await transaction.rollback(); } catch (rollbackErr) { /* transaction may be closed */ }
+      throw err;
+    }
+  }
+  const nextItems = currentItems.concat(toWrite);
   return ok({
     added,
     addedReminders,
@@ -313,6 +506,9 @@ async function addBatch(db, userId, tripId, events, scope, scopeKey) {
     total: selectable.length,
     scope,
     scopeKey,
+    affectedKeys,
+    cartSummary: summarize(nextItems),
+    cartVersion: cartVersionOf(nextItems),
   });
 }
 
@@ -331,16 +527,37 @@ async function updateRemindOn(db, userId, cartId, remindOn) {
   await db.collection(COLLECTIONS.REMINDER_CART).doc(cartId).update({
     data: { remindOn: remindOn === true },
   });
-  return ok({ cartId, remindOn: remindOn === true });
+  const all = await db.collection(COLLECTIONS.REMINDER_CART)
+    .where({ userId, tripId: item.tripId }).get();
+  const items = (all.data || []).map(row =>
+    row._id === cartId ? { ...row, remindOn: remindOn === true } : row);
+  return ok({
+    cartId,
+    remindOn: remindOn === true,
+    cartSummary: summarize(items),
+    cartVersion: cartVersionOf(items),
+  });
 }
 
 /** 删除单条 */
 async function remove(db, userId, cartId) {
   const res = await db.collection(COLLECTIONS.REMINDER_CART)
     .where({ _id: cartId, userId }).get();
-  if (!(res.data || []).length) return fail(ERRORS.BAD_PARAM);
+  const item = (res.data || [])[0];
+  if (!item) return fail(ERRORS.BAD_PARAM);
   await db.collection(COLLECTIONS.REMINDER_CART).doc(cartId).remove();
-  return ok({ cartId });
+  const all = await db.collection(COLLECTIONS.REMINDER_CART)
+    .where({ userId, tripId: item.tripId }).get();
+  const items = all.data || [];
+  return ok({
+    cartId,
+    spotId: item.spotId,
+    visitDate: item.visitDate,
+    releaseAt: item.releaseAt || null,
+    reservationRequired: item.reservationRequired !== false,
+    cartSummary: summarize(items),
+    cartVersion: cartVersionOf(items),
+  });
 }
 
 /**
@@ -355,8 +572,17 @@ async function clear(db, userId, tripId = null) {
   const where = tripId === null
     ? { userId, tripId: PENDING_CART_TRIP_ID }
     : { userId, tripId };
+  const beforeRes = await db.collection(COLLECTIONS.REMINDER_CART).where(where).get();
+  const removedRows = beforeRes.data || [];
   const res = await db.collection(COLLECTIONS.REMINDER_CART).where(where).remove();
-  return ok({ removed: res.stats ? res.stats.removed : 0 });
+  const remainingRes = await db.collection(COLLECTIONS.REMINDER_CART).where(where).get();
+  const remaining = remainingRes.data || [];
+  return ok({
+    removed: res.stats ? res.stats.removed : 0,
+    removedRows,
+    cartSummary: summarize(remaining),
+    cartVersion: cartVersionOf(remaining),
+  });
 }
 
 /**
@@ -383,7 +609,12 @@ async function pruneScope(db, userId, { startDate, endDate, spotIds } = {}) {
   ));
 
   await Promise.all(stale.map(i => db.collection(COLLECTIONS.REMINDER_CART).doc(i._id).remove()));
-  return ok({ removed: stale.length });
+  const remaining = (res.data || []).filter(row => !stale.some(itemRow => itemRow._id === row._id));
+  return ok({
+    removed: stale.length,
+    cartSummary: summarize(remaining),
+    cartVersion: cartVersionOf(remaining),
+  });
 }
 
 /**
@@ -413,7 +644,7 @@ async function list(db, userId, tripId = null, { includeMembership = false } = {
   const nowTs = time.now();
   const cartPromise = db.collection(COLLECTIONS.REMINDER_CART).where(where).get();
   const membershipPromise = includeMembership
-    ? membership.status(db, userId, nowTs).catch(() => null)
+    ? membership.status(db, userId, nowTs, { configCache: true }).catch(() => null)
     : Promise.resolve(null);
   const [res, membershipRes] = await Promise.all([cartPromise, membershipPromise]);
   const items = res.data || [];
@@ -477,6 +708,8 @@ async function list(db, userId, tripId = null, { includeMembership = false } = {
     items: enriched,
     groups: groupByVisitDate(enriched),
     summary: summarize(enriched),
+    cartSummary: summarize(enriched),
+    cartVersion: cartVersionOf(items),
     membership: membershipRes ? membershipRes.membership : null,
     packages: membershipRes && Array.isArray(membershipRes.packages) ? membershipRes.packages : [],
     sales: membershipRes ? membershipRes.sales : null,
@@ -487,7 +720,10 @@ module.exports = {
   cartTripIdOf,
   isPending,
   summarize,
+  cartVersionOf,
   groupByVisitDate,
+  loadDatePlanContext,
+  planQuickDates,
   add,
   planDates,
   addDates,

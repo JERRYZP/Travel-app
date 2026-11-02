@@ -100,5 +100,15 @@ eq(code.indexOf('_lastBootOkAt = Date.now()') > code.indexOf('api.reminder.home.
 eq(code.indexOf('this._bootDataVersion = homeDataVersion') > code.indexOf('api.reminder.home.bootstrap('),
   true, '版本号也只在成功回调里写入');
 
+console.log('=== 6. 主动下拉与读模型强制刷新 ===');
+eq(/onPullDownRefresh\(\)/.test(code), true, '首页注册下拉刷新');
+eq(/this\.loadHome\(\{ pullDown: true \}\)/.test(code), true,
+  '下拉刷新绕过复用窗口');
+eq(/runtimeBypass: true/.test(code), true,
+  '写后/主动刷新要求服务端绕过读模型缓存');
+eq(/"enablePullDownRefresh": true/.test(
+  require('fs').readFileSync(path.join(__dirname, '../miniprogram/pages/home/home.json'), 'utf8')
+), true, '页面配置开启系统下拉刷新');
+
 if (fail) { console.log(`\n${fail} 项失败`); process.exit(1); }
 console.log('\nhome-bootstrap-ttl.test.js 全部通过');

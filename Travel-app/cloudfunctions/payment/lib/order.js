@@ -10,6 +10,7 @@ const {
 } = require('./schema');
 const userDomain = require('./user');
 const quotaLock = require('./quota-lock');
+const userRuntimeStale = require('./user-runtime-stale');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ORDER_TTL_MS = 15 * 60 * 1000;
@@ -320,6 +321,7 @@ async function fulfillOrder(db, order, payment = {}) {
         },
       });
       await transaction.commit();
+      await userRuntimeStale.invalidateUsers(db, [order.userId]);
     } catch (err) {
       try { await transaction.rollback(); } catch (rollbackErr) { /* commit 结果未知，下面以数据库回读为准 */ }
       const fresh = await findOrderById(db, order._id);
@@ -476,6 +478,7 @@ async function reverseOrderEntitlement(db, order, refundedAmountFen) {
         },
       });
       await transaction.commit();
+      await userRuntimeStale.invalidateUsers(db, [freshSeed.userId]);
     } catch (err) {
       try { await transaction.rollback(); } catch (rollbackErr) { /* commit 结果未知，下面以数据库回读为准 */ }
       const fresh = await findOrderById(db, freshSeed._id);

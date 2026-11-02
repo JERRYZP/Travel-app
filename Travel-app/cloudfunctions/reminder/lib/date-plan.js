@@ -103,5 +103,6 @@ module.exports = {
   DATE_PLAN_STATUS,
   DATE_PLAN_REASON,
   normalizeVisitDates,
+  summarize,
   build,
 };

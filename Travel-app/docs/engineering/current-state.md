@@ -9,6 +9,8 @@
 
 ## 已实现
 
+- 2026-11-02 调用量结构性优化代码完成（本地候选，未部署）：景点列表/搜索/详情改读 `spots-snapshot/v1`，包内快照兜底、远程文件每日最多检查一次；首页冷窗口放宽到 5 分钟并支持下拉刷新；`profile`/`setup` 改走 `user.bootstrap`/`cart.bootstrap`；`cart.addAll` 改为一次上下文读取和单事务批量写入并返回状态补丁；新增 `user_runtime/v1` 首页派生读模型、`HOME_RUNTIME_MODE=off|shadow|on` 和受 `RUNTIME_BACKFILL_TOKEN` 保护的分批预建入口；四个热函数加入无隐私资源日志；支付补偿增加空队列短路；会员配置增加 45 秒实例内缓存。`npm test` 已通过，部署、集合创建、静态快照上传和开关切换仍待单独授权。
+- 2026-11-02 工作区优化景点快捷设提醒：新增 `cart.planQuickDates` / `cart.quickCommit`，景点页、详情、分享与首页“约其他日”不再先把日期写进主流程 `reminder_cart`；授权/名额通过后由服务端一次事务直接创建行程项与任务。旧版遗留的同景点 pending 行会在 quickCommit 中续用并消费，其他主流程草稿不受影响；已落成真实行程的日期继续拦截。`npm test`、`npm run check`、`git diff --check` 已通过；`reminder` 尚未部署，客户端尚未发布。
 - 首页已收敛为“行程状态墙”；新用户空态展示动态结果预览、提醒样式入口和高热度 S 级景点的「近期热门景点放票」。
 - 创建行程到设置提醒的主流程已按 V0.3 落地：四步流程、日期锚点、清单提醒策略、PAGE-008 授权硬闸门。
 - 行程项、票务结果、提醒送达状态、提醒任务已拆分建模；首页事实来源是 `trip_items`。
@@ -110,6 +112,7 @@
   并行化、`lib/task.js` 的 `sweepOverdue` 并发写）。另有未提交的额度预警文案改动。
   2026-10-31 另新增 `cart.commit.cartIds` 多日期事务提交与 `membership.status.enforced` 灰度标志，需随本函数一起部署。
   同日最新工作区又新增 `cart.planDates / cart.addDates`、主流程提醒/仅行程拆分和 `cart.commit / tripItem.updateReminder` 服务端订阅额度复核；即使上一版已部署，也需要再次部署本轮 `reminder`。
+  2026-11-02 又新增 `cart.planQuickDates / cart.quickCommit` 快捷一次性提交入口；客户端切到新接口前必须同时部署本轮 `reminder`，否则快捷设提醒会返回 unknown action。
   ⚠️ **`includeSpots` 默认值由 `true` 改为 `false` 是契约变更**（`API-契约.md` 8.2）：
   未部署时前端拿不到 `hotSpots`，但前端已有本地切片兜底，不会白屏。
 - `spots`：景点卡 `shortName` / `aliases` / `addable` / `strongReminder` 的新口径已提交，需重新部署后在真机确认。

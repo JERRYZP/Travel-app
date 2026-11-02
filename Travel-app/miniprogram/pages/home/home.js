@@ -26,7 +26,7 @@ const NAV_FADE_PX = 50;
 const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
 /* 首页 onShow 的复用窗口（2026-10-13 调用量优化，2026-10-27 改成自适应）。
    距上次成功 bootstrap 不足**本次数据算出的窗口**、又有本地缓存时，切回首页
-   不再重复发一次网络。窗口长度由放票紧迫度决定（30s / 60s / 180s），
+   不再重复发一次网络。窗口长度由放票紧迫度决定（30s / 60s / 5min），
    见 utils/home-refresh-window.js。常量本身只在「拿不到放票时刻」时兜底。 */
 const HOME_BOOTSTRAP_TTL_MS = refreshWindow.DEFAULT_TTL_MS;
 const EMPTY_RELEASE_FALLBACK = release.buildHomeReleasePreview([], new Date()).sample;
@@ -97,7 +97,7 @@ function buildHomeData(res, now, opts) {
        ⚠️ **别再在页面侧另发一次请求去算**（2026-09-24 踩过）：那样这条响应
        与候选之间没有顺序保证，返回体已经带着 `result = FAILED` 而候选还在路上，
        卡片就按「FAILED 但不可挽回」渲染 —— 症状是**挽回线永远不出现**，
-       菜单里也只剩「删除这天」，而两边的单测全绿（各自都没问题，是时序问题）。 */
+       菜单里也只剩「删除这条」，而两边的单测全绿（各自都没问题，是时序问题）。 */
     recoverableIds: res.recoverableIds || [],
     /* 同上：`''` 会关掉正在打开的菜单，缓存绘制和静默刷新都不该动它。 */
     menuId: silent ? undefined : '',
@@ -252,6 +252,12 @@ Page({
     if (this._reminderAuthResolve) reminderFlow.refreshReminderAuth(this);
   },
 
+  onPullDownRefresh() {
+    /* 主动刷新永远绕过复用窗口；完成或失败后都必须收起系统刷新态。 */
+    this._pullDownRefreshing = true;
+    this.loadHome({ pullDown: true });
+  },
+
   onHide() {
     /* 即时挽回气泡只属于刚才那次「没抢到」操作，不在页面重新进入时复活。 */
     if (this.data.recoveryPromptIds.length) this.setData({ recoveryPromptIds: [] });
@@ -309,7 +315,7 @@ Page({
     const ttl = this._bootTtlMs > 0 ? this._bootTtlMs : HOME_BOOTSTRAP_TTL_MS;
     /* 写操作（设提醒、补授权等）会递增该版本号。它必须参与复用判定：
        否则用户刚设完提醒就回首页，会继续回放写操作之前的缓存，额度预警和
-       临近放票横幅最多晚 180 秒才出现。 */
+       临近放票横幅最多晚 5 分钟才出现。 */
     const homeDataVersion = Number(app.globalData && app.globalData.homeDataVersion) || 0;
     const ttlFresh = Boolean(opts && opts.allowTtlReuse)
       && this._lastBootOkAt > 0
@@ -365,6 +371,10 @@ Page({
         const preview = release.buildHomeReleasePreview(res.data || [], new Date(), 3);
         this.setData({ emptyReleaseRows: preview.rows, emptyReleaseSample: preview.sample });
       }).catch(() => {});
+      if (this._pullDownRefreshing && wx.stopPullDownRefresh) {
+        this._pullDownRefreshing = false;
+        wx.stopPullDownRefresh();
+      }
       return;
     }
 
@@ -381,7 +391,7 @@ Page({
         /* 复用窗口内：缓存就是 30 秒内的服务端返回体，直接收工，不再发一次网络。
            ⚠️ 回放的是服务端返回体的逐字节副本（与 live 路径同一个 buildHomeData），
            不是页面重新推导状态 —— 不触犯「首页状态不得由页面重新推导」这条硬门禁。
-           最坏效果只是状态晚 ≤ 本次窗口（30/60/180 秒）可见。 */
+           最坏效果只是状态晚 ≤ 本次窗口（30 秒 / 60 秒 / 5 分钟）可见。 */
         if (ttlFresh) {
           trace.end({ branch: 'ttl-reuse', ttl: Math.round(ttl / 1000) });
           return;
@@ -403,7 +413,9 @@ Page({
     /* 到这里的耗时 = 首帧准备的收尾（无缓存分支的 setData 已在上面发出）。
        有缓存时 `cache` 分段已经记过，这次 mark 记的是「缓存绘制之后到发请求」。 */
     trace.mark('paint');
-    api.reminder.home.bootstrap(this.bootstrapParams()).then(res => {
+    api.reminder.home.bootstrap(this.bootstrapParams({
+      bypassRuntimeCache: silent || !!(opts && opts.pullDown),
+    })).then(res => {
       if (seq !== this._loadSeq) return;
       trace.mark('net');
       /* 记录服务端时钟偏移：本地兜底绘制用它换算「现在」，
@@ -419,7 +431,7 @@ Page({
          下一次 onShow 仍会强制重新拉取，不会把新写入误当成已同步。 */
       this._bootDataVersion = homeDataVersion;
       /* 复用窗口跟着「本次数据里最近一场放票离现在多远」走，而不是固定 30 秒：
-         放票窗口内 30 秒一问，今天还有票要放 60 秒，其余 180 秒。
+         放票窗口内 30 秒一问，今天还有票要放 60 秒，其余 5 分钟。
          读的是同一个 patch 里服务端已经算好的时刻，页面不重新推导业务状态。
          打点分支用 `reuse-<秒>` 前缀，发版前后从 `home_load_timing` 里
          直接看得出省掉了多少请求。 */
@@ -434,6 +446,10 @@ Page({
       });
       /* 进首页自动滚到最近该标记的一条（优先可抢 —— 还来得及救） */
       if (!silent && res.scrollTargetId) this.scrollToItem(res.scrollTargetId);
+      if (this._pullDownRefreshing && wx.stopPullDownRefresh) {
+        this._pullDownRefreshing = false;
+        wx.stopPullDownRefresh();
+      }
       /* 热门景点预览：**首屏画完之后**才发，且只在空态、且云端没带过来时。
          放在这里而不是 bootstrap 的参数里，是为了不把 `spots` 的冷启动
          塞进用户等待的那一段 —— 云端没有它时用的是包内本地切片，
@@ -451,6 +467,10 @@ Page({
       /* 失败时**不清空已有内容**：缓存画出来的状态墙、或骨架层的案例展示
          都比一片空白好；只把 loading 收掉，避免永久转圈。 */
       this.setData({ loading: false });
+      if (this._pullDownRefreshing && wx.stopPullDownRefresh) {
+        this._pullDownRefreshing = false;
+        wx.stopPullDownRefresh();
+      }
     });
   },
 
@@ -514,8 +534,8 @@ Page({
    * 一整次 `spots` 云函数冷启动，而它只有空态会渲染 —— 已有行程的用户
    * （绝大多数）永远用不上。空态需要时走 `loadHotSpots()`，在首屏之后单独拉。
    */
-  bootstrapParams() {
-    return {};
+  bootstrapParams(options) {
+    return options && options.bypassRuntimeCache ? { runtimeBypass: true } : {};
   },
 
   onQuotaWarningOpen() {
@@ -1005,7 +1025,7 @@ Page({
       if (kept) {
         wx.showModal({
           title: '提醒已关闭',
-          content: '这条提醒此前未送达，记录保留在卡片上。若不再需要，可删除这天。',
+          content: '这条提醒此前未送达，记录保留在卡片上。若不再需要，可删除这条。',
           showCancel: false,
           confirmText: '知道了',
         });

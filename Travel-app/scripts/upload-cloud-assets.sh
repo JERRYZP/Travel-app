@@ -15,3 +15,12 @@ wechatide -c "$CLIENT" cloud_manage_storage \
   --cloud-path static/v0.3/images/ \
   --local-path "$ROOT_DIR/cloud-assets/images" \
   --is-directory
+
+# 景点快照独立发布；先运行 node scripts/build-spots-snapshot.js。
+wechatide -c "$CLIENT" cloud_manage_storage \
+  --appid "$APPID" \
+  --env "$ENV_ID" \
+  --action upload \
+  --cloud-path static/v1/data/ \
+  --local-path "$ROOT_DIR/cloud-assets/data" \
+  --is-directory

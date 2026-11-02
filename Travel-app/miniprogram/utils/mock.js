@@ -780,6 +780,29 @@ function backupGroupProgress(items) {
   return { done, total: Object.keys(groups).length, noReservationCount };
 }
 
+function mockCartSummaryOf(items) {
+  const rows = items || [];
+  const reminderCount = rows.filter(row => row.remindOn === true).length;
+  return {
+    count: rows.length,
+    spotCount: new Set(rows.map(row => row.spotId)).size,
+    reminderCount,
+    noReminderCount: rows.length - reminderCount,
+    text: reminderCount > 0
+      ? `已选 ${rows.length} 项，其中 ${reminderCount} 个将设提醒`
+      : `已选 ${rows.length} 项，均无需提醒`,
+  };
+}
+
+function mockCartVersionOf(items) {
+  const rows = items || [];
+  return `cart:${rows.length}:${rows.map(row => row._id || '').join(',')}`;
+}
+
+function pendingCartRows() {
+  return Object.values(db.carts).filter(row => row.tripId === PENDING_CART_TRIP_ID);
+}
+
 /**
  * 纯预览（镜像 cloudfunctions/reminder/lib/timeline.preview，2026-09-20）
  *
@@ -878,6 +901,8 @@ function previewTimeline(input) {
     empty: events.length === 0,
     emptyReason: events.length === 0
       ? (closedSpots.length > 0 ? '该日期段暂无可提醒的放票时间' : '先选择想去的景点') : null,
+    cartSummary: mockCartSummaryOf(Object.values(db.carts).filter(c => c.tripId === want)),
+    cartVersion: mockCartVersionOf(Object.values(db.carts).filter(c => c.tripId === want)),
   };
 }
 
@@ -1691,6 +1716,56 @@ const handlers = {
     };
     return { success: true, spotId: spot.spotId, spotName: spot.name, dates, summary };
   },
+  'cart.planQuickDates': (data) => {
+    const plan = handlers['cart.planDates'](data);
+    if (!plan.success) return plan;
+    const spot = SPOTS.find(s => s.spotId === data.spotId);
+    const rule = RULES.find(r => r.spotId === data.spotId) || null;
+    const nowMs = Date.now();
+    const dates = plan.dates.map(row => {
+      if (row.status === 'IN_TRIP') return row;
+      const pendingCart = Object.values(db.carts).find(c =>
+        c.tripId === PENDING_CART_TRIP_ID
+        && c.spotId === data.spotId
+        && c.visitDate === row.visitDate);
+      if (!pendingCart && row.status === 'IN_CART') return row;
+
+      const releaseAt = deriveReleaseAt(spot, rule, row.visitDate);
+      const releaseMs = releaseAt ? new Date(releaseAt).getTime() : 0;
+      let status = 'REMINDABLE';
+      let reason = '';
+      if (spot.reservationRequired === false) { status = 'TRIP_ONLY'; reason = 'NO_RESERVATION'; }
+      else if (!releaseAt) { status = 'TRIP_ONLY'; reason = 'NO_FIXED_RELEASE'; }
+      else if (releaseMs <= nowMs) { status = 'TRIP_ONLY'; reason = 'RELEASE_PASSED'; }
+      return {
+        ...row,
+        status,
+        reason,
+        releaseAt,
+        addable: status === 'REMINDABLE' || status === 'TRIP_ONLY',
+        reminderAllowed: status === 'REMINDABLE',
+        resumeCartId: pendingCart ? pendingCart._id : '',
+        resumeCart: !!pendingCart,
+      };
+    });
+    const summary = {
+      requested: dates.length,
+      addable: dates.filter(d => d.addable).length,
+      reminder: dates.filter(d => d.reminderAllowed).length,
+      tripOnly: dates.filter(d => d.status === 'TRIP_ONLY').length,
+      existing: dates.filter(d => d.status === 'IN_CART' || d.status === 'IN_TRIP').length,
+      releasePassed: dates.filter(d => d.reason === 'RELEASE_PASSED').length,
+      noFixedRelease: dates.filter(d => d.reason === 'NO_FIXED_RELEASE').length,
+      noReservation: dates.filter(d => d.reason === 'NO_RESERVATION').length,
+    };
+    return {
+      ...plan,
+      reservationRequired: spot.reservationRequired !== false,
+      dates,
+      summary,
+      resumeCartCount: dates.filter(d => !!d.resumeCartId).length,
+    };
+  },
   'cart.addDates': (data) => {
     const plan = handlers['cart.planDates'](data);
     if (!plan.success) return plan;
@@ -1705,6 +1780,8 @@ const handlers = {
         items.push({
           cartId: r.cartId,
           visitDate: d.visitDate,
+          releaseAt: d.releaseAt,
+          reservationRequired: r.reservationRequired,
           remindOn: r.remindOn,
           status: d.status,
           reason: d.reason,
@@ -1722,6 +1799,18 @@ const handlers = {
       added: items.length,
       addedReminders: items.filter(i => i.remindOn).length,
       addedTripOnly: items.filter(i => !i.remindOn).length,
+      cartSummary: mockCartSummaryOf(pendingCartRows()),
+      cartVersion: mockCartVersionOf(pendingCartRows()),
+      statusPatches: items.map(i => ({
+        cartId: i.cartId,
+        spotId: plan.spotId,
+        visitDate: i.visitDate,
+        status: 'IN_CART',
+        button: buttonOf('IN_CART', {
+          reservationRequired: i.reservationRequired !== false,
+          remindable: !!i.releaseAt,
+        }),
+      })),
     };
   },
   'cart.add': (data) => {
@@ -1763,7 +1852,25 @@ const handlers = {
     if (spot.reservationRequired === false) remindBlockedReason = 'NO_RESERVATION';
     else if (!derivedReleaseAt) remindBlockedReason = 'NO_FIXED_RELEASE';
     else if (releasePassed) remindBlockedReason = 'RELEASE_PASSED';
-    return { success: true, cartId, remindOn, remindBlockedReason };
+    return {
+      success: true,
+      cartId,
+      spotId: data.spotId,
+      visitDate: data.visitDate,
+      releaseAt: derivedReleaseAt,
+      reservationRequired,
+      remindOn,
+      remindBlockedReason,
+      cartSummary: mockCartSummaryOf(pendingCartRows()),
+      cartVersion: mockCartVersionOf(pendingCartRows()),
+      statusPatches: [{
+        cartId,
+        spotId: data.spotId,
+        visitDate: data.visitDate,
+        status: 'IN_CART',
+        button: buttonOf('IN_CART', { reservationRequired, remindable }),
+      }],
+    };
   },
   'cart.addAll': (data) => {
     /* 服务端按同一份输入重算预览，不信任前端传来的事件与状态 */
@@ -1773,6 +1880,7 @@ const handlers = {
     let addedReminders = 0;
     let addedTripOnly = 0;
     const skipped = [];
+    const statusPatches = [];
     tl.events.filter(e => e.status === 'SELECTABLE' && inScope(e)).forEach(e => {
       const r = handlers['cart.add']({
         tripId: data.tripId,
@@ -1785,6 +1893,7 @@ const handlers = {
         added += 1;
         if (r.remindOn) addedReminders += 1;
         else addedTripOnly += 1;
+        statusPatches.push((r.statusPatches || [])[0]);
       }
       else skipped.push({ spotId: e.spotId, visitDate: e.visitDate, reason: r.error });
     });
@@ -1797,6 +1906,9 @@ const handlers = {
       total: added + skipped.length,
       scope: data.scope,
       scopeKey: data.scopeKey,
+      statusPatches: statusPatches.filter(Boolean),
+      cartSummary: mockCartSummaryOf(Object.values(db.carts).filter(c => c.tripId === cartTripIdOf(data.tripId))),
+      cartVersion: mockCartVersionOf(Object.values(db.carts).filter(c => c.tripId === cartTripIdOf(data.tripId))),
     };
   },
   'cart.updateRemindOn': (data) => {
@@ -1810,14 +1922,59 @@ const handlers = {
       && new Date(item.releaseAt).getTime() <= Date.now();
     if (releasePassed) return { success: false, error: '已过放票时间，提醒无法开启或取消', errorCode: 1017 };
     item.remindOn = data.remindOn === true;
-    return { success: true, cartId: data.cartId, remindOn: item.remindOn };
+    return {
+      success: true,
+      cartId: data.cartId,
+      remindOn: item.remindOn,
+      cartSummary: mockCartSummaryOf(pendingCartRows()),
+      cartVersion: mockCartVersionOf(pendingCartRows()),
+    };
   },
-  'cart.remove': (data) => { delete db.carts[data.cartId]; return { success: true, cartId: data.cartId }; },
+  'cart.remove': (data) => {
+    const removed = db.carts[data.cartId];
+    delete db.carts[data.cartId];
+    return {
+      success: true,
+      cartId: data.cartId,
+      spotId: removed && removed.spotId,
+      visitDate: removed && removed.visitDate,
+      releaseAt: removed && removed.releaseAt,
+      reservationRequired: !removed || removed.reservationRequired !== false,
+      cartSummary: mockCartSummaryOf(pendingCartRows()),
+      cartVersion: mockCartVersionOf(pendingCartRows()),
+      statusPatches: removed ? [{
+        spotId: removed.spotId,
+        visitDate: removed.visitDate,
+        status: 'SELECTABLE',
+        button: buttonOf('SELECTABLE', {
+          reservationRequired: removed.reservationRequired !== false,
+          remindable: !!removed.releaseAt,
+        }),
+      }] : [],
+    };
+  },
   /* 默认只清暂存区；传真实 tripId 才清那个行程的清单（镜像 cart.clear） */
   'cart.clear': (data) => {
     const want = cartTripIdOf(data && data.tripId);
+    const removedRows = Object.values(db.carts).filter(row => row.tripId === want);
     Object.keys(db.carts).forEach(id => { if (db.carts[id].tripId === want) delete db.carts[id]; });
-    return { success: true, removed: 0 };
+    const remaining = Object.values(db.carts).filter(row => row.tripId === want);
+    return {
+      success: true,
+      removed: 0,
+      removedRows,
+      cartSummary: mockCartSummaryOf(remaining),
+      cartVersion: mockCartVersionOf(remaining),
+      statusPatches: removedRows.map(row => ({
+        spotId: row.spotId,
+        visitDate: row.visitDate,
+        status: 'SELECTABLE',
+        button: buttonOf('SELECTABLE', {
+          reservationRequired: row.reservationRequired !== false,
+          remindable: !!row.releaseAt,
+        }),
+      })),
+    };
   },
   /* CART-RULE-007：只保留本次日期段 × 景点集合内的暂存项（镜像 cart.pruneScope） */
   'cart.pruneScope': (data) => {
@@ -1839,7 +1996,12 @@ const handlers = {
         || item.visitDate > endDate;
       if (stale) { delete db.carts[id]; removed += 1; }
     });
-    return { success: true, removed };
+    return {
+      success: true,
+      removed,
+      cartSummary: mockCartSummaryOf(pendingCartRows()),
+      cartVersion: mockCartVersionOf(pendingCartRows()),
+    };
   },
   'cart.list': (data) => {
     /* 不传 tripId = 读暂存区（「添加提醒」页要的就是这个） */
@@ -1943,12 +2105,66 @@ const handlers = {
       items: enriched,
       groups,
       summary,
+      cartSummary: summary,
+      cartVersion: mockCartVersionOf(items),
       membership: data && data.includeMembership ? mockMembershipSnapshot(now) : null,
+    };
+  },
+  'cart.bootstrap': () => {
+    const cartResult = handlers['cart.list']({ includeMembership: true });
+    const subscription = handlers['subscribe.get']({});
+    return {
+      ...cartResult,
+      subscription,
+      runtimeVersion: 'mock:cart',
     };
   },
 
   /* ----- task ----- */
   'cart.commit': (data) => handlers['task.submit'](data),
+  'cart.quickCommit': (data) => {
+    const plan = handlers['cart.planQuickDates'](data);
+    if (!plan.success) return plan;
+    const dates = plan.dates || [];
+    if (dates.some(d => d.status === 'IN_TRIP')) {
+      return { success: false, error: '这个日期已经在首页行程中', errorCode: 1002 };
+    }
+    if (dates.some(d => d.status === 'IN_CART')) {
+      return { success: false, error: '这条已经在清单里啦', errorCode: 1002 };
+    }
+
+    const disableReminders = data.disableReminders === true;
+    const cartIds = [];
+    const temporaryIds = [];
+    for (const dateRow of dates) {
+      let pending = dateRow.resumeCartId ? db.carts[dateRow.resumeCartId] : null;
+      if (!pending) {
+        const added = handlers['cart.add']({
+          spotId: data.spotId,
+          visitDate: dateRow.visitDate,
+          remindOn: dateRow.reminderAllowed,
+        });
+        if (!added.success) {
+          temporaryIds.forEach(id => { delete db.carts[id]; });
+          return added;
+        }
+        pending = db.carts[added.cartId];
+        temporaryIds.push(added.cartId);
+      }
+      pending.releaseAt = dateRow.releaseAt;
+      pending.reservationRequired = plan.reservationRequired;
+      pending.remindOn = !disableReminders
+        && plan.reservationRequired !== false
+        && !!dateRow.releaseAt;
+      cartIds.push(pending._id);
+    }
+
+    const result = handlers['task.submit'](Object.assign({}, data, { cartIds }));
+    if (!result.success) {
+      temporaryIds.forEach(id => { delete db.carts[id]; });
+    }
+    return result;
+  },
   'task.submit': (data) => {
     /* 2026-09-20 起这是**唯一**创建行程的地方（「生成时间线」已改为纯预览）：
        读暂存清单 → 建/合并行程 → 落行程项 → 为勾了提醒的项建任务 → 清空清单 */
@@ -2319,6 +2535,20 @@ const handlers = {
       membershipSales: mockMembershipSalesView(),
     },
   }),
+  'user.bootstrap': () => {
+    const profile = handlers['user.profile']();
+    const membership = handlers['membership.status']();
+    return {
+      success: true,
+      user: profile.user,
+      membership: membership.membership,
+      packages: membership.packages,
+      sales: membership.sales,
+      subscription: handlers['subscribe.get']({}),
+      capabilities: { adminStatusKnown: false },
+      runtimeVersion: 'mock:user',
+    };
+  },
   'user.updateProfile': (data) => {
     const nickname = (data.nickname || '').trim().slice(0, 32);
     if (!nickname) return { success: false, error: '昵称不能为空', errorCode: 1010 };

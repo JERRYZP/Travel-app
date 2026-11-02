@@ -3,10 +3,57 @@
  */
 
 const { mockCall, USE_MOCK } = require('./mock.js');
+const spotsStatic = require('./spots-static.js');
 
-function call(name, data) {
+const READ_ACTIONS = new Set([
+  'home.bootstrap',
+  'timeline.preview',
+  'cart.list',
+  'cart.bootstrap',
+  'user.profile',
+  'user.bootstrap',
+  'subscribe.get',
+  'membership.status',
+  'membership.orders',
+  'membership.orderDetail',
+  'feedback.list',
+  'feedback.adminStatus',
+  'payment.query',
+  'payment.afterSales.list',
+  'payment.afterSales.detail',
+  'payment.afterSales.adminStatus',
+  'payment.adminOrders.list',
+  'payment.adminOrders.stats',
+  'payment.adminOrders.detail',
+]);
+
+const inflightReads = new Map();
+const failedReads = new Map();
+const READ_RETRY_BACKOFF_MS = 1500;
+
+function requestKey(name, data) {
+  let payload = '';
+  try {
+    payload = JSON.stringify(data || {});
+  } catch (e) {
+    payload = String(Date.now());
+  }
+  return `${name}:${payload}`;
+}
+
+function call(name, data, options) {
   if (USE_MOCK) return mockCall(name, data);
-  return new Promise((resolve, reject) => {
+  const action = data && data.action;
+  const canCoalesce = READ_ACTIONS.has(action) && !(options && options.noCoalesce);
+  const key = canCoalesce ? requestKey(name, data) : '';
+  if (canCoalesce && inflightReads.has(key)) return inflightReads.get(key);
+  if (canCoalesce) {
+    const failed = failedReads.get(key);
+    if (failed && failed.until > Date.now()) return Promise.reject(failed.error);
+    if (failed) failedReads.delete(key);
+  }
+
+  const request = new Promise((resolve, reject) => {
     wx.cloud.callFunction({
       name,
       data,
@@ -20,6 +67,21 @@ function call(name, data) {
       fail: err => reject(err),
     });
   });
+  if (canCoalesce) {
+    inflightReads.set(key, request);
+    request.then(
+      () => inflightReads.delete(key),
+      err => {
+        inflightReads.delete(key);
+        /* 只对网络/平台失败做短暂退避；业务错误由页面立即处理，不人为延迟。 */
+        if (canCoalesce && !(err && err.errorCode)) {
+          if (failedReads.size >= 100) failedReads.clear();
+          failedReads.set(key, { until: Date.now() + READ_RETRY_BACKOFF_MS, error: err });
+        }
+      }
+    );
+  }
+  return request;
 }
 
 /**
@@ -47,32 +109,13 @@ function homeMutationCall(name, data) {
 
 /* ===== spots ===== */
 
-/* `spots.list` 是只读静态数据（真身 data/spots.json），无参数、无用户态，而
-   景点库 / 添加行程 / 分享场景页 / 首页空态各自的 onLoad 都会拉一次同一份全量数据。
-   加一层短 TTL 内存缓存，连续进这几个页面时只发一次（2026-10-13 调用量优化）。
-   ⚠️ TTL 保持分钟级：首页空态那次请求的价值之一就是「感知服务端规则变更」（见
-   pages/home/home.js 的 loadHotSpots），缓存太久会让人迟迟看不到规则更新。 */
-const SPOTS_LIST_TTL_MS = 3 * 60 * 1000;
-let spotsListCache = { at: 0, res: null };
-
 const spots = {
-  list: () => {
-    const hit = spotsListCache.res;
-    if (hit && (Date.now() - spotsListCache.at) < SPOTS_LIST_TTL_MS) {
-      /* 每次给一个新的 data 数组：调用方对自己的副本排序/裁剪时不会污染缓存。
-         元素对象本身是只读的业务数据，共享引用即可。 */
-      return Promise.resolve({ ...hit, data: Array.isArray(hit.data) ? hit.data.slice() : hit.data });
-    }
-    return call('spots', { action: 'list' }).then(res => {
-      spotsListCache = { at: Date.now(), res };
-      return res;
-    });
-  },
-  detail: (spotId) => call('spots', { action: 'detail', spotId }),
-  batch: (spotIds) => call('spots', { action: 'batch', spotIds }),
-  search: (keyword) => call('spots', { action: 'search', keyword }),
-  searchHistory: () => call('spots', { action: 'searchHistory' }),
-  clearSearchHistory: () => call('spots', { action: 'clearSearchHistory' }),
+  list: () => (USE_MOCK ? call('spots', { action: 'list' }) : spotsStatic.list()),
+  detail: (spotId) => (USE_MOCK ? call('spots', { action: 'detail', spotId }) : spotsStatic.detail(spotId)),
+  batch: (spotIds) => (USE_MOCK ? call('spots', { action: 'batch', spotIds }) : spotsStatic.batch(spotIds)),
+  search: (keyword) => (USE_MOCK ? call('spots', { action: 'search', keyword }) : spotsStatic.search(keyword)),
+  searchHistory: () => (USE_MOCK ? call('spots', { action: 'searchHistory' }) : spotsStatic.searchHistory()),
+  clearSearchHistory: () => (USE_MOCK ? call('spots', { action: 'clearSearchHistory' }) : spotsStatic.clearSearchHistory()),
 };
 
 /* ===== reminder ===== */
@@ -109,7 +152,10 @@ const reminder = {
   },
   cart: {
     planDates: (p) => call('reminder', { action: 'cart.planDates', ...p }),
+    planQuickDates: (p) => call('reminder', { action: 'cart.planQuickDates', ...p }),
+    quickCommit: (p) => homeMutationCall('reminder', { action: 'cart.quickCommit', ...p }),
     addDates: (p) => call('reminder', { action: 'cart.addDates', ...p }),
+    bootstrap: () => call('reminder', { action: 'cart.bootstrap' }),
     add: (p) => call('reminder', { action: 'cart.add', ...p }),
     addAll: (p) => call('reminder', { action: 'cart.addAll', ...p }),
     updateRemindOn: (p) => call('reminder', { action: 'cart.updateRemindOn', ...p }),
@@ -133,6 +179,7 @@ const reminder = {
   },
   user: {
     profile: () => call('reminder', { action: 'user.profile' }),
+    bootstrap: () => call('reminder', { action: 'user.bootstrap' }),
     updateProfile: (p) => call('reminder', { action: 'user.updateProfile', ...p }),
     updateNotifyPrefs: (notifyPrefs) => call('reminder', { action: 'user.updateNotifyPrefs', notifyPrefs }),
   },

@@ -8,6 +8,7 @@ const orderRefresh = require('../../utils/order-refresh.js');
 
 /** 成功卡片自动返回首页的秒数；倒计时文案同步走弱化提示 */
 const AUTO_BACK_SECONDS = 4;
+const CART_BOOTSTRAP_TTL_MS = 5 * 60 * 1000;
 
 Page({
   data: {
@@ -27,6 +28,7 @@ Page({
     reservedQuota: 0,
     shortfall: 0,
     membership: null,
+    subscriptionStatus: null,
     membershipSales: null,
     packages: [],
     showMembershipGate: false,
@@ -88,8 +90,16 @@ Page({
     this.stopPaymentAutoRefresh(false);
   },
 
-  loadCartAndAccess() {
-    return api.reminder.cart.list(null, { includeMembership: true }).then(res => {
+  loadCartAndAccess(options) {
+    const force = !!(options && options.force);
+    if (!force && this.data.membership && this._cartLoadedAt > 0
+      && Date.now() - this._cartLoadedAt < CART_BOOTSTRAP_TTL_MS) {
+      return this.refreshAccessState(this.data.quotaNeeded);
+    }
+    const bootstrap = typeof api.reminder.cart.bootstrap === 'function'
+      ? api.reminder.cart.bootstrap().catch(() => api.reminder.cart.list(null, { includeMembership: true }))
+      : api.reminder.cart.list(null, { includeMembership: true });
+    return bootstrap.then(res => {
       const reminderCount = (res && res.summary && res.summary.reminderCount) || 0;
       const quotaNeeded = reminderCount * this.data.offsets.length;
       const packages = (res && Array.isArray(res.packages) ? res.packages : []).map(item => ({ ...item }));
@@ -104,10 +114,12 @@ Page({
         reminderCount,
         quotaNeeded,
         membership: (res && res.membership) || null,
+        subscriptionStatus: (res && res.subscription) || null,
         membershipSales,
         packages,
         ...gate,
       });
+      this._cartLoadedAt = Date.now();
       return this.refreshAccessState(quotaNeeded);
     }).catch(() => this.refreshAccessState(this.data.quotaNeeded));
   },
@@ -200,9 +212,9 @@ Page({
     };
   },
 
-  refreshAccessState(needed) {
+  refreshAccessState(needed, options) {
     const want = typeof needed === 'number' ? needed : this.data.quotaNeeded;
-    return notify.getReminderHealth(this.data.templateId).then(health => {
+    const applyHealth = health => {
       /* 已排队的提醒还没发送，但它们会消耗微信一次性订阅次数；这里必须用
          「台账剩余 - 待发送消息数」的可用额度，否则会把同一笔授权重复承诺给新提醒。
          老版本测试桩/旧接口没有 availableQuota 时回退到 quota，保持兼容。 */
@@ -234,7 +246,15 @@ Page({
         canSubmit,
         gateText,
       });
-    });
+    };
+    const cached = this.data.subscriptionStatus;
+    if (cached && cached.success !== false && !(options && options.force)) {
+      return Promise.resolve(applyHealth({
+        ...cached,
+        systemOk: notify.getSystemNotifyOk(),
+      }));
+    }
+    return notify.getReminderHealth(this.data.templateId).then(applyHealth);
   },
 
   onToggleChannel(e) {
@@ -279,7 +299,8 @@ Page({
        “总是保持”只免去后续弹窗，不会让一次点击批量增加同模板额度。 */
     return notify.requestSubscribeBurst(1, this.data.templateId).then(res => {
       wx.hideLoading();
-      return this.refreshAccessState(this.data.quotaNeeded).then(() => {
+      this.setData({ subscriptionStatus: null });
+      return this.refreshAccessState(this.data.quotaNeeded, { force: true }).then(() => {
         const available = Math.max(0, Number(this.data.subscribeQuota) || 0);
         const ledgerGain = Math.max(0, (Number(this.data.ledgerQuota) || 0) - beforeLedger);
         const availableGain = Math.max(0, available - beforeAvailable);

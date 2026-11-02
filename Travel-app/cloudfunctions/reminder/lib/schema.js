@@ -19,6 +19,7 @@ const COLLECTIONS = {
   AFTER_SALES_CASES: 'after_sales_cases',
   ADMIN_AUDIT_LOGS: 'admin_audit_logs',
   PAYMENT_CONFIG: 'payment_config',
+  USER_RUNTIME: 'user_runtime',
 };
 
 /** ENUM-001 行程状态 */

@@ -8,8 +8,9 @@
 > 2026-10-28 更新：`spots.list` / `detail` / `batch` 的景点卡新增 `aliases`，供 PAGE-003 在页面内做名称 / 简称 / 别名 / spotId 的本地模糊过滤。PAGE-003 与 PAGE-004 已合并为单页，页面不再调用 `spots.search`、`spots.searchHistory`、`spots.clearSearchHistory`；这三个接口保留兼容。
 > 2026-10-27 更新：新增会员与提醒名额 `membership.*`、`payment.*`；该功能初始价格为会员 ¥2/30 天提升至 10 个，加购 ¥2 记录 5 个名额并在会员有效期内生效；2026-10-30 新订单价格调整为 ¥3，历史订单继续按原金额处理。支付与权益只由服务端订单确认后发放，不承诺平台自动广告可被关闭。
 > 2026-10-31 更新：免费门槛保持 5 个；会员权益调整为总计 15 个（净增 10 个），每次加购调整为 10 个，价格仍为 ¥3。`task_pack_5` 为兼容保留的稳定 SKU 标识，不再表示套餐数量。
-> 2026-10-31 更新：`cart.commit` 新增 `cartIds`，供景点页一次提交本次多选的多个日期；只消费本次指定暂存项，并在同一次服务端提交中完成提醒名额校验、行程合并和任务创建。
-> 2026-10-31 更新：新增 `cart.planDates` 与 `cart.addDates`。景点页先由服务端返回逐日期资格（可提醒 / 仅行程 / 已在清单或行程），再原子写入本次可新增日期；`cart.commit` 在任务落库前再次校验订阅授权余额，客户端预检后发生额度竞态时返回 `1008`。
+> 2026-10-31 更新：`cart.commit` 支持 `cartIds`，保留兼容旧版景点快捷入口和主流程定向提交；只消费指定暂存项，并在同一次服务端提交中完成提醒名额校验、行程合并和任务创建。
+> 2026-11-02 更新：景点页/详情/首页“约其他日”改为 `cart.planQuickDates` + `cart.quickCommit` 一次性提交，不再把快捷入口的日期写进主流程 `reminder_cart`。旧版本遗留的同景点日期暂存行由 `quickCommit` 直接消费；已落成真实行程的日期继续拦截。
+> 2026-10-31 更新：新增 `cart.planDates` 与 `cart.addDates`，保留给主流程清单预检和原子写入；`cart.commit` 在任务落库前再次校验订阅授权余额，客户端预检后发生额度竞态时返回 `1008`。
 > 更新：2026-10-28 新增景点字段 `strongReminder`；弱提醒口径改为“需预约、难度 ≤2 且未显式提升”，强提醒（含 `strongReminder=true`）在时间线与清单默认开启提醒。同日，无固定放票时刻的需预约景点（如环球影城）可加入行程和暂存清单，但不创建提醒任务；`timeline.preview` 增加 `NO_FIXED_RELEASE / 随买随用`，`cart.list` 增加 `noFixedRelease`；新增 `cart.pruneScope`，生成时间线后把暂存清单收敛到本次日期段 × 景点集合。2026-09-29 明确微信一次性订阅每次用户点击最多增加 1 条额度，禁止异步连发伪装批量授权。2026-09-25 `cart.commit` 新增 `cartId`（补录只提交本次项）与 `disableReminders`（仅加行程不提醒）；此前 2026-09-16 首页行程化 V2 契约定稿，新增 `trip_items`、`tripItem.*`、`cart.commit` 与新版 `home.bootstrap`；旧第 2.0 / 2.1 / 2.3 / 2.4 中面向“提醒任务列表 / 双 Tab 首页”的接口在 V2 实现时由第 8 节取代。此前 2026-08-26 spots `remindable` / `weak`、2026-08-19 feedback 管理端、2026-08-14 日历通道下线等变更继续有效。
 > 调用方式：`wx.cloud.callFunction({ name: '<函数名>', data: { action: '<域>.<动作>', ...params } })`
 
@@ -1328,16 +1329,16 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 | 页面 | 需要调用的 API |
 |------|---------------|
-| **PAGE-001** 首页·行程状态墙 | `home.bootstrap` V2；`tripItem.markResult` / `undoResult` / `updateReminder` / `remove` / `removeVisitDate` / `recoveryCandidates` |
+| **PAGE-001** 首页·行程状态墙 | `home.bootstrap` V2；`tripItem.markResult` / `undoResult` / `updateReminder` / `remove` / `removeVisitDate` / `recoveryCandidates`；「约其他日」快捷入口用 `cart.planQuickDates` + `cart.quickCommit` |
 | **PAGE-009** 旧任务列表 | V2 已废弃。`task.*` 云函数保留为兼容代码，**首页与新流程均不再调用** |
-| **PAGE-002** 景点弹窗 | `spots.detail` |
+| **PAGE-002 / SPOT-HUB 快捷入口** | `spots.detail`；「设置提醒 / 加入行程」用 `cart.planQuickDates` + `cart.quickCommit`，不写主流程 `reminder_cart` |
 | **PAGE-003** 想去景点（含搜索） | `spots.list`、`spots.batch`（已选行）、`trip.updateSpots` |
 | **PAGE-004** 搜索态 | 2026-10-28 已合并回 PAGE-003，不再单独调用接口 |
 | **PAGE-005** 新增提醒（独立页） | `timeline.preview`（纯预览，不建行程）、`cart.pruneScope`（生成成功后收敛暂存清单）、`cart.add`、`cart.addAll`、`cart.list`（暂存清单） |
 | **PAGE-006** 景点视图 | 搁置中，不实现 |
 | **PAGE-007** 行程清单弹窗 | `cart.list`、`cart.remove`、`cart.clear`、`cart.updateRemindOn`、`cart.commit` |
-| **PAGE-008** 设置提醒 | V0.3 主流程：`cart.list(includeMembership=true)`、`subscribe.get`、`membership.createOrder` + `payment.*`（仅提醒名额不足时）、用户主动点击「点击补授权次数」、`cart.commit`（授权、系统权限或提醒名额未满足时主按钮禁用；不提供仅加行程旁路） |
-| **PAGE-010** 我的 | `user.profile`、提醒设置权限/额度健康度（`notify.getReminderHealth`，服务端额度 + 客户端权限） |
+| **PAGE-008** 设置提醒 | V0.3 主流程：`cart.bootstrap`（清单 + 会员 + 订阅授权一次取回）、`membership.createOrder` + `payment.*`（仅提醒名额不足时）、用户主动点击「点击补授权次数」、`cart.commit`（授权、系统权限或提醒名额未满足时主按钮禁用；不提供仅加行程旁路） |
+| **PAGE-010** 我的 | `user.bootstrap`（资料 + 会员 + 订阅健康一次取回）；能力探测按本地短缓存降频 |
 | **PAGE-012** 编辑资料 | `user.profile`、`user.updateProfile`（头像走 `open-type="chooseAvatar"` + `wx.cloud.uploadFile` 上传） |
 | **PAGE-014** 会员与提醒名额 | `membership.status`、`membership.createOrder`、`membership.orders`、`payment.create/query/cancel`；支付前确认、持久支付状态和订单入口；“我的”页常驻会员状态卡 |
 | **PAGE-015** 订单与退款详情 | `membership.orders`、`membership.orderDetail`；列表最多 50 笔，详情按本人单笔读取，主订单状态与退款状态分离，支持继续支付、取消、同步、申请售后和重新购买 |
@@ -1725,6 +1726,60 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 - 单次最多 31 个日期；重复日期先去重排序。
 - 已在暂存清单或任一真实行程中的日期不重复加入。
 
+#### `cart.planQuickDates`
+
+```javascript
+调用：{
+  action: 'cart.planQuickDates',
+  spotId,
+  visitDates: ['2026-11-04', '2026-11-10']
+}
+返回：{
+  success: true,
+  spotId,
+  spotName,
+  reservationRequired: Boolean,
+  dates: [{
+    visitDate,
+    status: 'REMINDABLE' | 'TRIP_ONLY' | 'IN_CART' | 'IN_TRIP',
+    reason: '' | 'RELEASE_PASSED' | 'NO_FIXED_RELEASE' | 'NO_RESERVATION' | 'IN_CART' | 'IN_TRIP',
+    releaseAt: Date | null,
+    addable: Boolean,
+    reminderAllowed: Boolean,
+    resumeCart: Boolean,      // 仅旧版 pending 草稿可续用时为 true
+    resumeCartId: String      // 可选；服务端内部续用标识
+  }],
+  summary: {
+    requested, addable, reminder, tripOnly, existing,
+    releasePassed, noFixedRelease, noReservation
+  },
+  resumeCartCount: Number
+}
+```
+
+- 景点页、景点详情、分享场景和首页「约其他日」的唯一日期资格预检入口。
+- 与 `cart.planDates` 的区别：旧版留在 pending `reminder_cart` 的同景点日期视为可续用，不把用户引回主流程清单；已落成 `trip_items` 的日期仍返回 `IN_TRIP`。
+- 只读，不创建、消费或清理任何数据。
+
+#### `cart.quickCommit`
+
+```javascript
+调用：{
+  action: 'cart.quickCommit',
+  spotId,
+  visitDates,
+  channels: ['OFFICIAL_ACCOUNT'],   // 存在可提醒日期时必填
+  offsets: [5],                     // 存在可提醒日期时必填
+  disableReminders: false           // true = 本次仅创建行程项
+}
+返回：与 `cart.commit` 相同
+```
+
+- 授权与提醒名额闸门通过后由服务端一次性创建/合并行程、写 `trip_items`、创建提醒任务并返回 `tripId`。
+- 全新快捷日期**不得写入** `reminder_cart`；历史 pending 同景点日期行可在同一事务中续用并消费，其他暂存草稿不受影响。
+- 服务端在提交前重新运行快速日期资格并二次校验订阅授权与提醒名额，禁止信任客户端预检；已存在真实行程时返回 `1002`。
+- `disableReminders=true` 只创建行程项，不创建提醒任务，不返回公众号关注引导。
+
 #### `cart.addDates`
 
 ```javascript
@@ -1798,7 +1853,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 ```
 
 - 购物车中 `remindOn=true` 的需预约项进入设置提醒页；如果全部 `remindOn=false`，直接提交并创建行程项。
-- 首页“约其他日”传单个 `cartId`；景点页单选沿用 `cartId`，多选传 `cartIds`。两者都只提交本次补录并保留其他暂存清单，且不得同时传。
+- 旧版首页“约其他日”和景点页快捷入口可能传单个 `cartId` / `cartIds`；新版快捷入口改用 `cart.quickCommit`，不再写或提交主流程暂存清单。兼容调用只消费指定项，且不得同时传 `cartId` 与 `cartIds`。
 - `cartIds` 必须在一次提交中消费：服务端按本次集合校验提醒名额，在同一个事务中创建/合并行程、写行程项和提醒任务；不得由客户端循环提交出多趟行程。
 - 设置提醒页保持不传 `cartId` / `cartIds`，代表整单提交。
 - `disableReminders=true` 是“仅加行程不提醒”的降级提交：忽略 `channels/offsets`，本次提交的清单项均以 `remindOn=false` 落成行程项，不创建 `reminder_tasks`，且不返回公众号关注引导。该模式只允许提交暂存清单，不允许同时传真实 `tripId`。
@@ -1856,6 +1911,49 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 
 6. **行程合并时同步任务的 `releaseAt` 与 `tripId`**：放票时刻由 `visitDate` 推导，
    合并后行程段变了就会过期；`itemId` 保持不动，它是 tasks join items 的键。
+
+### 8.8 2026-11-02 调用量结构性优化
+
+1. **页面级 bootstrap**
+
+```javascript
+调用：{ action: 'user.bootstrap' }
+返回：{
+  success: true,
+  user: { /* users 文档 + membership + membershipSales */ },
+  membership, packages, sales,
+  subscription: { quota, totalQuota, availableQuota, pendingMessageCount, level, shortfall },
+  capabilities: { adminStatusKnown: false },
+  runtimeVersion: 'legacy:<ts>'
+}
+
+调用：{ action: 'cart.bootstrap' }
+返回：{ success: true, items, groups, summary, membership, packages, sales, subscription, runtimeVersion }
+```
+
+- `user.bootstrap` 共享一次用户与任务读取，替代个人页顺序调用 `user.profile + subscribe.get`；管理端能力标记仍由对应部署单元鉴权。
+- `cart.bootstrap` 替代设置提醒页的 `cart.list(includeMembership=true) + subscribe.get` 两个云函数往返。
+
+2. **清单命令返回规范视图**
+
+- `timeline.preview` 追加 `cartSummary` 与 `cartVersion`。
+- `cart.addAll` 一次加载景点、规则、清单和已有行程项，在一个事务内批量写入；不再逐项调用单条 `cart.add`。
+- `cart.addAll` / `cart.addDates` / `cart.add` 追加 `statusPatches: [{ cartId?, spotId, visitDate, status:'IN_CART', button }]`；批量命令同时返回 `cartSummary` 与 `cartVersion`。
+- `cart.updateRemindOn` / `cart.remove` 追加 `cartSummary` 与 `cartVersion`。客户端据此原地更新，不再自动追加 `timeline.preview + cart.list` 两次读回。
+
+3. **首页读模型**
+
+- `home.bootstrap` 响应保持原外形并追加 `runtimeVersion`：`legacy` 或 `runtime:<builtAtMs>`。
+- 写操作后的刷新和用户主动下拉可传 `runtimeBypass: true`，强制跳过派生文档并立即从源集合重建。
+- 运行开关 `HOME_RUNTIME_MODE=off|shadow|on` 默认 `off`；`shadow` 只返回旧链路结果并打印规范化差异，`on` 才优先读取 `user_runtime`。
+- `user_runtime` 是可重建派生集合，文档固定含 `schemaVersion='user_runtime/v1'`、`builtAt`、`stale` 和 `sources`。源集合仍是业务真身。
+- 运维预建调用 `{ action:'admin.runtimeBackfill', token, cursor?, limit? }`；`limit` 最大 50，按系统 `_id` 游标返回 `nextCursor/hasMore`。`RUNTIME_BACKFILL_TOKEN` 未配置时始终拒绝。
+
+4. **景点静态快照**
+
+- `spots-snapshot/v1` 固定含 `schemaVersion`、`contentVersion`、`generatedAt` 和 `cards`。
+- 快照由 `data/spots.json` + `data/rules.json` 生成；包内快照是首屏兜底，远程版本通过 `static/v1/data/` 每天最多检查一次。
+- 客户端 `spots.list/detail/batch/search/searchHistory/clearSearchHistory` 在快照可用时不再调用 `spots` 云函数。
 
 ---
 

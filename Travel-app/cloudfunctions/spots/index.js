@@ -8,7 +8,10 @@
 
 const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
-const db = cloud.database();
+const rawDb = cloud.database();
+const { createResourceMonitor } = require('./lib/resource-metrics');
+const resource = createResourceMonitor('spots', rawDb);
+const db = resource.db;
 const _ = db.command;
 
 const COLLECTIONS = {
@@ -263,7 +266,7 @@ async function loadAll() {
   return result;
 }
 
-exports.main = async (event) => {
+async function main(event) {
   const { action, spotId, spotIds, keyword } = event || {};
   const { OPENID } = cloud.getWXContext();
   const now = new Date();
@@ -399,6 +402,11 @@ exports.main = async (event) => {
     console.error(`[spots] action=${action} failed`, err);
     return { success: false, error: err.message, errorCode: 1500 };
   }
+}
+
+exports.main = event => {
+  const action = String((event && event.action) || 'unknown');
+  return resource.run(action, rawDb, () => main(event));
 };
 
 exports._internal = {

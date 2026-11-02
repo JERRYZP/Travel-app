@@ -1,4 +1,5 @@
 const shareEntry = require('./utils/share-entry.js');
+const spotsSnapshotSync = require('./utils/spots-snapshot-sync.js');
 
 const CLOUD_ENV_PROD = 'cloud1-d9g9f4hja396d6e92';
 const CLOUD_ENV_TEST = 'unpay-d4gf8fyrt5523ca65';
@@ -41,6 +42,8 @@ App({
         env: this.globalData.cloudEnv,
         traceUser: true,
       });
+      /* 景点数据优先使用包内快照；远程同步每天最多一次，失败不阻断启动。 */
+      spotsSnapshotSync.syncNow().catch(() => {});
     }
   },
 

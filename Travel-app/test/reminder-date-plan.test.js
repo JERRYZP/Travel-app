@@ -7,6 +7,7 @@ const datePlanView = require('../miniprogram/utils/reminder-date-plan');
 const { createDb } = require('./mock-db');
 const { COLLECTIONS } = require('../cloudfunctions/reminder/lib/schema');
 const cart = require('../cloudfunctions/reminder/lib/cart');
+const task = require('../cloudfunctions/reminder/lib/task');
 const time = require('../cloudfunctions/reminder/lib/time');
 const spots = require('../data/spots.json').spots;
 const rules = require('../data/rules.json').rules;
@@ -126,6 +127,58 @@ eq(mixedView.lines[1].text, '11月4日（已过放票时间）', '次行定位�
     visitDates: [pastVisit, futureVisit],
   });
   eq(duplicateAdd.added, 0, '重复调用 addDates 不产生重复清单');
+
+  const quickPlan = await cart.planQuickDates(db, userId, {
+    spotId: 'gugong',
+    visitDates: [pastVisit, futureVisit],
+  });
+  eq(quickPlan.success, true, '快捷设提醒有独立预检');
+  eq(quickPlan.summary.addable, 2, '快捷预检可复用旧暂存行，不再显示重复');
+  eq(quickPlan.resumeCartCount, 2, '快捷预检标记可续用的旧暂存行');
+
+  const quickCommit = await task.submitQuick(db, userId, {
+    spotId: 'gugong',
+    visitDates: [pastVisit, futureVisit],
+    channels: ['OFFICIAL_ACCOUNT'],
+    offsets: [5],
+  });
+  eq(quickCommit.success, true, '快捷提交直接创建行程项和提醒');
+  eq(quickCommit.createdItems, 2, '快捷提交不依赖新建清单行');
+  eq(quickCommit.createdTasks, 1, '仅未来日期创建提醒任务');
+  eq(quickCommit.expiredReminder, 1, '过期提醒仍按既有规则明确降级');
+  eq(db._size(COLLECTIONS.REMINDER_CART), 0, '旧暂存行提交时被消费，主流程清单不残留');
+
+  const afterQuick = await cart.planQuickDates(db, userId, {
+    spotId: 'gugong',
+    visitDates: [pastVisit, futureVisit],
+  });
+  eq(afterQuick.summary.existing, 2, '已落成行程后快捷入口仍会拦截重复');
+  const duplicateQuick = await task.submitQuick(db, userId, {
+    spotId: 'gugong',
+    visitDates: [futureVisit],
+    channels: ['OFFICIAL_ACCOUNT'],
+    offsets: [5],
+  });
+  eq(duplicateQuick.errorCode, 1002, '快捷提交服务端二次拦截已存在行程');
+
+  const directUser = 'openid_quick_direct';
+  const directPlan = await cart.planQuickDates(db, directUser, {
+    spotId: 'gugong',
+    visitDates: [futureVisit],
+  });
+  eq(directPlan.summary.addable, 1, '全新快捷日期可直接进入提交');
+  const directCommit = await task.submitQuick(db, directUser, {
+    spotId: 'gugong',
+    visitDates: [futureVisit],
+    channels: ['OFFICIAL_ACCOUNT'],
+    offsets: [5],
+  });
+  eq(directCommit.success, true, '全新快捷日期无需暂存清单即可提交');
+  eq(
+    (await db.collection(COLLECTIONS.REMINDER_CART).where({ userId: directUser }).get()).data.length,
+    0,
+    '全新快捷提交全程不写主流程清单'
+  );
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);

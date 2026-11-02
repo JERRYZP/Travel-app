@@ -24,6 +24,7 @@ paths:
 2. 确认集合和索引已创建。
 3. 确认要部署的云函数及其依赖文件。
 4. 运行 `npm test`、`npm run check` 和 `git diff --check`。
+5. 景点静态快照先运行 `npm run build:spots-snapshot`，再通过 `scripts/upload-cloud-assets.sh` 上传 `static/v1/data/`；包内快照始终作为回退，不得只发布远程文件。
 
 ## 部署顺序
 
@@ -41,6 +42,9 @@ paths:
 - 会员限制运行期真身为 `payment_config/membership_enforcement`，`mode=off|test|all`。管理端切换写该文档并立即对新任务生效，不重新部署；已有任务保留原 `quotaPool`。配置缺失、非法或读取失败时，`reminder` 回退 `MEMBERSHIP_ENFORCEMENT_MODE`，白名单仍由 `MEMBERSHIP_TEST_OPENIDS` 控制。
 - 上线前先分批迁移老用户 `protectedTaskQuota`；保护额度迁移和权益账本迁移任一未完成时，后台切 `all` 必须返回 `1033`。审核与等待发布期间保持 `test`；`test` 非白名单 / `off` 期间新任务进入历史保护池，切 `all` 后新建的任务才占新增额度。
 - 只改小程序页面通常不需要部署云函数，但如果接口契约变化则必须部署。
+- 首页读模型运行期为 `HOME_RUNTIME_MODE=off|shadow|on`，默认 `off`。启用前必须创建 `user_runtime` 集合；先跑 `shadow`，连续 24 小时结构化比对零差异后再切 `on`。`HOME_RUNTIME_MAX_AGE_MS` 只控制派生文档的最长复用时间，不能替代写后失效。
+- 批量预建使用 `reminder.action='admin.runtimeBackfill'`，必须配置 `RUNTIME_BACKFILL_TOKEN` 并在请求中携带同值；未配置时动作始终拒绝。按 `limit <= 50` 和 `nextCursor` 重跑，直到 `hasMore=false`。
+- `reminder`、`spots`、`payment`、`notifier` 的资源日志可通过 `RESOURCE_METRICS_LOG=off` 关闭；生产默认开启，日志不得加入 OpenID 或业务内容。
 
 ## 状态纪律
 

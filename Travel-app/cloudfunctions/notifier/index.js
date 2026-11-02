@@ -12,9 +12,13 @@
 const cloud = require('wx-server-sdk');
 const https = require('https');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
-const db = cloud.database();
+const rawDb = cloud.database();
+const { createResourceMonitor } = require('./lib/resource-metrics');
+const resource = createResourceMonitor('notifier', rawDb);
+const db = resource.db;
 const _ = db.command;
 const events = require('./lib/events');
+const userRuntimeStale = require('./lib/user-runtime-stale');
 
 const COLLECTIONS = {
   REMINDER_TASKS: 'reminder_tasks',
@@ -588,6 +592,7 @@ async function scanAndSend(prefetchedTasks, nowTsArg) {
   }
 
   await Promise.all(Array.from({ length: Math.min(SEND_CONCURRENCY, groups.length) }, () => worker()));
+  await userRuntimeStale.invalidateUsers(db, groups.map(group => group.task.userId));
   return { scanned: tasks.length, due: due.length, sent, failed, skipped };
 }
 
@@ -672,6 +677,7 @@ async function sweepMissed(prefetchedTasks, nowTsArg) {
     }
   }
   await events.recordEvents(db, missedEvents);
+  await userRuntimeStale.invalidateUsers(db, tasks.map(task => task.userId), new Date(nowTs));
 
   // 台账自愈（见 shouldHealQuota）：把「本地记着有额度、任务却 MISSED」的假额度清零，
   // 否则页面一直写「已授权 N 次」，用户以为覆盖到了，实际条条收不到
@@ -813,7 +819,7 @@ async function runTick(nowTs = Date.now()) {
   return out;
 }
 
-exports.main = async (event) => {
+async function main(event) {
   // 定时触发器不带 action，默认执行完整巡检
   const action = (event && event.action) || 'tick';
 
@@ -873,6 +879,11 @@ exports.main = async (event) => {
     console.error('[notifier] 执行失败', err);
     return { success: false, error: err.message };
   }
+}
+
+exports.main = event => {
+  const action = String((event && event.action) || 'tick');
+  return resource.run(action, rawDb, () => main(event));
 };
 
 exports._internal = { collectDue, staggerDelays, beijingHm, beijingMonthDay, beijingDateTime, beijingDateCn, buildSubscribeData, templateIdOfTask, getAccessToken, sendSubscribeMessageHttp, httpJson, shouldHealQuota, healSubscribeQuota, spotLandingPage, markResult, WX_APPID, WX_APPSECRET, LEGACY_TEMPLATE_ID, DEFAULT_TEMPLATE_ID, TEMPLATE_ID, fetchWaitingUpTo, splitWaiting, fetchTasksPaged, scanAndSend, sweepMissed, cleanup, runTick, SCAN_WINDOW_MS, MAX_ADVANCE_MS, SCAN_MAX_ROWS };
