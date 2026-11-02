@@ -86,6 +86,29 @@ function delayOfSuccess(event, releaseAt, offset) {
   return Math.max(0, actualTs - scheduledTs);
 }
 
+/**
+ * 兼容事件账本上线前/漏写事件的已发送任务：
+ * 任务已进入 TRIGGERED、sentOffsets 覆盖全部计划 offset 且存在 triggeredAt 时，
+ * 用最后一次计划发送时间与 triggeredAt 计算延迟。没有完整任务证据仍计 UNKNOWN，
+ * 不把缺失证据静默洗成准时。
+ */
+function delayOfTaskFallback(task, expectedOffsets) {
+  if (!task || task.backendStatus !== 'TRIGGERED') return null;
+  const sentOffsets = new Set((Array.isArray(task.sentOffsets) ? task.sentOffsets : [])
+    .map(Number)
+    .filter(Number.isFinite));
+  if (!expectedOffsets.length || !expectedOffsets.every(offset => sentOffsets.has(offset))) {
+    return null;
+  }
+  const triggeredTs = timestampOf(task.triggeredAt);
+  const releaseTs = timestampOf(task.releaseAt);
+  if (triggeredTs == null || releaseTs == null) return null;
+  // offset 越大，计划发送越早；最后一次计划发送使用最小 offset。
+  const finalOffset = Math.min(...expectedOffsets);
+  const scheduledTs = releaseTs - finalOffset * 60 * 1000;
+  return Math.max(0, triggeredTs - scheduledTs);
+}
+
 function classifyTask(task, events = []) {
   const types = new Set(events.map(event => event.eventType));
   const canceled = types.has(EVENT_TYPES.TASK_CANCELED);
@@ -133,21 +156,33 @@ function classifyTask(task, events = []) {
 
   let delays = [];
   if (expectedOffsets.length) {
-    if (!expectedOffsets.every(offset => successByOffset.has(offset))) {
+    if (successEvents.length) {
+      if (!expectedOffsets.every(offset => successByOffset.has(offset))) {
+        return { outcome: 'unknown', delayMs: null };
+      }
+      delays = expectedOffsets
+        .map(offset => delayOfSuccess(
+          successByOffset.get(offset),
+          (task && task.releaseAt) || (successByOffset.get(offset) || {}).releaseAt,
+          offset
+        ));
+    } else if (task) {
+      const fallbackDelay = delayOfTaskFallback(task, expectedOffsets);
+      if (fallbackDelay == null) return { outcome: 'unknown', delayMs: null };
+      delays = [fallbackDelay];
+    } else {
       return { outcome: 'unknown', delayMs: null };
     }
-    delays = expectedOffsets
-      .map(offset => delayOfSuccess(
-        successByOffset.get(offset),
-        (task && task.releaseAt) || (successByOffset.get(offset) || {}).releaseAt,
-        offset
-      ));
   } else if (successEvents.length) {
     delays = successEvents.map(event => delayOfSuccess(
       event,
       (task && task.releaseAt) || event.releaseAt,
       event.offset
     ));
+  } else if (task) {
+    const fallbackDelay = delayOfTaskFallback(task, expectedOffsets);
+    if (fallbackDelay == null) return { outcome: 'unknown', delayMs: null };
+    delays = [fallbackDelay];
   } else {
     return { outcome: 'unknown', delayMs: null };
   }

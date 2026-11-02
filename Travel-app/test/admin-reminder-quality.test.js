@@ -204,6 +204,30 @@ async function run() {
     [taskEvent('TASK_CREATED', 't5', releaseAt)]
   ).outcome, 'unknown', '缺终态和发送证据判数据缺失');
 
+  eq(quality.classifyTask({
+    releaseAt,
+    offsets: [5, 2],
+    sentOffsets: [5, 2],
+    triggeredAt: new Date(releaseAt.getTime() - 60 * 1000),
+    backendStatus: 'TRIGGERED',
+  }, []).outcome, 'onTime', '缺发送事件时用任务 sentOffsets/triggeredAt 回退判准时');
+
+  eq(quality.classifyTask({
+    releaseAt,
+    offsets: [5],
+    sentOffsets: [5],
+    triggeredAt: new Date(releaseAt.getTime() - 5 * 60 * 1000 + 180 * 1000),
+    backendStatus: 'TRIGGERED',
+  }, []).outcome, 'late', '任务回退证据同样执行 120 秒迟到阈值');
+
+  eq(quality.classifyTask({
+    releaseAt,
+    offsets: [5],
+    sentOffsets: [],
+    triggeredAt: new Date(releaseAt.getTime() - 4 * 60 * 1000),
+    backendStatus: 'TRIGGERED',
+  }, []).outcome, 'unknown', '任务证据不完整时不把缺失洗成准时');
+
   eq(quality.classifyTask(
     null,
     [

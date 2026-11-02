@@ -1262,7 +1262,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     }
   }
   ```
-- 质量统计只读 `reminder_events` 与仍在保留期内的 `reminder_tasks`，按任务而不是发送尝试计数。一个任务的全部 offset 都在各自 `scheduledAt` 后 120 秒内发送成功，才算 `onTime`；多 offset 任务只要一项失败，整项不能计入准时。
+- 质量统计只读 `reminder_events` 与仍在保留期内的 `reminder_tasks`，按任务而不是发送尝试计数。优先使用逐 offset 的 `SEND_SUCCEEDED.scheduledAt/eventAt`；事件缺失时，已 `TRIGGERED` 且 `sentOffsets` 覆盖全部计划 offset 的任务可用 `triggeredAt` 与最后一次计划发送时间回退计算。一个任务的全部 offset 都在各自计划时间后 120 秒内发送成功，才算 `onTime`；多 offset 任务只要一项失败或证据不完整，整项不能计入准时。
 - `currentWindow` 固定选择最近一个已完成的 8 小时时段：`13:00` 选择 `05:00-13:00`，`21:00` 选择 `13:00-21:00`；13 点前继续选择前一日 `13:00-21:00`。`nextUpdateAt` 是下一个北京时间 `13:00 / 21:00` 边界，页面在保持可见时据此刷新。
 - `status` 只有三种业务结果：当前时段没有任务为 `EMPTY`；`currentWindow.onTimeRate < 99` 为 `ALERT`；其余为 `HEALTHY`。不再返回“关注”状态。未送达、跳过和证据缺失只通过计算送达率进入结果，不得在页面额外增加与阈值无关的红色条件。
 - `baseline5d` 固定为昨日之前的 5 个北京时间自然日，不包含昨日；`onTimeRate` 按任务数加权，`daysWithData` 只计算存在到期任务的日期。昨日未送达数、P95 延迟、任务数和固定阈值均不进入页面展示契约。
