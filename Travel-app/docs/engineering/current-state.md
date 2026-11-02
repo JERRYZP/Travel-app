@@ -64,7 +64,7 @@
 - 2026-11-02 客服工作台时间筛选已部署并通过云端冒烟：`timeRange=all` 返回历史 70 单，接口包含昵称、完整 OpenID 与分页字段；工作台时间下拉与服务端查询一致。
 - 2026-11-02 Apple 未支付订单收口已部署：两笔遗留 `PENDING` 虚拟支付订单在 16:16:01 的补偿轮次自动变为 `CLOSED`，`closeReason=VIRTUAL_PAY_EXPIRED_UNPAID`，查询当前 `PENDING` 订单为 0。
 - 2026-11-02 部署后复核发现保护额度完成标记不一致：工作台返回 `migrationCompleted=false`，`admin_audit_logs` 查不到 `PROTECTION_MIGRATION_COMPLETE`，但 9419 个用户中 9361 个已有 `protectionMigratedAt`；权益账本完成标记为 `true`。这不改变当前数据库配置 `all` 的生效状态，但后台从其他模式切回 `all` 会被迁移闸门拦截，需单独治理。部署后 30 分钟日志检查中，`payment` 与 `reminder` 均无非 202 失败状态码。
-- 2026-11-02 16:24 已将 `main` fast-forward 到 `af05573` 并创建、推送 `v2.1.1-rc.2`；从该提交上传体验版 `2.1.1`，包体约 982.4 KB，待体验验收，尚未提交版本审核。
+- 2026-11-02 16:24 已将 `main` fast-forward 到 `af05573` 并创建、推送 `v2.1.1-rc.2`；从该提交上传体验版 `2.1.1`，包体约 982.4 KB。随后体验验收通过并提交审核，`2.1.1` 已全量发布，正式版已确认可见会员限制开关、订单统计和时间筛选。发布后首次打开仍可能先运行旧包，需冷启动等待微信完成版本切换。
 
 ## 当前配置
 
@@ -117,8 +117,8 @@
 - `notifier`：已兼容旧任务走旧「活动开始通知」、新任务走新「预约开始提醒」；按任务实际模板发送和核销额度。应先部署，使旧任务和随后产生的新模板任务都有正确分流；当前已确认 `status_release_idx = backendStatus + releaseAt` 已存在，但云端触发器、测试发送和真机模板授权仍未完成闭环核对。
 - `reminder`：新提醒任务会写入当前模板 `_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA`；`lib/quota.js` 已兼容旧任务按旧模板记账。应在 notifier 之后部署，最后再发布小程序端。
 - `payment`：2026-11-02 16:14 已整包更新本轮版本，运行时仍为 Nodejs16.13、20 个环境变量键完整，`paymentReconcileEveryTwoMinutes = 0 */2 * * * * *` 保持启用。当前版本包含后台会员限制模式、当日统计、7 / 30 / 90 天 / 全部筛选、Apple 超时待支付关闭、订单/售后幂等、权益账本快照、退款精确回收、虚拟支付商品复核和补偿队列隔离；管理员与订单接口冒烟通过。
-- 会员购买断路器：`payment_config/membership_sales=OPEN` 已创建并设为仅管理端可读写，`payment` 与 `reminder` 已于 2026-11-02 部署并通过只读冒烟；`paymentReconcileEveryTwoMinutes` 已恢复。包含管理开关和停售态 UI 的客户端 `2.1.0` 已全量发布。
-- 客服工作台：`users_nickname`、`orders_created_at`、`orders_status_created_at`、`after_sales_case_no` 已创建并核验，含 `adminOrders.*` 的新版 `payment` 已于 2026-11-02 部署并通过管理员冒烟；`paymentReconcileEveryTwoMinutes` 保持启用。客户端 `2.1.0` 已全量发布，客服工作台实际使用正常。
+- 会员购买断路器：`payment_config/membership_sales=OPEN` 已创建并设为仅管理端可读写，`payment` 与 `reminder` 已于 2026-11-02 部署并通过只读冒烟；`paymentReconcileEveryTwoMinutes` 已恢复。包含管理开关和停售态 UI 的客户端 `2.1.1` 已全量发布。
+- 客服工作台：`users_nickname`、`orders_created_at`、`orders_status_created_at`、`after_sales_case_no` 已创建并核验，含 `adminOrders.*` 的新版 `payment` 已于 2026-11-02 部署并通过管理员冒烟；`paymentReconcileEveryTwoMinutes` 保持启用。客户端 `2.1.1` 已全量发布，客服工作台实际使用正常。
 - 会员限制模式后台开关：`payment`、`reminder` 和云端配置文档均已部署，客户端已全量包含控制卡。运行期真身为 `payment_config/membership_enforcement`，当前 `mode=all`；环境变量只作兜底。保护额度完成标记缺失，后台后续从其他模式切回 `all` 前必须先完成迁移审计治理。
 - 2026-11-02 当前索引数量：`users` 5 个、`orders` 11 个、`after_sales_cases` 10 个。
 - 小程序端：提交后重新编译；仅部署云函数不能替代小程序端发布。
@@ -186,7 +186,7 @@
 | 索引 `spots.spotId` / `release_rules.spotId` / `reminder_tasks.userId+itemId` | **已建**（2026-10-27，用户操作） | 控制台操作，即时生效 |
 | 客户端第一批（固定 30s TTL、spots 缓存、add-trip 去重） | **已发版**（2026-10-27，用户操作） | 发布源为未提交工作区，与 git 无对应提交；需补 tag 对齐 |
 | 客户端第二批（首页自适应窗口 + 写操作后强制刷新） | **体验版 `1.1.1` 已上传**（2026-11-01） | 正式版尚未发布；真机待验收 |
-| 客户端体验版 `2.1.1` | **已上传**（2026-11-02 16:24） | 来源 `main@af05573`，对应 `v2.1.1-rc.2`；982.4 KB；待体验验收，尚未提交审核 |
+| 客户端正式版 `2.1.1` | **已全量发布**（2026-11-02） | 来源 `main@af05573`，对应 `v2.1.1-rc.2`；982.4 KB；体验验收通过，正式版已确认新功能可见 |
 | 会员、提醒名额、支付与售后（客户端 + `reminder` + `payment`） | **客户端全量发布，`payment` / `reminder` 已部署；权益账本迁移完成，保护额度完成标记待治理** | 累计观察到 8 笔已支付订单；数据库配置 `membership_enforcement.mode=all` 已接管；工作台显示 2026-11-02 的 36 单、23 笔已支付、净赚 ¥63 |
 | 会员限制模式后台开关 | **已部署并通过云端/开发者工具冒烟** | `payment_config/membership_enforcement={mode:"all"}` 已创建；管理员返回 `source=DB`，页面显示“全部用户”；保护额度完成标记缺失，模式切回 `all` 的迁移闸门仍需治理 |
 | 客服工作台当日订单统计 | **已部署并通过云端冒烟** | 统计今日 36 单、已支付 23 单、支付 ¥69、退款 ¥6、净赚 ¥63 |
@@ -206,7 +206,7 @@
 
 ## 待验证
 
-- 客户端 `2.1.0` 灰度已覆盖支付与退款主链路；仍需补全 Android/iOS 分渠道、售后资金阻断提示与原单重试、权益到账和并发提醒的覆盖矩阵。灰度样本不等于全量验收完成。
+- 客户端 `2.1.1` 已全量发布，但支付与售后仍需补全 Android/iOS 分渠道、售后资金阻断提示与原单重试、权益到账和并发提醒的覆盖矩阵；全量发布不等于所有异常场景验收完成。
 - V0.3 主流程真机交互。
 - 帮助与反馈、我的反馈页面的真机跳转、空态、失败重试与在线客服。
 - 首页已过去日期折叠的展开/收起、滚动位置与不同机型视觉。

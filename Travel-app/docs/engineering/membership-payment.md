@@ -1,6 +1,6 @@
 # 会员支付、售后与提醒名额
 
-> 2026-11-02 当前状态：会员购买断路器为 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），会员限制运行期为 `payment_config/membership_enforcement={mode:"all"}`。`payment` 与 `reminder` 已于 16:14 / 16:15 部署为 `Active`，`paymentReconcileEveryTwoMinutes` 保持启用；管理员接口返回配置来源 `DB`，`membership.status` 返回 `enforced=true`。客服工作台已部署当日统计、近 7 / 30 / 90 天 / 全部筛选和 Apple 超时待支付关闭，并通过云端冒烟。正式客户端 `2.1.0` 已全量发布；体验版 `2.1.1` 已从 `main@af05573` / `v2.1.1-rc.2` 上传，待体验验收，尚未提交审核。累计观察到 8 笔已支付订单。真实停售切换未执行；保护额度完成标记当前缺失，后台从其他模式切回 `all` 前需单独治理。
+> 2026-11-02 当前状态：会员购买断路器为 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），会员限制运行期为 `payment_config/membership_enforcement={mode:"all"}`。`payment` 与 `reminder` 已于 16:14 / 16:15 部署为 `Active`，`paymentReconcileEveryTwoMinutes` 保持启用；管理员接口返回配置来源 `DB`，`membership.status` 返回 `enforced=true`。客服工作台已部署当日统计、近 7 / 30 / 90 天 / 全部筛选和 Apple 超时待支付关闭，并通过云端冒烟。正式客户端 `2.1.1` 已从 `main@af05573` / `v2.1.1-rc.2` 完成体验验收、送审和全量发布，新功能已在正式版可见。累计观察到 8 笔已支付订单。真实停售切换未执行；保护额度完成标记当前缺失，后台从其他模式切回 `all` 前需单独治理。
 >
 > 权威业务口径以 `产品文档.md` 为准，接口以 `API-契约.md` 为准，索引以 `数据库索引.md` 为准。
 
@@ -181,7 +181,7 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 云端已验证：
 
 - 2026-11-02 客户端 `2.1.0` 已审核通过并全量发布；累计观察到 8 笔已支付订单，用户完成付费流程自测且客服工作台正常。`reminder` 的 `MEMBERSHIP_ENFORCEMENT_MODE` 已切换为 `all`，配置更新时间为 15:10:02。
-- 2026-11-02 16:24 已将 `main` fast-forward 到 `af05573`、创建并推送 `v2.1.1-rc.2`，随后从该提交上传体验版 `2.1.1`；包体约 982.4 KB，待体验验收，尚未提交审核。
+- 2026-11-02 16:24 已将 `main` fast-forward 到 `af05573`、创建并推送 `v2.1.1-rc.2`，随后从该提交上传体验版 `2.1.1`；包体约 982.4 KB。体验验收通过后已送审并全量发布，正式版确认可见新功能。首次重新打开可能仍运行旧包，冷启动后微信会切换到新版本。
 - 2026-11-02 16:15 已部署运行期会员限制开关：`payment_config/membership_enforcement={mode:"all"}` 由管理员 OpenID 写入并回读确认；`payment` / `reminder` 均为 `Active`，部署保留原环境变量键，`membership.status` 返回 `enforced=true`、购买状态 `OPEN`、免费/会员额度 5 / 15。开发者工具工作台已从“待部署”刷新为“全部用户”；16:18:10 的真实新任务写入 `quotaPool=ENTITLEMENT`，部署后 30 分钟日志中两函数均无非 202 失败状态码。
 - 2026-11-02 客服工作台订单统计与时间筛选已通过云端冒烟：今日 36 单、已支付 23 单、支付 ¥69、退款 ¥6、净赚 ¥63；`adminOrders.list(timeRange=all)` 返回历史 70 单，并包含用户昵称、完整 OpenID 和分页字段。
 - 2026-11-02 两笔历史 Apple 未支付订单已由部署后的定时补偿在 16:16:01 关闭，`closeReason=VIRTUAL_PAY_EXPIRED_UNPAID`；当前待支付订单为 0。

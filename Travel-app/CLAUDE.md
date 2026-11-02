@@ -20,7 +20,7 @@
 - 会员付费客户端与生产账本已全量运行。会员限制模式已由 `payment_config/membership_enforcement={mode:"all"}` 接管，后台切换无需重新部署；`MEMBERSHIP_ENFORCEMENT_MODE=all` 只保留为配置缺失或读取失败时的兜底。
 - 2026-11-02 会员购买断路器已部署：`payment_config/membership_sales` 为 `OPEN` 且仅管理端可读写，`payment` 与 `reminder` 已更新；管理页客户端已全量发布，业务停售状态未切换。
 - 2026-11-02 客服工作台后端已部署：会员购买开关置顶，会员订单 / 售后双页签，支持昵称与完整 OpenID、订单搜索、订单详情和关联售后，并包含当日统计与 7 / 30 / 90 天 / 全部时间筛选；`payment` 与 `reminder` 已更新并通过管理员冒烟。
-- 2026-11-02 `main` 已 fast-forward 到 `af05573` 并创建 `v2.1.1-rc.2`；体验版 `2.1.1` 已从该提交上传，待体验验收，尚未提交审核。
+- 2026-11-02 客户端 `2.1.1` 已从 `main@af05573` / `v2.1.1-rc.2` 完成体验验收、送审和全量发布，新功能已在正式版可见；首开仍可能命中旧包，需冷启动等待微信完成版本切换。
 - 2026-10-27 已发版客户端来自当时未提交工作区，Git 中没有可诚实对应的发布 commit/tag。
 - 只读 Web 管理后台代码已合入 `admin-web/` 与 `cloudfunctions/admin/`，不是小程序体验版的运行依赖；是否部署仍以云开发控制台和单独授权为准。
 - 完整状态、待部署范围和待验证项见 `docs/engineering/current-state.md`。
