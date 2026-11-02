@@ -455,8 +455,8 @@ async function run() {
     && adminAfterSalesWxml.includes('history.stats.cancelled'), true,
     '后台详情展示取消来源与历史取消统计');
   eq(orderDetailWxml.includes('{{afterSalesActionLabel}}')
-    && orderDetailJs.includes("'如何申请APP退款'"), true,
-    'Apple 订单退款按钮固定使用如何申请APP退款');
+    && orderDetailJs.includes("'如何申请 Apple 退款'"), true,
+    'Apple 订单退款按钮固定使用如何申请 Apple 退款');
   eq(orderDetailJs.includes('查看 Apple 退款说明'), false,
     'Apple 订单退款按钮不随退款状态切换文案');
   eq(orderDetailWxml.includes('Apple 退款说明') && orderDetailWxml.includes('Apple 审核期间'), true,

@@ -19,7 +19,7 @@ function refundChannelName(order) {
 function afterSalesActionLabelOf(order) {
   if (!order) return '';
   if (isAppleOrder(order)) {
-    return '如何申请APP退款';
+    return '如何申请 Apple 退款';
   }
   return (order.actionFlags && order.actionFlags.afterSalesLabel) || '未到账/申请售后';
 }
