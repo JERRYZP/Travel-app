@@ -14,13 +14,7 @@ const homeCache = require('../../utils/home-cache.js');
 const emptyPreview = require('../../utils/empty-preview.js');
 const reminderFlow = require('../../utils/reminder-flow.js');
 const tripShareCover = require('../../utils/trip-share-cover.js');
-
-/* 导航块高度（rpx）= `.navbar-content` 的 height，两处必须一致。 */
-const NAV_BAR_RPX = 88;
-/* 胶囊底边 → 正文第一块。只留很小呼吸位，不再让固定导航块额外撑高。 */
-const PAGE_GAP_RPX = 8;
-/* 设计微调按真实 CSS 像素追加，避免不同屏宽下被 rpx 四舍五入吃掉。 */
-const EXTRA_TOP_PX = 2;
+const homeLayout = require('../../utils/home-layout.js');
 /* 滚多少像素把导航栏底色从全透明推到不透明 */
 const NAV_FADE_PX = 50;
 const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
@@ -250,7 +244,7 @@ Page({
          `navBarHeight` 只给 `scrollToItem` 的偏移量用。 */
       statusBarHeight: g.statusBarHeight || 20,
       navBarHeight: g.navBarHeight || 44,
-      pageTop: pageTopOf(g.statusBarHeight, g.menuButton, g.windowWidth),
+      pageTop: homeLayout.pageTopOf(g.statusBarHeight, g.menuButton, g.windowWidth),
       entryContext,
     });
     /* 从订阅消息点进来：先落到对应景点的详情浮窗（预约直达 + 倒计时）。
@@ -1300,25 +1294,6 @@ function tripShareTitleOf(nickname, trip) {
   const name = String(nickname || '').trim().slice(0, 12) || '朋友';
   const tripName = util.tripDisplayName(trip) || '行程';
   return name + '分享给你的' + tripName + '，点开看看吧';
-}
-
-/**
- * 正文顶（rpx）= **导航块底边 + 安全间距**。
- *
- * 不能按「标题下沿」算：微信原生胶囊覆盖导航块右侧完整高度，
- * 正文若从标题下沿开始，横幅和摘要卡会钻到胶囊下面。
- * ⚠️ 状态栏是 px 且带小数（iPhone 15 实测 48.5px），换算成 rpx 必须 ×2。
- * ⚠️ 这个值**不含横幅高度**：横幅排在正文内部，占位由它自己负责。
- */
-function pageTopOf(statusBarHeight, menuButton, windowWidth) {
-  const width = Number(windowWidth) || 375;
-  const status = Number(statusBarHeight) || 20;
-  const navBottomRpx = status * 750 / width + NAV_BAR_RPX;
-  const capsuleBottom = Number(menuButton && menuButton.bottom) || 0;
-  const capsuleBottomRpx = capsuleBottom > 0 ? capsuleBottom * 750 / width : 0;
-  /* 大屏上固定导航块常比胶囊更低；正文应贴近胶囊，而不是贴近透明导航盒。 */
-  const contentBaseRpx = capsuleBottomRpx > 0 ? capsuleBottomRpx : navBottomRpx;
-  return Math.ceil(contentBaseRpx + PAGE_GAP_RPX + EXTRA_TOP_PX * 750 / width);
 }
 
 /** 解析服务端时间戳（毫秒数或 ISO 字符串）；拿不到就返回 0。 */

@@ -729,18 +729,10 @@ console.log('=== 11. 顶部布局：横幅在文档流里 / 导航栏安全间�
      这一条曾经漏过，改完当场就是「横幅看不见」。 */
   eq(/class="page-body" style="padding-top: \{\{pageTop\}\}rpx;"/.test(WXML), true,
     '正文让出导航栏高度（否则内容钻到标题底下）');
-  /* 大屏上固定导航块比胶囊更低，正文不能再被导航块透明区撑高；
-     横幅出现时它就是第一块，后面的卡片自然下移。 */
-  eq(/function pageTopOf\(statusBarHeight, menuButton, windowWidth\)/.test(JS), true,
-    'pageTop 运行时读取胶囊位置和屏宽');
-  eq(/capsuleBottomRpx > 0 \? capsuleBottomRpx : navBottomRpx/.test(JS), true,
-    'pageTop 优先使用胶囊底边，缺失时才回退导航块底边');
-  eq(/const PAGE_GAP_RPX = 8;/.test(JS), true,
-    '正文与胶囊底边只保留 8rpx 呼吸位');
-  eq(/const EXTRA_TOP_PX = 2;/.test(JS), true,
-    '在呼吸位基础上精确下移 2 个 CSS 像素');
-  eq(/EXTRA_TOP_PX \* 750 \/ width/.test(JS), true,
-    '2px 微调按当前屏宽换算为 rpx');
+  eq(/homeLayout\.pageTopOf\(g\.statusBarHeight, g\.menuButton, g\.windowWidth\)/.test(JS), true,
+    'pageTop 走独立锁定模块，并读取胶囊位置和屏宽');
+  eq(/function pageTopOf\(/.test(JS), false,
+    '首页不再维护第二份顶部计算公式');
   eq(/\.page-body \{[^}]*padding-right:\s*30rpx[^}]*padding-left:\s*30rpx/.test(WXSS), true,
     '正文只在模板声明 padding-top，样式表不重复覆盖');
   eq(/\.quota-warning-banner \{[^}]*margin-top:\s*0/.test(WXSS), true,
