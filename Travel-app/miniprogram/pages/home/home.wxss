@@ -16,7 +16,7 @@
    导航栏现在是不透明的页面底色，光晕铺在它上面只会比页面底色更亮一点点，
    等于又画出一条肉眼可见的色带——而「填底」的全部意义就是让顶部别有色带。 */
 /* 导航块高度 = 常规导航栏的 44px（给胶囊按钮留的高度，比标题高得多）。
-   ⚠️ 它也是正文让位的基准：正文从导航块底边再加安全间距开始。
+   ⚠️ 它也是正文让位的基准：正文从导航块底边开始。
    改这个高度必须同步复核 `pageTopOf()`。 */
 .navbar-content {
   height: 88rpx;
@@ -40,11 +40,13 @@
 /* ===== 页面主体 =====
    视觉基准 402px：左右内边距 16px = 30rpx，底部为悬浮按钮与导航条留出空间。 */
 .page-body {
-  /* ⚠️ padding-top 由模板内联给出（= 导航块底边 + 安全间距）：导航栏是 fixed 的、
-     不占文档流，正文不让位就会钻到微信胶囊下面。它**只让导航栏的安全间距，不让横幅的高度**——
+  /* ⚠️ padding-top 由模板内联给出（= 导航块底边）：导航栏是 fixed 的、
+     不占文档流，正文不让位就会钻到微信胶囊下面。它**只让导航栏高度，不让横幅的高度**——
      横幅就在这个容器里，高度它自己占。
      左右 30rpx 在这里定；横幅因为已经在这个容器内，不再自己留左右白。 */
-  padding: 16rpx 30rpx calc(240rpx + env(safe-area-inset-bottom));
+  padding-right: 30rpx;
+  padding-bottom: calc(240rpx + env(safe-area-inset-bottom));
+  padding-left: 30rpx;
   position: relative;
   background: var(--color-page);
   min-height: 100vh;
@@ -56,7 +58,7 @@
   display: flex;
   align-items: center;
   gap: 12rpx;
-  margin-top: 4px;
+  margin-top: 0;
   margin-bottom: 16rpx;
   padding: 16rpx 16rpx 16rpx 20rpx;
   background: #FFF3D8;
@@ -116,7 +118,7 @@
    没有任何行程项时给一个能直接动手的入口，
    而不是一张写着「暂无数据」的空卡片。 */
 .empty-onboard {
-  margin-top: 22rpx;
+  margin-top: 0;
 }
 .empty-hero-card {
   position: relative;
@@ -471,7 +473,7 @@
    冷启动等云端时先画的内容。复用 `.empty-proof-card` / `.empty-hot*` 的既有样式
    （两处渲染的是同一批组件，样式必须同源，否则切层时会看到位移），
    这里只补它自己的外边距和底部加载行。 */
-.home-skeleton { margin-top: 22rpx; }
+.home-skeleton { margin-top: 0; }
 .skel-loading {
   display: flex;
   flex-direction: column;

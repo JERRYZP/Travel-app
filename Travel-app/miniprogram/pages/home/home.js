@@ -17,8 +17,8 @@ const tripShareCover = require('../../utils/trip-share-cover.js');
 
 /* 导航块高度（rpx）= `.navbar-content` 的 height，两处必须一致。 */
 const NAV_BAR_RPX = 88;
-/* 导航块底边 → 正文顶。留出安全间距，避免微信原生胶囊压住横幅或摘要卡。 */
-const PAGE_GAP_RPX = 28;
+/* 正文第一块紧贴导航块底边；横幅/卡片之间的位移只由文档流决定。 */
+const PAGE_GAP_RPX = 0;
 /* 滚多少像素把导航栏底色从全透明推到不透明 */
 const NAV_FADE_PX = 50;
 const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
@@ -82,7 +82,7 @@ function buildHomeData(res, now, opts) {
     primaryTrip: primary,
     summaryTrip,
     showTripShareAction: shareActive || canCreateTripShare,
-    tripShareActionLabel: shareActive ? '管理分享' : '分享行程',
+    tripShareActionLabel: (shareActive || canCreateTripShare) ? '分享行程' : '',
     /* 被划掉的气泡在重新加载后清空：新的一次会话可以再问一次，
        但同一次会话里不重复追问（「忽略」的语义 = 提前进入中性态）。
        `undefined` = 保留现有值 —— 静默刷新和缓存绘制都不能抹掉它。 */
@@ -797,7 +797,7 @@ Page({
       primaryTrip,
       summaryTrip,
       showTripShareAction: active === true || canCreate,
-      tripShareActionLabel: active === true ? '管理分享' : (canCreate ? '分享行程' : ''),
+      tripShareActionLabel: (active === true || canCreate) ? '分享行程' : '',
     });
   },
 

@@ -14,7 +14,8 @@ function buildTripView(res) {
   const trip = (res && res.trip) || {};
   return {
     city: trip.city || '',
-    title: `${trip.city || ''}行程`,
+    title: util.tripDisplayName(trip),
+    watermark: util.tripWatermark(trip),
     dateRange: util.monthDayRange(trip.startDate, trip.endDate),
     dayCount: Number(trip.dayCount) || 0,
     spotCount: Number(trip.spotCount) || 0,

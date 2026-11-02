@@ -729,12 +729,20 @@ console.log('=== 11. 顶部布局：横幅在文档流里 / 导航栏安全间�
      这一条曾经漏过，改完当场就是「横幅看不见」。 */
   eq(/class="page-body" style="padding-top: \{\{pageTop\}\}rpx;"/.test(WXML), true,
     '正文让出导航栏高度（否则内容钻到标题底下）');
-  /* 微信胶囊占满导航块右侧高度，正文必须从导航块底边再留安全间距，
-     否则顶部横幅或摘要卡会被原生胶囊遮挡。 */
+  /* 微信胶囊占满导航块右侧高度，正文必须统一从导航块底边开始；
+     横幅出现时它就是第一块，后面的卡片自然下移。 */
   eq(/return \(statusBarHeight \|\| 20\) \* 2 \+ NAV_BAR_RPX \+ PAGE_GAP_RPX;/.test(JS), true,
-    'pageTop = 状态栏(px→rpx) + 导航块 + 安全间距');
-  eq(/const PAGE_GAP_RPX = 28;/.test(JS), true,
-    '导航块底边后预留 28rpx 安全间距');
+    'pageTop = 状态栏(px→rpx) + 导航块');
+  eq(/const PAGE_GAP_RPX = 0;/.test(JS), true,
+    '正文第一块紧贴导航块底边，不额外制造顶部空白');
+  eq(/\.page-body \{[^}]*padding-right:\s*30rpx[^}]*padding-left:\s*30rpx/.test(WXSS), true,
+    '正文只在模板声明 padding-top，样式表不重复覆盖');
+  eq(/\.quota-warning-banner \{[^}]*margin-top:\s*0/.test(WXSS), true,
+    '额度提示出现时也顶在统一正文起点');
+  eq(/\.empty-onboard \{[^}]*margin-top:\s*0/.test(WXSS), true,
+    '空态首块与行程卡共享同一顶部起点');
+  eq(/\.home-skeleton \{[^}]*margin-top:\s*0/.test(WXSS), true,
+    '骨架首块与实况内容共享同一顶部起点');
   eq(/NAV_TITLE_RPX|titleInset/.test(JS), false,
     '不再按标题下沿计算正文位置');
   /* ⚠️ 但**不能**把横幅高度也让进去：横幅就在正文里，占位它自己负责，

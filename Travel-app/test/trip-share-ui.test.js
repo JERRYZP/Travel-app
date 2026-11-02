@@ -17,6 +17,7 @@ const SUMMARY_WXSS_PATH = path.join(ROOT, 'miniprogram/components/trip-summary-c
 const HOME_WXML_PATH = path.join(ROOT, 'miniprogram/pages/home/home.wxml');
 const HOME_JSON_PATH = path.join(ROOT, 'miniprogram/pages/home/home.json');
 const APP_JSON_PATH = path.join(ROOT, 'miniprogram/app.json');
+const WECHAT_WHITE_ICON_PATH = path.join(ROOT, 'miniprogram/images/icons/wechat-white.svg');
 const tripShareCover = require('../miniprogram/utils/trip-share-cover.js');
 
 let fail = 0;
@@ -189,12 +190,23 @@ function loadPage(file, api) {
   eq(/safe-top=/.test(homeWxml), false,
     '页面不再用摘要卡局部安全间距打补丁');
   eq(/open-type="share"[\s\S]*data-share-kind="trip"/.test(sheetWxml), true, '浮层用原生分享按钮并在就绪后开放');
+  eq(/<svg-icon name="wechat-white" size="28rpx"/.test(sheetWxml), true,
+    '分享按钮使用无底色白色微信图标，尺寸与文案接近');
+  eq(fs.existsSync(WECHAT_WHITE_ICON_PATH), true, '白色微信图标资源存在');
   eq(/获得链接的人只能查看，不能编辑或复制行程/.test(sheetWxml), true, '浮层明确只读边界');
   eq(/行程结束后 7 天失效/.test(sheetWxml), true, '浮层明确失效规则');
   eq(/this\.data\.summaryTrip/.test(fs.readFileSync(HOME_JS_PATH, 'utf8')), true, '分享入口读取摘要卡当前行程');
   eq(/wx\.hideShareMenu/.test(viewJs), true, '只读页隐藏微信转发菜单');
   eq(/onShareAppMessage|onShareTimeline/.test(viewJs), false, '只读页不实现二次转发');
   eq(/ticketState|reminderState|menuId|bindtap="onSpot/.test(viewWxml), false, '只读模板不含票务、提醒、菜单或景点动作');
+  eq(/class="ts-home-float" bindtap="goHome"/.test(viewWxml), true,
+    '只读页提供常驻返回首页按钮');
+  eq(/background:\s*linear-gradient\(160deg, #C65941 12\.9%, #B8432A 87\.46%\)/.test(viewWxss), true,
+    '只读总览卡复用首页朱砂渐变');
+  eq(/\.ts-hero-mark-ch\s*\{\s*margin-left:\s*\.32em/.test(viewWxss), true,
+    '只读总览卡复用首页装饰英文与字距');
+  eq(/\.ts-home-float\s*\{[^}]*position:\s*fixed[^}]*bottom:\s*calc\(40px \+ env\(safe-area-inset-bottom\)\)/.test(viewWxss), true,
+    '返回首页按钮悬浮在页面底部安全区上方');
   eq(/wx:for="\{\{trip\.days\}\}"/.test(viewWxml), true, '整趟全部日期直接渲染');
   eq(/word-break:\s*break-all/.test(viewWxss), true, '长景点名允许换行，不撑破容器');
 
@@ -223,6 +235,7 @@ function loadPage(file, api) {
   eq(home.data.tripShareSheet.state, 'ready', '令牌就绪后浮层进入可分享态');
   eq(home.data.tripShareSheet.hasActive, false, '首次创建链接仍显示分享态');
   eq(home.data.tripShareSheet.shareReady, true, '原生分享按钮只在令牌就绪后开放');
+  eq(home.data.tripShareActionLabel, '分享行程', '已有有效分享时入口文案仍为分享行程');
   eq(home._tripSharePath, `/pages/trip-share/trip-share?token=${'a'.repeat(64)}&source=share`,
     '分享路径只携带令牌和来源');
 
@@ -284,7 +297,7 @@ function loadPage(file, api) {
     primaryTrip: null,
     summaryTrip: endedTrip,
     showTripShareAction: true,
-    tripShareActionLabel: '管理分享',
+    tripShareActionLabel: '分享行程',
   });
   home.onTripShareTap();
   await wait(5);
@@ -302,7 +315,9 @@ function loadPage(file, api) {
   eq(viewer.data.loading, false, '加载结束');
   eq(viewer.data.trip.days.length, 2, '全部日期分组均渲染');
   eq(viewer.data.trip.days[1].items.length, 2, '同日多个景点全部保留');
-  eq(viewer.data.trip.title, '北京行程', '标题只显示城市，不暴露分享者身份');
+  eq(viewer.data.trip.title, '北京之行', '总览卡标题与首页摘要卡一致');
+  eq(viewer.data.trip.watermark.join(''), 'BEIJING  TRIP',
+    '总览卡包含首页同款装饰英文');
   eq(viewer.data.expiresText, '2026年11月12日', '失效日按中文日期展示');
   eq(typeof viewer.onShareAppMessage, 'undefined', '页面实例不提供转发回调');
   eq(typeof viewer.onShareTimeline, 'undefined', '页面实例不提供朋友圈回调');

@@ -38,8 +38,13 @@
 
   <block wx:elif="{{trip}}">
     <view class="ts-hero">
-      <view class="ts-readonly">只读</view>
-      <text class="ts-hero-title">{{trip.title}}</text>
+      <view class="ts-hero-head">
+        <text class="ts-hero-title">{{trip.title}}</text>
+        <view wx:if="{{trip.watermark.length > 0}}" class="ts-hero-mark">
+          <text wx:for="{{trip.watermark}}" wx:key="index" class="ts-hero-mark-ch">{{item}}</text>
+        </view>
+        <view class="ts-readonly">只读</view>
+      </view>
       <text class="ts-hero-date">{{trip.dateRange}}</text>
       <text class="ts-hero-summary">共 {{trip.dayCount}} 天 · {{trip.spotCount}} 处安排</text>
     </view>
@@ -66,4 +71,9 @@
       <text wx:if="{{expiresText}}">链接有效期至 {{expiresText}}</text>
     </view>
   </block>
+</view>
+
+<!-- 分享落地页常驻出口，避免从聊天直达后页面路径断掉。 -->
+<view wx:if="{{trip}}" class="ts-home-float" bindtap="goHome" hover-class="ts-home-float-hover">
+  <text class="ts-home-float-text">返回首页</text>
 </view>
