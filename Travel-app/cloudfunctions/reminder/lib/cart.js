@@ -479,6 +479,7 @@ async function list(db, userId, tripId = null, { includeMembership = false } = {
     summary: summarize(enriched),
     membership: membershipRes ? membershipRes.membership : null,
     packages: membershipRes && Array.isArray(membershipRes.packages) ? membershipRes.packages : [],
+    sales: membershipRes ? membershipRes.sales : null,
   });
 }
 

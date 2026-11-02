@@ -77,7 +77,7 @@
       <text class="membership-gate-desc">{{membershipGateDesc}}</text>
       <text class="membership-gate-note">{{membershipGateNote}}</text>
     </view>
-    <view class="membership-gate-action" bindtap="onUpgradeAndContinue">
+    <view class="membership-gate-action {{membershipGateActionDisabled ? 'disabled' : ''}}" bindtap="onUpgradeAndContinue">
       <text>{{membershipActionText}}</text>
     </view>
     <view class="membership-gate-link" bindtap="onMembership">

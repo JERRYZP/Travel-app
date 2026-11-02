@@ -169,6 +169,7 @@ exports.main = async (event) => {
           user: {
             ...profile.user,
             membership: current.membership,
+            membershipSales: current.sales,
           },
         });
       }

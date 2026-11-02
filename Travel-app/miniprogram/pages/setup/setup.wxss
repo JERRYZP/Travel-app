@@ -340,6 +340,7 @@
   font-size: 22rpx;
   font-weight: 600;
 }
+.membership-gate-action.disabled { background: var(--color-placeholder); }
 
 .upgrade-mask {
   position: fixed;

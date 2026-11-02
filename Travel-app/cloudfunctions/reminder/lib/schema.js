@@ -18,6 +18,7 @@ const COLLECTIONS = {
   ORDERS: 'orders',                 // TABLE-009（2026-10-27 会员 / 提醒名额订单）
   AFTER_SALES_CASES: 'after_sales_cases',
   ADMIN_AUDIT_LOGS: 'admin_audit_logs',
+  PAYMENT_CONFIG: 'payment_config',
 };
 
 /** ENUM-001 行程状态 */
@@ -85,6 +86,12 @@ const OrderStatus = {
   REFUNDED: 'REFUNDED',
 };
 
+/** ENUM-012 会员购买状态 */
+const MembershipSalesState = {
+  OPEN: 'OPEN',
+  PAUSED: 'PAUSED',
+};
+
 /** ENUM-005 实时放票状态 */
 const ReleaseStatus = {
   NOT_RELEASED: 'NOT_RELEASED',
@@ -130,6 +137,7 @@ const ERRORS = {
   /* 2026-10-27 会员 / 提醒名额。限额只在服务端判定，页面不自行推导。 */
   TASK_LIMIT_EXCEEDED: { code: 1026, message: '提醒名额不足，请先开通会员或加购名额' },
   TASK_QUOTA_BUSY: { code: 1031, message: '提醒名额正在更新，请稍后重试' },
+  MEMBERSHIP_SALES_PAUSED: { code: 1032, message: '会员购买暂停中，请稍后再试' },
   MEMBERSHIP_REQUIRED: { code: 1022, message: '请先开通会员再加购提醒名额' },
   PAYMENT_NOT_READY: { code: 1023, message: '支付通道准备中，请稍后再试' },
   ORDER_NOT_FOUND: { code: 1024, message: '订单不存在或已失效' },
@@ -207,6 +215,7 @@ module.exports = {
   ChannelType,
   MemberLevel,
   OrderStatus,
+  MembershipSalesState,
   ReleaseStatus,
   DifficultyLabel,
   difficultyOf,

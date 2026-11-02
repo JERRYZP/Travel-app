@@ -71,6 +71,8 @@ Page({
       : '';
     const freeSlots = Math.max(0, Number(current.freeTaskSlots) || 0);
     const memberSlots = Math.max(freeSlots, Number(current.memberTaskSlots) || 0);
+    const sales = user.membershipSales || {};
+    const purchaseEnabled = sales.purchaseEnabled !== false;
     this.setData({
       user,
       isMember: current.member === true,
@@ -78,8 +80,10 @@ Page({
       memberCardTitle: current.member ? '尊贵会员' : '非会员',
       memberCardDesc: current.member
         ? `${expiryDate || current.memberExpiresAtText || '—'} 到期｜提醒名额 ${current.taskUsed}/${current.taskLimit}`
-        : `免费版可用 ${freeSlots} 个提醒名额；开通后最多 ${memberSlots} 个`,
-      memberCardAction: current.member ? '升级' : '开通',
+        : (purchaseEnabled
+          ? `免费版可用 ${freeSlots} 个提醒名额；开通后最多 ${memberSlots} 个`
+          : `免费版可用 ${freeSlots} 个提醒名额；会员购买暂停中`),
+      memberCardAction: purchaseEnabled ? (current.member ? '升级' : '开通') : '查看',
     });
   },
 

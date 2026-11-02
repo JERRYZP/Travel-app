@@ -35,9 +35,12 @@ function viewOf(err) {
     ? Math.max(0, rawShortfall)
     : Math.max(0, requested - remaining);
   const packages = Array.isArray(err.packages) ? err.packages : [];
+  const sales = err.sales || {};
+  const purchaseEnabled = sales.purchaseEnabled !== false;
   const preferredType = member ? 'TASK_PACK' : 'MEMBER';
   const pkg = packages.find(item => item && item.type === preferredType && item.available !== false)
-    || packages.find(item => item && item.type === preferredType)
+    || null;
+  const fallbackPkg = packages.find(item => item && item.type === preferredType)
     || null;
   const freeSlots = Math.max(0, Number(current.freeTaskSlots) || 0);
   const memberSlots = Math.max(freeSlots, Number(current.memberTaskSlots) || 0);
@@ -53,30 +56,39 @@ function viewOf(err) {
     requested,
     shortfall,
     member,
-    packageId: pkg ? pkg.id : '',
-    packageType: pkg ? pkg.type : (member ? 'TASK_PACK' : 'MEMBER'),
-    packageTitle: pkg ? pkg.title : '',
+    packageId: purchaseEnabled && pkg ? pkg.id : '',
+    packageType: (pkg || fallbackPkg)
+      ? (pkg || fallbackPkg).type
+      : (member ? 'TASK_PACK' : 'MEMBER'),
+    packageTitle: (pkg || fallbackPkg) ? (pkg || fallbackPkg).title : '',
     priceText: pkg ? pkg.priceText : '',
-    addedSlots,
+    addedSlots: pkg ? Math.max(0, Number(pkg.addedSlots) || 0) : 0,
     memberDays: Math.max(0, Number(pkg && pkg.memberDays) || 0),
     memberFloorDays: Math.max(0, Number(pkg && pkg.memberFloorDays) || 0),
     memberExpiresAt: current.memberExpiresAt || null,
-    actionText: (pkg && pkg.actionText)
-      || (member ? '去加购提醒名额' : '去开通会员'),
-    description: member
-      ? (pkg && pkg.description) || '可在会员有效期内加购提醒名额。'
-      : `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额；开通会员后上限提升至 ${memberSlots} 个。`,
+    purchaseEnabled,
+    salesMessage: sales.message || '',
+    actionText: purchaseEnabled
+      ? ((pkg && pkg.actionText) || (member ? '去加购提醒名额' : '去开通会员'))
+      : ((sales && sales.message) || '会员购买暂停中'),
+    description: !purchaseEnabled
+      ? (sales.message || '会员购买暂停中，已有会员权益和订单不受影响。')
+      : (member
+        ? (pkg && pkg.description) || '可在会员有效期内加购提醒名额。'
+        : `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额；开通会员后上限提升至 ${memberSlots} 个。`),
     note: member
       ? (current.memberExpiresAtText ? `会员到期：${current.memberExpiresAtText}` : '')
       : `会员有效期 ${memberDays} 天，不自动续费`,
-    payText: member
-      ? `支付 ${priceText}，购买 ${addedSlots} 个提醒名额并继续`
-      : `支付 ${priceText}，购买会员并继续`,
+    payText: !purchaseEnabled
+      ? '会员购买暂停中'
+      : (member
+        ? `支付 ${priceText}，购买 ${addedSlots} 个提醒名额并继续`
+        : `支付 ${priceText}，购买会员并继续`),
   };
 }
 
 function payConfirmOf(limit, now = Date.now()) {
-  if (!limit || !limit.packageId || !limit.priceText) return null;
+  if (!limit || limit.purchaseEnabled === false || !limit.packageId || !limit.priceText) return null;
   const currentMs = new Date(limit.memberExpiresAt || 0).getTime();
   const validCurrent = Number.isFinite(currentMs) && currentMs > now ? currentMs : now;
   const memberDays = Math.max(0, Number(limit.memberDays) || 0);

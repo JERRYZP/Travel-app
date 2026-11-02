@@ -13,6 +13,7 @@ const COLLECTIONS = {
   ADMIN_AUDIT_LOGS: 'admin_audit_logs',
   REMINDER_TASKS: 'reminder_tasks',
   PAYMENT_RECONCILE_STATE: 'payment_reconcile_state',
+  PAYMENT_CONFIG: 'payment_config',
 };
 
 const MemberLevel = {
@@ -25,6 +26,11 @@ const OrderStatus = {
   PAID: 'PAID',
   CLOSED: 'CLOSED',
   REFUNDED: 'REFUNDED', // 历史兼容，新流程不写这个订单状态
+};
+
+const MembershipSalesState = {
+  OPEN: 'OPEN',
+  PAUSED: 'PAUSED',
 };
 
 const RefundStatus = {
@@ -78,6 +84,7 @@ const ERRORS = {
   REFUND_NOT_ELIGIBLE: { code: 1029, message: '当前订单暂不符合退款申请条件' },
   CASE_NOT_FOUND: { code: 1030, message: '售后记录不存在' },
   TASK_QUOTA_BUSY: { code: 1031, message: '提醒名额正在更新，请稍后重试' },
+  MEMBERSHIP_SALES_PAUSED: { code: 1032, message: '会员购买暂停中，请稍后再试' },
   FORBIDDEN: { code: 1040, message: '无权限' },
   SERVER_ERROR: { code: 1500, message: '服务异常，请稍后重试' },
   UNKNOWN_ACTION: { code: 1099, message: 'unknown action' },
@@ -98,6 +105,7 @@ module.exports = {
   OrderStatus,
   RefundStatus,
   GrantStatus,
+  MembershipSalesState,
   CaseType,
   CaseStatus,
   ERRORS,

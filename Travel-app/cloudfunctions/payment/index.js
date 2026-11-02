@@ -22,7 +22,8 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 
 const {
-  COLLECTIONS, ERRORS, OrderStatus, RefundStatus, GrantStatus, CaseType, CaseStatus, ok, fail,
+  COLLECTIONS, ERRORS, OrderStatus, RefundStatus, GrantStatus, MembershipSalesState,
+  CaseType, CaseStatus, ok, fail,
 } = require('./lib/schema');
 const {
   amountOf,
@@ -40,6 +41,7 @@ const {
   reverseOrderEntitlement,
 } = require('./lib/order');
 const afterSales = require('./lib/after-sales');
+const membershipSales = require('./lib/membership-sales');
 const {
   migrateProtectionBatch,
   protectionMigrationCompleted,
@@ -871,6 +873,13 @@ async function createPayment(context, event) {
   }
   if (order.status !== OrderStatus.PENDING) return fail(ERRORS.ORDER_EXPIRED);
 
+  const sales = await membershipSales.read(db);
+  if (sales.purchaseEnabled !== true) {
+    return fail(ERRORS.MEMBERSHIP_SALES_PAUSED, {
+      sales: membershipSales.publicView(sales),
+    });
+  }
+
   if (paymentProvider.isVirtualPay(
     order,
     process.env,
@@ -962,6 +971,44 @@ async function cancelPayment(context, event) {
 
 function adminRequired(context) {
   return afterSales.isAfterSalesAdmin(context.OPENID) ? null : fail(ERRORS.FORBIDDEN);
+}
+
+async function setMembershipSales(context, event) {
+  const denied = adminRequired(context);
+  if (denied) return denied;
+  const state = String(event.state || '').trim().toUpperCase();
+  if (![MembershipSalesState.OPEN, MembershipSalesState.PAUSED].includes(state)) {
+    return fail(ERRORS.BAD_PARAM);
+  }
+  const reason = String(event.reason || '').trim().slice(0, 160);
+  if (state === MembershipSalesState.PAUSED && !reason) {
+    return fail({ code: ERRORS.BAD_PARAM.code, message: '暂停会员购买时必须填写原因' });
+  }
+  const nowTs = new Date();
+  await db.runTransaction(async transaction => {
+    await transaction.collection(COLLECTIONS.PAYMENT_CONFIG)
+      .doc(membershipSales.SALES_CONFIG_ID)
+      .set({
+        data: {
+          state,
+          reason: state === MembershipSalesState.PAUSED ? reason : '',
+          updatedAt: nowTs,
+          updatedBy: context.OPENID,
+        },
+      });
+    await transaction.collection(COLLECTIONS.ADMIN_AUDIT_LOGS).add({
+      data: {
+        adminOpenId: context.OPENID,
+        action: 'SET_MEMBERSHIP_SALES',
+        caseId: '',
+        orderId: '',
+        details: { state, reason },
+        createdAt: nowTs,
+      },
+    });
+  });
+  const current = await membershipSales.read(db);
+  return ok({ membershipSales: membershipSales.adminView(current) });
 }
 
 async function adminCaseBundle(caseItem) {
@@ -2084,18 +2131,22 @@ exports.main = async (event = {}) => {
             fundingBlockedCount: 0,
           });
         }
-        const [migrationCompleted, pendingCount, fundingBlockedCount] = await Promise.all([
+        const [migrationCompleted, pendingCount, fundingBlockedCount, sales] = await Promise.all([
           protectionMigrationCompleted(db),
           afterSales.countActiveCases(db).catch(() => 0),
           afterSales.countFundingBlockedCases(db).catch(() => 0),
+          membershipSales.read(db),
         ]);
         return ok({
           isAdmin: true,
           migrationCompleted,
           pendingCount,
           fundingBlockedCount,
+          membershipSales: membershipSales.adminView(sales),
         });
       }
+      case 'afterSales.adminSetMembershipSales':
+        return await setMembershipSales(context, event);
       case 'afterSales.adminList':
         return await adminList(context, event);
       case 'afterSales.adminDetail':

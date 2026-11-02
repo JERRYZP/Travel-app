@@ -170,6 +170,9 @@ const payment = {
     detail: (caseId) => call('payment', { action: 'afterSales.detail', caseId }),
     syncRights: (orderId) => call('payment', { action: 'afterSales.syncRights', orderId }),
     adminStatus: () => call('payment', { action: 'afterSales.adminStatus' }),
+    adminSetMembershipSales: (p) => call('payment', {
+      action: 'afterSales.adminSetMembershipSales', ...(p || {}),
+    }),
     adminList: (p) => call('payment', { action: 'afterSales.adminList', ...(p || {}) }),
     adminDetail: (caseId) => call('payment', { action: 'afterSales.adminDetail', caseId }),
     adminApproveRefund: (caseId) => call('payment', { action: 'afterSales.adminApproveRefund', caseId }),
@@ -215,6 +218,7 @@ function toastError(result) {
     1028: '该订单已有处理中的售后申请',
     1029: '当前订单暂不符合退款条件',
     1030: '售后记录不存在',
+    1032: '会员购买暂停中，请稍后再试',
     1040: '无权限执行此操作',
     1500: '服务异常，请稍后重试',
   };

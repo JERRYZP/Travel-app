@@ -27,12 +27,14 @@ Page({
     reservedQuota: 0,
     shortfall: 0,
     membership: null,
+    membershipSales: null,
     packages: [],
     showMembershipGate: false,
     membershipGateTitle: '',
     membershipGateDesc: '',
     membershipGateNote: '',
     membershipActionText: '',
+    membershipGateActionDisabled: false,
     membershipQuotaLimit: 0,
     membershipQuotaUsed: 0,
     membershipQuotaRemaining: 0,
@@ -91,11 +93,18 @@ Page({
       const reminderCount = (res && res.summary && res.summary.reminderCount) || 0;
       const quotaNeeded = reminderCount * this.data.offsets.length;
       const packages = (res && Array.isArray(res.packages) ? res.packages : []).map(item => ({ ...item }));
-      const gate = this.membershipGateOf(reminderCount, res && res.membership, packages);
+      const membershipSales = (res && res.sales) || null;
+      const gate = this.membershipGateOf(
+        reminderCount,
+        res && res.membership,
+        packages,
+        membershipSales
+      );
       this.setData({
         reminderCount,
         quotaNeeded,
         membership: (res && res.membership) || null,
+        membershipSales,
         packages,
         ...gate,
       });
@@ -103,7 +112,7 @@ Page({
     }).catch(() => this.refreshAccessState(this.data.quotaNeeded));
   },
 
-  membershipGateOf(reminderCount, current, availablePackages) {
+  membershipGateOf(reminderCount, current, availablePackages, sales) {
     const requested = Math.max(0, Math.floor(Number(reminderCount) || 0));
     const taskLimit = Math.max(0, Math.floor(Number(current && current.taskLimit) || 0));
     const taskUsed = Math.max(0, Math.floor(Number(current && current.taskUsed) || 0));
@@ -126,6 +135,7 @@ Page({
         membershipGateDesc: '',
         membershipGateNote: '',
         membershipActionText: '',
+        membershipGateActionDisabled: false,
         ...quotaFields,
         upgradePackageId: '',
       };
@@ -137,8 +147,13 @@ Page({
     const memberSlots = Math.max(freeSlots, Number(current.memberTaskSlots) || 0);
     const taskPackSize = Math.max(0, Number(current.taskPackSize) || 0);
     const memberDays = Math.max(0, Number(current.memberDurationDays) || 0);
+    const purchaseEnabled = !sales || sales.purchaseEnabled !== false;
+    const salesMessage = (sales && sales.message) || '会员购买暂停中，请稍后再试。';
     const preferredType = current.member ? 'TASK_PACK' : 'MEMBER';
-    const pkg = packages.find(item => item && item.type === preferredType) || null;
+    const pkg = purchaseEnabled
+      ? packages.find(item =>
+        item && item.type === preferredType && item.available !== false) || null
+      : null;
     const priceText = (pkg && pkg.priceText) || '';
     const displayPackSize = taskPackSize || Number(pkg && pkg.addedSlots) || 0;
     const displayMemberDays = memberDays || Number(pkg && pkg.memberDays) || 0;
@@ -146,13 +161,20 @@ Page({
       return {
         showMembershipGate: true,
         membershipGateTitle: `还差 ${gap} 个提醒名额`,
-        membershipGateDesc: displayPackSize
-          ? `加购 ${displayPackSize} 个提醒名额；名额永久记录，会员有效期内生效。`
-          : '可在会员有效期内加购提醒名额。',
-        membershipGateNote: `会员到期：${current.memberExpiresAtText || '—'}`,
-        membershipActionText: pkg
-          ? `支付 ${priceText}，加购 ${displayPackSize} 个名额并继续`
-          : '暂无可购买的名额包',
+        membershipGateDesc: purchaseEnabled
+          ? (displayPackSize
+            ? `加购 ${displayPackSize} 个提醒名额；名额永久记录，会员有效期内生效。`
+            : '可在会员有效期内加购提醒名额。')
+          : salesMessage,
+        membershipGateNote: purchaseEnabled
+          ? `会员到期：${current.memberExpiresAtText || '—'}`
+          : `会员到期：${current.memberExpiresAtText || '—'}；已有权益不受影响`,
+        membershipActionText: purchaseEnabled
+          ? (pkg
+            ? `支付 ${priceText}，加购 ${displayPackSize} 个名额并继续`
+            : '暂无可购买的名额包')
+          : '会员购买暂停中',
+        membershipGateActionDisabled: !purchaseEnabled,
         ...quotaFields,
         upgradePackageId: pkg ? pkg.id : '',
       };
@@ -161,11 +183,18 @@ Page({
     return {
       showMembershipGate: true,
       membershipGateTitle: `还差 ${gap} 个提醒名额`,
-      membershipGateDesc: `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额；开通会员后上限提升至 ${memberSlots} 个${displayMemberDays ? `，有效期 ${displayMemberDays} 天` : ''}。`,
-      membershipGateNote: pkg ? `${priceText} / ${displayMemberDays} 天，不自动续费` : '会员商品暂不可购买',
-      membershipActionText: pkg
-        ? `支付 ${priceText}，开通 ${displayMemberDays} 天会员并继续`
-        : '暂无可购买的会员商品',
+      membershipGateDesc: purchaseEnabled
+        ? `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额；开通会员后上限提升至 ${memberSlots} 个${displayMemberDays ? `，有效期 ${displayMemberDays} 天` : ''}。`
+        : salesMessage,
+      membershipGateNote: purchaseEnabled
+        ? (pkg ? `${priceText} / ${displayMemberDays} 天，不自动续费` : '会员商品暂不可购买')
+        : '已有会员权益、订单和售后不受影响',
+      membershipActionText: purchaseEnabled
+        ? (pkg
+          ? `支付 ${priceText}，开通 ${displayMemberDays} 天会员并继续`
+          : '暂无可购买的会员商品')
+        : '会员购买暂停中',
+      membershipGateActionDisabled: !purchaseEnabled,
       ...quotaFields,
       upgradePackageId: pkg ? pkg.id : '',
     };
@@ -469,6 +498,10 @@ Page({
 
   onUpgradeAndContinue() {
     if (this._upgrading || this.data.submitting) return;
+    if (this.data.membershipSales && this.data.membershipSales.purchaseEnabled === false) {
+      wx.showToast({ title: '会员购买暂停中，请稍后再试', icon: 'none' });
+      return;
+    }
     const packageId = this.data.upgradePackageId;
     if (!packageId) return;
     const pkg = (this.data.packages || []).find(item => item && item.id === packageId);

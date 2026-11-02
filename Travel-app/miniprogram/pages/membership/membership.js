@@ -57,6 +57,7 @@ Page({
     purchasing: false,
     isIosDevice: false,
     membership: null,
+    sales: null,
     packages: [],
     visiblePackages: [],
     selectedPackageId: '',
@@ -189,6 +190,7 @@ Page({
       api.reminder.membership.orders().catch(() => null),
     ]).then(([res, orderRes]) => {
       const membership = res.membership || {};
+      const sales = res.sales || { state: 'OPEN', purchaseEnabled: true, message: '' };
       const packages = (res.packages || []).map(item => ({ ...item }));
       const memberPackage = packages.find(item => item && item.type === 'MEMBER') || null;
       const taskPackPackage = packages.find(item => item && item.type === 'TASK_PACK') || null;
@@ -211,6 +213,7 @@ Page({
         loading: false,
         loadFailed: false,
         membership: membershipView,
+        sales,
         packages: this.markPackages(packages, selectedId),
         visiblePackages: this.markPackages(visible, selectedId),
         selectedPackageId: selectedId,
@@ -380,6 +383,10 @@ Page({
 
   onPay() {
     if (this.data.purchasing) return;
+    if (this.data.sales && this.data.sales.purchaseEnabled === false) {
+      wx.showToast({ title: this.data.sales.message || '会员购买暂停中', icon: 'none' });
+      return;
+    }
     const pkg = this.data.selectedPackage;
     if (!pkg) return;
     const expiry = expectedExpiryOf(pkg, this.data.membership);
@@ -480,7 +487,9 @@ Page({
       this.setPaymentState(
         'FAILED',
         '支付未完成',
-        '尚未发放权益；如微信已扣款，请打开订单同步支付结果。',
+        err && err.errorCode === 1032
+          ? (err.error || '会员购买暂停中，请稍后再试。')
+          : '尚未发放权益；如微信已扣款，请打开订单同步支付结果。',
         err && err.orderId
       );
     });

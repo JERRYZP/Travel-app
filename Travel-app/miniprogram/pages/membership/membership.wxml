@@ -91,41 +91,48 @@
       </view>
     </view>
 
-    <text class="section-label">选择本次服务</text>
-    <view class="package-list">
-      <view
-        wx:for="{{visiblePackages}}"
-        wx:key="id"
-        class="package-row {{item._selected ? 'selected' : ''}} {{item._available ? '' : 'disabled'}}"
-        bindtap="onPackageTap"
-        data-id="{{item.id}}"
-      >
-        <view class="package-main">
-          <view class="package-title-line">
-            <text class="package-title">{{item.title}}</text>
-            <text wx:if="{{item.badge}}" class="package-badge">{{item.badge}}</text>
+    <view wx:if="{{sales && !sales.purchaseEnabled}}" class="sales-paused-card">
+      <text class="sales-paused-title">会员购买暂停中</text>
+      <text class="sales-paused-desc">{{sales.message || '已有会员权益、订单和售后不受影响。'}}</text>
+    </view>
+
+    <block wx:if="{{!sales || sales.purchaseEnabled}}">
+      <text class="section-label">选择本次服务</text>
+      <view class="package-list">
+        <view
+          wx:for="{{visiblePackages}}"
+          wx:key="id"
+          class="package-row {{item._selected ? 'selected' : ''}} {{item._available ? '' : 'disabled'}}"
+          bindtap="onPackageTap"
+          data-id="{{item.id}}"
+        >
+          <view class="package-main">
+            <view class="package-title-line">
+              <text class="package-title">{{item.title}}</text>
+              <text wx:if="{{item.badge}}" class="package-badge">{{item.badge}}</text>
+            </view>
+            <text class="package-desc">{{item.description}}</text>
+            <text wx:if="{{!item._available}}" class="package-lock">{{item.actionText}}</text>
           </view>
-          <text class="package-desc">{{item.description}}</text>
-          <text wx:if="{{!item._available}}" class="package-lock">{{item.actionText}}</text>
-        </view>
-        <view class="package-price">
-          <text class="package-price-value">{{item.priceText}}</text>
-          <view class="package-radio {{item._selected ? 'checked' : ''}}">
-            <svg-icon wx:if="{{item._selected}}" name="check-white" size="11px" />
+          <view class="package-price">
+            <text class="package-price-value">{{item.priceText}}</text>
+            <view class="package-radio {{item._selected ? 'checked' : ''}}">
+              <svg-icon wx:if="{{item._selected}}" name="check-white" size="11px" />
+            </view>
           </view>
         </view>
       </view>
-    </view>
-    <text wx:if="{{!membership.member}}" class="package-tip">开通会员后可加购 {{membership.taskPackSize}} 个提醒名额。</text>
+      <text wx:if="{{!membership.member}}" class="package-tip">开通会员后可加购 {{membership.taskPackSize}} 个提醒名额。</text>
 
-    <view class="purchase-note">
-      <text wx:if="{{isIosDevice}}">iOS 购买由 Apple 处理，支付成功后权益立即生效。退款申请和审核由 Apple 独立处理，小程序客服无法决定结果；如 Apple 确认退款，系统会按本订单自动回收对应权益。</text>
-      <text wx:else>虚拟权益支付成功后生效。支付后 24 小时内且没有新增任何提醒，可申请退款，需客服核实；已使用、超时或无正当理由的申请不支持。每笔订单最多一次全额退款。</text>
-    </view>
+      <view class="purchase-note">
+        <text wx:if="{{isIosDevice}}">iOS 购买由 Apple 处理，支付成功后权益立即生效。退款申请和审核由 Apple 独立处理，小程序客服无法决定结果；如 Apple 确认退款，系统会按本订单自动回收对应权益。</text>
+        <text wx:else>虚拟权益支付成功后生效。支付后 24 小时内且没有新增任何提醒，可申请退款，需客服核实；已使用、超时或无正当理由的申请不支持。每笔订单最多一次全额退款。</text>
+      </view>
 
-    <view class="pay-btn {{selectedPackage ? '' : 'disabled'}}" bindtap="onPay">
-      <text>{{payButtonText}}</text>
-    </view>
+      <view class="pay-btn {{selectedPackage ? '' : 'disabled'}}" bindtap="onPay">
+        <text>{{payButtonText}}</text>
+      </view>
+    </block>
   </block>
 </view>
 

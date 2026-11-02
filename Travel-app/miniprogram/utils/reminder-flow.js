@@ -176,6 +176,7 @@ function membershipLimitOfStatus(status, needed) {
       shortfall: requested - remaining,
     },
     packages: status.packages || [],
+    sales: status.sales || null,
   });
 }
 
@@ -194,6 +195,7 @@ function refreshReminderAuth(page, options) {
       reminderAuth: auth,
       membershipLimit,
       reminderCheckoutReady: checkoutReady,
+      taskLimitPayDisabled: !!(membershipLimit && membershipLimit.purchaseEnabled === false),
       reminderAuthFeedback: auth.quotaOk ? '' : '授权状态读取失败，请稍后重试。',
     });
     if (page._reminderAuthResolve && checkoutReady) {
@@ -284,6 +286,7 @@ function requestReminderAuthOnce(page) {
           reminderAuth: next,
           membershipLimit,
           reminderCheckoutReady: true,
+          taskLimitPayDisabled: !!(membershipLimit && membershipLimit.purchaseEnabled === false),
           reminderAuthBusy: false,
           reminderAuthFeedback: '授权次数已满足，请点击“开启行程放票提醒”。',
         });
@@ -315,6 +318,7 @@ function requestReminderAuthOnce(page) {
         reminderAuth: next,
         membershipLimit,
         reminderCheckoutReady: next.authReady && !membershipLimit,
+        taskLimitPayDisabled: !!(membershipLimit && membershipLimit.purchaseEnabled === false),
         reminderAuthBusy: false,
         reminderAuthFeedback: feedback,
       });
@@ -503,6 +507,7 @@ function showReminderCheckoutWithLimit(page, limit, needed) {
       reminderAuth: auth,
       membershipLimit: limit,
       reminderCheckoutReady: auth.authReady && !limit,
+      taskLimitPayDisabled: limit.purchaseEnabled === false,
       reminderAuthBusy: false,
       reminderAuthFeedback: auth.authReady ? '' : '请先补齐上方授权次数。',
     });
@@ -683,7 +688,7 @@ function onDateConfirm(page, e) {
         taskLimitPayConfirm: null,
         taskLimitPayButtonText: '',
         taskLimitPaying: false,
-        taskLimitPayDisabled: false,
+        taskLimitPayDisabled: limit.purchaseEnabled === false,
         taskLimitPayFeedback: '',
       });
       return showReminderCheckoutWithLimit(page, limit, needed).then(() => false);
@@ -729,6 +734,15 @@ function openTaskLimitPayment(page) {
   if (!page || page._taskLimitClosing || (page.data && page.data.taskLimitPaying)) return false;
   const limit = page.data && page.data.membershipLimit;
   if (!limit) return false;
+  if (limit.purchaseEnabled === false) {
+    page.setData({
+      taskLimitPayFeedback: limit.salesMessage || '会员购买暂停中，请稍后再试。',
+      taskLimitPayButtonText: '会员购买暂停中',
+      taskLimitPayDisabled: true,
+    });
+    wx.showToast({ title: limit.salesMessage || '会员购买暂停中', icon: 'none' });
+    return false;
+  }
   const confirm = membershipEntry.payConfirmOf(limit);
   if (!confirm) {
     wx.showToast({ title: '套餐信息加载失败，请稍后重试', icon: 'none' });
@@ -840,7 +854,7 @@ function resumeReminderCommit(page, options) {
         taskLimitPayConfirm: null,
         taskLimitPayButtonText: '',
         taskLimitPaying: false,
-        taskLimitPayDisabled: false,
+        taskLimitPayDisabled: !!(nextLimit && nextLimit.purchaseEnabled === false),
         taskLimitPayFeedback: '',
         reminderAuthFeedback: afterPayment
           ? `权益已到账，还需补 ${Math.max(0, Number(auth && auth.shortfall) || 0)} 次授权。`
@@ -860,7 +874,7 @@ function resumeReminderCommit(page, options) {
         taskLimitPayConfirm: null,
         taskLimitPayButtonText: '',
         taskLimitPaying: false,
-        taskLimitPayDisabled: false,
+        taskLimitPayDisabled: nextLimit.purchaseEnabled === false,
         taskLimitPayFeedback: '',
         reminderAuthFeedback: '权益已到账，但提醒名额仍然不足，请继续处理下方名额。',
       });
@@ -924,7 +938,7 @@ function resumeReminderCommit(page, options) {
         taskLimitPayConfirm: null,
         taskLimitPayButtonText: '',
         taskLimitPaying: false,
-        taskLimitPayDisabled: false,
+        taskLimitPayDisabled: commitLimit.purchaseEnabled === false,
         taskLimitPayFeedback: '',
       });
       wx.showToast({ title: '权益已到账，但提醒名额仍然不足', icon: 'none' });
@@ -955,6 +969,14 @@ function confirmTaskLimitPayment(page) {
   if (!page || page._taskLimitClosing || (page.data && page.data.taskLimitPaying)) return Promise.resolve(false);
   const limit = page.data && page.data.membershipLimit;
   if (!limit) return Promise.resolve(false);
+  if (limit.purchaseEnabled === false) {
+    page.setData({
+      taskLimitPayFeedback: limit.salesMessage || '会员购买暂停中，请稍后再试。',
+      taskLimitPayButtonText: '会员购买暂停中',
+      taskLimitPayDisabled: true,
+    });
+    return Promise.resolve(false);
+  }
   if (page._taskLimitPayMode === 'blocked') {
     wx.showToast({ title: '请稍后到订单详情处理权益', icon: 'none' });
     return Promise.resolve(false);
@@ -1022,8 +1044,13 @@ function confirmTaskLimitPayment(page) {
       taskLimitPayDisabled: false,
       taskLimitPayFeedback: err && err.cancelled
         ? '支付未完成，本次日期仍保留。'
-        : '支付未完成，尚未发放权益；如已扣款请稍后到订单详情确认。',
-      taskLimitPayButtonText: `重新支付 ${limit.priceText}`,
+        : (err && err.errorCode === 1032
+          ? (err.error || '会员购买暂停中，请稍后再试。')
+          : '支付未完成，尚未发放权益；如已扣款请稍后到订单详情确认。'),
+      taskLimitPayButtonText: err && err.errorCode === 1032
+        ? '会员购买暂停中'
+        : `重新支付 ${limit.priceText}`,
+      taskLimitPayDisabled: !!(err && err.errorCode === 1032),
     });
     return false;
   });

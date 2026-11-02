@@ -115,6 +115,9 @@
 .package-tip { display: block; margin-top: 12rpx; color: var(--color-muted); font-size: 21rpx; }
 
 .purchase-note { margin-top: 24rpx; padding: 20rpx 22rpx; border-radius: 16rpx; background: var(--color-cream); color: var(--color-text); font-size: 21rpx; line-height: 1.65; }
+.sales-paused-card { display: flex; flex-direction: column; gap: 10rpx; margin-top: 28rpx; padding: 24rpx 22rpx; border: 1rpx solid #D8A08E; border-radius: 16rpx; background: #FFF1EC; }
+.sales-paused-title { color: #A7462B; font-size: 25rpx; font-weight: 600; }
+.sales-paused-desc { color: #8F4B37; font-size: 21rpx; line-height: 1.6; }
 .pay-btn { height: 84rpx; margin-top: 24rpx; border-radius: 18rpx; background: var(--color-primary); color: #FFFEFB; font-size: 27rpx; font-weight: 600; display: flex; align-items: center; justify-content: center; }
 .pay-btn.disabled { background: var(--color-placeholder); }
 

@@ -18,6 +18,7 @@ const {
 const time = require('./time');
 const userDomain = require('./user');
 const quotaLock = require('./quota-lock');
+const membershipSales = require('./membership-sales');
 
 const FREE_TASK_SLOTS = 5;
 const MEMBER_TASK_SLOTS = 15;
@@ -238,20 +239,21 @@ function orderDisplayTitleOf(order = {}) {
   return order.title || '会员服务';
 }
 
-function orderActionsOf(order = {}, eligibility = {}, nowTs = time.now()) {
+function orderActionsOf(order = {}, eligibility = {}, nowTs = time.now(), sales = null) {
   const refundStatus = order.refundStatus || (order.status === OrderStatus.REFUNDED
     ? 'REFUNDED' : 'NONE');
   const pendingExpired = order.status === OrderStatus.PENDING && isExpiredOrder(order, nowTs);
+  const purchaseEnabled = !sales || sales.purchaseEnabled === true;
   const canAfterSales = order.status === OrderStatus.PAID
     && ['NONE', 'REQUESTED', 'UNDER_REVIEW', 'PROCESSING', 'REFUNDED', 'REJECTED', 'FAILED'].includes(refundStatus);
   const canSync = order.status === OrderStatus.PAID
     && ['NONE', 'REJECTED', 'FAILED'].includes(refundStatus);
   const actionFlags = {
-    canPay: order.status === OrderStatus.PENDING && !pendingExpired,
+    canPay: purchaseEnabled && order.status === OrderStatus.PENDING && !pendingExpired,
     canCancel: order.status === OrderStatus.PENDING && !pendingExpired,
     canSync,
     canAfterSales,
-    canRebuy: order.status === OrderStatus.CLOSED || pendingExpired,
+    canRebuy: purchaseEnabled && (order.status === OrderStatus.CLOSED || pendingExpired),
     afterSalesLabel: ['NONE', 'REJECTED', 'FAILED'].includes(refundStatus) ? '未到账/申请售后' : '查看售后进度',
   };
   const actions = [];
@@ -290,7 +292,7 @@ function paymentChannelOf(order = {}) {
   return PaymentChannel.WECHAT_PAY;
 }
 
-function orderViewOf(order = {}, user = {}, nowTs = time.now()) {
+function orderViewOf(order = {}, user = {}, nowTs = time.now(), sales = null) {
   const refundStatus = order.refundStatus || (order.status === OrderStatus.REFUNDED
     ? 'REFUNDED' : 'NONE');
   const refunded = refundStatus === 'REFUNDED'
@@ -304,7 +306,7 @@ function orderViewOf(order = {}, user = {}, nowTs = time.now()) {
         : (order.grantStatus === 'GRANTED' ? 'PAID_GRANTED' : 'PAID_GRANT_UNKNOWN'))
       : (order.status === OrderStatus.CLOSED ? 'CLOSED' : 'PENDING'));
   const eligibility = refundEligibilityOf(order, user, nowTs);
-  const actionState = orderActionsOf(order, eligibility, nowTs);
+  const actionState = orderActionsOf(order, eligibility, nowTs, sales);
   return {
     _id: order._id,
     outTradeNo: order.outTradeNo || '',
@@ -403,26 +405,29 @@ function snapshotFromTasks(user, tasks, nowTs = time.now()) {
   };
 }
 
-function packageViews(snapshot) {
+function packageViews(snapshot, sales = null) {
+  const purchaseEnabled = !sales || sales.purchaseEnabled === true;
   return PACKAGES.map(item => {
     const isMemberPackage = item.type === 'MEMBER';
-    const available = isMemberPackage ? true : snapshot.member;
+    const available = purchaseEnabled && (isMemberPackage ? true : snapshot.member);
     return {
       ...item,
       available,
-      actionText: isMemberPackage
-        ? (snapshot.member
-          ? `续费 ${item.memberDays} 天 ${item.priceText}`
-          : `开通会员 ${item.priceText}`)
-        : (snapshot.member
-          ? `加购 ${item.addedSlots} 个名额 ${item.priceText}`
-          : '先开通会员'),
+      actionText: !purchaseEnabled
+        ? (sales && sales.message) || '会员购买暂停中'
+        : (isMemberPackage
+          ? (snapshot.member
+            ? `续费 ${item.memberDays} 天 ${item.priceText}`
+            : `开通会员 ${item.priceText}`)
+          : (snapshot.member
+            ? `加购 ${item.addedSlots} 个名额 ${item.priceText}`
+            : '先开通会员')),
     };
   });
 }
 
 async function status(db, userId, nowTs = time.now()) {
-  const [userRes, taskRes, latestTaskRes] = await Promise.all([
+  const [userRes, taskRes, latestTaskRes, sales] = await Promise.all([
     db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
     db.collection(COLLECTIONS.REMINDER_TASKS)
       .where({
@@ -437,6 +442,7 @@ async function status(db, userId, nowTs = time.now()) {
       .orderBy('createdAt', 'desc')
       .limit(1)
       .get(),
+    membershipSales.read(db),
   ]);
 
   const user = (userRes.data || [])[0] || {};
@@ -465,9 +471,11 @@ async function status(db, userId, nowTs = time.now()) {
     Object.assign(user, migrationPatch);
   }
   const snapshot = snapshotFromTasks(user, activeTasks, nowTs);
+  const salesView = membershipSales.publicView(sales);
   return ok({
     membership: snapshot,
-    packages: packageViews(snapshot),
+    packages: packageViews(snapshot, salesView),
+    sales: salesView,
     enforced: shouldEnforceFor(userId),
   });
 }
@@ -495,6 +503,7 @@ async function capacityError(db, userId, neededTasks, nowTs = time.now()) {
       shortfall: Math.max(0, needed - membership.taskRemaining),
     },
     packages: res.packages,
+    sales: res.sales,
   });
 }
 
@@ -553,6 +562,11 @@ async function createOrder(db, userId, { packageId, requestId } = {}) {
 
   return quotaLock.withQuotaLock(db, userId, async () => {
     const current = await status(db, userId);
+    if (!current.sales || current.sales.purchaseEnabled !== true) {
+      return fail(ERRORS.MEMBERSHIP_SALES_PAUSED, {
+        sales: current.sales,
+      });
+    }
     if (pkg.type === 'TASK_PACK' && !current.membership.member) return fail(ERRORS.MEMBERSHIP_REQUIRED);
 
     // 同一 requestId 的重试也可能早于用户资料首次落库，先确保支付成功后能找到同一用户。
@@ -667,7 +681,7 @@ async function markReminderCreated(
 }
 
 async function listOrders(db, userId) {
-  const [orderRes, userRes, latestTaskRes] = await Promise.all([
+  const [orderRes, userRes, latestTaskRes, sales] = await Promise.all([
     db.collection(COLLECTIONS.ORDERS)
       .where({ userId })
       .orderBy('createdAt', 'desc')
@@ -679,6 +693,7 @@ async function listOrders(db, userId) {
       .orderBy('createdAt', 'desc')
       .limit(1)
       .get(),
+    membershipSales.read(db),
   ]);
   const storedUser = (userRes.data || [])[0] || {};
   const latestTask = (latestTaskRes.data || [])[0] || null;
@@ -691,17 +706,19 @@ async function listOrders(db, userId) {
     lastReminderCreatedAt: latestCreatedMs ? new Date(latestCreatedMs) : null,
   };
   const nowTs = time.now();
-  const items = (orderRes.data || []).map(order => orderViewOf(order, user, nowTs));
+  const salesView = membershipSales.publicView(sales);
+  const items = (orderRes.data || []).map(order => orderViewOf(order, user, nowTs, salesView));
   return ok({
     items,
     count: items.length,
+    sales: salesView,
   });
 }
 
 /** 当前用户单笔订单；详情页不能靠客户端从最近 50 条里自行查找。 */
 async function orderDetail(db, userId, orderId) {
   if (!orderId) return fail(ERRORS.ORDER_NOT_FOUND);
-  const [orderRes, userRes, latestTaskRes] = await Promise.all([
+  const [orderRes, userRes, latestTaskRes, sales] = await Promise.all([
     db.collection(COLLECTIONS.ORDERS).where({ _id: orderId, userId }).get(),
     db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
     db.collection(COLLECTIONS.REMINDER_TASKS)
@@ -709,6 +726,7 @@ async function orderDetail(db, userId, orderId) {
       .orderBy('createdAt', 'desc')
       .limit(1)
       .get(),
+    membershipSales.read(db),
   ]);
   const order = (orderRes.data || [])[0];
   if (!order) return fail(ERRORS.ORDER_NOT_FOUND);
@@ -722,7 +740,11 @@ async function orderDetail(db, userId, orderId) {
     ...storedUser,
     lastReminderCreatedAt: latestCreatedMs ? new Date(latestCreatedMs) : null,
   };
-  return ok({ item: orderViewOf(order, user, time.now()) });
+  const salesView = membershipSales.publicView(sales);
+  return ok({
+    item: orderViewOf(order, user, time.now(), salesView),
+    sales: salesView,
+  });
 }
 
 module.exports = {
