@@ -123,17 +123,19 @@ function computeReleaseStatus(rule, now = new Date()) {
 }
 
 /**
- * 最早可约日期 = 今天 + advanceDays，不可约则顺延到下一个可约日（isOpenOn 判定）
+ * 最早可约日期 = 今天 + advanceDays，该日不可约则**向前回退**到最近的可约日（isOpenOn 判定）
  *
- * 顺延上限按 7 天取：白名单景点（仅周末）最多顺延 6 天即可命中，
- * 黑名单景点同理。超限说明规则异常，返回 null 好过返回一个其实约不了的日期。
+ * 只回退、不顺延：这天的票本来就在 advanceDays 窗口内，往后顺延会指到一个还没开始放票的日期。
+ * 例：纪念堂提前 6 天、周一闭馆，11-03 算出的 11-09 是周一，真实可约是 11-08，不是 11-10。
+ * 回退下限是今天（窗口最早一天）；回退满 N 天仍无开放日说明规则异常，返回 null。
  */
 function computeEarliestDate(rule, now = new Date()) {
   if (!rule || !rule.advanceDays) return null;
-  let target = addDaysStr(toDateStr(now), rule.advanceDays);
-  for (let i = 0; i < 7; i += 1) {
+  const advanceDays = Number(rule.advanceDays);
+  let target = addDaysStr(toDateStr(now), advanceDays);
+  for (let i = 0; i <= advanceDays; i += 1) {
     if (isOpenOn(rule, dayNameOfStr(target))) return target;
-    target = addDaysStr(target, 1);
+    target = addDaysStr(target, -1);
   }
   return null;
 }

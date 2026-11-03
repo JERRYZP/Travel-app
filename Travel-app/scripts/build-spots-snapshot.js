@@ -95,12 +95,14 @@ function computeReleaseStatus(rule, now) {
     : ReleaseStatus.BOOKABLE;
 }
 
+/** 与云端 computeEarliestDate 同口径：不可约时向前回退，不顺延。 */
 function computeEarliestDate(rule, now) {
   if (!rule || !rule.advanceDays) return null;
-  let target = addDaysStr(toDateStr(now), rule.advanceDays);
-  for (let i = 0; i < 7; i += 1) {
+  const advanceDays = Number(rule.advanceDays);
+  let target = addDaysStr(toDateStr(now), advanceDays);
+  for (let i = 0; i <= advanceDays; i += 1) {
     if (isOpenOn(rule, dayNameOfStr(target))) return target;
-    target = addDaysStr(target, 1);
+    target = addDaysStr(target, -1);
   }
   return null;
 }
