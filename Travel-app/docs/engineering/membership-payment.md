@@ -208,6 +208,7 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 
 云端已验证：
 
+- 2026-11-04 00:05 已从 `codex/unify-reminder-payment-sheet@1f9cfc4` 上传体验版 `2.2.5`，包体 `1,127,622` 字节，tag 为 `v2.2.5-rc.1`。本版统一 PAGE-008、景点设提醒浮层与会员页的支付确认层，协议默认未勾选且未勾选不能支付；iOS / Android 渠道提示继续按设备区分。本轮只改小程序端，不部署云函数；未提交审核、未发布正式版。
 - 2026-11-03 23:43 已将 `payment` 整包部署到 `cloud1`，保留 Nodejs16.13 与 60 秒超时；真实管理员 `adminOrders.stats` 已返回 `refundedOrders=8`。`paymentReconcileEveryTwoMinutes` 触发器保留，`payment_config/reconcile_health.lastRunAt` 于 23:44:01 刷新且 `errors=0`。
 - 2026-11-03 23:45 已从 `main@aa1db3b` 上传体验版 `2.2.4`，包体 `1,129,989` 字节，tag 为 `v2.2.4-rc.1`。本版包含客服售后队列与退款统计、iOS 付款方式提示、反馈入口与未读角标；未提交审核、未发布正式版。
 - 2026-11-02 客户端 `2.1.0` 已审核通过并全量发布；累计观察到 8 笔已支付订单，用户完成付费流程自测且客服工作台正常。`reminder` 的 `MEMBERSHIP_ENFORCEMENT_MODE` 已切换为 `all`，配置更新时间为 15:10:02。
