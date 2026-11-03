@@ -10,7 +10,7 @@
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
 
 <view class="page-body">
-  <!-- 筛选 Tab -->
+  <!-- 筛选 Tab（服务端筛选，切 Tab 重新拉第一页） -->
   <view class="filter-bar">
     <view class="filter-item {{activeFilter === item.key ? 'active' : ''}}" wx:for="{{filters}}" wx:key="key"
       bindtap="onFilter" data-key="{{item.key}}">
@@ -28,6 +28,11 @@
     <text class="state-text">无权限访问</text>
   </view>
 
+  <!-- 加载失败（网络等，与无权限分开，避免把网络问题说成没权限） -->
+  <view class="state-block state-error" wx:elif="{{loadFailed}}" bindtap="onRetry">
+    <text class="state-text">加载失败，点击重试</text>
+  </view>
+
   <!-- 空列表 -->
   <view class="state-block" wx:elif="{{!items.length}}">
     <text class="state-text">暂无{{activeFilter === 'all' ? '' : '相关'}}记录</text>
@@ -40,8 +45,16 @@
         <view class="fb-tags">
           <view class="fb-tag fb-tag-{{item.typeKey}}">{{item.typeLabel}}</view>
           <view class="fb-tag fb-status fb-status-{{item.statusCls}}">{{item.statusLabel}}</view>
+          <view class="fb-tag fb-tag-reply" wx:if="{{item.hasReply}}">已回复</view>
         </view>
         <text class="fb-time">{{item.time}}</text>
+      </view>
+
+      <!-- 提交人：昵称 + 完整 OpenID，OpenID 可复制去后台检索 -->
+      <view class="fb-user-row">
+        <text class="fb-nickname">{{item.nickname || '未设置昵称'}}</text>
+        <text class="fb-openid">{{item.openId}}</text>
+        <view class="copy-link" catchtap="onCopyText" data-value="{{item.openId}}">复制</view>
       </view>
 
       <view class="fb-spot" wx:if="{{item.isCorrection}}">
@@ -52,9 +65,18 @@
 
       <text class="fb-content">{{item.content}}</text>
 
+      <view class="fb-reply" wx:if="{{item.hasReply}}">
+        <view class="fb-reply-head">
+          <text class="fb-reply-label">管理员回复</text>
+          <text class="fb-reply-time">{{item.replyTime}}</text>
+        </view>
+        <text class="fb-reply-text">{{item.adminReply}}</text>
+      </view>
+
       <view class="fb-card-foot">
         <text class="fb-contact" wx:if="{{item.contact}}">联系方式：{{item.contact}}</text>
         <view class="fb-actions">
+          <view class="fb-btn" bindtap="onReplyStart" data-id="{{item.id}}">{{item.hasReply ? '修改回复' : '回复'}}</view>
           <block wx:if="{{item.status === 'OPEN'}}">
             <view class="fb-btn fb-btn-primary" bindtap="onMark" data-id="{{item.id}}" data-status="PROCESSED">已处理</view>
             <view class="fb-btn" bindtap="onMark" data-id="{{item.id}}" data-status="IGNORED">忽略</view>
@@ -62,6 +84,25 @@
           <view class="fb-btn" wx:else bindtap="onMark" data-id="{{item.id}}" data-status="OPEN">重新打开</view>
         </view>
       </view>
+
+      <!-- 卡片内回复编辑器：同一时间只挂一个 -->
+      <view class="reply-editor" wx:if="{{replyId === item.id}}">
+        <textarea class="reply-textarea" value="{{replyDraft}}" bindinput="onReplyInput"
+          maxlength="{{replyMax}}" cursor-spacing="24" focus="{{true}}"
+          placeholder="回复会显示在用户的「我的反馈」里" placeholder-class="reply-placeholder" />
+        <view class="reply-foot">
+          <text class="reply-count">{{replyDraft.length}}/{{replyMax}}</text>
+          <view class="reply-actions">
+            <view class="fb-btn" bindtap="onReplyCancel">取消</view>
+            <view class="fb-btn {{replyCanSend && !replySaving ? 'fb-btn-primary' : 'disabled'}}"
+              bindtap="onReplySubmit">{{replySaving ? '发送中...' : '发送'}}</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{hasMore}}" class="load-more {{loadingMore ? 'disabled' : ''}}" bindtap="onLoadMore">
+      {{loadingMore ? '加载中...' : '加载更多'}}
     </view>
   </block>
 </view>

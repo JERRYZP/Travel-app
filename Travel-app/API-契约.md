@@ -1381,8 +1381,10 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```javascript
 {
   success: true,
-  items: [{ _id, type, category, spotId, spotName, errorType, content, contact, status, createdAt }]
+  items: [{ _id, type, category, spotId, spotName, errorType, content, contact, status, adminReply, adminReplyAt, createdAt }]
   // 按 createdAt 倒序，最多 50 条；status = OPEN 待处理 | PROCESSED 已处理 | IGNORED 已忽略
+  // adminReply 为空串表示尚未回复；adminReplyAt 为回复时间
+  // 不返回 userId 和 adminReplyBy（回复者 OpenID 属管理端信息）
 }
 ```
 
@@ -1400,15 +1402,20 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 { success: true, isAdmin: true | false }
 ```
 
-### `feedback.adminList` — 管理员查看全部（反馈管理页）
+### `feedback.adminList` — 管理员分页查看全部（反馈管理页）
 
 ```
-调用：{ action: 'feedback.adminList', type? }
+调用：{ action: 'feedback.adminList', type?, category?, page?, pageSize? }
 ```
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
 | type | String | 可选，`feedback` \| `correction`，不传返回全部 |
+| category | String | 可选，`suggestion` \| `bug`；纠错的 category 恒为 null，天然被排除 |
+| page | Number | 可选，默认 1，非法值回退 1 |
+| pageSize | Number | 可选，默认 20，上限 50 |
+
+非法的 type / category 一律忽略按无筛选处理，不报错。
 
 **鉴权：** 调用者 openid 必须在 `feedback/lib/schema.js` 的 `ADMIN_OPENIDS` 白名单内，否则返回 `1040 无权限`。
 
@@ -1417,11 +1424,42 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```javascript
 {
   success: true,
-  items: [{ _id, userId, type, category, spotId, spotName, errorType, content, contact, status, createdAt }],
-  total: 3
-  // 不按 userId 过滤；按 createdAt 倒序，最多 100 条
+  items: [{
+    _id, userId, type, category, spotId, spotName, errorType, content, contact,
+    status, adminReply, adminReplyAt, adminReplyBy, createdAt,
+    user: { openId, nickname, avatarUrl }  // users 集合按 userId 关联；无文档时 nickname 为空串
+  }],
+  count: 20,        // 本页条数
+  total: 137,       // 符合条件的总条数（真实 count，不是本页条数）
+  page: 1,
+  pageSize: 20,
+  hasMore: true
+  // 不按 userId 过滤；按 createdAt 倒序
 }
 ```
+
+### `feedback.adminReply` — 管理员回复单条反馈
+
+```
+调用：{ action: 'feedback.adminReply', id, reply }
+```
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| id | String | 记录 _id，必填 |
+| reply | String | 回复正文，trim 后 1–300 字 |
+
+**鉴权：** 同 adminList，白名单外返回 `1040 无权限`。
+
+单条回复：已有回复时**就地覆盖**，不保留历史，不做多轮对话。写入时状态一律置为 `PROCESSED`。
+
+**返回：**
+
+```javascript
+{ success: true, updated: 1, adminReply: "...", adminReplyAt: Date, status: "PROCESSED" }
+```
+
+**错误码：** `1010` 缺 id / reply 非字符串 / 超 300 字；`1043` 反馈不存在；`1044` 回复内容为空。
 
 ### `feedback.adminUpdateStatus` — 管理员更新处理状态
 
@@ -1465,8 +1503,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-010-4** 帮助与反馈 | 微信原生客服 `button open-type="contact"`；无云函数调用 |
 | **PAGE-010-2** 意见反馈 | `feedback.submit`（type=feedback，category=suggestion/bug） |
 | **PAGE-010-3** 信息纠错 | `spots.search`（选景点）、`feedback.submit`（type=correction） |
-| **PAGE-010-5** 我的反馈 | `feedback.list`（本人历史，最多 50 条，倒序） |
-| **隐藏管理页**（反馈管理） | `feedback.adminStatus`、`feedback.adminList`、`feedback.adminUpdateStatus`；入口 = 我的页长按用户信息卡，服务端确认管理员后才跳转；后端 openid 白名单鉴权 |
+| **PAGE-010-5** 我的反馈 | `feedback.list`（本人历史，最多 50 条，倒序；含管理员回复 `adminReply` / `adminReplyAt`） |
+| **PAGE-017-2** 反馈管理（隐藏管理页） | `feedback.adminStatus`、`feedback.adminList`（分页 + 类型/分类筛选 + 提交人昵称与 OpenID）、`feedback.adminReply`（单条回复）、`feedback.adminUpdateStatus`；入口 = 我的页长按用户信息卡，服务端确认管理员后才跳转；后端 openid 白名单鉴权 |
 
 ---
 

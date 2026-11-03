@@ -661,6 +661,20 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     eq(res.items.length, 50, 'mock 与云端一致：本人反馈最多返回 50 条');
     const times = res.items.map(i => new Date(i.createdAt).getTime());
     eq(times.every((t, i) => i === 0 || times[i - 1] >= t), true, 'mock 与云端一致：按 createdAt 倒序');
+
+    // 回复字段：mock 文档形态必须与云端 submit 默认值一致，否则页面在 mock 下读到 undefined
+    const doc = m.__internals.db.feedbacks[Object.keys(m.__internals.db.feedbacks)[0]];
+    eq(doc.adminReply, '', 'mock 提交时 adminReply 为空串');
+    eq(doc.adminReplyAt, null, 'mock 提交时 adminReplyAt 为 null');
+    eq(doc.adminReplyBy, null, 'mock 提交时 adminReplyBy 为 null');
+    eq(Object.prototype.hasOwnProperty.call(res.items[0], 'adminReply'), true, 'mock list 返回 adminReply 字段');
+    eq(res.items[0].adminReply, '', '未回复时 mock list 的 adminReply 是空串');
+
+    // 管理端接口刻意不进 mock：真实环境依赖 OpenID 白名单，mock 里伪造就等于假能力
+    const adminListErr = await errOf(c('feedback.adminList', { page: 1, pageSize: 20 }));
+    eq(adminListErr.errorCode, 1099, 'mock 不实现 feedback.adminList');
+    const adminReplyErr = await errOf(c('feedback.adminReply', { id: 'x', reply: 'y' }));
+    eq(adminReplyErr.errorCode, 1099, 'mock 不实现 feedback.adminReply');
   }
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');

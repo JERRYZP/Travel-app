@@ -208,6 +208,7 @@ const feedback = {
   /* 管理端（反馈管理页，后端 openid 白名单鉴权） */
   adminStatus: () => call('feedback', { action: 'feedback.adminStatus' }),
   adminList: (p) => call('feedback', { action: 'feedback.adminList', ...p }),
+  adminReply: (p) => call('feedback', { action: 'feedback.adminReply', ...p }),
   adminUpdateStatus: (p) => call('feedback', { action: 'feedback.adminUpdateStatus', ...p }),
 };
 
@@ -287,6 +288,8 @@ function toastError(result) {
     1040: '无权限执行此操作',
     1041: '当前行程暂不可分享',
     1042: '这份行程暂时无法查看',
+    1043: '反馈不存在',
+    1044: '回复内容不能为空',
     1500: '服务异常，请稍后重试',
   };
   if (result && map[result.errorCode]) {

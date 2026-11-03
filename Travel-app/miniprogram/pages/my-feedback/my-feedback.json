@@ -2,5 +2,6 @@
   "usingComponents": {
     "svg-icon": "/components/svg-icon/svg-icon"
   },
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "enablePullDownRefresh": true
 }

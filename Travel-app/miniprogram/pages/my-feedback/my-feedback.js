@@ -12,10 +12,14 @@ const ERROR_TYPE_LABELS = {
   OTHER: '其他',
 };
 
+/**
+ * 用户视角的状态词。管理端的「已忽略」对用户是「已关闭」——
+ * 内部枚举不变（OPEN / PROCESSED / IGNORED），只换展示文案。
+ */
 const STATUS_META = {
-  OPEN: { label: '待处理', cls: 'open' },
+  OPEN: { label: '处理中', cls: 'open' },
   PROCESSED: { label: '已处理', cls: 'processed' },
-  IGNORED: { label: '已忽略', cls: 'ignored' },
+  IGNORED: { label: '已关闭', cls: 'ignored' },
 };
 
 Page({
@@ -51,6 +55,8 @@ Page({
     const isCorrection = item.type === 'correction';
     const typeKey = isCorrection ? 'correction' : (item.category || 'suggestion');
     const status = STATUS_META[item.status] || STATUS_META.OPEN;
+    const adminReply = String(item.adminReply || '');
+    const hasReply = !!adminReply;
     return {
       id: item._id,
       isCorrection,
@@ -60,13 +66,24 @@ Page({
       errorTypeLabel: ERROR_TYPE_LABELS[item.errorType] || item.errorType || '',
       content: item.content || '',
       time: util.monthDayTime(item.createdAt),
-      statusCls: status.cls,
-      statusLabel: status.label,
+      // 有回复时状态直接显示「已回复」，比「已处理」对用户更有信息量
+      statusCls: hasReply ? 'processed' : status.cls,
+      statusLabel: hasReply ? '已回复' : status.label,
+      adminReply,
+      hasReply,
+      replyTime: item.adminReplyAt ? util.monthDayTime(item.adminReplyAt) : '',
     };
   },
 
   onRetry() {
     this.load();
+  },
+
+  onPullDownRefresh() {
+    return this.load().then(
+      () => wx.stopPullDownRefresh(),
+      () => wx.stopPullDownRefresh()
+    );
   },
 
   onBack() {
