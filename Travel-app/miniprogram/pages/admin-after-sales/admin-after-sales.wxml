@@ -124,6 +124,10 @@
         <text class="order-stat-label">已支付</text>
       </view>
       <view class="order-stat">
+        <text class="order-stat-value">{{orderStats ? orderStats.refundedOrdersText : '—'}}</text>
+        <text class="order-stat-label">已退款</text>
+      </view>
+      <view class="order-stat">
         <text class="order-stat-value amount">{{orderStats ? orderStats.netAmountText : '—'}}</text>
         <text class="order-stat-label">当日净赚</text>
       </view>
@@ -212,7 +216,7 @@
             <text class="meta-tag">{{item.paymentChannelLabel}}</text>
             <text class="meta-tag">{{item.entitlementStatusLabel}}</text>
             <text wx:if="{{item.refundStatusLabel}}" class="meta-tag warning">{{item.refundStatusLabel}}</text>
-            <text wx:if="{{item.cases.count > 0}}" class="meta-tag case">{{item.cases.latestStatusLabel}}</text>
+            <text wx:if="{{item.cases.count > 0}}" class="meta-tag case {{item.cases.latestStatus === 'UNDER_REVIEW' ? 'reviewing' : ''}}">{{item.cases.latestStatusLabel}}</text>
           </view>
           <view class="order-foot">
             <text>订单 {{item.outTradeNo}}</text>
@@ -228,7 +232,7 @@
             <view class="case-head-right">
               <text wx:if="{{item.systemGenerated}}" class="case-auto">系统自动</text>
               <text wx:if="{{item.fundingBlocked}}" class="case-funding">资金不足</text>
-              <text class="case-status {{item.status === 'CANCELLED' ? 'cancelled' : ''}}">{{item.statusLabel}}</text>
+              <text class="case-status {{item.status === 'CANCELLED' ? 'cancelled' : ''}} {{item.status === 'UNDER_REVIEW' ? 'reviewing' : ''}}">{{item.statusLabel}}</text>
             </view>
           </view>
           <view class="case-user-row">

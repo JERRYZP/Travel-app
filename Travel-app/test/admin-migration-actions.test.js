@@ -52,7 +52,18 @@ async function run() {
   assert.strictEqual(wxml.includes('bindtap="onMigrateProtection"'), true);
   assert.strictEqual(wxml.includes('wx:if="{{migrationEntryEnabled && !migrationCompleted}}"'), true);
 
-  console.log('\n=== 2. 从上次游标继续并自动跑完 ===');
+  console.log('\n=== 2. 售后工单默认进入审核中 ===');
+  const filterPage = createPage();
+  filterPage.loadList = async () => true;
+  filterPage.loadOrderStats = async () => true;
+  filterPage.onTabTap({ currentTarget: { dataset: { tab: 'afterSales' } } });
+  assert.strictEqual(filterPage.data.activeFilter, 'UNDER_REVIEW');
+  assert.deepStrictEqual(
+    filterPage.data.filters.map(item => item.key),
+    ['', 'UNDER_REVIEW', 'AUTO_CHECKING', 'PROCESSING', 'REFUND_FAILED']
+  );
+
+  console.log('\n=== 3. 从上次游标继续并自动跑完 ===');
   storage.set('admin_protection_migration_cursor_v1', 'user_resume');
   const cursors = [];
   const responses = [

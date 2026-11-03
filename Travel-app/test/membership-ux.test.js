@@ -528,8 +528,12 @@ async function run() {
   eq(afterSalesJs.includes('api.payment.afterSales.cancel(existingCase._id)')
     && afterSalesJs.includes('确认取消'), true,
     '取消售后经过二次确认并调用专用接口');
-  eq(adminAfterSalesJs.includes("key: 'CANCELLED'") && adminAfterSalesJs.includes("label: '已取消'"),
-    true, '后台提供已取消筛选并展示用户取消状态');
+  eq(
+    !adminAfterSalesJs.includes("key: 'CANCELLED'")
+      && adminAfterSalesJs.includes("DEFAULT_AFTER_SALES_FILTER = 'UNDER_REVIEW'"),
+    true,
+    '后台隐藏终态筛选并默认进入审核中队列'
+  );
   eq(adminAfterSalesWxml.includes('用户已主动取消本次售后申请')
     && adminAfterSalesWxml.includes('history.stats.cancelled'), true,
     '后台详情展示取消来源与历史取消统计');

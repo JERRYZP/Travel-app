@@ -2880,8 +2880,9 @@ const handlers = {
       (sum, order) => sum + Math.max(0, Number(order.amountFen) || 0),
       0
     );
-    const refundedAmountFen = paidOrders.reduce((sum, order) => {
-      if (order.refundStatus !== 'REFUNDED' && order.status !== 'REFUNDED') return sum;
+    const refundedOrders = paidOrders.filter(order =>
+      order.refundStatus === 'REFUNDED' || order.status === 'REFUNDED');
+    const refundedAmountFen = refundedOrders.reduce((sum, order) => {
       const orderAmountFen = Math.max(0, Number(order.amountFen) || 0);
       const snapshotRefundFen = Math.max(0, Number(order.refundedAmountFen) || 0);
       return sum + Math.min(orderAmountFen, snapshotRefundFen || orderAmountFen);
@@ -2899,6 +2900,7 @@ const handlers = {
         paidOrders: paidOrders.length,
         paidAmountFen,
         paidAmountText: mockPriceText(paidAmountFen),
+        refundedOrders: refundedOrders.length,
         refundedAmountFen,
         refundedAmountText: mockPriceText(refundedAmountFen),
         netAmountFen,

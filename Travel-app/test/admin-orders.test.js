@@ -241,6 +241,7 @@ async function run() {
   eq(stats.stats.paidOrders, 1, '统计当日已支付订单');
   eq(stats.stats.paidAmountFen, 300, '汇总当日已支付金额');
   eq(stats.stats.paidAmountText, '¥3', '金额按展示格式返回');
+  eq(stats.stats.refundedOrders, 0, '无退款时已退款订单数为 0');
   eq(stats.stats.refundedAmountFen, 0, '无退款时净赚等于支付金额');
   eq(stats.stats.netAmountText, '¥3', '无退款时返回净赚金额');
 
@@ -279,6 +280,7 @@ async function run() {
   const netStats = await adminOrders.dailyStatsForAdmin(netDb, new Date(FIXED_NOW));
   eq(netStats.stats.totalOrders, 4, '净赚统计覆盖当日全部订单');
   eq(netStats.stats.paidAmountFen, 1000, '净赚统计先汇总已支付金额');
+  eq(netStats.stats.refundedOrders, 2, '统计当日已完成退款的订单数量');
   eq(netStats.stats.refundedAmountFen, 500, '退款按快照扣减，缺失快照按订单金额扣减');
   eq(netStats.stats.netAmountFen, 500, '当日净赚等于支付金额减退款金额');
   eq(netStats.stats.netAmountText, '¥5', '净赚金额按展示格式返回');
@@ -382,14 +384,23 @@ async function run() {
   eq(wxml.includes('onConfirmMembershipSalesPause'), true, '暂停操作需要二次确认');
   eq(wxml.includes('membershipSales.readError'), true, '配置读取失败在管理端显式告警');
   eq(wxml.includes('order-stats'), true, '会员订单页展示当日数据统计');
-  eq(wxml.includes('当日净赚'), true, '第三项展示当日净赚');
+  eq(wxml.includes('refundedOrdersText'), true, '第四项展示服务端返回的已退款数量');
+  eq(wxml.includes('当日净赚'), true, '统计区展示当日净赚');
   eq(wxml.includes('netAmountText'), true, '页面使用净赚金额而非原支付金额');
   eq(js.includes('api.payment.adminOrders.stats'), true, '页面接入订单统计接口');
+  eq(js.includes("const DEFAULT_AFTER_SALES_FILTER = 'UNDER_REVIEW'"), true, '售后工单默认筛选为审核中');
+  eq(js.includes("activeFilter: orders ? '' : DEFAULT_AFTER_SALES_FILTER"), true, '切换售后工单时应用默认筛选');
+  eq(js.includes("key: 'SUBMITTED'"), false, '移除不会持久化产生的待审核筛选');
+  eq(js.includes("key: 'CANCELLED'") || js.includes("key: 'REFUNDED'") || js.includes("key: 'REJECTED'"), false, '终态售后不占用顶部处理筛选');
   eq(wxml.includes('onOrderTimeRangeChange'), true, '订单时间范围使用下拉筛选');
   eq(wxml.includes('order-time-picker'), true, '时间范围下拉不占用筛选横向宽度');
   eq(wxml.includes('filter-sticky'), true, '搜索与筛选区域接入吸顶容器');
   eq(wxss.includes('position: sticky'), true, '搜索与筛选区域使用 sticky 吸顶');
   eq(wxss.includes('top: {{filterStickyTop}}px') || wxml.includes('top: {{filterStickyTop}}px'), true, '吸顶偏移使用运行时导航栏高度');
+  eq(wxml.includes("item.cases.latestStatus === 'UNDER_REVIEW' ? 'reviewing' : ''"), true, '客服审核中状态使用独立标签样式');
+  eq(/\.meta-tag\.case\.reviewing\s*\{[^}]*color:\s*#A7462B/.test(wxss), true, '客服审核中状态文字标红');
+  eq(wxml.includes("item.status === 'UNDER_REVIEW' ? 'reviewing' : ''"), true, '售后工单卡客服审核中状态使用独立样式');
+  eq(/\.case-status\.reviewing\s*\{[^}]*color:\s*#A7462B/.test(wxss), true, '售后工单卡客服审核中文字标红');
 
   console.log('\n=== 6. 云函数路由、鉴权与审计 ===');
   process.env.AFTER_SALES_ADMIN_OPENIDS = ADMIN;

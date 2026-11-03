@@ -119,10 +119,9 @@ async function dailyStatsForAdmin(db, nowTs = new Date()) {
     (sum, order) => sum + Math.max(0, Number(order.amountFen) || 0),
     0
   );
-  const refundedAmountFen = paidOrders.reduce((sum, order) => {
-    const refunded = order.refundStatus === RefundStatus.REFUNDED
-      || order.status === OrderStatus.REFUNDED;
-    if (!refunded) return sum;
+  const refundedOrders = paidOrders.filter(order =>
+    order.refundStatus === RefundStatus.REFUNDED || order.status === OrderStatus.REFUNDED);
+  const refundedAmountFen = refundedOrders.reduce((sum, order) => {
     const orderAmountFen = Math.max(0, Number(order.amountFen) || 0);
     const snapshotRefundFen = Math.max(0, Number(order.refundedAmountFen) || 0);
     return sum + Math.min(orderAmountFen, snapshotRefundFen || orderAmountFen);
@@ -135,6 +134,7 @@ async function dailyStatsForAdmin(db, nowTs = new Date()) {
       paidOrders: paidOrders.length,
       paidAmountFen,
       paidAmountText: amountText(paidAmountFen),
+      refundedOrders: refundedOrders.length,
       refundedAmountFen,
       refundedAmountText: amountText(refundedAmountFen),
       netAmountFen,

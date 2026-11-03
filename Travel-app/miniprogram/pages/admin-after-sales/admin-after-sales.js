@@ -9,6 +9,7 @@ const QUALITY_RETRY_MS = 2 * 60 * 1000;
 const MIGRATION_ENTRY_ENABLED = false;
 const TAB_ORDERS = 'orders';
 const TAB_AFTER_SALES = 'afterSales';
+const DEFAULT_AFTER_SALES_FILTER = 'UNDER_REVIEW';
 const ENFORCEMENT_OPTIONS = [
   { mode: 'off', label: '关闭' },
   { mode: 'test', label: '测试' },
@@ -128,14 +129,10 @@ function writeQualityCache(quality) {
 
 const FILTERS = [
   { key: '', label: '全部' },
-  { key: 'SUBMITTED', label: '待审核' },
-  { key: 'AUTO_CHECKING', label: '自动核验' },
   { key: 'UNDER_REVIEW', label: '审核中' },
+  { key: 'AUTO_CHECKING', label: '自动核验' },
   { key: 'PROCESSING', label: '处理中' },
   { key: 'REFUND_FAILED', label: '异常' },
-  { key: 'CANCELLED', label: '已取消' },
-  { key: 'REFUNDED', label: '已完成' },
-  { key: 'REJECTED', label: '已驳回' },
 ];
 
 const ORDER_FILTERS = [
@@ -144,6 +141,18 @@ const ORDER_FILTERS = [
   { key: 'PAID', label: '已支付' },
   { key: 'CLOSED', label: '已关闭' },
 ];
+
+function orderStatsViewOf(stats) {
+  if (!stats) return null;
+  const hasRefundedOrders = Object.prototype.hasOwnProperty.call(stats, 'refundedOrders');
+  const refundedOrders = Number(stats.refundedOrders);
+  return {
+    ...stats,
+    refundedOrdersText: hasRefundedOrders && Number.isFinite(refundedOrders)
+      ? String(Math.max(0, Math.floor(refundedOrders)))
+      : '—',
+  };
+}
 
 Page({
   data: {
@@ -259,7 +268,7 @@ Page({
     });
     return api.payment.adminOrders.stats().then(res => {
       this.setData({
-        orderStats: (res && res.stats) || null,
+        orderStats: orderStatsViewOf(res && res.stats),
         orderStatsLoading: false,
         orderStatsFailed: false,
         orderStatsPendingBackend: false,
@@ -586,7 +595,7 @@ Page({
     this.setData({
       activeTab: tab,
       filters: orders ? ORDER_FILTERS : FILTERS,
-      activeFilter: '',
+      activeFilter: orders ? '' : DEFAULT_AFTER_SALES_FILTER,
       keywordInput: '',
       activeKeyword: '',
       searchPlaceholder: orders

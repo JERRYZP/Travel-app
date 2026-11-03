@@ -1240,7 +1240,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 - 仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用；未配置时工作台关闭，不存在代码内置兜底账号。
 - `adminOrders.list` 返回订单、当前昵称、完整 OpenID、支付渠道、权益状态和关联售后摘要。`keyword` 支持商户订单号、订单 ID、完整 OpenID、售后单号和昵称；只有昵称允许部分匹配。`timeRange=7d|30d|90d|all` 按北京时间自然日过滤订单创建时间，缺省或非法值按 `30d`；时间范围在数据库查询阶段生效，同时作用于搜索、状态筛选和分页。分页参数默认 `page=1&pageSize=20`，单页最大 50。
-- `adminOrders.stats` 返回北京时间当日的 `{ dateKey, totalOrders, paidOrders, paidAmountFen, paidAmountText, refundedAmountFen, refundedAmountText, netAmountFen, netAmountText }`。`totalOrders` 统计当日创建的全部订单；`paidOrders / paidAmountFen` 统计这些订单中已写入 `paidAt` 的订单及支付金额；`refundedAmountFen` 只汇总已完成退款，优先读取 `refundedAmountFen`，历史单缺失时按订单金额；`netAmountFen = paidAmountFen - refundedAmountFen`。统计独立于列表搜索和筛选。
+- `adminOrders.stats` 返回北京时间当日的 `{ dateKey, totalOrders, paidOrders, paidAmountFen, paidAmountText, refundedOrders, refundedAmountFen, refundedAmountText, netAmountFen, netAmountText }`。`totalOrders` 统计当日创建的全部订单；`paidOrders / paidAmountFen` 统计这些订单中已写入 `paidAt` 的订单及支付金额；`refundedOrders` 统计这些已支付订单中退款已完成的数量；`refundedAmountFen` 只汇总已完成退款，优先读取 `refundedAmountFen`，历史单缺失时按订单金额；`netAmountFen = paidAmountFen - refundedAmountFen`。统计独立于列表搜索和筛选。
 - `adminReminderQuality.stats` 返回：
   ```javascript
   {
@@ -1282,7 +1282,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - `adminStatus` 返回 `{ isAdmin, migrationCompleted, entitlementMigrationCompleted, pendingCount, fundingBlockedCount, membershipSales, membershipEnforcement }`。`pendingCount` 是未结束售后单数量，用户已取消的单不计入；`fundingBlockedCount` 是其中因商户基本账户余额不足而未能发起退款的数量；`membershipSales` 含当前购买状态、暂停原因、更新时间和配置读取失败标记；`membershipEnforcement` 返回当前模式、模式文案、完整说明、单行简述、配置来源、更新时间和读取失败标记。非管理员不返回购买或限制配置。
 - `adminSetMembershipSales` 仅管理员可调用。暂停时必须填写原因；恢复时清空暂停原因。切换写 `admin_audit_logs`，不得依赖客户端隐藏按钮。
 - `adminSetMembershipEnforcement` 仅管理员可调用，只接受 `off / test / all`。切换写 `SET_MEMBERSHIP_ENFORCEMENT` 审计，记录前后模式；切 `all` 时两项迁移未完成返回 `1033`。配置文档缺失时提醒链路继续使用环境变量兜底，后台显式展示该来源，不猜测运行模式。
-- 管理员可按 `CANCELLED` 筛选并查看“用户已取消”、取消时间和取消前异常原因；取消单不显示同意退款、驳回或重试退款操作。
+- 管理员可从「全部」列表查看“用户已取消”、取消时间和取消前异常原因；取消单不显示同意退款、驳回或重试退款操作。
 - 上线前迁移完成后正式工作台已关闭迁移入口；若未来重新开启，工作台可据 `migrationCompleted=true` 自动隐藏。
 - `adminDetail` 返回订单、用户权益、支付渠道、支付查单结果、权益发放快照、支付后新增提醒数、重复支付证据和历史售后记录。系统自动补建的平台退款记录会返回 `systemGenerated=true`、退款单号和退款金额。
 - 查看敏感信息、同步支付结果、补发权益、同意退款、驳回和同步退款均写 `admin_audit_logs`。
