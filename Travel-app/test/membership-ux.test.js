@@ -418,6 +418,14 @@ async function run() {
     '会员页与支付确认层不把 Apple 退款做成强引导路径');
   eq(paymentConfirmJs.includes('wx.getDeviceInfo'), true,
     '支付确认层只在 iOS 设备展示 Apple 退款提示');
+  eq(paymentConfirmJs.includes('若提示付款方式不可用')
+    && paymentConfirmJs.includes('设置 > 你的姓名 > 付款与配送')
+    && paymentConfirmJs.includes('中国大陆可使用微信支付'), true,
+    'iOS 支付确认层提供条件化的 Apple 付款方式自查路径');
+  eq(membershipJs.includes('若 Apple 付款提示付款方式不可用')
+    && membershipJs.includes('设置 > 你的姓名 > 付款与配送')
+    && membershipJs.includes('中国大陆可使用微信支付'), true,
+    'iOS 支付失败状态卡提供条件化的 Apple 付款方式自查路径');
   eq(membershipJs.includes('`因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额`'), true,
     '免费版状态卡使用固定免费基础额度，不使用老用户保护额度');
   eq(membershipJs.includes('免费版可使用 ${limit || 5} 个提醒名额'), false,

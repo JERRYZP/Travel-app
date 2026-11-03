@@ -59,7 +59,7 @@ iOS Apple 内购订单在订单展示接口中返回 `paymentChannel=APPLE`。�
 设备侧条件分两类：
 
 - **客户端读得到**：`wx.requestVirtualPayment` 是否存在（`virtualPayCapability`）、微信客户端版本（`getAppBaseInfo().version`）、系统版本（`getDeviceInfo().system`）。
-- **客户端读不到**：Apple ID 地区、Apple ID 支付方式。微信不开放，只能由用户在 App Store 侧自查或客服询问。
+- **客户端读不到**：Apple ID 地区、Apple ID 支付方式。微信不开放，只能由用户在 App Store 侧自查或客服询问。Apple 官方支持说明中国大陆 Apple 账户可使用微信支付，iPhone 路径为「设置 > 你的姓名 > 付款与配送 > 添加付款方式」；只有平台明确提示付款方式不可用时才展示该路径，不能把它写成所有 iOS 支付失败的通用解法。来源：<https://support.apple.com/zh-cn/111741>、<https://support.apple.com/zh-cn/118429>。
 
 所以 iOS 支付失败**不可能全部自动归因**，能覆盖的只有版本类问题。
 
