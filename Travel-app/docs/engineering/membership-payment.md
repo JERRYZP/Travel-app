@@ -105,7 +105,10 @@ iOS Apple 内购订单在订单展示接口中返回 `paymentChannel=APPLE`。�
 - 每 2 分钟定时扫描：`PENDING` 订单查单补偿、`PAID_GRANT_FAILED` 重试发放、自动售后核验、退款处理中/失败单同步。四类队列分别在 `payment_reconcile_state` 保存游标，每队列最多 50 条、10 秒，单次总预算 45 秒，超过 100 条时也能持续轮转到尾部。游标集合是可选加速能力：缺失时尝试自动创建；创建或读写仍失败时只降低轮转效率，必须继续扫描业务集合并推进退款，单队列异常也不能阻断后续退款队列。
 - 每轮补偿结束都写 `payment_config/reconcile_health`：`lastRunAt`、`lastDurationMs`、`skipped`、`reason`、`errors`、`queues`、`error`。正常轮次、`NO_RECONCILE_WORK` 跳过、`PAYMENT_NOT_READY` 跳过和异常轮次都写。**`lastRunAt` 不再更新说明定时器没跑；`lastRunAt` 在更新但 `errors > 0` 说明补偿在跑但一直失败。** 这是区分这两种故障的唯一稳定信号，排障时先看它再翻日志。
 - 查单成功但权益发放失败：订单保持 `PAID`，写 `grantStatus=FAILED`，自动生成高优先级 `RIGHTS_NOT_RECEIVED` 售后单，不要求用户重复支付。
-- 同用户同商品 10 分钟内出现两笔已支付订单时，自动识别较新的订单并进入售后队列；本单未新增提醒时由定时任务自动发起全额退款，已使用则转客服审核。
+- 同用户同商品 **1 分钟内**出现两笔已支付订单时，自动识别较新的订单并生成一条**只给客服看的核验工单**。窗口不能放大到分钟级之外：¥3 的提醒名额包连买两份是正常操作，10 分钟窗口会把用户主动买第二份误判成重复支付。
+- 系统自查的重复单**不自动退款，也不写订单状态**：建单时不置 `refundStatus`、不占用 `activeAfterSalesCaseId`，自动核验后只会转 `UNDER_REVIEW` 等人工判断；客服驳回时也只关工单、不把订单写成 `REJECTED`。用户没有申请过售后，打开订单必须仍是正常的「权益已到账」。
+- 系统自查单通过 `evidence.reviewOnly=true` 标记，并在 `afterSales.list` 里对用户隐藏；用户自己提交的售后单不受影响，照常可见可驳回。
+- **Apple 订单不生成重复支付工单**：iOS 退款只能由用户在 App Store 发起，服务端不能代退，客服也没有可执行动作，建单只会产生一条处理不了的记录。跳过时打 `[payment] skip duplicate charge case for apple order` 日志保留观测。`RIGHTS_NOT_RECEIVED`（我们没发权益）和平台退款补建记录不受此限，Apple 订单照常处理。
 
 支付主状态：
 

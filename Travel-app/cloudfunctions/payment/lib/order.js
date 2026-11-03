@@ -15,7 +15,7 @@ const userRuntimeStale = require('./user-runtime-stale');
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ORDER_TTL_MS = 15 * 60 * 1000;
 const REFUND_WINDOW_MS = 24 * 60 * 60 * 1000;
-const DUPLICATE_WINDOW_MS = 10 * 60 * 1000;
+const DUPLICATE_WINDOW_MS = 60 * 1000;
 const LEGACY_TASK_PACK_SIZE = 5;
 const GRANT_SCHEMA_VERSION = 2;
 

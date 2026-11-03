@@ -421,7 +421,7 @@ async function createCaseRecord(db, userId, event = {}, evidence = {}) {
   };
   const refundStatus = type === CaseType.UNUSED_REFUND
     ? RefundStatus.UNDER_REVIEW
-    : (type === CaseType.DUPLICATE_CHARGE ? RefundStatus.REQUESTED : null);
+    : (type === CaseType.DUPLICATE_CHARGE && evidence.reviewOnly !== true ? RefundStatus.REQUESTED : null);
   let outcome = null;
   await db.runTransaction(async transaction => {
     const sameRequest = await documentDataOrNull(
@@ -474,9 +474,11 @@ async function createCaseRecord(db, userId, event = {}, evidence = {}) {
       .doc(caseDocumentId)
       .set({ data: caseData });
     const orderPatch = {
-      activeAfterSalesCaseId: caseId,
       updatedAt: nowTs,
     };
+    // 系统自查单只是给客服看的核验记录，用户没有申请过售后：
+    // 不占用订单的售后指针，否则用户之后自己发起的售后会被判成「已有售后」。
+    if (evidence.reviewOnly !== true) orderPatch.activeAfterSalesCaseId = caseId;
     if (refundStatus && ![
       RefundStatus.REFUNDED,
       RefundStatus.PROCESSING,
@@ -605,7 +607,12 @@ async function listUserCases(db, userId) {
     .orderBy('createdAt', 'desc')
     .limit(50)
     .get();
-  return ok({ items: (res.data || []).map(caseViewOf) });
+  // 系统自查单只给客服核验，用户没有申请过，不在用户侧任何列表里出现。
+  return ok({
+    items: (res.data || [])
+      .filter(item => (item.evidence || {}).reviewOnly !== true)
+      .map(caseViewOf),
+  });
 }
 
 async function getCaseForUser(db, userId, caseId) {

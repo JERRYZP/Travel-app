@@ -3137,7 +3137,7 @@ const handlers = {
       refundStatus: data.type === 'UNUSED_REFUND'
         ? 'UNDER_REVIEW'
         : (data.type === 'DUPLICATE_CHARGE' ? 'REQUESTED' : 'NONE'),
-      evidence: { eligibility, duplicate: { duplicate: false, windowMinutes: 10 } },
+      evidence: { eligibility, duplicate: { duplicate: false, windowMinutes: 1 } },
       createdAt: new Date(),
       updatedAt: new Date(),
     };
