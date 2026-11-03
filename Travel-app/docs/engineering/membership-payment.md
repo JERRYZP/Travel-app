@@ -208,6 +208,8 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 
 云端已验证：
 
+- 2026-11-03 23:43 已将 `payment` 整包部署到 `cloud1`，保留 Nodejs16.13 与 60 秒超时；真实管理员 `adminOrders.stats` 已返回 `refundedOrders=8`。`paymentReconcileEveryTwoMinutes` 触发器保留，`payment_config/reconcile_health.lastRunAt` 于 23:44:01 刷新且 `errors=0`。
+- 2026-11-03 23:45 已从 `main@aa1db3b` 上传体验版 `2.2.4`，包体 `1,129,989` 字节，tag 为 `v2.2.4-rc.1`。本版包含客服售后队列与退款统计、iOS 付款方式提示、反馈入口与未读角标；未提交审核、未发布正式版。
 - 2026-11-02 客户端 `2.1.0` 已审核通过并全量发布；累计观察到 8 笔已支付订单，用户完成付费流程自测且客服工作台正常。`reminder` 的 `MEMBERSHIP_ENFORCEMENT_MODE` 已切换为 `all`，配置更新时间为 15:10:02。
 - 2026-11-02 16:24 已将 `main` fast-forward 到 `af05573`、创建并推送 `v2.1.1-rc.2`，随后从该提交上传体验版 `2.1.1`；包体约 982.4 KB。体验验收通过后已送审并全量发布，正式版确认可见新功能。首次重新打开可能仍运行旧包，冷启动后微信会切换到新版本。
 - 2026-11-02 16:15 已部署运行期会员限制开关：`payment_config/membership_enforcement={mode:"all"}` 由管理员 OpenID 写入并回读确认；`payment` / `reminder` 均为 `Active`，部署保留原环境变量键，`membership.status` 返回 `enforced=true`、购买状态 `OPEN`、免费/会员额度 5 / 15。开发者工具工作台已从“待部署”刷新为“全部用户”；16:18:10 的真实新任务写入 `quotaPool=ENTITLEMENT`，部署后 30 分钟日志中两函数均无非 202 失败状态码。
