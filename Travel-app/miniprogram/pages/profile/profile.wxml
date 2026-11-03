@@ -7,8 +7,8 @@
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
 
 <view class="page-body">
-  <!-- 用户信息：无感登录常驻登录态；点头像/昵称进编辑资料页；长按进入反馈管理，后端 openid 白名单鉴权 -->
-  <view class="profile-header" bindlongpress="onAdminEntry">
+  <!-- 用户信息：无感登录常驻登录态；点头像/昵称进编辑资料页；管理员入口右对齐 -->
+  <view class="profile-header">
     <view class="profile-avatar" bindtap="onEditProfile">
       <image wx:if="{{user.avatarUrl}}" class="profile-avatar-img" src="{{user.avatarUrl}}" mode="aspectFill" />
       <svg-icon wx:else name="profile" size="36px" />
@@ -19,6 +19,11 @@
       </view>
       <view class="profile-tag {{isMember ? 'member' : ''}}">{{memberTagText}}</view>
     </view>
+    <button wx:if="{{showFeedbackAdminEntry}}" class="profile-feedback-entry"
+      hover-class="profile-feedback-entry-hover" bindtap="onFeedbackAdmin">
+      <text class="profile-feedback-entry-label">反馈管理</text>
+      <text wx:if="{{feedbackAdminPendingCount > 0}}" class="profile-feedback-entry-badge">{{feedbackAdminPendingText}}</text>
+    </button>
   </view>
 
   <!-- 会员身份独立成块：普通用户与有效会员使用不同的底色、标签和行动文案。 -->
@@ -69,7 +74,10 @@
   <!-- 帮助与反馈：在线客服、反馈、纠错与反馈记录统一收口 -->
   <view class="setting-card">
     <view class="setting-row" bindtap="onHelpFeedback">
-      <text class="setting-row-label">帮助与反馈</text>
+      <view class="setting-row-title">
+        <text class="setting-row-label">帮助与反馈</text>
+        <text wx:if="{{feedbackUnreadCount > 0}}" class="setting-pending-badge">{{feedbackUnreadText}}</text>
+      </view>
       <view class="setting-row-right">
         <text class="setting-row-hint">在线客服 / 反馈与纠错</text>
         <svg-icon name="chevron-down" size="14px" rotate="270" />

@@ -1,6 +1,7 @@
 const app = getApp();
 const api = require('../../utils/api.js');
 const util = require('../../utils/util.js');
+const feedbackEntryCache = require('../../utils/feedback-entry-cache.js');
 
 const ERROR_TYPE_LABELS = {
   RELEASE_TIME: '放票时间',
@@ -42,12 +43,18 @@ Page({
 
   load() {
     this.setData({ loading: true, failed: false });
-    api.feedback.list().then(res => {
+    return api.feedback.list().then(res => {
       const items = (res.items || []).map(item => this.decorate(item));
       this.setData({ loading: false, items });
+      if (!res.asOf) return null;
+      // 只推进到本次列表查询的快照点，查询开始后新到的处理仍保持未读。
+      return api.feedback.markSeen({ through: res.asOf }).then(() => {
+        feedbackEntryCache.markUserRead();
+      }).catch(() => null);
     }).catch(err => {
       console.error('[my-feedback] 加载失败：', err);
       this.setData({ loading: false, failed: true, items: [] });
+      return null;
     });
   },
 

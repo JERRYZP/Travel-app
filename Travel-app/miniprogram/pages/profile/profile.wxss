@@ -19,6 +19,22 @@
 .profile-info { display: flex; flex-direction: column; gap: 9rpx; flex: 1; min-width: 0; }
 .profile-name-row { display: flex; align-items: center; gap: 12rpx; min-width: 0; }
 .profile-name { font-size: 30rpx; font-weight: 600; color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-feedback-entry {
+  flex-shrink: 0; margin-left: auto;
+  display: flex; align-items: center; justify-content: center; gap: 10rpx;
+  min-width: 0; height: 58rpx; padding: 0 20rpx; box-sizing: border-box;
+  background: #FFF7E7; border: 1rpx solid #E7DAC5; border-radius: 12rpx;
+  color: #8A5A12; font-size: 23rpx; font-weight: 600; line-height: normal;
+}
+.profile-feedback-entry::after { border: none; }
+.profile-feedback-entry-hover { opacity: 0.72; }
+.profile-feedback-entry-label { white-space: nowrap; }
+.profile-feedback-entry-badge {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 30rpx; height: 30rpx; padding: 0 8rpx; box-sizing: border-box;
+  border-radius: 15rpx; background: #C0472A;
+  color: #FFFFFF; font-size: 18rpx; font-weight: 600; line-height: 1;
+}
 .profile-tag {
   display: inline-block; width: fit-content;
   padding: 3rpx 16rpx;

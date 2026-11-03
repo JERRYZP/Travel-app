@@ -299,8 +299,10 @@ function resetWx(patch = {}) {
   eq(/"pages\/my-feedback\/my-feedback"/.test(appJson), true, '我的反馈页已注册路由');
   eq(/onHelpFeedback/.test(profileJs) && /\/pages\/help-feedback\/help-feedback/.test(profileJs), true,
     '我的页统一进入帮助与反馈');
-  eq(/api\.feedback\.adminStatus\(\)[\s\S]*res\.isAdmin[\s\S]*\/pages\/admin-feedback\/admin-feedback/.test(profileJs), true,
-    '长按头像仅在服务端确认管理员后进入反馈管理页');
+  eq(/api\.feedback\.entrySummary\(\)[\s\S]*showFeedbackAdminEntry[\s\S]*\/pages\/admin-feedback\/admin-feedback/.test(profileJs), true,
+    '反馈管理按钮仅在服务端确认管理员后显示并可进入');
+  eq(/bindlongpress|onAdminEntry/.test(fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.wxml'), 'utf8') + profileJs), false,
+    '反馈管理不再占用头像长按');
   eq(/<button class="setting-row service-row" open-type="contact"/.test(helpWxml), true,
     '帮助与反馈页提供微信原生在线客服');
   eq(helpWxml.indexOf('在线客服') < helpWxml.indexOf('意见反馈')
@@ -308,6 +310,8 @@ function resetWx(patch = {}) {
   '上方依次展示在线客服、意见反馈、信息纠错');
   eq(/setting-card my-feedback-card[\s\S]*我的反馈/.test(helpWxml), true,
     '我的反馈使用下方独立卡片');
+  eq(/feedbackUnreadCount > 0[\s\S]*feedbackUnreadText/.test(helpWxml), true,
+    '帮助页的我的反馈行显示未读数字');
   eq(/常见问题/.test(helpWxml), false, '帮助页不重复展示攻略中的常见问题');
   eq(/onFeedback\(\)[\s\S]*\/pages\/feedback\/feedback/.test(helpJs), true, '意见反馈直接进入表单页');
   eq(/onReportError\(\)[\s\S]*\/pages\/spot-correction\/spot-correction/.test(helpJs), true,
@@ -316,6 +320,8 @@ function resetWx(patch = {}) {
     '我的反馈直接进入记录页');
   eq(/open-type="contact"/.test(feedbackWxml), true, '意见反馈页保留次要在线客服入口');
   eq(/api\.feedback\.list\(\)/.test(myFeedbackJs), true, '我的反馈读取本人历史接口');
+  eq(/api\.feedback\.markSeen\(\{ through: res\.asOf \}\)/.test(myFeedbackJs), true,
+    '我的反馈成功加载后推进已读水位');
   eq(/util\.monthDayTime\(item\.createdAt\)/.test(myFeedbackJs), true, '反馈时间按北京时间展示');
   eq(/\.service-row \{[^}]*border-bottom: 1rpx solid var\(--color-border\)/.test(helpWxss), true,
     '在线客服与意见反馈之间有分隔线');

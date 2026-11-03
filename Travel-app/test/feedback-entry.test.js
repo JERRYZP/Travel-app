@@ -1,0 +1,146 @@
+/**
+ * “我的”页反馈入口：统计缓存、管理按钮与用户已读的页面回归。
+ * 运行：node test/feedback-entry.test.js
+ */
+const path = require('path');
+const Module = require('module');
+
+const ROOT = path.join(__dirname, '..');
+let fail = 0;
+const eq = (actual, expected, message) => {
+  if (String(actual) === String(expected)) {
+    console.log('ok  ', message, '=', actual);
+    return;
+  }
+  fail += 1;
+  console.log('FAIL', message, '\n  got :', actual, '\n  want:', expected);
+};
+
+const storage = {};
+global.wx = {
+  getStorageSync(key) { return storage[key]; },
+  setStorageSync(key, value) { storage[key] = value; },
+  navigateTo() {},
+  stopPullDownRefresh() {},
+};
+global.getApp = () => ({ globalData: { statusBarHeight: 20, navBarHeight: 44 } });
+
+let pageDefinition = null;
+global.Page = definition => { pageDefinition = definition; };
+
+const calls = { summary: 0, list: 0, markSeen: [] };
+let summaryResponse = {
+  success: true,
+  isAdmin: true,
+  handledUnreadCount: 3,
+  adminPendingCount: 7,
+};
+let listResponse = { success: true, items: [], asOf: new Date('2026-11-03T08:00:00.000Z') };
+const apiStub = {
+  feedback: {
+    entrySummary() {
+      calls.summary += 1;
+      return Promise.resolve(summaryResponse);
+    },
+    list() {
+      calls.list += 1;
+      return Promise.resolve(listResponse);
+    },
+    markSeen(params) {
+      calls.markSeen.push(params);
+      return Promise.resolve({ success: true });
+    },
+  },
+  toastError() {},
+};
+
+const originalLoad = Module._load;
+Module._load = function (request) {
+  if (request === '../../utils/api.js') return apiStub;
+  return originalLoad.apply(this, arguments);
+};
+
+function loadPage(rel) {
+  pageDefinition = null;
+  delete require.cache[require.resolve(path.join(ROOT, rel))];
+  require(path.join(ROOT, rel));
+  return pageDefinition;
+}
+
+function instantiate(definition) {
+  const page = Object.assign({}, definition);
+  page.data = JSON.parse(JSON.stringify(definition.data));
+  page.setData = function (patch) {
+    Object.assign(this.data, patch);
+  };
+  return page;
+}
+
+async function run() {
+  const cache = require('../miniprogram/utils/feedback-entry-cache.js');
+  const now = Date.now();
+  cache.write({ isAdmin: false, handledUnreadCount: 2, adminPendingCount: 0 }, now);
+  eq(cache.read(now + 4 * 60 * 1000).fresh, true, '入口统计在 5 分钟内复用缓存');
+  eq(cache.read(now + cache.TTL_MS).fresh, false, '入口统计缓存到期后重新请求');
+  cache.markUserRead();
+  eq(cache.read(now).data.handledUnreadCount, 0, '打开我的反馈后本地用户数字立即清零');
+  eq(cache.read(now).savedAt, now, '清用户数字不延长统计缓存');
+
+  const profile = instantiate(loadPage('miniprogram/pages/profile/profile.js'));
+  delete storage[cache.STORAGE_KEY];
+  calls.summary = 0;
+  await profile.loadFeedbackEntry.call(profile);
+  await profile.loadFeedbackEntry.call(profile);
+  eq(calls.summary, 1, '五分钟内重复进入我的页不重复统计');
+  eq(profile.data.showFeedbackAdminEntry, true, '管理员显示右对齐反馈管理按钮');
+  eq(profile.data.feedbackAdminPendingText, '7', '管理按钮显示待处理数字');
+  eq(profile.data.feedbackUnreadText, '3', '帮助与反馈行显示用户未读数字');
+
+  summaryResponse = {
+    success: true,
+    isAdmin: false,
+    handledUnreadCount: 120,
+    adminPendingCount: 9,
+  };
+  profile.applyFeedbackEntry.call(profile, summaryResponse);
+  eq(profile.data.showFeedbackAdminEntry, false, '普通用户隐藏反馈管理按钮');
+  eq(profile.data.feedbackAdminPendingCount, 0, '普通用户不显示管理端计数');
+  eq(profile.data.feedbackUnreadText, '99+', '用户未读数过大时使用 99+');
+
+  const helpFeedback = instantiate(loadPage('miniprogram/pages/help-feedback/help-feedback.js'));
+  delete storage[cache.STORAGE_KEY];
+  cache.write({ isAdmin: false, handledUnreadCount: 5, adminPendingCount: 0 });
+  calls.summary = 0;
+  await helpFeedback.loadFeedbackEntry.call(helpFeedback);
+  eq(calls.summary, 0, '帮助页复用五分钟内的入口统计缓存');
+  eq(helpFeedback.data.feedbackUnreadText, '5', '帮助页的我的反馈行显示未读数字');
+  helpFeedback.applyFeedbackEntry.call(helpFeedback, { handledUnreadCount: 120 });
+  eq(helpFeedback.data.feedbackUnreadText, '99+', '帮助页未读数过大时使用 99+');
+
+  const myFeedback = instantiate(loadPage('miniprogram/pages/my-feedback/my-feedback.js'));
+  delete storage[cache.STORAGE_KEY];
+  cache.write({ isAdmin: false, handledUnreadCount: 4, adminPendingCount: 0 });
+  calls.markSeen = [];
+  await myFeedback.load.call(myFeedback);
+  eq(calls.markSeen.length, 1, '我的反馈成功加载后推进一次已读水位');
+  eq(calls.markSeen[0].through, listResponse.asOf, '已读水位使用列表 asOf 快照');
+  eq(cache.read().data.handledUnreadCount, 0, '加载成功后清掉缓存中的用户数字');
+
+  calls.markSeen = [];
+  listResponse = { success: true, items: [] };
+  await myFeedback.load.call(myFeedback);
+  eq(calls.markSeen.length, 0, '旧接口未返回 asOf 时不误清未读');
+
+  Module._load = originalLoad;
+  if (fail) {
+    console.error(`\n${fail} assertion(s) failed`);
+    process.exit(1);
+  }
+  console.log('\nAll feedback entry tests passed.');
+}
+
+run().catch(err => {
+  Module._load = originalLoad;
+  console.error(err);
+  process.exit(1);
+});
