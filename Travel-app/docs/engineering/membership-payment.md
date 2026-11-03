@@ -96,11 +96,14 @@ iOS Apple 内购订单在订单展示接口中返回 `paymentChannel=APPLE`。�
 - 虚拟支付退款推送处理 `xpay_refund_notify`；iOS 退款问询处理 `xpay_subscribe_ios_refund_query_notify`，后者必须在 3 秒内返回。Apple 退款查单返回 `status=5`（商户侧扣款完成）时先幂等补建/更新“处理中”售后记录，不提前回收权益；只有查单到 `status=8`（用户侧收款完成）才标记已退款并按订单快照回收。
 - 订单固化支付渠道与虚拟支付环境：API v3 在首次拉起支付前写入 `paymentProvider=WECHAT_PAY_V3`；虚拟支付写入 `paymentProvider=VIRTUAL_PAY`、`virtualEnv` 和 `virtualProductId`。历史订单查单、退款按订单快照选择渠道、环境和 AppKey。
 - 日志记录路由、`outTradeNo` / `outRefundNo`、公钥 ID、时间戳、原始 body SHA-256、验签结果和失败原因；不记录私钥、APIv3 密钥或完整签名。
-- 15 分钟未支付的本地订单会关闭；Apple 查单长期返回 `INIT/CREATED` 时，补偿在本地过期后按 `VIRTUAL_PAY_EXPIRED_UNPAID` 关闭，后续若平台确认实际支付仍可从 `CLOSED` 收口为 `PAID`。客户端确认取消后再次购买必须使用新的 `requestId`、订单 ID 和 `outTradeNo`。同一请求重试返回同一订单；不同请求只有在 `productType + specVersion + addedSlots + memberDays + amountFen` 全部一致且未过期时才复用待支付订单，旧规格订单条件关闭，不能按相同价格误复用。
+- 15 分钟未支付的本地订单会关闭；查单确认平台未支付且本地已过期时按 `VIRTUAL_PAY_EXPIRED_UNPAID` 关闭，后续若平台确认实际支付仍可从 `CLOSED` 收口为 `PAID`。判断不再要求平台明确返回 `INIT/CREATED`：排除“平台确认已支付”和“平台确认已关闭”之后，只要本地过期就收口，避免 5/7/8 等状态让订单永久停留在待支付。客户端确认取消后再次购买必须使用新的 `requestId`、订单 ID 和 `outTradeNo`。同一请求重试返回同一订单；不同请求只有在 `productType + specVersion + addedSlots + memberDays + amountFen` 全部一致且未过期时才复用待支付订单，旧规格订单条件关闭，不能按相同价格误复用。
+- 虚拟支付查单抛异常（平台没有这笔订单、接口报错）时不能原地无限重试。补偿先写失败证据 `reconcileError` / `reconcileErrorAt` / `reconcileFailCount`；本地订单过期满 30 分钟仍拿不到平台结论，按 `VIRTUAL_PAY_QUERY_FAILED` 关闭。虚拟支付配置缺失同样走这条路径，关闭原因 `VIRTUAL_PAY_CONFIG_MISSING`，不得再静默返回成功。
+- 关单不等于吞掉真实支付：已关闭且已过期的订单在任何一次查单或平台发货推送中都会重新核对，平台确认支付后从 `CLOSED` 收口为 `PAID` 并补发权益。已关闭订单不在待支付补偿队列里，收口依赖平台消息推送或一次主动查单，客服可用售后工作台的「同步支付结果」触发。
 - 虚拟支付当前没有可调用的平台关单接口；取消时先查单，只有平台未支付或已关闭才关闭本地订单。API v3 仍在确认未支付后调用微信关单接口。
 - 创建订单前使用 OpenID 确定性文档 ID 确保用户记录存在，避免并发首购生成重复用户后支付成功无法发放权益。
 - 提醒提交、行程项重新开启提醒、创建订单、权益发放和退款回收共用用户文档上的短期额度锁；锁含所有者和过期时间，有限重试并在 `finally` 释放。提醒修改先完成全部字段校验，再在同一事务内修改 `remindOn`、删除旧任务、创建新任务和更新 `lastReminderCreatedAt`。
 - 每 2 分钟定时扫描：`PENDING` 订单查单补偿、`PAID_GRANT_FAILED` 重试发放、自动售后核验、退款处理中/失败单同步。四类队列分别在 `payment_reconcile_state` 保存游标，每队列最多 50 条、10 秒，单次总预算 45 秒，超过 100 条时也能持续轮转到尾部。游标集合是可选加速能力：缺失时尝试自动创建；创建或读写仍失败时只降低轮转效率，必须继续扫描业务集合并推进退款，单队列异常也不能阻断后续退款队列。
+- 每轮补偿结束都写 `payment_config/reconcile_health`：`lastRunAt`、`lastDurationMs`、`skipped`、`reason`、`errors`、`queues`、`error`。正常轮次、`NO_RECONCILE_WORK` 跳过、`PAYMENT_NOT_READY` 跳过和异常轮次都写。**`lastRunAt` 不再更新说明定时器没跑；`lastRunAt` 在更新但 `errors > 0` 说明补偿在跑但一直失败。** 这是区分这两种故障的唯一稳定信号，排障时先看它再翻日志。
 - 查单成功但权益发放失败：订单保持 `PAID`，写 `grantStatus=FAILED`，自动生成高优先级 `RIGHTS_NOT_RECEIVED` 售后单，不要求用户重复支付。
 - 同用户同商品 10 分钟内出现两笔已支付订单时，自动识别较新的订单并进入售后队列；本单未新增提醒时由定时任务自动发起全额退款，已使用则转客服审核。
 

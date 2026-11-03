@@ -37,6 +37,7 @@ const {
   markOrderClosed,
   markGrantFailed,
   isOrderExpired,
+  orderExpiresAtMs,
   isQueryPaidResult,
   isQueryClosedResult,
   paymentViewOf,
@@ -63,6 +64,9 @@ const wechatAuth = require('./lib/wechat-auth');
 const RECONCILE_BATCH_SIZE = 50;
 const RECONCILE_TOTAL_BUDGET_MS = 45 * 1000;
 const RECONCILE_QUEUE_BUDGET_MS = 10 * 1000;
+const RECONCILE_HEALTH_ID = 'reconcile_health';
+/* 查不到平台结果时，本地订单过期后再等这么多次重试才强制收口。 */
+const VIRTUAL_PAY_QUERY_GRACE_MS = 30 * 60 * 1000;
 const REFUND_BALANCE_INSUFFICIENT_MESSAGE = '基本账户余额不足，请充值后重新发起';
 const CLIENT_CLOUD_SOURCES = new Set(['wx_client', 'wx_devtools', 'wx_localdebug']);
 
@@ -740,6 +744,50 @@ async function grantVirtualOrder(order, queried) {
   return ok(await paymentResultView(fresh || { ...order, status: OrderStatus.PAID }));
 }
 
+/**
+ * 查不到平台结果时必须留下证据：没有失败记录的滞留单等于静默故障。
+ * 写库失败只打日志，不能让补偿本身中断。
+ */
+async function recordVirtualQueryFailure(order, reason, err) {
+  const detail = String((err && (err.errcode || err.code || err.message)) || reason || '').slice(0, 200);
+  try {
+    await db.collection(COLLECTIONS.ORDERS).doc(order._id).update({
+      data: {
+        reconcileError: detail || reason,
+        reconcileErrorAt: new Date(),
+        reconcileFailCount: Math.max(0, Number(order.reconcileFailCount) || 0) + 1,
+        updatedAt: new Date(),
+      },
+    });
+  } catch (writeErr) {
+    console.error('[payment] record virtual query failure failed', {
+      orderId: order._id,
+      message: writeErr && (writeErr.errMsg || writeErr.message),
+    });
+  }
+}
+
+/**
+ * 平台确认不了支付结果时，用本地有效期收口。
+ * - 未过期：不动，交给上层重试；
+ * - 过期但仍在宽限期内：只记录失败证据；
+ * - 过期超过宽限期：本地关单，避免订单永久停留在待支付。
+ * 关单不吞掉真实支付：已关闭且已过期的订单仍会继续查单，平台确认支付后
+ * 从 CLOSED 收口回 PAID 并补发权益。
+ */
+async function settleExpiredVirtualOrder(order, reason, err) {
+  if (!order || !isOrderExpired(order)) return null;
+  await recordVirtualQueryFailure(order, reason, err);
+  const expiredAt = orderExpiresAtMs(order);
+  if (Date.now() - expiredAt < VIRTUAL_PAY_QUERY_GRACE_MS) return null;
+  const closed = await markOrderClosed(db, order, reason);
+  console.warn('[payment] closed virtual order without platform confirmation', {
+    orderId: order._id,
+    closeReason: reason,
+  });
+  return closed;
+}
+
 async function syncVirtualOrder(order, config = virtualPay.configOf()) {
   if (!order) return fail(ERRORS.ORDER_NOT_FOUND);
   if (order.status === OrderStatus.PAID) {
@@ -776,9 +824,20 @@ async function syncVirtualOrder(order, config = virtualPay.configOf()) {
   if (order.status === OrderStatus.CLOSED && !isOrderExpired(order)) {
     return ok(await paymentResultView(order));
   }
-  if (!virtualPay.hasApiConfig(config)) return ok(await paymentResultView(order));
+  if (!virtualPay.hasApiConfig(config)) {
+    console.error('[payment] virtual pay config incomplete', { orderId: order._id });
+    const closed = await settleExpiredVirtualOrder(order, 'VIRTUAL_PAY_CONFIG_MISSING');
+    return ok(await paymentResultView(closed || order));
+  }
 
-  const queried = await virtualPay.queryPaymentOrder({ order, config });
+  let queried;
+  try {
+    queried = await virtualPay.queryPaymentOrder({ order, config });
+  } catch (err) {
+    const closed = await settleExpiredVirtualOrder(order, 'VIRTUAL_PAY_QUERY_FAILED', err);
+    if (closed) return ok(await paymentResultView(closed));
+    throw err;
+  }
   if (queried.order_id && queried.order_id !== order.outTradeNo) {
     return fail({ code: ERRORS.ORDER_NOT_FOUND.code, message: '虚拟支付查单订单号不一致' });
   }
@@ -802,12 +861,9 @@ async function syncVirtualOrder(order, config = virtualPay.configOf()) {
   await persistVirtualQuery(order, queried).catch(err => {
     console.error('[payment] persist virtual query failed', { orderId: order._id, message: err.message });
   });
-  const orderStatus = virtualPay.statusOf(queried);
-  const stillUnpaid = [
-    virtualPay.VirtualOrderStatus.INIT,
-    virtualPay.VirtualOrderStatus.CREATED,
-  ].includes(orderStatus);
-  if (stillUnpaid && isOrderExpired(order)) {
+  if (isOrderExpired(order)) {
+    // 走到这里已经排除“平台确认已支付”和“平台确认已关闭”，过期就该收口。
+    // 不再要求平台明确返回 INIT/CREATED：未知或无法解析的状态同样不能永久停留在待支付。
     const closed = await markOrderClosed(db, order, 'VIRTUAL_PAY_EXPIRED_UNPAID');
     return ok(await paymentResultView(closed));
   }
@@ -2097,7 +2153,7 @@ async function hasReconcileWork() {
     || (activeCase.data || []).length > 0;
 }
 
-async function reconcile(options = {}) {
+async function reconcileOnce(options = {}) {
   const now = typeof options.now === 'function' ? options.now : Date.now;
   const quality = await refreshReminderQualitySnapshot(new Date(now()));
   const config = wxpay.configOf();
@@ -2241,6 +2297,48 @@ async function reconcile(options = {}) {
     },
   }));
   return ok({ ...summary, quality });
+}
+
+/**
+ * 补偿心跳：每轮都写，跳过的轮次和异常的轮次也写。
+ * 心跳时间不更新 = 定时器没跑；心跳在更新但 errors > 0 = 跑起来了但一直失败。
+ * 这是区分“没跑”和“跑失败”的唯一手段，写失败只打日志，不影响补偿本身。
+ */
+async function writeReconcileHealth(startedAtMs, result, err) {
+  const nowTs = new Date();
+  const payload = result && typeof result === 'object' ? result : {};
+  const queues = payload.queues && typeof payload.queues === 'object' ? payload.queues : {};
+  const errorText = err ? String((err && (err.errMsg || err.message)) || err) : '';
+  try {
+    await db.collection(COLLECTIONS.PAYMENT_CONFIG).doc(RECONCILE_HEALTH_ID).set({
+      data: {
+        lastRunAt: nowTs,
+        lastDurationMs: Math.max(0, nowTs.getTime() - Number(startedAtMs || nowTs.getTime())),
+        skipped: payload.skipped === true,
+        reason: String(payload.reason || (errorText ? 'ERROR' : '')),
+        errors: Number(payload.errors) || 0,
+        queues,
+        error: errorText.slice(0, 200),
+        updatedAt: nowTs,
+      },
+    });
+  } catch (writeErr) {
+    console.error('[payment] reconcile health write failed', {
+      message: writeErr && (writeErr.errMsg || writeErr.message),
+    });
+  }
+}
+
+async function reconcile(options = {}) {
+  const startedAtMs = Date.now();
+  try {
+    const result = await reconcileOnce(options);
+    await writeReconcileHealth(startedAtMs, result);
+    return result;
+  } catch (err) {
+    await writeReconcileHealth(startedAtMs, null, err);
+    throw err;
+  }
 }
 
 /* ============================== 路由 ============================== */
