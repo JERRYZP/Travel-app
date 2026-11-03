@@ -9,7 +9,7 @@
 
 ## 已实现
 
-- 2026-11-03 反馈闭环改造为本地未部署候选：`feedback` 新增 `feedback.adminReply`（单条回复，就地覆盖），`feedback.adminList` 改为 `count()` + `skip/limit` 真分页（`page` / `pageSize` 默认 20、上限 50，返回真实 `total` 与 `hasMore`），并按 `userId` 关联 `users` 返回提交人昵称与完整 OpenID；「建议 / Bug」页签改按 `category` 服务端筛选，纠错按 `type` 筛选。`feedback.list` 改为字段白名单，不再把 `userId` 和 `adminReplyBy` 返回给普通用户。用户侧「我的反馈」展示管理员回复与回复时间，状态词改为「处理中 / 已回复 / 已处理 / 已关闭」，并支持下拉刷新；管理页补「加载更多」、提交人复制 OpenID，并把网络失败与 `1040 无权限` 分开显示。`cloudfunctions/feedback` 与小程序端均待部署 / 发布。
+- 2026-11-03 反馈闭环改造：云函数 `feedback` **已部署**（16:24），小程序端未发布。新增 `feedback.adminReply`（单条回复，就地覆盖），`feedback.adminList` 改为 `count()` + `skip/limit` 真分页（`page` / `pageSize` 默认 20、上限 50，返回真实 `total` 与 `hasMore`），并按 `userId` 关联 `users` 返回提交人昵称与完整 OpenID；「建议 / Bug」页签改按 `category` 服务端筛选，纠错按 `type` 筛选。`feedback.list` 改为字段白名单，不再把 `userId` 和 `adminReplyBy` 返回给普通用户。用户侧「我的反馈」展示管理员回复与回复时间，状态词改为「处理中 / 已回复 / 已处理 / 已关闭」，并支持下拉刷新；管理页补「加载更多」、提交人复制 OpenID，并把网络失败与 `1040 无权限` 分开显示。⚠️ CLI 更新含子目录的函数会报 `EISDIR`，本次用拍平包部署，详见「当前需要部署的范围」`feedback` 条目。
 - 2026-11-03 客服工作台提醒质量快照改造为本地未部署候选：现有 `payment` 两分钟定时器在 `13:00 / 21:00` 后的首个 tick 统计最近完成 8 小时窗口并写入 `payment_config/reminder_quality_latest`，同一窗口后续只读快照；工作台只读快照，打开和刷新不再扫 `reminder_events` / `reminder_tasks`。首次快照未生成时显示「统计中」，新窗口未生成时保留上一份数据并重试。此前旧版质量接口已部署并通过真实冒烟，真实窗口当时为 `323` 个任务、`298` 准时、`20` 未送达、`5` 证据缺失，准时率 `92.26%`，前 5 日加权均值 `55.91%`；快照改造尚未部署。
 - 2026-11-03 调用量结构性优化已部署：景点列表/搜索/详情改读 `spots-snapshot/v1`，包内快照兜底、远程文件每日最多检查一次；首页冷窗口放宽到 5 分钟并支持下拉刷新；`profile`/`setup` 改走 `user.bootstrap`/`cart.bootstrap`；`cart.addAll` 改为一次上下文读取和单事务批量写入并返回状态补丁；四个热函数加入无隐私资源日志；支付补偿增加空队列短路；会员配置增加 45 秒实例内缓存。`HOME_RUNTIME_MODE` 保持 `off`，`user_runtime` 派生读模型尚未创建或启用。
 - 2026-11-03 景点快捷设提醒已部署：新增 `cart.planQuickDates` / `cart.quickCommit`，景点页、详情、分享与首页“约其他日”不再先把日期写进主流程 `reminder_cart`；授权/名额通过后由服务端一次事务直接创建行程项与任务。旧版遗留的同景点 pending 行会在 quickCommit 中续用并消费，其他主流程草稿不受影响；已落成真实行程的日期继续拦截。
@@ -121,7 +121,10 @@
   ⚠️ **`includeSpots` 默认值由 `true` 改为 `false` 是契约变更**（`API-契约.md` 8.2）：
   未部署时前端拿不到 `hotSpots`，但前端已有本地切片兜底，不会白屏。
 - `spots`：景点卡 `shortName` / `aliases` / `addable` / `strongReminder` 的新口径已提交，需重新部署后在真机确认。
-- `feedback`：2026-11-03 反馈闭环改造为本地候选，**尚未部署**。新增 `feedback.adminReply`，`feedback.adminList` 改为真分页并返回提交人昵称 / OpenID，`feedback.list` 改为字段白名单。整包部署时 `lib/user-directory.js` 必须一起上传，漏传会让所有管理接口返回 `1500`。部署前确认 `feedbacks(category, createdAt)` 索引；该查询当前也走 `type` + `createdAt`，两条都归在索引文档第三节「建议」，缺索引不阻塞功能但会退化为集合扫描。部署前 `feedback.adminStatus` 仍按旧白名单返回，客户端新页面在旧后端下会因缺少 `adminReply` 而显示空回复、分页参数被忽略（仍只返回前 100 条）。
+- `feedback`：2026-11-03 16:24 反馈闭环改造**已部署**，`Active`、Nodejs16.13、5 个文件 / 6.9 KB。新增 `feedback.adminReply`，`feedback.adminList` 改为真分页并返回提交人昵称 / OpenID，`feedback.list` 改为字段白名单。客户端尚未发布，真机验收未做。
+  - ⚠️ **部署踩坑**：开发者工具 CLI 在**更新已有函数**时，只要函数目录含子目录就报 `EISDIR: illegal operation on a directory, read`；用最小探针函数复现过（加 `lib/` 失败、去掉成功），与业务代码无关。`inc-deploy` 的 `--file` 传目录同样失败，传子目录下的单文件会报 `filesCount 0` 而静默不生效。
+  - 本次实际做法：在 `/tmp` 里把 `lib/*.js` 拍平到函数根目录，并把 `index.js` 的 `require('./lib/x')` 改写为 `require('./x')`，再用 `deploy --paths` 整包上传。**仓库结构保持不变**；以后更新 `feedback` 仍需同样拍平，否则会卡在 `EISDIR`。
+  - 部署前未创建 `feedbacks(category, createdAt)` 索引。该查询与 `type` + `createdAt` 同属索引文档第三节「建议」，缺索引不阻塞功能，但「建议 / Bug」页签会退化为集合扫描；数据量上来前需要补建。
 - `notifier`：已兼容旧任务走旧「活动开始通知」、新任务走新「预约开始提醒」；按任务实际模板发送和核销额度。应先部署，使旧任务和随后产生的新模板任务都有正确分流；当前已确认 `status_release_idx = backendStatus + releaseAt` 已存在，但云端触发器、测试发送和真机模板授权仍未完成闭环核对。
 - `reminder`：新提醒任务会写入当前模板 `_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA`；`lib/quota.js` 已兼容旧任务按旧模板记账。应在 notifier 之后部署，最后再发布小程序端。
 - `payment`：2026-11-02 16:14 已整包更新本轮版本，运行时仍为 Nodejs16.13、20 个环境变量键完整，`paymentReconcileEveryTwoMinutes = 0 */2 * * * * *` 保持启用。当前版本包含后台会员限制模式、当日统计、7 / 30 / 90 天 / 全部筛选、Apple 超时待支付关闭、订单/售后幂等、权益账本快照、退款精确回收、虚拟支付商品复核和补偿队列隔离；管理员与订单接口冒烟通过。
@@ -203,7 +206,7 @@
 | 客服工作台订单时间筛选与吸顶 | **已部署并通过云端冒烟** | 默认近 30 天，可切近 7 天 / 近 90 天 / 全部；`timeRange=all` 返回历史 70 单；搜索与筛选区吸顶在导航栏下方 |
 | 客服工作台提醒质量仪表 | **旧版已部署；快照改造待部署** | 旧版 `payment.adminReminderQuality.stats` 已通过真实冒烟；本地候选改为定时器写 `payment_config/reminder_quality_latest`、工作台只读快照，首次无快照返回 `pending`，旧快照保留旧值。部署 `payment` 后需核验现有两分钟触发器并回读首个快照 |
 | 行程只读分享 V1 | **已部署并通过云端与开发者工具冒烟** | `trips_share_token_idx` 已建；`tripShare.create/open` 成功，只读页真实渲染 17 个日期分组；真实会话转发和第二账号落地待真机验收 |
-| 反馈闭环（回复 + 认人 + 分页） | **本地候选，未部署、未发布** | 云函数 `feedback` 与小程序端同一提交；`feedback.adminReply` 为新增 action，旧后端会返回 `1099`。真机验收项：管理员回复后用户端看到回复、普通用户拿不到 `adminReplyBy`、超过 20 条时「加载更多」与四个筛选页签正确、回复框聚焦不被键盘遮挡 |
+| 反馈闭环（回复 + 认人 + 分页） | **云函数已部署**（2026-11-03 16:24）；**客户端未发布，真机未验收** | `feedback` 为 `Active`、Nodejs16.13、5 个文件 / 6.9 KB；因 CLI 子目录 `EISDIR` 改用拍平包部署。`feedbacks(category, createdAt)` 索引未建，暂不阻塞。真机验收项：管理员回复后用户端看到回复、普通用户拿不到 `adminReplyBy`、超过 20 条时「加载更多」与四个筛选页签正确、回复框聚焦不被键盘遮挡 |
 | 客户端 `2.2.1` | **体验版已验收，`main` 已合并，待提交审核** | 包体 `1,113,478` 字节；上传备注为「行程只读分享、提醒质量快照、调用量优化与首页体验修复体验版」；对应 `main@fb87f1f` / `v2.2.1-rc.1`；未送审、未发布正式版 |
 | 遗留 Apple 待支付单收口 | **已部署并通过定时补偿验证** | 两笔历史 `PENDING` 于 16:16:01 自动关闭，原因为 `VIRTUAL_PAY_EXPIRED_UNPAID`；当前待支付订单为 0 |
 | 生产数据备份与迁移 | **已完成**（2026-11-01） | `users 6587`、`orders 18`、`reminder_tasks 23979`、售后 `13`、审计日志 `188`；dry-run 133 批/6605 人，正式迁移 133 批/6620 人，人工核查 0、历史补签 1 |
