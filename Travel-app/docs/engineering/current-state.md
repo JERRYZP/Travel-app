@@ -9,6 +9,7 @@
 
 ## 已实现
 
+- 2026-11-03 反馈闭环改造：云函数 `feedback` **已部署**（16:24），小程序端未发布。新增 `feedback.adminReply`（单条回复，就地覆盖），`feedback.adminList` 改为 `count()` + `skip/limit` 真分页（`page` / `pageSize` 默认 20、上限 50，返回真实 `total` 与 `hasMore`），并按 `userId` 关联 `users` 返回提交人昵称与完整 OpenID；「建议 / Bug」页签改按 `category` 服务端筛选，纠错按 `type` 筛选。`feedback.list` 改为字段白名单，不再把 `userId` 和 `adminReplyBy` 返回给普通用户。用户侧「我的反馈」展示管理员回复与回复时间，状态词改为「处理中 / 已回复 / 已处理 / 已关闭」，并支持下拉刷新；管理页补「加载更多」、提交人复制 OpenID，并把网络失败与 `1040 无权限` 分开显示。⚠️ CLI 更新含子目录的函数会报 `EISDIR`，本次用拍平包部署，详见「当前需要部署的范围」`feedback` 条目。
 - 2026-11-03 重复支付判定改造为本地未部署候选：判定窗口从 10 分钟收紧到 **1 分钟**（¥3 提醒名额包连买两份是正常操作，10 分钟会把主动购买误判成重复支付）；Apple 订单不再生成重复支付工单（iOS 退款只能由用户在 App Store 发起，服务端不能代退，建单只会产出处理不了的记录，跳过时打 `skip duplicate charge case for apple order` 日志）；系统自查单改为**只核验不退款**——建单不写订单 `refundStatus`、不占用 `activeAfterSalesCaseId`、驳回不回写 `REJECTED`，并通过 `evidence.reviewOnly` 对用户侧 `afterSales.list` 隐藏，自动核验后只转 `UNDER_REVIEW` 等人工判断。`npm test` 已通过；**`payment` 尚未部署**。触发背景：客服工作台两条 Apple 重复支付工单卡在「客服审核中」，且系统自建单已提前把订单标成「退款处理中」，用户侧无感的目标并未达成。
 - 2026-11-03 待支付订单滞留收口改造为本地未部署候选：虚拟支付查单抛异常（平台没有这笔订单或接口报错）不再原地无限重试，改为先写 `reconcileError` / `reconcileErrorAt` / `reconcileFailCount`，本地过期满 30 分钟仍拿不到平台结论就按 `VIRTUAL_PAY_QUERY_FAILED` 关单；配置缺失按 `VIRTUAL_PAY_CONFIG_MISSING` 关单，不再静默返回成功；查单成功但平台返回 5/7/8 等非支付非关闭状态时，过期同样按 `VIRTUAL_PAY_EXPIRED_UNPAID` 收口。每轮补偿结束写 `payment_config/reconcile_health` 心跳，跳过和异常轮次也写，用来区分「定时器没跑」和「补偿在跑但一直失败」。`npm test` 已通过；**`payment` 尚未部署**。触发背景：客服工作台观察到 4 笔超过支付截止时间仍未关闭的待支付订单，最早一笔 11-02 22:19 创建、22:34 截止。
 - 2026-11-03 客服工作台提醒质量快照改造为本地未部署候选：现有 `payment` 两分钟定时器在 `13:00 / 21:00` 后的首个 tick 统计最近完成 8 小时窗口并写入 `payment_config/reminder_quality_latest`，同一窗口后续只读快照；工作台只读快照，打开和刷新不再扫 `reminder_events` / `reminder_tasks`。首次快照未生成时显示「统计中」，新窗口未生成时保留上一份数据并重试。此前旧版质量接口已部署并通过真实冒烟，真实窗口当时为 `323` 个任务、`298` 准时、`20` 未送达、`5` 证据缺失，准时率 `92.26%`，前 5 日加权均值 `55.91%`；快照改造尚未部署。
@@ -122,7 +123,10 @@
   ⚠️ **`includeSpots` 默认值由 `true` 改为 `false` 是契约变更**（`API-契约.md` 8.2）：
   未部署时前端拿不到 `hotSpots`，但前端已有本地切片兜底，不会白屏。
 - `spots`：景点卡 `shortName` / `aliases` / `addable` / `strongReminder` 的新口径已提交，需重新部署后在真机确认。
-- `feedback`：管理员 openid 白名单与 `feedback.adminStatus` 入口校验已提交，待部署确认；帮助与反馈、我的反馈页面依赖现有 `feedback.list` 契约。
+- `feedback`：2026-11-03 16:24 反馈闭环改造**已部署**，`Active`、Nodejs16.13、5 个文件 / 6.9 KB。新增 `feedback.adminReply`，`feedback.adminList` 改为真分页并返回提交人昵称 / OpenID，`feedback.list` 改为字段白名单。客户端尚未发布，真机验收未做。
+  - ⚠️ **部署踩坑**：开发者工具 CLI 在**更新已有函数**时，只要函数目录含子目录就报 `EISDIR: illegal operation on a directory, read`；用最小探针函数复现过（加 `lib/` 失败、去掉成功），与业务代码无关。`inc-deploy` 的 `--file` 传目录同样失败，传子目录下的单文件会报 `filesCount 0` 而静默不生效。
+  - 本次实际做法：在 `/tmp` 里把 `lib/*.js` 拍平到函数根目录，并把 `index.js` 的 `require('./lib/x')` 改写为 `require('./x')`，再用 `deploy --paths` 整包上传。**仓库结构保持不变**；以后更新 `feedback` 仍需同样拍平，否则会卡在 `EISDIR`。
+  - 部署前未创建 `feedbacks(category, createdAt)` 索引。该查询与 `type` + `createdAt` 同属索引文档第三节「建议」，缺索引不阻塞功能，但「建议 / Bug」页签会退化为集合扫描；数据量上来前需要补建。
 - `notifier`：已兼容旧任务走旧「活动开始通知」、新任务走新「预约开始提醒」；按任务实际模板发送和核销额度。应先部署，使旧任务和随后产生的新模板任务都有正确分流；当前已确认 `status_release_idx = backendStatus + releaseAt` 已存在，但云端触发器、测试发送和真机模板授权仍未完成闭环核对。
 - `reminder`：新提醒任务会写入当前模板 `_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA`；`lib/quota.js` 已兼容旧任务按旧模板记账。应在 notifier 之后部署，最后再发布小程序端。
 - `payment`：2026-11-02 16:14 已整包更新本轮版本，运行时仍为 Nodejs16.13、20 个环境变量键完整，`paymentReconcileEveryTwoMinutes = 0 */2 * * * * *` 保持启用。当前版本包含后台会员限制模式、当日统计、7 / 30 / 90 天 / 全部筛选、Apple 超时待支付关闭、订单/售后幂等、权益账本快照、退款精确回收、虚拟支付商品复核和补偿队列隔离；管理员与订单接口冒烟通过。
@@ -204,6 +208,7 @@
 | 客服工作台订单时间筛选与吸顶 | **已部署并通过云端冒烟** | 默认近 30 天，可切近 7 天 / 近 90 天 / 全部；`timeRange=all` 返回历史 70 单；搜索与筛选区吸顶在导航栏下方 |
 | 客服工作台提醒质量仪表 | **旧版已部署；快照改造待部署** | 旧版 `payment.adminReminderQuality.stats` 已通过真实冒烟；本地候选改为定时器写 `payment_config/reminder_quality_latest`、工作台只读快照，首次无快照返回 `pending`，旧快照保留旧值。部署 `payment` 后需核验现有两分钟触发器并回读首个快照 |
 | 行程只读分享 V1 | **已部署并通过云端与开发者工具冒烟** | `trips_share_token_idx` 已建；`tripShare.create/open` 成功，只读页真实渲染 17 个日期分组；真实会话转发和第二账号落地待真机验收 |
+| 反馈闭环（回复 + 认人 + 分页） | **云函数已部署**（2026-11-03 16:24）；**客户端未发布，真机未验收** | `feedback` 为 `Active`、Nodejs16.13、5 个文件 / 6.9 KB；因 CLI 子目录 `EISDIR` 改用拍平包部署。`feedbacks(category, createdAt)` 索引未建，暂不阻塞。真机验收项：管理员回复后用户端看到回复、普通用户拿不到 `adminReplyBy`、超过 20 条时「加载更多」与四个筛选页签正确、回复框聚焦不被键盘遮挡 |
 | 客户端 `2.2.1` | **体验版已验收，`main` 已合并，待提交审核** | 包体 `1,113,478` 字节；上传备注为「行程只读分享、提醒质量快照、调用量优化与首页体验修复体验版」；对应 `main@fb87f1f` / `v2.2.1-rc.1`；未送审、未发布正式版 |
 | 遗留 Apple 待支付单收口 | **已部署并通过定时补偿验证** | 两笔历史 `PENDING` 于 16:16:01 自动关闭，原因为 `VIRTUAL_PAY_EXPIRED_UNPAID`；当前待支付订单为 0 |
 | 生产数据备份与迁移 | **已完成**（2026-11-01） | `users 6587`、`orders 18`、`reminder_tasks 23979`、售后 `13`、审计日志 `188`；dry-run 133 批/6605 人，正式迁移 133 批/6620 人，人工核查 0、历史补签 1 |

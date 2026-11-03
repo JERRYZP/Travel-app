@@ -3420,6 +3420,9 @@ const handlers = {
       content: String(data.content).trim(),
       contact: (data.contact || '').trim(),
       status: 'OPEN',
+      adminReply: '',
+      adminReplyAt: null,
+      adminReplyBy: null,
       createdAt: new Date(),
     };
     return { success: true, id };

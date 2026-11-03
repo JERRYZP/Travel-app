@@ -6,7 +6,8 @@
  *
  * action：feedback.submit（公开提交）/ feedback.list（本人历史）
  *        / feedback.adminStatus（管理员入口校验）
- *        / feedback.adminList / feedback.adminUpdateStatus（管理员，反馈管理页）
+ *        / feedback.adminList / feedback.adminReply / feedback.adminUpdateStatus
+ *          （管理员，反馈管理页）
  * 完整契约见 Travel-app/API-契约.md。
  */
 
@@ -14,7 +15,7 @@ const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 
-const { ERRORS, ok, fail } = require('./lib/schema');
+const { ERRORS, fail } = require('./lib/schema');
 const feedback = require('./lib/feedback');
 
 exports.main = async (event) => {
@@ -33,6 +34,8 @@ exports.main = async (event) => {
         return feedback.adminStatus(userId);
       case 'feedback.adminList':
         return await feedback.adminList(db, userId, event);
+      case 'feedback.adminReply':
+        return await feedback.adminReply(db, userId, event);
       case 'feedback.adminUpdateStatus':
         return await feedback.adminUpdateStatus(db, userId, event);
       default:

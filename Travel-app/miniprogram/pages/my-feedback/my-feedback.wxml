@@ -39,6 +39,14 @@
       </view>
 
       <text class="fb-content">{{item.content}}</text>
+
+      <view class="fb-reply" wx:if="{{item.hasReply}}">
+        <view class="fb-reply-head">
+          <text class="fb-reply-label">回复</text>
+          <text class="fb-reply-time">{{item.replyTime}}</text>
+        </view>
+        <text class="fb-reply-text">{{item.adminReply}}</text>
+      </view>
     </view>
   </block>
 </view>
