@@ -47,7 +47,6 @@ Page({
     paymentState: null,
     showUpgradeConfirm: false,
     upgradeConfirmTitle: '',
-    upgradeConfirmDesc: '',
     upgradeConfirmAmount: '',
     upgradeConfirmExpiry: '',
     systemOk: false,
@@ -534,7 +533,6 @@ Page({
     if (!packageId) return;
     const pkg = (this.data.packages || []).find(item => item && item.id === packageId);
     if (!pkg) return;
-    const isMember = pkg.type === 'MEMBER';
     const currentExpiry = new Date(this.data.membership && this.data.membership.memberExpiresAt || 0).getTime();
     const validCurrent = Number.isFinite(currentExpiry) && currentExpiry > Date.now()
       ? currentExpiry
@@ -548,17 +546,13 @@ Page({
     ));
     const p = new Date(expiry.getTime() + 8 * 60 * 60 * 1000);
     const current = this.data.membership || {};
-    const memberSlots = Math.max(0, Number(current.memberTaskSlots) || 0);
     const taskPackSize = Math.max(0, Number(pkg.addedSlots) || Number(current.taskPackSize) || 0);
     this.setData({
       showUpgradeConfirm: true,
-      upgradeConfirmTitle: isMember
+      upgradeConfirmTitle: pkg.type === 'MEMBER'
         ? `${Number(pkg.memberDays) || 0} 天会员`
         : `${taskPackSize} 个提醒名额`,
       upgradeConfirmAmount: pkg.priceText || '',
-      upgradeConfirmDesc: isMember
-        ? `支付成功后立即生效，提醒名额提升到 ${memberSlots} 个，并继续完成本次提醒。`
-        : `支付成功后立即记录 ${taskPackSize} 个名额，并继续完成本次提醒。`,
       upgradeConfirmExpiry: `会员有效期至 ${p.getUTCFullYear()}年${p.getUTCMonth() + 1}月${p.getUTCDate()}日`,
     });
   },

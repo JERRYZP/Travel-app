@@ -175,6 +175,7 @@ async function run() {
   const setupWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/setup/setup.wxml'), 'utf8');
   const setupJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/setup/setup.js'), 'utf8');
   const setupWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/setup/setup.wxss'), 'utf8');
+  const setupJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/pages/setup/setup.json'), 'utf8'));
   const profileWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.wxml'), 'utf8');
   const profileJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.js'), 'utf8');
   const profileWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.wxss'), 'utf8');
@@ -327,8 +328,16 @@ async function run() {
     'JS 提交态与会员闸门使用同一事实');
   eq(setupJs.includes("upgradeConfirmAmount: ''") && setupJs.includes('upgradeConfirmAmount: pkg.priceText'), true,
     '设置提醒确认层价格只读取服务端套餐');
+  eq(setupJson.usingComponents['payment-confirm-sheet'], '/components/payment-confirm-sheet/payment-confirm-sheet',
+    '设置提醒页注册会员页同一个支付确认组件');
+  eq(/<payment-confirm-sheet[\s\S]*?show="\{\{showUpgradeConfirm\}\}"[\s\S]*?title="\{\{upgradeConfirmTitle\}\}"[\s\S]*?amount="\{\{upgradeConfirmAmount\}\}"[\s\S]*?expiry="\{\{upgradeConfirmExpiry\}\}"/.test(setupWxml),
+    true, '设置提醒页支付确认层直接复用会员页商品、金额和到期信息');
   eq(setupWxml.includes('支付 {{upgradeConfirmAmount}}'), true,
     '设置提醒支付按钮复用确认金额字段，避免再次调价漏改');
+  eq(setupWxml.includes('upgrade-sheet') || setupWxml.includes('upgrade-rule'), false,
+    '设置提醒页不再维护独立的旧版支付弹窗和退款文案');
+  eq(setupWxml.includes('agreementAccepted'), false,
+    '协议勾选状态只由共用支付确认组件维护');
   eq(/onSubmit\(\)[\s\S]{0,180}?showMembershipGate/.test(setupJs), true,
     'onSubmit 有不可绕过的会员闸门');
   eq(/\.membership-gate-action\s*\{[^}]*width:\s*100%/.test(setupWxss), true,
