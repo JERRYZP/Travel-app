@@ -64,7 +64,13 @@ const userApi = {
     },
   },
   payment: { afterSales: { adminStatus: () => Promise.resolve({ isAdmin: false }) } },
-  feedback: { adminStatus: () => Promise.resolve({ isAdmin: false }) },
+  feedback: {
+    entrySummary: () => Promise.resolve({
+      isAdmin: false,
+      handledUnreadCount: 0,
+      adminPendingCount: 0,
+    }),
+  },
   toastError() {},
 };
 

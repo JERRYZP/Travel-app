@@ -3,9 +3,10 @@ const api = require('../../utils/api.js');
 const notify = require('../../utils/notify.js');
 const oa = require('../../utils/official-account.js');
 const membershipCache = require('../../utils/membership-cache.js');
+const feedbackEntryCache = require('../../utils/feedback-entry-cache.js');
 
 const PROFILE_BOOTSTRAP_TTL_MS = 5 * 60 * 1000;
-const ADMIN_STATUS_CACHE_KEY = 'profileAdminStatusV1';
+const ADMIN_STATUS_CACHE_KEY = 'profileAdminStatusV2';
 const ADMIN_STATUS_TTL_MS = 24 * 60 * 60 * 1000;
 
 function reminderHintOf(health) {
@@ -42,6 +43,11 @@ Page({
     afterSalesFundingBlockedCount: 0,
     afterSalesAdminHint: '退款审核与权益补偿',
     afterSalesFundingBlocked: false,
+    showFeedbackAdminEntry: false,
+    feedbackAdminPendingCount: 0,
+    feedbackAdminPendingText: '',
+    feedbackUnreadCount: 0,
+    feedbackUnreadText: '',
   },
 
   onLoad() {
@@ -56,6 +62,7 @@ Page({
     this.loadUser();
     if (this.profileCacheFresh()) this.loadNotifyHint();
     this.loadAdminEntries();
+    this.loadFeedbackEntry();
   },
 
   /* 无感登录：profile 首次调用即自动建号（自动昵称+默认头像），页面常驻登录态 */
@@ -170,20 +177,46 @@ Page({
         return Promise.resolve(cached.payment || null);
       }
     } catch (e) {}
-    return Promise.all([
-      api.payment.afterSales.adminStatus().catch(() => null),
-      api.feedback.adminStatus().catch(() => null),
-    ]).then(([paymentStatus, feedbackStatus]) => {
-      this._feedbackAdmin = !!(feedbackStatus && feedbackStatus.isAdmin);
+    return api.payment.afterSales.adminStatus().catch(() => null).then(paymentStatus => {
       this.applyAfterSalesAdminStatus(paymentStatus);
       try {
         wx.setStorageSync(ADMIN_STATUS_CACHE_KEY, {
           savedAt: Date.now(),
           payment: paymentStatus,
-          feedback: feedbackStatus,
         });
       } catch (e) {}
       return paymentStatus;
+    });
+  },
+
+  /**
+   * 反馈入口统计只用 5 分钟存储缓存。
+   * 统计允许稍晚到，避免每次 onShow 都读用户和 feedbacks 两张表。
+   */
+  loadFeedbackEntry() {
+    const cached = feedbackEntryCache.read();
+    if (cached) this.applyFeedbackEntry(cached.data);
+    if (cached && cached.fresh) return Promise.resolve(cached.data);
+
+    return api.feedback.entrySummary().then(res => {
+      this.applyFeedbackEntry(res);
+      feedbackEntryCache.write(res);
+      return res;
+    }).catch(() => cached ? cached.data : null);
+  },
+
+  applyFeedbackEntry(res) {
+    const isAdmin = !!(res && res.isAdmin);
+    const unreadCount = Math.max(0, Number(res && res.handledUnreadCount) || 0);
+    const pendingCount = isAdmin
+      ? Math.max(0, Number(res && res.adminPendingCount) || 0)
+      : 0;
+    this.setData({
+      showFeedbackAdminEntry: isAdmin,
+      feedbackAdminPendingCount: pendingCount,
+      feedbackAdminPendingText: pendingCount > 99 ? '99+' : String(pendingCount || ''),
+      feedbackUnreadCount: unreadCount,
+      feedbackUnreadText: unreadCount > 99 ? '99+' : String(unreadCount || ''),
     });
   },
 
@@ -227,28 +260,14 @@ Page({
     wx.navigateTo({ url: '/pages/help-feedback/help-feedback' });
   },
 
+  onFeedbackAdmin() {
+    if (!this.data.showFeedbackAdminEntry) return;
+    wx.navigateTo({ url: '/pages/admin-feedback/admin-feedback' });
+  },
+
   onLegal(e) {
     const type = e.currentTarget.dataset.type === 'terms' ? 'terms' : 'privacy';
     wx.navigateTo({ url: `/pages/legal/legal?type=${type}` });
   },
 
-  /** 隐藏入口：长按用户信息卡时先向服务端确认管理员身份，非管理员静默不跳转。 */
-  onAdminEntry() {
-    if (this._adminEntryChecking) return;
-    this._adminEntryChecking = true;
-    const enter = isAdmin => {
-      this._adminEntryChecking = false;
-      if (isAdmin) wx.navigateTo({ url: '/pages/admin-feedback/admin-feedback' });
-    };
-    try {
-      const cached = wx.getStorageSync(ADMIN_STATUS_CACHE_KEY);
-      if (cached && cached.feedback && Date.now() - cached.savedAt < ADMIN_STATUS_TTL_MS) {
-        enter(cached.feedback.isAdmin === true);
-        return;
-      }
-    } catch (e) {}
-    api.feedback.adminStatus()
-      .then(res => enter(!!(res && res.isAdmin)))
-      .catch(() => enter(false));
-  },
 });

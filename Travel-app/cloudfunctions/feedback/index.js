@@ -5,6 +5,7 @@
  *   wx.cloud.callFunction({ name: 'feedback', data: { action: 'feedback.submit', ... } })
  *
  * action：feedback.submit（公开提交）/ feedback.list（本人历史）
+ *        / feedback.entrySummary / feedback.markSeen（“我的”入口统计与已读）
  *        / feedback.adminStatus（管理员入口校验）
  *        / feedback.adminList / feedback.adminReply / feedback.adminUpdateStatus
  *          （管理员，反馈管理页）
@@ -30,6 +31,10 @@ exports.main = async (event) => {
         return await feedback.submit(db, userId, event);
       case 'feedback.list':
         return await feedback.list(db, userId);
+      case 'feedback.entrySummary':
+        return await feedback.entrySummary(db, userId);
+      case 'feedback.markSeen':
+        return await feedback.markSeen(db, userId, event);
       case 'feedback.adminStatus':
         return feedback.adminStatus(userId);
       case 'feedback.adminList':

@@ -659,8 +659,15 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     }
     const res = await c('feedback.list', {});
     eq(res.items.length, 50, 'mock 与云端一致：本人反馈最多返回 50 条');
+    eq(res.asOf instanceof Date, true, 'mock 与云端一致：本人列表返回已读快照 asOf');
     const times = res.items.map(i => new Date(i.createdAt).getTime());
     eq(times.every((t, i) => i === 0 || times[i - 1] >= t), true, 'mock 与云端一致：按 createdAt 倒序');
+    const entry = await c('feedback.entrySummary', {});
+    eq(entry.isAdmin, false, 'mock 普通用户反馈入口不是管理员');
+    eq(entry.handledUnreadCount, 0, 'mock 无管理员操作时用户未读为 0');
+    eq(entry.adminPendingCount, 0, 'mock 不伪造管理端待处理数');
+    const seen = await c('feedback.markSeen', { through: res.asOf });
+    eq(seen.success, true, 'mock 支持推进反馈已读水位');
 
     // 回复字段：mock 文档形态必须与云端 submit 默认值一致，否则页面在 mock 下读到 undefined
     const doc = m.__internals.db.feedbacks[Object.keys(m.__internals.db.feedbacks)[0]];

@@ -17,6 +17,7 @@ const READ_ACTIONS = new Set([
   'membership.orders',
   'membership.orderDetail',
   'feedback.list',
+  'feedback.entrySummary',
   'feedback.adminStatus',
   'payment.query',
   'payment.afterSales.list',
@@ -205,6 +206,8 @@ const reminder = {
 const feedback = {
   submit: (p) => call('feedback', { action: 'feedback.submit', ...p }),
   list: () => call('feedback', { action: 'feedback.list' }),
+  entrySummary: () => call('feedback', { action: 'feedback.entrySummary' }),
+  markSeen: (p) => call('feedback', { action: 'feedback.markSeen', ...(p || {}) }),
   /* 管理端（反馈管理页，后端 openid 白名单鉴权） */
   adminStatus: () => call('feedback', { action: 'feedback.adminStatus' }),
   adminList: (p) => call('feedback', { action: 'feedback.adminList', ...p }),

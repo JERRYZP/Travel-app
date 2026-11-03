@@ -1381,20 +1381,61 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```javascript
 {
   success: true,
-  items: [{ _id, type, category, spotId, spotName, errorType, content, contact, status, adminReply, adminReplyAt, createdAt }]
+  items: [{ _id, type, category, spotId, spotName, errorType, content, contact, status, adminReply, adminReplyAt, createdAt }],
+  asOf: Date
   // 按 createdAt 倒序，最多 50 条；status = OPEN 待处理 | PROCESSED 已处理 | IGNORED 已忽略
   // adminReply 为空串表示尚未回复；adminReplyAt 为回复时间
+  // asOf 是本次列表查询的已读水位快照；客户端用它调用 feedback.markSeen
   // 不返回 userId 和 adminReplyBy（回复者 OpenID 属管理端信息）
 }
 ```
 
-### `feedback.adminStatus` — 管理员入口校验
+### `feedback.entrySummary` — PAGE-010 入口统计
+
+```
+调用：{ action: 'feedback.entrySummary' }
+```
+
+**用途：** “我的”页渲染「反馈管理」按钮和「帮助与反馈」数字；PAGE-010-4「我的反馈」行复用同一个未读数。客户端成功结果缓存 5 分钟，不轮询。
+
+**返回：**
+
+```javascript
+{
+  success: true,
+  isAdmin: true | false,
+  handledUnreadCount: 3, // 管理员回复或改状态后，用户尚未查看的本人反馈数
+  adminPendingCount: 7   // 仅管理员：status=OPEN 的待处理反馈数；普通用户恒为 0
+}
+```
+
+**口径：**
+
+- `adminReply` / `adminUpdateStatus` 会写内部字段 `handledAt`；用户端未读数按 `userId + handledAt > users.feedbackSeenAt` 统计。`asOf` 在列表查询前生成，查询开始后的新操作会留在水位之后。
+- 用户成功打开「我的反馈」后调用 `feedback.markSeen`；未成功加载列表时不清未读。
+- 同一反馈被多次回复或改状态，仍只计 1 条。
+
+### `feedback.markSeen` — 推进本人反馈已读水位
+
+```
+调用：{ action: 'feedback.markSeen', through: Date }
+```
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| through | Date | `feedback.list` 返回的 `asOf`，必填 |
+
+**返回：** `{ success: true, feedbackSeenAt: Date, updated: 1 | 0 }`
+
+只允许水位向前推进；旧快照或非法时间不会回退。该动作只更新当前登录用户 `users.feedbackSeenAt`，不改反馈正文、回复或状态。
+
+### `feedback.adminStatus` — 管理员身份兼容校验
 
 ```
 调用：{ action: 'feedback.adminStatus' }
 ```
 
-**用途：** “我的”页长按用户信息卡时，先由服务端判断当前 openid 是否在 `ADMIN_OPENIDS` 白名单内；只有 `isAdmin=true` 才进入反馈管理页。失败或非管理员均不跳转。
+**用途：** 保留给旧客户端确认当前 openid 是否在 `ADMIN_OPENIDS` 白名单内。当前 PAGE-010 已改用 `feedback.entrySummary`，不再通过长按头像调用本接口。
 
 **返回：**
 
@@ -1452,6 +1493,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 **鉴权：** 同 adminList，白名单外返回 `1040 无权限`。
 
 单条回复：已有回复时**就地覆盖**，不保留历史，不做多轮对话。写入时状态一律置为 `PROCESSED`。
+同时写入内部 `handledAt`，供用户端未读标识统计。
 
 **返回：**
 
@@ -1475,6 +1517,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 **鉴权：** 同 adminList，白名单外返回 `1040 无权限`。
 
 **返回：** `{ success: true, updated: 1 }`；非法 status / 缺 id 返回 `1010 参数不合法`。
+写入状态时同时写入内部 `handledAt`，供用户端未读标识统计。
 
 ---
 
@@ -1491,7 +1534,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-006** 景点视图 | 搁置中，不实现 |
 | **PAGE-007** 行程清单弹窗 | `cart.list`、`cart.remove`、`cart.clear`、`cart.updateRemindOn`、`cart.commit` |
 | **PAGE-008** 设置提醒 | V0.3 主流程：`cart.bootstrap`（清单 + 会员 + 订阅授权一次取回）、`membership.createOrder` + `payment.*`（仅提醒名额不足时）、用户主动点击「点击补授权次数」、`cart.commit`（授权、系统权限或提醒名额未满足时主按钮禁用；不提供仅加行程旁路） |
-| **PAGE-010** 我的 | `user.bootstrap`（资料 + 会员 + 订阅健康一次取回）；能力探测按本地短缓存降频 |
+| **PAGE-010** 我的 | `user.bootstrap`（资料 + 会员 + 订阅健康一次取回）；`feedback.entrySummary`（反馈入口身份与数字，5 分钟缓存）；能力探测按本地短缓存降频 |
 | **PAGE-012** 编辑资料 | `user.profile`、`user.updateProfile`（头像走 `open-type="chooseAvatar"` + `wx.cloud.uploadFile` 上传） |
 | **PAGE-014** 会员与提醒名额 | `membership.status`、`membership.createOrder`、`membership.orders`、`payment.create/query/cancel`；支付前确认、持久支付状态和订单入口；“我的”页常驻会员状态卡 |
 | **PAGE-015** 订单与退款详情 | `membership.orders`、`membership.orderDetail`；列表最多 50 笔，详情按本人单笔读取，主订单状态与退款状态分离，支持继续支付、取消、同步、申请售后和重新购买 |
@@ -1500,11 +1543,11 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-018** 行程只读分享 | 主人：`tripShare.create/status/revoke`；接收方：`tripShare.open` |
 | **PAGE-013** 分享场景页 | `spots.list`（today）、`spots.batch`（national-day-2026）；点击景点后 `spots.detail` |
 | **PAGE-010-1** 提醒设置 | `subscribe.get` + 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`；缺口按钮为「补授权次数+1」，点击一次最多申请 1 条（模板未配置时「去授权」置灰） |
-| **PAGE-010-4** 帮助与反馈 | 微信原生客服 `button open-type="contact"`；无云函数调用 |
+| **PAGE-010-4** 帮助与反馈 | 微信原生客服 `button open-type="contact"`；`feedback.entrySummary`（「我的反馈」未读数字，5 分钟缓存） |
 | **PAGE-010-2** 意见反馈 | `feedback.submit`（type=feedback，category=suggestion/bug） |
 | **PAGE-010-3** 信息纠错 | `spots.search`（选景点）、`feedback.submit`（type=correction） |
-| **PAGE-010-5** 我的反馈 | `feedback.list`（本人历史，最多 50 条，倒序；含管理员回复 `adminReply` / `adminReplyAt`） |
-| **PAGE-017-2** 反馈管理（隐藏管理页） | `feedback.adminStatus`、`feedback.adminList`（分页 + 类型/分类筛选 + 提交人昵称与 OpenID）、`feedback.adminReply`（单条回复）、`feedback.adminUpdateStatus`；入口 = 我的页长按用户信息卡，服务端确认管理员后才跳转；后端 openid 白名单鉴权 |
+| **PAGE-010-5** 我的反馈 | `feedback.list`（本人历史，最多 50 条，倒序；含管理员回复 `adminReply` / `adminReplyAt` 与 `asOf`）、`feedback.markSeen`（成功后推进已读水位） |
+| **PAGE-017-2** 反馈管理（隐藏管理页） | `feedback.entrySummary`、`feedback.adminList`（分页 + 类型/分类筛选 + 提交人昵称与 OpenID）、`feedback.adminReply`（单条回复）、`feedback.adminUpdateStatus`；入口 = 我的页头像右侧管理员 Button；后端 openid 白名单鉴权 |
 
 ---
 

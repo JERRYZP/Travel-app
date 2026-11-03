@@ -7,7 +7,7 @@
 /** 集合名 */
 const COLLECTIONS = {
   FEEDBACKS: 'feedbacks', // TABLE-008
-  USERS: 'users',         // 只读关联昵称，不写
+  USERS: 'users',         // 读取昵称与反馈已读水位
 };
 
 /** 反馈大类 */

@@ -38,7 +38,10 @@
 
   <view class="setting-card my-feedback-card">
     <view class="setting-row" bindtap="onMyFeedback">
-      <text class="setting-row-label">我的反馈</text>
+      <view class="setting-row-title">
+        <text class="setting-row-label">我的反馈</text>
+        <text wx:if="{{feedbackUnreadCount > 0}}" class="setting-pending-badge">{{feedbackUnreadText}}</text>
+      </view>
       <view class="setting-row-right">
         <text class="setting-row-hint">查看处理进度</text>
         <svg-icon name="chevron-down" size="14px" rotate="270" />

@@ -39,6 +39,7 @@ let cartSeq = 0;
 let taskSeq = 0;
 let itemSeq = 0;
 let feedbackSeq = 0;
+let feedbackSeenAt = 0;
 let orderSeq = 0;
 let subscribeSeq = 0;
 const subscribeQuotas = {};
@@ -3434,7 +3435,27 @@ const handlers = {
     items: Object.values(db.feedbacks)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, 50),
+    asOf: new Date(),
   }),
+  'feedback.entrySummary': () => {
+    const handledUnreadCount = Object.values(db.feedbacks).filter(item => (
+      item.userId === 'mock-user'
+      && item.handledAt
+      && new Date(item.handledAt).getTime() > feedbackSeenAt
+    )).length;
+    return {
+      success: true,
+      isAdmin: false,
+      handledUnreadCount,
+      adminPendingCount: 0,
+    };
+  },
+  'feedback.markSeen': (data) => {
+    const through = data && data.through ? new Date(data.through).getTime() : NaN;
+    if (Number.isNaN(through)) return { success: false, error: '参数不合法', errorCode: 1010 };
+    feedbackSeenAt = Math.max(feedbackSeenAt, Math.min(through, Date.now()));
+    return { success: true, feedbackSeenAt: new Date(feedbackSeenAt), updated: 1 };
+  },
   /* mock 用户按普通用户处理；管理员入口必须走真实 feedback 云函数白名单。 */
   'feedback.adminStatus': () => ({ success: true, isAdmin: false }),
 

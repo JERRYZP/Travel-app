@@ -661,6 +661,36 @@ async function run() {
   eq(/\.setting-row-hint\.funding-blocked\s*\{[^}]*color:\s*#C0472A/.test(profileWxss), true,
     '资金阻断说明使用警示色');
 
+  console.log('\n=== 5c. 反馈管理入口与用户未读标识 ===');
+  profileData = {};
+  profileDef.applyFeedbackEntry.call(
+    { setData: patch => { profileData = { ...profileData, ...patch }; } },
+    { isAdmin: true, adminPendingCount: 8, handledUnreadCount: 2 }
+  );
+  eq(profileData.showFeedbackAdminEntry, true, '管理员看到反馈管理按钮');
+  eq(profileData.feedbackAdminPendingText, '8', '管理按钮显示待处理反馈数');
+  eq(profileData.feedbackUnreadText, '2', '帮助与反馈行显示用户未读数');
+  profileDef.applyFeedbackEntry.call(
+    { setData: patch => { profileData = { ...profileData, ...patch }; } },
+    { isAdmin: true, adminPendingCount: 120, handledUnreadCount: 0 }
+  );
+  eq(profileData.feedbackAdminPendingText, '99+', '管理待处理数过大时使用 99+');
+  eq(profileData.feedbackUnreadCount, 0, '用户查看后隐藏帮助与反馈数字');
+  profileDef.applyFeedbackEntry.call(
+    { setData: patch => { profileData = { ...profileData, ...patch }; } },
+    { isAdmin: false, adminPendingCount: 12, handledUnreadCount: 1 }
+  );
+  eq(profileData.showFeedbackAdminEntry, false, '普通用户不显示反馈管理按钮');
+  eq(profileData.feedbackAdminPendingCount, 0, '普通用户不保留管理端计数');
+  eq(/<button wx:if="\{\{showFeedbackAdminEntry\}\}"/.test(profileWxml), true,
+    '反馈管理使用独立 Button 入口');
+  eq(/profile-header[\s\S]*showFeedbackAdminEntry/.test(profileWxml)
+    && !/bindlongpress/.test(profileWxml), true, '入口位于头像右侧且不再依赖长按');
+  eq(/feedbackUnreadCount > 0[\s\S]*feedbackUnreadText/.test(profileWxml), true,
+    '帮助与反馈行只在有未读时显示数字');
+  eq(/\.profile-feedback-entry\s*\{[^}]*margin-left:\s*auto/.test(profileWxss), true,
+    '反馈管理按钮右对齐');
+
   eq(adminAfterSalesWxml.includes('退款资金阻断'), true, '售后工作台顶部显示资金阻断告警');
   eq(adminAfterSalesWxml.includes('detail.case.failureReason'), true, '售后详情保留并展示退款失败原因');
   eq(adminAfterSalesWxml.includes('approveRefundLabel'), true, '异常售后单的按钮明确为重新发起退款');

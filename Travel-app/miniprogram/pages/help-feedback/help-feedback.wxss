@@ -22,7 +22,14 @@
 }
 
 .setting-row:last-child { border-bottom: none; }
+.setting-row-title { display: flex; align-items: center; gap: 10rpx; min-width: 0; }
 .setting-row-label { font-size: 28rpx; color: var(--color-ink); }
+.setting-pending-badge {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 32rpx; height: 32rpx; padding: 0 9rpx; box-sizing: border-box;
+  border-radius: 16rpx; background: #C0472A;
+  color: #FFFFFF; font-size: 20rpx; font-weight: 600; line-height: 1;
+}
 .setting-row-right { display: flex; align-items: center; gap: 8rpx; }
 .setting-row-hint { font-size: 24rpx; color: var(--color-muted); }
 

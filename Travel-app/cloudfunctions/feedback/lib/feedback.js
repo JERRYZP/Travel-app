@@ -112,12 +112,14 @@ function adminViewOf(doc, userMap = {}) {
 }
 
 async function list(db, userId) {
+  // 客户端用 asOf 回写已读水位，避免把查询开始后新到的管理员操作误清。
+  const asOf = new Date();
   const res = await db.collection(COLLECTIONS.FEEDBACKS)
     .where({ userId })
     .orderBy('createdAt', 'desc')
     .limit(50)
     .get();
-  return ok({ items: (res.data || []).map(listViewOf) });
+  return ok({ items: (res.data || []).map(listViewOf), asOf });
 }
 
 /**
@@ -126,6 +128,73 @@ async function list(db, userId) {
  */
 function adminStatus(userId) {
   return ok({ isAdmin: isAdmin(userId) });
+}
+
+/**
+ * entrySummary -- “我的”页反馈入口统计。
+ *
+ * 普通用户只拿到自己的未读处理数；管理员额外拿到待处理反馈数。
+ * 客户端短缓存该结果，避免每次 onShow 都查库。
+ */
+async function entrySummary(db, userId) {
+  const admin = isAdmin(userId);
+  const userRes = await db.collection(COLLECTIONS.USERS)
+    .where({ openId: userId })
+    .limit(1)
+    .get();
+  const userDoc = (userRes.data || [])[0] || {};
+  const seenAt = userDoc.feedbackSeenAt instanceof Date && !Number.isNaN(userDoc.feedbackSeenAt.getTime())
+    ? userDoc.feedbackSeenAt
+    : new Date(0);
+
+  const userUnreadQuery = db.collection(COLLECTIONS.FEEDBACKS)
+    .where({ userId, handledAt: db.command.gt(seenAt) });
+  const [userUnreadRes, adminPendingRes] = await Promise.all([
+    userUnreadQuery.count(),
+    admin
+      ? db.collection(COLLECTIONS.FEEDBACKS)
+        .where({ status: FeedbackStatus.OPEN })
+        .count()
+      : Promise.resolve({ total: 0 }),
+  ]);
+
+  return ok({
+    isAdmin: admin,
+    handledUnreadCount: Math.max(0, Number(userUnreadRes.total) || 0),
+    adminPendingCount: admin ? Math.max(0, Number(adminPendingRes.total) || 0) : 0,
+  });
+}
+
+/**
+ * markSeen -- 用户成功打开“我的反馈”后推进已读水位。
+ *
+ * through 取 feedback.list 返回的 asOf，而不是客户端当前时间。这样列表查询开始后
+ * 才发生的新回复或状态操作仍会保留为未读。
+ */
+async function markSeen(db, userId, { through } = {}) {
+  const requested = through ? new Date(through) : null;
+  if (!requested || Number.isNaN(requested.getTime())) return fail(ERRORS.BAD_PARAM);
+
+  const target = new Date(Math.min(requested.getTime(), Date.now()));
+  const found = await db.collection(COLLECTIONS.USERS)
+    .where({ openId: userId })
+    .limit(1)
+    .get();
+  const user = (found.data || [])[0];
+  if (!user) return ok({ feedbackSeenAt: target, updated: 0 });
+
+  const current = user.feedbackSeenAt instanceof Date ? user.feedbackSeenAt : new Date(0);
+  if (current.getTime() >= target.getTime()) {
+    return ok({ feedbackSeenAt: current, updated: 0 });
+  }
+
+  const res = await db.collection(COLLECTIONS.USERS).doc(user._id).update({
+    data: { feedbackSeenAt: target },
+  });
+  return ok({
+    feedbackSeenAt: target,
+    updated: res.stats ? res.stats.updated : 1,
+  });
 }
 
 /**
@@ -203,6 +272,7 @@ async function adminReply(db, userId, { id, reply } = {}) {
       adminReplyAt: now,
       adminReplyBy: userId,
       status: FeedbackStatus.PROCESSED,
+      handledAt: now,
       updatedAt: now,
     },
   });
@@ -219,8 +289,9 @@ async function adminUpdateStatus(db, userId, { id, status } = {}) {
   if (!isAdmin(userId)) return fail(ERRORS.FORBIDDEN);
   if (!id || typeof id !== 'string') return fail(ERRORS.BAD_PARAM);
   if (!Object.values(FeedbackStatus).includes(status)) return fail(ERRORS.BAD_PARAM);
+  const now = new Date();
   const res = await db.collection(COLLECTIONS.FEEDBACKS).doc(id).update({
-    data: { status, updatedAt: new Date() },
+    data: { status, handledAt: now, updatedAt: now },
   });
   return ok({ updated: res.stats ? res.stats.updated : 1 });
 }
@@ -230,6 +301,8 @@ module.exports = {
   submit,
   list,
   adminStatus,
+  entrySummary,
+  markSeen,
   adminList,
   adminReply,
   adminUpdateStatus,

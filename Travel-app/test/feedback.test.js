@@ -266,6 +266,7 @@ const USER = 'openid_test_001';
   console.log('\n=== 11. 本人列表隔离（不泄露管理端字段） ===');
   const mine = await feedback.list(db2, PAGE_USER);
   eq(mine.success, true, '本人 list 成功');
+  eq(mine.asOf instanceof Date, true, '本人 list 返回已读水位快照 asOf');
   eq(Object.prototype.hasOwnProperty.call(mine.items[0], 'adminReplyBy'), false, '不返回 adminReplyBy');
   eq(Object.prototype.hasOwnProperty.call(mine.items[0], 'userId'), false, '不返回 userId');
   hasKey(mine.items[0], 'adminReply', 'adminReply 字段存在');
@@ -275,6 +276,44 @@ const USER = 'openid_test_001';
   eq(repliedItem.status, 'PROCESSED', '用户能看到处理状态');
   const plainItem = mine.items.find(i => i._id === 'fb3');
   eq(plainItem.adminReply, '', '未回复的条目回复为空串');
+
+  console.log('\n=== 12. “我的”入口统计与已读水位 ===');
+  const userEntryBefore = await feedback.entrySummary(db2, PAGE_USER);
+  eq(userEntryBefore.success, true, '普通用户入口统计成功');
+  eq(userEntryBefore.isAdmin, false, '普通用户不暴露管理员身份');
+  eq(userEntryBefore.adminPendingCount, 0, '普通用户拿不到管理端待处理数');
+  eq(userEntryBefore.handledUnreadCount, 2, '管理员回复或改状态后，用户有 2 条未读');
+
+  const adminEntry = await feedback.entrySummary(db2, ADMIN);
+  eq(adminEntry.isAdmin, true, '管理员入口统计返回身份');
+  eq(adminEntry.handledUnreadCount, 0, '管理员本人的反馈未读数独立计算');
+  eq(adminEntry.adminPendingCount, 4, '管理端待处理数按 OPEN 统计');
+
+  const beforeSnapshot = await feedback.list(db2, PAGE_USER);
+  await new Promise(resolve => setTimeout(resolve, 2));
+  await feedback.adminUpdateStatus(db2, ADMIN, { id: 'fb3', status: 'PROCESSED' });
+  const partialSeen = await feedback.markSeen(db2, PAGE_USER, { through: beforeSnapshot.asOf });
+  eq(partialSeen.success, true, '按列表快照推进已读水位');
+  const afterPartial = await feedback.entrySummary(db2, PAGE_USER);
+  eq(afterPartial.handledUnreadCount, 1, '查询开始后才处理的一条仍保持未读');
+
+  await new Promise(resolve => setTimeout(resolve, 2));
+  const afterSnapshot = await feedback.list(db2, PAGE_USER);
+  const finalSeen = await feedback.markSeen(db2, PAGE_USER, { through: afterSnapshot.asOf });
+  eq(finalSeen.success, true, '打开我的反馈后再次推进已读水位');
+  eq((await feedback.entrySummary(db2, PAGE_USER)).handledUnreadCount, 0, '已查看后用户入口数字清零');
+  const staleSeen = await feedback.markSeen(db2, PAGE_USER, { through: beforeSnapshot.asOf });
+  eq(staleSeen.updated, 0, '更早的快照不会回退已读水位');
+  eq((await feedback.markSeen(db2, PAGE_USER, { through: 'not-a-date' })).errorCode, 1010,
+    '非法已读时间返回 1010');
+
+  await new Promise(resolve => setTimeout(resolve, 2));
+  await feedback.adminUpdateStatus(db2, ADMIN, { id: 'fb4', status: 'IGNORED' });
+  await feedback.adminUpdateStatus(db2, ADMIN, { id: 'fb4', status: 'PROCESSED' });
+  eq((await feedback.entrySummary(db2, PAGE_USER)).handledUnreadCount, 1,
+    '同一反馈多次处理只计一条未读');
+  eq((await feedback.entrySummary(db2, ADMIN)).adminPendingCount, 2,
+    '管理员处理后待处理数同步下降');
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);

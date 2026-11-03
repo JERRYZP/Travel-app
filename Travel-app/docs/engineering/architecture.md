@@ -151,6 +151,8 @@ reminder.membership.createOrder
 - 昵称和头像只能来自用户主动选择或系统生成占位，不能读取真实微信资料冒充。
 - 反馈分建议/Bug；信息纠错必须附景点、纠错类型和描述。
 - 反馈管理页只对白名单管理员开放。管理员可对单条反馈写一次回复（就地覆盖，不做多轮对话）：写 `adminReply / adminReplyAt / adminReplyBy` 并同时把状态置为 `PROCESSED`。回复正文与时间对提交者可见，回复人 OpenID 只在管理端返回。
+- “我的”页管理员入口位于用户信息卡右侧，不依赖长按。`feedback.entrySummary` 汇总管理员待处理数和当前用户未查看的处理数，客户端缓存 5 分钟。
+- 管理员回复或改状态时写 `feedbacks.handledAt`；用户成功打开「我的反馈」后，用 `feedback.list.asOf` 调用 `feedback.markSeen` 推进 `users.feedbackSeenAt`。未读按反馈条数去重，不按操作次数累加。
 
 ## 只读 Web 管理后台
 
