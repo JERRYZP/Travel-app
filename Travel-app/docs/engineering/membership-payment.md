@@ -45,6 +45,28 @@ API v3 事实链：
 
 iOS Apple 内购订单在订单展示接口中返回 `paymentChannel=APPLE`。会员页购买说明和支付确认层按设备区分文案：iOS 明确退款申请与审核由 Apple 独立处理，小程序客服无法决定结果，确认层只在条件句中提示可在 App Store 购买记录申请；Android 保留 24 小时未使用、客服核实口径。订单详情提供完整说明。Apple 审核期间会员与提醒名额继续有效，拒绝退款时不回收；只有 Apple 确认退款并推送退款结果、服务端再次查单确认后，才按订单权益快照回收，且不删除已有提醒。
 
+### 支付窗口拉不起来怎么查
+
+症状：用户点支付后没有出现微信 / Apple 支付面板，订单停在待支付。
+
+先排除一个假线索：**后台「支付渠道」显示「微信虚拟支付」不能说明用户是 Android 还是 iOS。** 该标签由 `paymentProvider=VIRTUAL_PAY` 触发；能判定 Apple 的 `channelOrderType`（订单类型 7 / 8）只在查单成功后才写入，待支付订单还没查过单，必然显示「微信虚拟支付」。判定逻辑见 `after-sales.js` 的 `paymentChannelOf`。
+
+真正的分界是订单的 `wxOrderId`：
+
+- 为空：微信侧没有建单，客户端 `wx.requestVirtualPayment` 没拉起来，属设备侧问题。
+- 有值：面板弹出过，卡在支付渠道侧或用户未完成。
+
+设备侧条件分两类：
+
+- **客户端读得到**：`wx.requestVirtualPayment` 是否存在（`virtualPayCapability`）、微信客户端版本（`getAppBaseInfo().version`）、系统版本（`getDeviceInfo().system`）。
+- **客户端读不到**：Apple ID 地区、Apple ID 支付方式。微信不开放，只能由用户在 App Store 侧自查或客服询问。
+
+所以 iOS 支付失败**不可能全部自动归因**，能覆盖的只有版本类问题。
+
+会员页在能力缺失时点支付只弹说明、不建单（`showPayUnsupported`）；拉起失败时失败卡按平台给出自查路径，并把当前微信版本与系统版本一起摊开（`payEnvTextOf`）——用户能对照自查，客服也不必再问一遍。设备条件文案的真身是 `payUnsupportedTipOf`（页面）和 `payHintOf`（支付确认组件），不要在别处复制第三份。
+
+版本信息**只用于展示，不参与拦截**。版本门槛（iOS 15 / 微信 8.0.68）来自本文档第 2 节和 `payment-virtual-runbook.md`，没有和微信官方原文逐条复核过；拿没核实的阈值拦真实用户，可能把本来能付款的人挡在外面。拦截只用「`wx.requestVirtualPayment` 是否存在」这一条确定事实。
+
 ### 会员购买断路器
 
 - `payment_config/membership_sales` 是唯一配置真身，`state=OPEN|PAUSED`。它独立于会员限制模式，不能拿限制模式代替停售。

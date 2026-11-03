@@ -195,6 +195,43 @@ async function run() {
   paymentMode = 'success';
   createResponse = null;
 
+  console.log('\n=== 6. 能力检测区分「API 不存在」与「微信拒绝拉起」 ===');
+  const capable = membershipPay.virtualPayCapability();
+  eq(capable.supported, true, 'requestVirtualPayment 存在时判定为支持');
+  eq(capable.reason, '', '支持时不带原因文案');
+
+  const savedRequestVirtualPayment = global.wx.requestVirtualPayment;
+  delete global.wx.requestVirtualPayment;
+  const incapable = membershipPay.virtualPayCapability();
+  eq(incapable.supported, false, 'API 缺失时判定为不支持');
+  eq(incapable.reason, '当前微信版本暂不支持虚拟支付', '不支持时给出可直接展示给用户的原因');
+
+  calls.length = 0;
+  queryCount = 0;
+  createResponse = {
+    paymentProvider: 'VIRTUAL_PAY',
+    virtualPayment: {
+      mode: 'short_series_goods',
+      signData: '{"offerId":"offer"}',
+      paySig: 'pay-sig',
+      signature: 'user-signature',
+    },
+  };
+  let unsupportedErr = null;
+  try {
+    await membershipPay.purchase('member');
+  } catch (err) {
+    unsupportedErr = err;
+  }
+  eq(unsupportedErr && unsupportedErr.unsupported, true,
+    'API 缺失时抛出 unsupported 标记，页面据此区分文案');
+  eq(unsupportedErr && unsupportedErr.errorCode, 1023, '能力缺失沿用既有错误码');
+  eq(calls.join(','), 'createOrder,create', '拉不起支付窗口时不进入查单');
+
+  global.wx.requestVirtualPayment = savedRequestVirtualPayment;
+  createResponse = null;
+  membershipPay.clearPendingOrder('order_1');
+
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);
 }

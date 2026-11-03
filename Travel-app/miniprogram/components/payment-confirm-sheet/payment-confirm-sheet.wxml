@@ -14,6 +14,7 @@
       <text>本商品为即时交付的虚拟服务，支付成功后立即生效。</text>
       <text>不自动续费，不会删除已有提醒，不保证景点有票。</text>
     </view>
+    <text wx:if="{{payHint}}" class="pcs-hint">{{payHint}}</text>
     <text wx:if="{{feedback}}" class="pcs-feedback">{{feedback}}</text>
     <view class="pcs-legal">
       <view class="pcs-consent">

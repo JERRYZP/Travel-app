@@ -118,6 +118,9 @@
 .sales-paused-card { display: flex; flex-direction: column; gap: 10rpx; margin-top: 28rpx; padding: 24rpx 22rpx; border: 1rpx solid #D8A08E; border-radius: 16rpx; background: #FFF1EC; }
 .sales-paused-title { color: #A7462B; font-size: 25rpx; font-weight: 600; }
 .sales-paused-desc { color: #8F4B37; font-size: 21rpx; line-height: 1.6; }
+.pay-capability-note { display: flex; flex-direction: column; gap: 10rpx; margin-top: 24rpx; padding: 22rpx; border: 1rpx solid #E6C0B3; border-radius: 16rpx; background: #FFF4F0; }
+.pay-capability-title { color: #A7462B; font-size: 25rpx; font-weight: 600; }
+.pay-capability-desc { color: #8F4B37; font-size: 21rpx; line-height: 1.6; }
 .pay-btn { height: 84rpx; margin-top: 24rpx; border-radius: 18rpx; background: var(--color-primary); color: #FFFEFB; font-size: 27rpx; font-weight: 600; display: flex; align-items: center; justify-content: center; }
 .pay-btn.disabled { background: var(--color-placeholder); }
 

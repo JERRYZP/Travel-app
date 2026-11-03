@@ -1,3 +1,16 @@
+/**
+ * 支付窗口没弹出来时的自查路径。
+ *
+ * 本组件是会员页和景点补录浮层的唯一共用点，提示只写在这里就不会各存一份。
+ * 这句话描述的是「点了支付但什么都没发生」这个现象，和页面上「设备不支持」
+ * 是两种场景，所以按现象措辞，不下能力结论。
+ */
+function payHintOf(isIos) {
+  return isIos
+    ? '若点击支付后没有出现 Apple 支付窗口，请确认微信已更新到最新版本、iPhone 系统为 iOS 15 及以上、Apple ID 为中国大陆账号。'
+    : '若点击支付后没有出现支付窗口，请将微信更新到最新版本后重试。';
+}
+
 Component({
   properties: {
     show: { type: Boolean, value: false },
@@ -12,6 +25,7 @@ Component({
 
   data: {
     isIosDevice: false,
+    payHint: '',
     agreementAccepted: false,
   },
 
@@ -23,16 +37,19 @@ Component({
 
   lifetimes: {
     attached() {
+      let isIos = false;
       try {
         const info = wx.getDeviceInfo
           ? wx.getDeviceInfo()
           : (wx.getSystemInfoSync ? wx.getSystemInfoSync() : {});
-        this.setData({
-          isIosDevice: String((info && info.platform) || '').toLowerCase() === 'ios',
-        });
+        isIos = String((info && info.platform) || '').toLowerCase() === 'ios';
       } catch (err) {
-        this.setData({ isIosDevice: false });
+        isIos = false;
       }
+      this.setData({
+        isIosDevice: isIos,
+        payHint: payHintOf(isIos),
+      });
     },
   },
 

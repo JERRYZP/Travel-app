@@ -73,10 +73,32 @@ function loginCode() {
   });
 }
 
+/**
+ * 客户端是否具备拉起虚拟支付的能力。
+ *
+ * 只能判断 API 是否存在——它缺失就意味着微信版本过低，这是客户端能自证的
+ * 唯一条件。iOS 版本、Apple ID 地区这类真机条件客户端查不到，只能由微信在
+ * 拉起时否决。调用方据此在进入支付流程前给出可执行提示，而不是等失败再猜。
+ */
+function virtualPayCapability() {
+  const supported = typeof wx !== 'undefined'
+    && typeof wx.requestVirtualPayment === 'function';
+  return {
+    supported,
+    reason: supported ? '' : '当前微信版本暂不支持虚拟支付',
+  };
+}
+
 function requestVirtualPayment(payment, orderId) {
   return new Promise((resolve, reject) => {
-    if (typeof wx === 'undefined' || typeof wx.requestVirtualPayment !== 'function') {
-      reject({ errorCode: 1023, error: '当前微信版本暂不支持虚拟支付', orderId });
+    if (!virtualPayCapability().supported) {
+      // unsupported 与「微信拒绝拉起」都是 1023，调用方需要分开提示。
+      reject({
+        errorCode: 1023,
+        error: '当前微信版本暂不支持虚拟支付',
+        orderId,
+        unsupported: true,
+      });
       return;
     }
     wx.requestVirtualPayment({
@@ -237,6 +259,7 @@ module.exports = {
   payExistingOrder,
   requestPayment,
   requestVirtualPayment,
+  virtualPayCapability,
   newRequestId,
   waitForPaid,
   paidResultOf,

@@ -26,6 +26,55 @@ function isIosDevice() {
   }
 }
 
+/**
+ * 支付能力不足时的排查指引。
+ *
+ * 弹窗、页面说明和失败状态卡共用这一份文案——同样的内容写三遍是漂移的起点。
+ * 微信版本不写死具体数字：用户看到「8.0.68」也无从对照，给「最新版本」是
+ * 他能直接执行的唯一动作。iOS 15 和 Apple ID 地区是稳定硬条件，照写。
+ */
+function payUnsupportedTipOf(isIos) {
+  return isIos
+    ? '请确认 iPhone 系统为 iOS 15 及以上，并将微信更新到最新版本后重试。'
+    : '请将微信更新到最新版本后重试。';
+}
+
+/**
+ * 当前支付环境的一句话描述，如「当前环境 微信 8.0.47 / iOS 16.6。」。
+ *
+ * 微信版本和系统版本都读得到；Apple ID 地区读不到——iOS 支付失败不可能全部
+ * 自动归因。显示出来是为了让用户能对照自查，也让客服不必再问一遍版本号。
+ *
+ * 只用于展示，不用于拦截：版本门槛（iOS 15 / 微信 8.0.68）来自项目 runbook，
+ * 没有和微信官方原文复核过，拿没核实的阈值拦真实用户，可能把本来能付款的人
+ * 挡在外面。拦截只用「API 存不存在」这条确定事实。
+ */
+function payEnvTextOf() {
+  try {
+    if (typeof wx === 'undefined') return '';
+    // 老基础库没有 getAppBaseInfo / getDeviceInfo，统一退回 getSystemInfoSync。
+    // 惰性求值：两个新 API 都在时不碰老接口。
+    const legacyOf = () => (typeof wx.getSystemInfoSync === 'function'
+      ? wx.getSystemInfoSync()
+      : {});
+    const appBase = typeof wx.getAppBaseInfo === 'function'
+      ? wx.getAppBaseInfo()
+      : legacyOf();
+    const device = typeof wx.getDeviceInfo === 'function'
+      ? wx.getDeviceInfo()
+      : legacyOf();
+    const parts = [];
+    const wechatVersion = String((appBase && appBase.version) || '').trim();
+    const systemVersion = String((device && device.system) || '').trim();
+    if (wechatVersion) parts.push(`微信 ${wechatVersion}`);
+    if (systemVersion) parts.push(systemVersion);
+    return parts.length ? `当前环境 ${parts.join(' / ')}。` : '';
+  } catch (err) {
+    // 读不到版本不能连累支付失败提示本身。
+    return '';
+  }
+}
+
 function expectedExpiryOf(pkg, membership, now = Date.now()) {
   const currentMs = new Date((membership && membership.memberExpiresAt) || 0).getTime();
   const validCurrent = Number.isFinite(currentMs) && currentMs > now ? currentMs : now;
@@ -56,6 +105,8 @@ Page({
     loadFailed: false,
     purchasing: false,
     isIosDevice: false,
+    payCapability: { supported: true, reason: '' },
+    payUnsupportedTip: '',
     membership: null,
     sales: null,
     packages: [],
@@ -80,10 +131,13 @@ Page({
     const g = app.globalData;
     const requestedPackageId = String((options && options.packageId) || '');
     this._preferredPackageId = requestedPackageId;
+    const ios = isIosDevice();
     this.setData({
       statusBarHeight: g.statusBarHeight,
       navBarHeight: g.navBarHeight,
-      isIosDevice: isIosDevice(),
+      isIosDevice: ios,
+      payCapability: membershipPay.virtualPayCapability(),
+      payUnsupportedTip: payUnsupportedTipOf(ios),
     });
   },
 
@@ -381,10 +435,29 @@ Page({
     wx.navigateTo({ url: '/pages/membership-orders/membership-orders' });
   },
 
+  /**
+   * 能力不足时不进入下单流程，直接说明原因。
+   *
+   * 走完整下单再失败，用户看到的只是一个订单和一句「支付未完成」，
+   * 既不知道设备不支持，也不知道该改什么。
+   */
+  showPayUnsupported() {
+    wx.showModal({
+      title: '当前设备无法完成购买',
+      content: this.data.payUnsupportedTip,
+      showCancel: false,
+      confirmText: '知道了',
+    });
+  },
+
   onPay() {
     if (this.data.purchasing) return;
     if (this.data.sales && this.data.sales.purchaseEnabled === false) {
       wx.showToast({ title: this.data.sales.message || '会员购买暂停中', icon: 'none' });
+      return;
+    }
+    if (!this.data.payCapability.supported) {
+      this.showPayUnsupported();
       return;
     }
     const pkg = this.data.selectedPackage;
@@ -484,12 +557,21 @@ Page({
         );
         return;
       }
+      if (err && err.errorCode === 1032) {
+        this.setPaymentState(
+          'FAILED',
+          '支付未完成',
+          err.error || '会员购买暂停中，请稍后再试。',
+          err && err.orderId
+        );
+        return;
+      }
+      // 拉起不了支付窗口是设备侧问题，必须把排查路径写出来。
+      // 让用户对着「支付未完成」反复重试，等于什么也没告诉他。
       this.setPaymentState(
         'FAILED',
-        '支付未完成',
-        err && err.errorCode === 1032
-          ? (err.error || '会员购买暂停中，请稍后再试。')
-          : '尚未发放权益；如微信已扣款，请打开订单同步支付结果。',
+        err && err.unsupported ? '当前设备无法完成购买' : '支付窗口没能打开',
+        `${payEnvTextOf()}${this.data.payUnsupportedTip}本次尚未发放权益；如微信已扣款，请打开订单详情同步支付结果。`,
         err && err.orderId
       );
     });
@@ -505,3 +587,5 @@ Page({
     wx.navigateBack();
   },
 });
+
+module.exports = { payEnvTextOf };
