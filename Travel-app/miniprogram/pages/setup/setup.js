@@ -420,7 +420,9 @@ Page({
       this.stopPaymentAutoRefresh();
       membershipPay.clearPendingOrder(saved.orderId);
       if (restored.status === 'PAID_GRANTED') {
-        return this.loadCartAndAccess().then(() => {
+        /* 权益到账会改变会员名额；必须绕过页面 5 分钟 bootstrap 缓存，
+           否则这里仍会拿支付前的免费额度重算闸门。 */
+        return this.loadCartAndAccess({ force: true }).then(() => {
           this.setPaymentState(
             'PAID_GRANTED',
             '权益已到账',
@@ -586,7 +588,8 @@ Page({
       this._upgrading = false;
       if (result.status === 'PAID_GRANTED') {
         this.setPaymentState('PAID_GRANTED', '权益已到账', '正在继续完成本次提醒。', result.orderId);
-        return this.loadCartAndAccess().then(() => {
+        /* 支付成功后会员额度已在服务端生效，不能沿用支付前的页面缓存。 */
+        return this.loadCartAndAccess({ force: true }).then(() => {
           setTimeout(() => {
             if (this.data.showMembershipGate) {
               this.setPaymentState('PAID_GRANTED', '权益已到账', '当前清单仍需增加名额，请再选择一次。', result.orderId);

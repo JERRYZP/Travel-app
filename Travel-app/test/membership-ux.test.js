@@ -217,6 +217,10 @@ async function run() {
     '景点设提醒入口提供更稳的安卓纵向热区');
   eq(setupWxml.includes('本次新建 {{membershipQuotaRequested}} 个，还差 {{membershipQuotaGap}} 个'),
     true, '支付卡展示本次新建数和缺口');
+  eq(/if \(restored\.status === 'PAID_GRANTED'\)[\s\S]{0,260}this\.loadCartAndAccess\(\{ force: true \}\)/.test(setupJs),
+    true, '恢复已支付订单后强制刷新会员额度，不使用支付前缓存');
+  eq(/if \(result\.status === 'PAID_GRANTED'\)[\s\S]{0,260}this\.loadCartAndAccess\(\{ force: true \}\)/.test(setupJs),
+    true, '支付成功继续原提醒前强制刷新会员额度');
   eq(setupWxml.indexOf('membership-gate-desc') < setupWxml.indexOf('membership-gate-action'), true,
     '会员说明在上、支付按钮在下，长文案不再挤在右侧');
   eq(reminderAuthWxml.includes('放票提醒授权'), true, '统一浮层包含放票提醒授权区');
