@@ -271,8 +271,282 @@ async function testExpiredUnpaidVirtualOrderCloses() {
   }
 }
 
-function testNotifyParsing() {
-  console.log('\n=== 3. 消息推送解析与响应 ===');
+const VIRTUAL_PAY_ENV = {
+  PAYMENT_PROVIDER: 'VIRTUAL_PAY',
+  WECHAT_APP_ID: 'wx05c160a589b97d76',
+  WECHAT_APP_SECRET: 'app-secret',
+  WECHAT_VIRTUAL_PAY_ENV: '0',
+  WECHAT_VIRTUAL_PAY_OFFER_ID: 'offer-test',
+  WECHAT_VIRTUAL_PAY_PRODUCTION_APP_KEY: '12345',
+  WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER: 'member-product',
+  WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK: 'pack-product',
+};
+
+function virtualOrderFixture(overrides = {}) {
+  return {
+    paymentProvider: 'VIRTUAL_PAY',
+    virtualEnv: 0,
+    packageId: 'member',
+    productType: 'MEMBER',
+    specVersion: 'member-30d-v2',
+    virtualProductId: 'member-product',
+    title: '会员 30 天',
+    amountFen: 300,
+    memberDays: 30,
+    memberFloorDays: 0,
+    status: OrderStatus.PENDING,
+    refundStatus: RefundStatus.NONE,
+    grantStatus: GrantStatus.NONE,
+    paidAt: null,
+    ...overrides,
+  };
+}
+
+async function withVirtualQueryStub(stub, run) {
+  const previousEnv = { ...process.env };
+  const original = virtualPay.queryPaymentOrder;
+  Object.assign(process.env, VIRTUAL_PAY_ENV);
+  virtualPay.queryPaymentOrder = stub;
+  try {
+    return await run();
+  } finally {
+    virtualPay.queryPaymentOrder = original;
+    for (const key of Object.keys(process.env)) if (!(key in previousEnv)) delete process.env[key];
+    Object.assign(process.env, previousEnv);
+  }
+}
+
+function runReconcileRound(payment) {
+  return payment._test.reconcile({
+    batchSize: 10,
+    totalBudgetMs: 1000,
+    queueBudgetMs: 500,
+    now: Date.now,
+  });
+}
+
+async function testQueryFailureClosesExpiredOrderAfterGrace() {
+  console.log('\n=== 2b. 查单一直失败、过期超过宽限期后强制收口 ===');
+  const db = createDb();
+  const now = Date.now();
+  db._seed(COLLECTIONS.ORDERS, [virtualOrderFixture({
+    _id: 'ov-query-failed',
+    userId: 'openid-query-failed',
+    outTradeNo: 'TVIRTQUERYFAILED',
+    createdAt: new Date(now - 60 * 60 * 1000),
+    expiresAt: new Date(now - 40 * 60 * 1000),
+  })]);
+
+  await withVirtualQueryStub(async () => {
+    throw new Error('虚拟支付查单失败：订单不存在');
+  }, async () => {
+    const payment = loadPayment(db);
+    await runReconcileRound(payment);
+    const order = db._dump(COLLECTIONS.ORDERS)[0];
+    eq(order.status, OrderStatus.CLOSED, '查单失败且过期超过宽限期后关闭订单');
+    eq(order.closeReason, 'VIRTUAL_PAY_QUERY_FAILED', '关闭原因标记查单失败');
+    eq(order.reconcileFailCount, 1, '留存查单失败次数');
+    eq(/订单不存在/.test(order.reconcileError || ''), true, '留存最后一次查单错误');
+  });
+}
+
+async function testQueryFailureKeepsPendingWithinGrace() {
+  console.log('\n=== 2c. 查单失败但仍在宽限期内时保留待支付 ===');
+  const db = createDb();
+  const now = Date.now();
+  db._seed(COLLECTIONS.ORDERS, [virtualOrderFixture({
+    _id: 'ov-query-pending',
+    userId: 'openid-query-pending',
+    outTradeNo: 'TVIRTQUERYPENDING',
+    createdAt: new Date(now - 20 * 60 * 1000),
+    expiresAt: new Date(now - 5 * 60 * 1000),
+  })]);
+
+  await withVirtualQueryStub(async () => {
+    throw new Error('虚拟支付查单失败：网络超时');
+  }, async () => {
+    const payment = loadPayment(db);
+    await runReconcileRound(payment);
+    const order = db._dump(COLLECTIONS.ORDERS)[0];
+    eq(order.status, OrderStatus.PENDING, '宽限期内不关单，继续等下一轮重试');
+    eq(order.reconcileFailCount, 1, '宽限期内也要记录失败次数');
+    eq(order.closeReason, undefined, '宽限期内不写关闭原因');
+  });
+}
+
+async function testUnknownPlatformStatusClosedWhenExpired() {
+  console.log('\n=== 2d. 平台返回未知状态时过期也要收口 ===');
+  const db = createDb();
+  const now = Date.now();
+  db._seed(COLLECTIONS.ORDERS, [virtualOrderFixture({
+    _id: 'ov-unknown-status',
+    userId: 'openid-unknown-status',
+    outTradeNo: 'TVIRTUNKNOWNSTATUS',
+    createdAt: new Date(now - 40 * 60 * 1000),
+    expiresAt: new Date(now - 25 * 60 * 1000),
+  })]);
+
+  await withVirtualQueryStub(async ({ order }) => ({
+    order_id: order.outTradeNo,
+    order_type: virtualPay.VirtualOrderType.APPLE,
+    status: virtualPay.VirtualOrderStatus.REFUND_MERCHANT_DONE,
+    order_fee: 300,
+  }), async () => {
+    const payment = loadPayment(db);
+    await runReconcileRound(payment);
+    const order = db._dump(COLLECTIONS.ORDERS)[0];
+    eq(order.status, OrderStatus.CLOSED, '未知平台状态且本地过期后仍关闭订单');
+    eq(order.closeReason, 'VIRTUAL_PAY_EXPIRED_UNPAID', '关闭原因仍标记过期未支付');
+  });
+}
+
+async function testClosedExpiredOrderStillGrantsAfterPayment() {
+  console.log('\n=== 2e. 已关闭的过期订单查单确认支付后仍补发权益 ===');
+  const db = createDb();
+  const now = Date.now();
+  db._seed(COLLECTIONS.USERS, [{
+    _id: 'u-late-paid', openId: 'openid-late-paid', memberLevel: 'NORMAL',
+    memberExpiresAt: null, taskPackCount: 0, lastReminderCreatedAt: null,
+  }]);
+  db._seed(COLLECTIONS.ORDERS, [virtualOrderFixture({
+    _id: 'ov-late-paid',
+    userId: 'openid-late-paid',
+    outTradeNo: 'TVIRTLATEPAID',
+    status: OrderStatus.CLOSED,
+    closedAt: new Date(now - 30 * 60 * 1000),
+    closeReason: 'VIRTUAL_PAY_QUERY_FAILED',
+    createdAt: new Date(now - 60 * 60 * 1000),
+    expiresAt: new Date(now - 45 * 60 * 1000),
+  })]);
+
+  await withVirtualQueryStub(async ({ order }) => ({
+    order_id: order.outTradeNo,
+    order_type: virtualPay.VirtualOrderType.APPLE,
+    status: virtualPay.VirtualOrderStatus.PAID,
+    order_fee: 300,
+    wxpay_order_id: '4200000002',
+  }), async () => {
+    const payment = loadPayment(db);
+    // 已关闭订单不在待支付补偿队列里，收口只能由平台消息或查单主动触发。
+    await payment._test.syncOrder(db._dump(COLLECTIONS.ORDERS)[0]);
+    const order = db._dump(COLLECTIONS.ORDERS)[0];
+    eq(order.status, OrderStatus.PAID, '关单后平台确认支付可收口回已支付');
+    eq(order.grantStatus, GrantStatus.GRANTED, '收口回已支付时补发权益');
+  });
+}
+
+async function testDuplicateCaseSkipsAppleOrder() {
+  console.log('\n=== 2f. 重复支付不给 Apple 订单建工单 ===');
+  const db = createDb();
+  const now = Date.now();
+  db._seed(COLLECTIONS.USERS, [{
+    _id: 'u-dup-apple', openId: 'openid-dup-apple', memberLevel: 'MEMBER',
+    memberExpiresAt: new Date(now + 30 * 86400000), taskPackCount: 0,
+    lastReminderCreatedAt: null,
+  }]);
+  db._seed(COLLECTIONS.ORDERS, [
+    virtualOrderFixture({
+      _id: 'ov-dup-apple-1',
+      userId: 'openid-dup-apple',
+      outTradeNo: 'TVIRTDUPAPPLE1',
+      status: OrderStatus.PAID,
+      grantStatus: GrantStatus.GRANTED,
+      channelOrderType: virtualPay.VirtualOrderType.APPLE,
+      paidAt: new Date(now - 20000),
+    }),
+    virtualOrderFixture({
+      _id: 'ov-dup-apple-2',
+      userId: 'openid-dup-apple',
+      outTradeNo: 'TVIRTDUPAPPLE2',
+      status: OrderStatus.PAID,
+      grantStatus: GrantStatus.GRANTED,
+      channelOrderType: virtualPay.VirtualOrderType.APPLE,
+      paidAt: new Date(now - 5000),
+    }),
+  ]);
+
+  await withVirtualQueryStub(async ({ order }) => ({
+    order_id: order.outTradeNo,
+    order_type: virtualPay.VirtualOrderType.APPLE,
+    status: virtualPay.VirtualOrderStatus.PAID,
+    order_fee: 300,
+  }), async () => {
+    const payment = loadPayment(db);
+    const targetOrder = db._dump(COLLECTIONS.ORDERS).find(item => item._id === 'ov-dup-apple-2');
+    const created = await payment._test.queueDuplicateChargeCase(targetOrder);
+    eq(created.skipped, true, 'Apple 重复支付不建工单');
+    eq(created.reason, 'APPLE_CHANNEL', '跳过原因标记 Apple 渠道');
+    eq(db._dump(COLLECTIONS.AFTER_SALES_CASES).length, 0, 'Apple 重复支付没有产生任何售后单');
+    const order = db._dump(COLLECTIONS.ORDERS).find(item => item._id === 'ov-dup-apple-2');
+    eq(order.refundStatus, RefundStatus.NONE, 'Apple 订单退款状态保持不变');
+  });
+}
+
+async function testSystemDuplicateCaseStaysInvisible() {
+  console.log('\n=== 2g. 系统自查重复单不写用户侧任何状态 ===');
+  const db = createDb();
+  const now = Date.now();
+  db._seed(COLLECTIONS.USERS, [{
+    _id: 'u-dup-android', openId: 'openid-dup-android', memberLevel: 'MEMBER',
+    memberExpiresAt: new Date(now + 30 * 86400000), taskPackCount: 1,
+    taskPackSlots: 10, lastReminderCreatedAt: null,
+  }]);
+  db._seed(COLLECTIONS.ORDERS, [
+    virtualOrderFixture({
+      _id: 'ov-dup-android-1',
+      userId: 'openid-dup-android',
+      outTradeNo: 'TVIRTDUPANDROID1',
+      status: OrderStatus.PAID,
+      grantStatus: GrantStatus.GRANTED,
+      channelOrderType: virtualPay.VirtualOrderType.NORMAL,
+      paidAt: new Date(now - 20000),
+    }),
+    virtualOrderFixture({
+      _id: 'ov-dup-android-2',
+      userId: 'openid-dup-android',
+      outTradeNo: 'TVIRTDUPANDROID2',
+      status: OrderStatus.PAID,
+      grantStatus: GrantStatus.GRANTED,
+      channelOrderType: virtualPay.VirtualOrderType.NORMAL,
+      paidAt: new Date(now - 5000),
+    }),
+  ]);
+
+  await withVirtualQueryStub(async ({ order }) => ({
+    order_id: order.outTradeNo,
+    order_type: virtualPay.VirtualOrderType.NORMAL,
+    status: virtualPay.VirtualOrderStatus.PAID,
+    order_fee: 300,
+  }), async () => {
+    const payment = loadPayment(db);
+    const targetOrder = db._dump(COLLECTIONS.ORDERS).find(item => item._id === 'ov-dup-android-2');
+    const created = await payment._test.queueDuplicateChargeCase(targetOrder);
+    eq(created.success, true, '安卓重复支付仍然建单供人工核验');
+
+    const cases = db._dump(COLLECTIONS.AFTER_SALES_CASES);
+    eq(cases.length, 1, '只建一条重复支付工单');
+    eq(cases[0].status, CaseStatus.AUTO_CHECKING, '系统自查单进入自动核验');
+    eq(cases[0].evidence.reviewOnly, true, '系统自查单标记为只核验不退款');
+    eq(cases[0].refundStatus, RefundStatus.NONE, '系统自查单不声明退款请求');
+
+    const order = db._dump(COLLECTIONS.ORDERS).find(item => item._id === 'ov-dup-android-2');
+    eq(order.refundStatus, RefundStatus.NONE, '用户订单退款状态保持未申请');
+    eq(order.activeAfterSalesCaseId, undefined, '系统自查单不占用用户的售后指针');
+
+    const visible = await payment._test.listUserCases(db, 'openid-dup-android');
+    eq((visible.items || []).length, 0, '系统自查单不出现在用户售后列表');
+
+    await payment._test.reconcile({
+      batchSize: 10, totalBudgetMs: 1000, queueBudgetMs: 500, now: Date.now,
+    });
+    const reviewed = db._dump(COLLECTIONS.AFTER_SALES_CASES)[0];
+    eq(reviewed.status, CaseStatus.UNDER_REVIEW, '核验后转人工，不自动退款');
+    const afterRound = db._dump(COLLECTIONS.ORDERS).find(item => item._id === 'ov-dup-android-2');
+    eq(afterRound.refundStatus, RefundStatus.NONE, '自动核验不会改动订单退款状态');
+  });
+}
+
+function testNotifyParsing() {  console.log('\n=== 3. 消息推送解析与响应 ===');
   const xml = '<xml><Event>xpay_goods_deliver_notify</Event><OpenId>openid-1</OpenId>' +
     '<OutTradeNo>TVIRT001</OutTradeNo><Env>0</Env></xml>';
   const parsed = virtualNotify.parseBody(xml);
@@ -878,6 +1152,12 @@ async function run() {
   await testProviderAndSignatures();
   await testAccessTokenRefresh();
   await testExpiredUnpaidVirtualOrderCloses();
+  await testQueryFailureClosesExpiredOrderAfterGrace();
+  await testQueryFailureKeepsPendingWithinGrace();
+  await testUnknownPlatformStatusClosedWhenExpired();
+  await testClosedExpiredOrderStillGrantsAfterPayment();
+  await testDuplicateCaseSkipsAppleOrder();
+  await testSystemDuplicateCaseStaysInvisible();
   testNotifyParsing();
   await testVirtualMessageIntegration();
   await testRefundNotification();

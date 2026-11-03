@@ -65,7 +65,7 @@ Page({
         if (order.canRequestRefund) {
           options.push({ type: 'UNUSED_REFUND', label: TYPE_LABEL.UNUSED_REFUND, desc: '支付后未新增任何提醒，且仍在 24 小时内。' });
         }
-        options.push({ type: 'DUPLICATE_CHARGE', label: TYPE_LABEL.DUPLICATE_CHARGE, desc: '同商品 10 分钟内重复购买，系统会核验。' });
+        options.push({ type: 'DUPLICATE_CHARGE', label: TYPE_LABEL.DUPLICATE_CHARGE, desc: '同商品 1 分钟内重复购买，系统会核验。' });
         options.push({ type: 'ENTITLEMENT_MISMATCH', label: TYPE_LABEL.ENTITLEMENT_MISMATCH, desc: '实际权益与购买页说明不一致。' });
         options.push({ type: 'OTHER', label: TYPE_LABEL.OTHER, desc: '订单异常、权益不符或其他售后问题。' });
       }

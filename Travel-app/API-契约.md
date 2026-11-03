@@ -138,7 +138,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     releaseTime: "20:00",
     closedDays: ["monday"],
     releaseStatus: "NOT_RELEASED" | "BOOKABLE" | "FULL",
-    earliestDate: "2026-08-12",       // 最早可约日期
+    earliestDate: "2026-08-12",       // 最早可约日期 = 今天 + advanceDays；该日闭馆则向前回退到最近可约日，不向后顺延
     officialAppid: "wx...",            // 可直跳小程序
     officialPath: "pages/...",
     officialWebUrl: "https://...",

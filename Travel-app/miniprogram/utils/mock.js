@@ -204,12 +204,14 @@ function computeReleaseStatus(rule, now = new Date()) {
   if (p.hour * 60 + p.minute < h * 60 + m) return 'NOT_RELEASED';
   return 'BOOKABLE';
 }
+/** 与云端 computeEarliestDate 同口径：不可约时向前回退，不顺延。 */
 function computeEarliestDate(rule, now = new Date()) {
   if (!rule || !rule.advanceDays) return null;
-  let target = addDays(toDateStr(now), rule.advanceDays);
-  for (let i = 0; i < 7; i += 1) {
+  const advanceDays = Number(rule.advanceDays);
+  let target = addDays(toDateStr(now), advanceDays);
+  for (let i = 0; i <= advanceDays; i += 1) {
     if (isOpenOn(rule, dayNameOf(target))) return target;
-    target = addDays(target, 1);
+    target = addDays(target, -1);
   }
   return null;
 }
@@ -3135,7 +3137,7 @@ const handlers = {
       refundStatus: data.type === 'UNUSED_REFUND'
         ? 'UNDER_REVIEW'
         : (data.type === 'DUPLICATE_CHARGE' ? 'REQUESTED' : 'NONE'),
-      evidence: { eligibility, duplicate: { duplicate: false, windowMinutes: 10 } },
+      evidence: { eligibility, duplicate: { duplicate: false, windowMinutes: 1 } },
       createdAt: new Date(),
       updatedAt: new Date(),
     };

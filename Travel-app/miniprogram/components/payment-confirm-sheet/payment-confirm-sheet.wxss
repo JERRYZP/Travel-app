@@ -77,6 +77,14 @@
   line-height: 1.55;
 }
 
+.pcs-hint {
+  display: block;
+  margin-top: 14rpx;
+  color: #8F4B37;
+  font-size: 21rpx;
+  line-height: 1.6;
+}
+
 .pcs-feedback {
   display: block;
   margin-top: 16rpx;

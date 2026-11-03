@@ -45,6 +45,28 @@ API v3 事实链：
 
 iOS Apple 内购订单在订单展示接口中返回 `paymentChannel=APPLE`。会员页购买说明和支付确认层按设备区分文案：iOS 明确退款申请与审核由 Apple 独立处理，小程序客服无法决定结果，确认层只在条件句中提示可在 App Store 购买记录申请；Android 保留 24 小时未使用、客服核实口径。订单详情提供完整说明。Apple 审核期间会员与提醒名额继续有效，拒绝退款时不回收；只有 Apple 确认退款并推送退款结果、服务端再次查单确认后，才按订单权益快照回收，且不删除已有提醒。
 
+### 支付窗口拉不起来怎么查
+
+症状：用户点支付后没有出现微信 / Apple 支付面板，订单停在待支付。
+
+先排除一个假线索：**后台「支付渠道」显示「微信虚拟支付」不能说明用户是 Android 还是 iOS。** 该标签由 `paymentProvider=VIRTUAL_PAY` 触发；能判定 Apple 的 `channelOrderType`（订单类型 7 / 8）只在查单成功后才写入，待支付订单还没查过单，必然显示「微信虚拟支付」。判定逻辑见 `after-sales.js` 的 `paymentChannelOf`。
+
+真正的分界是订单的 `wxOrderId`：
+
+- 为空：微信侧没有建单，客户端 `wx.requestVirtualPayment` 没拉起来，属设备侧问题。
+- 有值：面板弹出过，卡在支付渠道侧或用户未完成。
+
+设备侧条件分两类：
+
+- **客户端读得到**：`wx.requestVirtualPayment` 是否存在（`virtualPayCapability`）、微信客户端版本（`getAppBaseInfo().version`）、系统版本（`getDeviceInfo().system`）。
+- **客户端读不到**：Apple ID 地区、Apple ID 支付方式。微信不开放，只能由用户在 App Store 侧自查或客服询问。
+
+所以 iOS 支付失败**不可能全部自动归因**，能覆盖的只有版本类问题。
+
+会员页在能力缺失时点支付只弹说明、不建单（`showPayUnsupported`）；拉起失败时失败卡按平台给出自查路径，并把当前微信版本与系统版本一起摊开（`payEnvTextOf`）——用户能对照自查，客服也不必再问一遍。设备条件文案的真身是 `payUnsupportedTipOf`（页面）和 `payHintOf`（支付确认组件），不要在别处复制第三份。
+
+版本信息**只用于展示，不参与拦截**。版本门槛（iOS 15 / 微信 8.0.68）来自本文档第 2 节和 `payment-virtual-runbook.md`，没有和微信官方原文逐条复核过；拿没核实的阈值拦真实用户，可能把本来能付款的人挡在外面。拦截只用「`wx.requestVirtualPayment` 是否存在」这一条确定事实。
+
 ### 会员购买断路器
 
 - `payment_config/membership_sales` 是唯一配置真身，`state=OPEN|PAUSED`。它独立于会员限制模式，不能拿限制模式代替停售。
@@ -74,13 +96,19 @@ iOS Apple 内购订单在订单展示接口中返回 `paymentChannel=APPLE`。�
 - 虚拟支付退款推送处理 `xpay_refund_notify`；iOS 退款问询处理 `xpay_subscribe_ios_refund_query_notify`，后者必须在 3 秒内返回。Apple 退款查单返回 `status=5`（商户侧扣款完成）时先幂等补建/更新“处理中”售后记录，不提前回收权益；只有查单到 `status=8`（用户侧收款完成）才标记已退款并按订单快照回收。
 - 订单固化支付渠道与虚拟支付环境：API v3 在首次拉起支付前写入 `paymentProvider=WECHAT_PAY_V3`；虚拟支付写入 `paymentProvider=VIRTUAL_PAY`、`virtualEnv` 和 `virtualProductId`。历史订单查单、退款按订单快照选择渠道、环境和 AppKey。
 - 日志记录路由、`outTradeNo` / `outRefundNo`、公钥 ID、时间戳、原始 body SHA-256、验签结果和失败原因；不记录私钥、APIv3 密钥或完整签名。
-- 15 分钟未支付的本地订单会关闭；Apple 查单长期返回 `INIT/CREATED` 时，补偿在本地过期后按 `VIRTUAL_PAY_EXPIRED_UNPAID` 关闭，后续若平台确认实际支付仍可从 `CLOSED` 收口为 `PAID`。客户端确认取消后再次购买必须使用新的 `requestId`、订单 ID 和 `outTradeNo`。同一请求重试返回同一订单；不同请求只有在 `productType + specVersion + addedSlots + memberDays + amountFen` 全部一致且未过期时才复用待支付订单，旧规格订单条件关闭，不能按相同价格误复用。
+- 15 分钟未支付的本地订单会关闭；查单确认平台未支付且本地已过期时按 `VIRTUAL_PAY_EXPIRED_UNPAID` 关闭，后续若平台确认实际支付仍可从 `CLOSED` 收口为 `PAID`。判断不再要求平台明确返回 `INIT/CREATED`：排除“平台确认已支付”和“平台确认已关闭”之后，只要本地过期就收口，避免 5/7/8 等状态让订单永久停留在待支付。客户端确认取消后再次购买必须使用新的 `requestId`、订单 ID 和 `outTradeNo`。同一请求重试返回同一订单；不同请求只有在 `productType + specVersion + addedSlots + memberDays + amountFen` 全部一致且未过期时才复用待支付订单，旧规格订单条件关闭，不能按相同价格误复用。
+- 虚拟支付查单抛异常（平台没有这笔订单、接口报错）时不能原地无限重试。补偿先写失败证据 `reconcileError` / `reconcileErrorAt` / `reconcileFailCount`；本地订单过期满 30 分钟仍拿不到平台结论，按 `VIRTUAL_PAY_QUERY_FAILED` 关闭。虚拟支付配置缺失同样走这条路径，关闭原因 `VIRTUAL_PAY_CONFIG_MISSING`，不得再静默返回成功。
+- 关单不等于吞掉真实支付：已关闭且已过期的订单在任何一次查单或平台发货推送中都会重新核对，平台确认支付后从 `CLOSED` 收口为 `PAID` 并补发权益。已关闭订单不在待支付补偿队列里，收口依赖平台消息推送或一次主动查单，客服可用售后工作台的「同步支付结果」触发。
 - 虚拟支付当前没有可调用的平台关单接口；取消时先查单，只有平台未支付或已关闭才关闭本地订单。API v3 仍在确认未支付后调用微信关单接口。
 - 创建订单前使用 OpenID 确定性文档 ID 确保用户记录存在，避免并发首购生成重复用户后支付成功无法发放权益。
 - 提醒提交、行程项重新开启提醒、创建订单、权益发放和退款回收共用用户文档上的短期额度锁；锁含所有者和过期时间，有限重试并在 `finally` 释放。提醒修改先完成全部字段校验，再在同一事务内修改 `remindOn`、删除旧任务、创建新任务和更新 `lastReminderCreatedAt`。
 - 每 2 分钟定时扫描：`PENDING` 订单查单补偿、`PAID_GRANT_FAILED` 重试发放、自动售后核验、退款处理中/失败单同步。四类队列分别在 `payment_reconcile_state` 保存游标，每队列最多 50 条、10 秒，单次总预算 45 秒，超过 100 条时也能持续轮转到尾部。游标集合是可选加速能力：缺失时尝试自动创建；创建或读写仍失败时只降低轮转效率，必须继续扫描业务集合并推进退款，单队列异常也不能阻断后续退款队列。
+- 每轮补偿结束都写 `payment_config/reconcile_health`：`lastRunAt`、`lastDurationMs`、`skipped`、`reason`、`errors`、`queues`、`error`。正常轮次、`NO_RECONCILE_WORK` 跳过、`PAYMENT_NOT_READY` 跳过和异常轮次都写。**`lastRunAt` 不再更新说明定时器没跑；`lastRunAt` 在更新但 `errors > 0` 说明补偿在跑但一直失败。** 这是区分这两种故障的唯一稳定信号，排障时先看它再翻日志。
 - 查单成功但权益发放失败：订单保持 `PAID`，写 `grantStatus=FAILED`，自动生成高优先级 `RIGHTS_NOT_RECEIVED` 售后单，不要求用户重复支付。
-- 同用户同商品 10 分钟内出现两笔已支付订单时，自动识别较新的订单并进入售后队列；本单未新增提醒时由定时任务自动发起全额退款，已使用则转客服审核。
+- 同用户同商品 **1 分钟内**出现两笔已支付订单时，自动识别较新的订单并生成一条**只给客服看的核验工单**。窗口不能放大到分钟级之外：¥3 的提醒名额包连买两份是正常操作，10 分钟窗口会把用户主动买第二份误判成重复支付。
+- 系统自查的重复单**不自动退款，也不写订单状态**：建单时不置 `refundStatus`、不占用 `activeAfterSalesCaseId`，自动核验后只会转 `UNDER_REVIEW` 等人工判断；客服驳回时也只关工单、不把订单写成 `REJECTED`。用户没有申请过售后，打开订单必须仍是正常的「权益已到账」。
+- 系统自查单通过 `evidence.reviewOnly=true` 标记，并在 `afterSales.list` 里对用户隐藏；用户自己提交的售后单不受影响，照常可见可驳回。
+- **Apple 订单不生成重复支付工单**：iOS 退款只能由用户在 App Store 发起，服务端不能代退，客服也没有可执行动作，建单只会产生一条处理不了的记录。跳过时打 `[payment] skip duplicate charge case for apple order` 日志保留观测。`RIGHTS_NOT_RECEIVED`（我们没发权益）和平台退款补建记录不受此限，Apple 订单照常处理。
 
 支付主状态：
 

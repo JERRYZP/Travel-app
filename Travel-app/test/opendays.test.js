@@ -98,11 +98,16 @@ eq(computeReleaseStatus(rm.gugong, bj(2026, 9, 15, 21, 0)), 'BOOKABLE', '故宫 
 eq(computeReleaseStatus(rm['renmin-dahuitang'], bj(2026, 9, 14, 18, 0)), 'NOT_RELEASED', '大会堂 周一 → 闭馆不放票');
 eq(computeReleaseStatus(rm['renmin-dahuitang'], bj(2026, 9, 15, 18, 0)), 'BOOKABLE', '大会堂 周二 → 已放票');
 
-console.log('\n--- computeEarliestDate：顺延到下一个可约日 ---');
-eq(computeEarliestDate(rm['peking-university'], bj(2026, 9, 11, 10, 0)), '2026-09-19', '北大：周五+7=周五(白名单外)→顺延至周六 09-19');
-eq(computeEarliestDate(rm.tsinghua, bj(2026, 9, 11, 10, 0)), '2026-09-18', '清华：周五+7=周五可约，不顺延');
+console.log('\n--- computeEarliestDate：不可约时向前回退（不顺延） ---');
+eq(computeEarliestDate(rm['peking-university'], bj(2026, 9, 11, 10, 0)), '2026-09-13', '北大：周五+7=周五(白名单外)→回退至周日 09-13');
+eq(computeEarliestDate(rm.tsinghua, bj(2026, 9, 11, 10, 0)), '2026-09-18', '清华：周五+7=周五可约，不回退');
 eq(computeEarliestDate(rm.gugong, bj(2026, 9, 12, 10, 0)), '2026-09-19', '故宫：周六+7=周六可约');
 eq(computeEarliestDate(rm.gugong, bj(2026, 9, 13, 10, 0)), '2026-09-20', '故宫：周日+7=周日可约');
+// 回归：2026-11-03 周二，纪念堂提前 6 天 → 11-09 周一闭馆，真实可约是 11-08（线上曾显示 11-10）
+eq(computeEarliestDate(rm['maozhuxi-jiniantang'], bj(2026, 11, 3, 10, 0)), '2026-11-08', '纪念堂：+6=周一闭馆 → 回退至周日 11-08，不顺延到 11-10');
+eq(computeEarliestDate(rm['peking-university'], bj(2026, 11, 3, 10, 0)), '2026-11-08', '北大：+7=周二(白名单外) → 回退至周日 11-08，不顺延到 11-14');
+// 回退下限是今天：窗口内没有开放日时返回 null，不能退回昨天
+eq(computeEarliestDate({ advanceDays: 1, openDays: ['saturday'] }, bj(2026, 9, 13, 10, 0)), null, '回退不越过今天 → null');
 
 console.log('\n--- 公告自动过期（specialNoticeUntil）---');
 eq(activeNoticeOf({ specialNotice: 'X', specialNoticeUntil: '2026-09-10' }, bj(2026, 9, 11, 10, 0)), '', '昨天到期 → 不再下发');

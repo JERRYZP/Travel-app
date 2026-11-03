@@ -251,6 +251,46 @@ async function run() {
   eq(refundDb._dump(COLLECTIONS.AFTER_SALES_CASES)[0].status, CaseStatus.REFUNDED,
     '退款查单成功后售后单状态更新为 REFUNDED');
 
+  console.log('\n=== 7. 每轮补偿都写 payment_config/reconcile_health 心跳 ===');
+  const healthDb = createDb({ cloudGetOnMissing: true });
+  healthDb._seed(COLLECTIONS.ORDERS, [{
+    _id: 'health_pending',
+    status: OrderStatus.PENDING,
+    grantStatus: GrantStatus.NONE,
+    createdAt: new Date(),
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+  }]);
+  const healthPreviousEnv = { ...process.env };
+  Object.assign(process.env, {
+    WECHAT_APP_ID: 'wx_test',
+    WECHAT_APP_SECRET: 'test_secret',
+    WECHAT_VIRTUAL_PAY_OFFER_ID: 'test_offer',
+    WECHAT_VIRTUAL_PAY_APP_KEY: 'test_app_key',
+  });
+  const healthDocOf = targetDb => (targetDb._dump(COLLECTIONS.PAYMENT_CONFIG) || [])
+    .find(doc => doc._id === 'reconcile_health');
+  try {
+    const healthPayment = loadPayment(healthDb);
+    await healthPayment._test.reconcile({ batchSize: 10, totalBudgetMs: 5000, queueBudgetMs: 1000 });
+    const health = healthDocOf(healthDb);
+    eq(!!health, true, '补偿结束后写入确定性心跳文档');
+    eq(health.lastRunAt instanceof Date, true, '心跳记录本轮运行时间');
+    eq(health.skipped, false, '有积压时心跳标记未跳过');
+    eq(health.reason, '', '正常轮次不写跳过原因');
+
+    const idleDb = createDb({ cloudGetOnMissing: true });
+    const idlePayment = loadPayment(idleDb);
+    const idleResult = await idlePayment._test.reconcile({ batchSize: 10, totalBudgetMs: 5000, queueBudgetMs: 1000 });
+    eq(idleResult.skipped, true, '没有积压时本轮直接跳过');
+    const idleHealth = healthDocOf(idleDb);
+    eq(!!idleHealth, true, '跳过的轮次也要写心跳');
+    eq(idleHealth.skipped, true, '跳过状态写进心跳');
+    eq(idleHealth.reason, 'NO_RECONCILE_WORK', '跳过原因写进心跳');
+  } finally {
+    for (const key of Object.keys(process.env)) if (!(key in healthPreviousEnv)) delete process.env[key];
+    Object.assign(process.env, healthPreviousEnv);
+  }
+
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);
 }

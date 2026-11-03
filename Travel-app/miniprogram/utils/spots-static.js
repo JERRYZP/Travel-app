@@ -64,12 +64,14 @@ function releaseStatusOf(card, now) {
   return p.hour * 60 + p.minute < hour * 60 + minute ? 'NOT_RELEASED' : 'BOOKABLE';
 }
 
+/** 与云端 computeEarliestDate 同口径：不可约时向前回退，不顺延。 */
 function earliestDateOf(card, now) {
   if (!card.advanceDays) return null;
-  let target = addDaysStr(toDateStr(now), card.advanceDays);
-  for (let i = 0; i < 7; i += 1) {
+  const advanceDays = Number(card.advanceDays);
+  let target = addDaysStr(toDateStr(now), advanceDays);
+  for (let i = 0; i <= advanceDays; i += 1) {
     if (isOpenOn(card, dayNameOfStr(target))) return target;
-    target = addDaysStr(target, 1);
+    target = addDaysStr(target, -1);
   }
   return null;
 }

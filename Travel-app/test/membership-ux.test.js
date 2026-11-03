@@ -28,7 +28,7 @@ global.Page = def => { profileDef = def; };
 require('../miniprogram/pages/profile/profile.js');
 let membershipDef = null;
 global.Page = def => { membershipDef = def; };
-require('../miniprogram/pages/membership/membership.js');
+const membershipModule = require('../miniprogram/pages/membership/membership.js');
 let orderDetailPage = null;
 global.Page = () => {};
 orderDetailPage = require('../miniprogram/pages/membership-order-detail/membership-order-detail.js');
@@ -436,6 +436,81 @@ async function run() {
   );
   eq(paymentData.paymentState && paymentData.paymentState.status, 'PAID_GRANT_FAILED',
     '仍需用户处理的权益异常状态继续保留');
+
+  /* 设备不具备支付能力时只说明原因，不进入下单流程——让用户走完整下单
+     再失败，等于把一个可以提前说清的问题变成一个订单加一句模糊提示。 */
+  const modalCalls = [];
+  const capabilityOriginalWx = global.wx;
+  global.wx = {
+    ...(capabilityOriginalWx || {}),
+    showModal: opts => { modalCalls.push(opts); },
+  };
+  let payData = {
+    purchasing: false,
+    sales: null,
+    selectedPackage: null,
+    payCapability: { supported: false, reason: '当前微信版本暂不支持虚拟支付' },
+    payUnsupportedTip: '请确认 iPhone 系统为 iOS 15 及以上，并将微信更新到最新版本后重试。',
+  };
+  const payCtx = {
+    data: payData,
+    setData: patch => { payData = { ...payData, ...patch }; },
+  };
+  payCtx.showPayUnsupported = membershipDef.showPayUnsupported.bind(payCtx);
+  membershipDef.onPay.call(payCtx);
+  eq(modalCalls.length, 1, '能力不足时点击支付只弹一次说明');
+  eq(modalCalls[0] && modalCalls[0].title, '当前设备无法完成购买',
+    '说明弹窗标题直接点明设备无法购买');
+  eq(modalCalls[0] && modalCalls[0].content, payData.payUnsupportedTip,
+    '弹窗内容与页面提示共用同一份设备条件文案');
+  eq(payData.showPayConfirm, undefined, '能力不足时不打开支付确认层');
+
+  modalCalls.length = 0;
+  payData = {
+    purchasing: false,
+    sales: null,
+    selectedPackage: { id: 'member', priceText: '¥3', memberDays: 30 },
+    payCapability: { supported: true, reason: '' },
+    payUnsupportedTip: '',
+    membership: {},
+  };
+  const capableCtx = {
+    data: payData,
+    setData: patch => { payData = { ...payData, ...patch }; },
+  };
+  capableCtx.showPayUnsupported = membershipDef.showPayUnsupported.bind(capableCtx);
+  membershipDef.onPay.call(capableCtx);
+  eq(modalCalls.length, 0, '能力正常时不弹设备说明');
+  eq(payData.showPayConfirm, true, '能力正常时正常进入支付确认层');
+  global.wx = capabilityOriginalWx;
+
+  /* 失败提示里摊开微信版本和系统版本：用户能对照自查，客服不必再问一遍。
+     只展示，不参与拦截——版本门槛没有和微信官方原文复核过。 */
+  global.wx = {
+    ...(capabilityOriginalWx || {}),
+    getAppBaseInfo: () => ({ version: '8.0.47' }),
+    getDeviceInfo: () => ({ platform: 'ios', system: 'iOS 16.6' }),
+  };
+  eq(membershipModule.payEnvTextOf(), '当前环境 微信 8.0.47 / iOS 16.6。',
+    '失败提示展示微信版本与系统版本');
+
+  global.wx = {
+    ...(capabilityOriginalWx || {}),
+    getSystemInfoSync: () => ({ version: '8.0.31', system: 'iOS 14.2' }),
+  };
+  eq(membershipModule.payEnvTextOf(), '当前环境 微信 8.0.31 / iOS 14.2。',
+    '老基础库退回 getSystemInfoSync 仍能读到版本');
+
+  global.wx = { ...(capabilityOriginalWx || {}), getSystemInfoSync: () => ({}) };
+  eq(membershipModule.payEnvTextOf(), '', '版本读不到时不显示环境前缀');
+
+  global.wx = {
+    ...(capabilityOriginalWx || {}),
+    getAppBaseInfo: () => { throw new Error('boom'); },
+    getSystemInfoSync: () => ({ version: '8.0.47', system: 'iOS 16.6' }),
+  };
+  eq(membershipModule.payEnvTextOf(), '', '读取版本异常不连累支付失败提示本身');
+  global.wx = capabilityOriginalWx;
   const afterSalesWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-after-sales/membership-after-sales.wxml'), 'utf8');
   const afterSalesJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-after-sales/membership-after-sales.js'), 'utf8');
   const adminAfterSalesWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/admin-after-sales/admin-after-sales.wxml'), 'utf8');

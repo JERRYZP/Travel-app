@@ -329,18 +329,28 @@ async function run() {
   seedUser(db);
   seedPaidOrder(db, {
     _id: 'older', outTradeNo: 'TOLDER',
-    createdAt: new Date(Date.now() - 60000), paidAt: new Date(Date.now() - 60000),
+    createdAt: new Date(Date.now() - 30000), paidAt: new Date(Date.now() - 30000),
   });
   seedPaidOrder(db, {
     _id: 'newer', outTradeNo: 'TNEWER', createdAt: new Date(), paidAt: new Date(),
   });
   const newer = db._dump(COLLECTIONS.ORDERS).find(item => item._id === 'newer');
   const evidence = await afterSales.duplicateEvidence(db, newer);
-  eq(evidence.duplicate, true, '发现 10 分钟内同商品重复支付');
+  eq(evidence.duplicate, true, '发现 1 分钟内同商品重复支付');
+  eq(evidence.windowMinutes, 1, '判定窗口为 1 分钟');
   eq(evidence.olderOrderId, 'older', '证据指向较早订单');
   eq(afterSales.outRefundNoOf(newer), 'RFTNEWER', '退款单号由商户订单号确定性生成');
   const group = await afterSales.duplicateChargeTarget(db, db._dump(COLLECTIONS.ORDERS).find(item => item._id === 'older'));
   eq(group.targetOrderId, 'newer', '从较早订单回调也能定位整组中较新的重复支付订单');
+
+  // ¥3 的提醒名额包连买两份是正常操作，间隔超过 1 分钟就不该判成重复支付。
+  seedPaidOrder(db, {
+    _id: 'later', outTradeNo: 'TLATER',
+    createdAt: new Date(Date.now() + 120000), paidAt: new Date(Date.now() + 120000),
+  });
+  const later = db._dump(COLLECTIONS.ORDERS).find(item => item._id === 'later');
+  const wideEvidence = await afterSales.duplicateEvidence(db, later);
+  eq(wideEvidence.duplicate, false, '间隔超过 1 分钟的连续购买不判为重复支付');
 
   console.log('\n=== 4. 退款按本单快照回收，不删除提醒 ===');
   db = createDb();

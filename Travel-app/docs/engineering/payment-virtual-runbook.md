@@ -153,6 +153,17 @@ Access Token 使用内存缓存并提前 5 分钟刷新；微信返回 `40001/40
 
 用户直接关闭 Apple 支付面板时，平台未必立刻返回 `CLOSED`，查单可能持续返回 `INIT/CREATED`。2 分钟补偿查单确认仍为未支付且本地订单已经超过 15 分钟后，必须把本地订单置为 `CLOSED`，关闭原因固定为 `VIRTUAL_PAY_EXPIRED_UNPAID`，避免订单永久停留在待支付。若平台随后才确认实际支付，查单或支付推送仍必须按订单号将该订单从 `CLOSED` 收口为 `PAID` 并发放权益。
 
+平台未必有这笔订单：用户点了购买但没真正拉起支付面板时，`/xpay/query_order` 会直接报错，而不是返回“未支付”。这类订单不能原地无限重试。补偿会在查单异常时先写失败证据 `reconcileError`、`reconcileErrorAt`、`reconcileFailCount`；本地订单过期满 30 分钟仍拿不到平台结论，按 `VIRTUAL_PAY_QUERY_FAILED` 关闭；虚拟支付配置缺失时同样按 `VIRTUAL_PAY_CONFIG_MISSING` 关闭，不再静默返回成功。
+
+已关闭订单不在待支付补偿队列里，所以关单后的反向收口依赖平台发货推送或一次主动查单。用户投诉“付了钱还是待支付”时，先确认订单 `closeReason`，再到平台查单确认是否真的支付；确认已支付后用售后工作台的「同步支付结果」触发 `syncOrder`，订单会从 `CLOSED` 收口回 `PAID` 并补发权益。
+
+### 待支付订单一直不关闭时怎么查
+
+1. 读 `payment_config/reconcile_health`。`lastRunAt` 超过 5 分钟没更新 → 定时器没跑，去核验 `paymentReconcileEveryTwoMinutes` 触发器；整包部署会清空触发器，这不是代码问题。
+2. `lastRunAt` 在更新但 `errors > 0` → 补偿在跑但处理失败。看 `queues.pendingPayments.errors`，再翻云函数日志里的 `[payment] reconcile queue item failed` 或 `[payment] closed virtual order without platform confirmation`。
+3. 订单上的 `reconcileError` / `reconcileFailCount` 是最后一次查单失败原因和累计失败次数，可直接区分平台报错和配置缺失。
+4. `payment_config/reconcile_health.error` 非空说明整轮补偿抛出异常，四个队列都没跑完。
+
 ## 7. 上线与迁移顺序
 
 以下操作涉及生产数据和线上配置，每一步都必须单独取得用户当场明确授权：

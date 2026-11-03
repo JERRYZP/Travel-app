@@ -129,6 +129,11 @@
         <text wx:else>虚拟权益支付成功后生效。支付后 24 小时内且没有新增任何提醒，可申请退款，需客服核实；已使用、超时或无正当理由的申请不支持。每笔订单最多一次全额退款。</text>
       </view>
 
+      <view wx:if="{{!payCapability.supported}}" class="pay-capability-note">
+        <text class="pay-capability-title">当前设备无法完成购买</text>
+        <text class="pay-capability-desc">{{payUnsupportedTip}}</text>
+      </view>
+
       <view class="pay-btn {{selectedPackage ? '' : 'disabled'}}" bindtap="onPay">
         <text>{{payButtonText}}</text>
       </view>
