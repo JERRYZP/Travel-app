@@ -8,6 +8,7 @@
  */
 
 const api = require('./api.js');
+const membershipCache = require('./membership-cache.js');
 
 const QUERY_ATTEMPTS = 8;
 const QUERY_INTERVAL_MS = 1200;
@@ -145,6 +146,7 @@ function requestPayment(payment, orderId, paymentProvider) {
 function paidResultOf(result, orderId) {
   const entitlementStatus = (result && result.entitlementStatus) || '';
   if (entitlementStatus === 'PAID_GRANTED') {
+    membershipCache.markDirty();
     return {
       status: 'PAID_GRANTED',
       orderId,
@@ -157,6 +159,7 @@ function paidResultOf(result, orderId) {
     return { status: 'PAID_GRANT_FAILED', orderId, message: '支付已完成，权益发放异常' };
   }
   if (entitlementStatus === 'REFUNDED') {
+    membershipCache.markDirty();
     return { status: 'REFUNDED', orderId, message: '订单已退款' };
   }
   if (entitlementStatus === 'PAID_GRANT_UNKNOWN') {

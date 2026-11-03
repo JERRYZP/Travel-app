@@ -15,6 +15,7 @@ App({
     menuButton: null,
     currentTripId: null,
     homeMode: 1,
+    membershipDataVersion: 0,
     envVersion: '',
     previewNewUser: false,
     pendingShareEntry: null,

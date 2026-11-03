@@ -25,6 +25,7 @@
 
 ## 页面状态
 
+- 会员权益是会变化的写后状态，不能只靠页面 5 分钟 TTL 判断新鲜度。支付、补偿到账或退款回收确认后必须递增 `app.globalData.membershipDataVersion`；`setup`、`profile` 等持有会员快照的页面发现版本变化时必须绕过缓存重新拉取服务端状态。禁止各页面自行推断会员是否到账。
 - PAGE-018 行程只读页必须隐藏微信转发菜单且不实现 `onShareAppMessage` / `onShareTimeline`。接收方页面不得复用带票务状态、提醒 chip、三点菜单或景点点击的 `trip-card`；公开投影白名单之外的字段一律不要渲染。
 - 首页行程分享入口必须等 `tripShare.create/status` 返回令牌后再启用原生 `open-type="share"`。不能在异步 `onShareAppMessage` 中临时生成链接，否则真机可能分享出空路径；右上角菜单仍走原公开首页分享。标题、装饰英文与分享入口必须在摘要卡同一个标题行容器内，英文紧接标题、分享靠最右；入口不能作为卡片下方兄弟节点参与文档流。入口文案始终为「分享行程」，已有链接时由浮层进入管理态。顶部位置只能由 `miniprogram/utils/home-layout.js` 计算：优先使用 `wx.getMenuButtonBoundingClientRect().bottom` 加 `8rpx` 呼吸位，再按当前屏宽精确追加 `2px`；只有拿不到胶囊信息时才回退导航块底边。固定导航块的透明下半段不得继续撑高正文；额度提示或横幅出现时占据该起点并把后续内容向下推。`test/home-top-layout.test.js` 已对 320 / 402 / 440 宽度做数值冻结，禁止在页面重新推导。
 - 行程分享封面在 `open-type="share"` 打开前生成完毕；Canvas 2D 只重绘公开信息，不能截入票务进度、提醒 chip、菜单或身份字段。Canvas 失败必须回退 `/images/share/home-today.jpg`，封面生成不能阻断链接分享。应用内昵称只用于会话标题；微信不提供读取本人真实微信昵称的接口。

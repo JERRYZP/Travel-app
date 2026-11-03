@@ -23,6 +23,8 @@ let virtualCalls = 0;
 let classicCalls = 0;
 let loginCalls = 0;
 const storage = {};
+const appState = { globalData: { membershipDataVersion: 0 } };
+global.getApp = () => appState;
 
 const apiStub = {
   reminder: {
@@ -113,6 +115,8 @@ async function run() {
   queryCount = 0;
   let result = await membershipPay.purchase('member');
   eq(result.status, 'PAID_GRANTED', '服务端确认后返回持久权益状态');
+  eq(appState.globalData.membershipDataVersion > 0, true,
+    '权益到账后递增会员缓存版本，通知其他页面失效');
   eq(calls.join(','), 'createOrder,create,query,query', '客户端付款后先查单，不再用 Toast 代替权益状态');
   eq(membershipPay.pendingOrder(), null, '权益到账后清除本地待确认订单');
   eq(classicCalls, 1, '旧通道继续使用 wx.requestPayment');

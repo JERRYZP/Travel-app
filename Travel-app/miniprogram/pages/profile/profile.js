@@ -2,6 +2,7 @@ const app = getApp();
 const api = require('../../utils/api.js');
 const notify = require('../../utils/notify.js');
 const oa = require('../../utils/official-account.js');
+const membershipCache = require('../../utils/membership-cache.js');
 
 const PROFILE_BOOTSTRAP_TTL_MS = 5 * 60 * 1000;
 const ADMIN_STATUS_CACHE_KEY = 'profileAdminStatusV1';
@@ -65,7 +66,10 @@ Page({
   },
 
   loadUser(options) {
-    const force = !!(options && options.force);
+    const cacheVersion = membershipCache.version();
+    const membershipChanged = !!this._profileCache
+      && this._membershipDataVersion !== cacheVersion;
+    const force = !!(options && options.force) || membershipChanged;
     if (!force && this.profileCacheFresh()) return Promise.resolve(this._profileCache);
     const bootstrap = typeof api.reminder.user.bootstrap === 'function'
       ? api.reminder.user.bootstrap()
@@ -73,6 +77,7 @@ Page({
     return bootstrap.then(res => {
       this._profileCache = res;
       this._profileLoadedAt = Date.now();
+      this._membershipDataVersion = cacheVersion;
       this.applyUser(res.user || {});
       this.applySubscriptionHint(res.subscription);
       return res;
@@ -81,6 +86,7 @@ Page({
       return api.reminder.user.profile().then(res => {
         this._profileCache = res;
         this._profileLoadedAt = Date.now();
+        this._membershipDataVersion = cacheVersion;
         this.applyUser(res.user || {});
         return res;
       }).then(res => {

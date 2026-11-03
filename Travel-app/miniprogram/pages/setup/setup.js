@@ -4,6 +4,7 @@ const notify = require('../../utils/notify.js');
 const oa = require('../../utils/official-account.js');
 const membershipEntry = require('../../utils/membership-entry.js');
 const membershipPay = require('../../utils/membership-pay.js');
+const membershipCache = require('../../utils/membership-cache.js');
 const orderRefresh = require('../../utils/order-refresh.js');
 
 /** 成功卡片自动返回首页的秒数；倒计时文案同步走弱化提示 */
@@ -91,7 +92,10 @@ Page({
   },
 
   loadCartAndAccess(options) {
-    const force = !!(options && options.force);
+    const cacheVersion = membershipCache.version();
+    const membershipChanged = !!this.data.membership
+      && this._membershipDataVersion !== cacheVersion;
+    const force = !!(options && options.force) || membershipChanged;
     if (!force && this.data.membership && this._cartLoadedAt > 0
       && Date.now() - this._cartLoadedAt < CART_BOOTSTRAP_TTL_MS) {
       return this.refreshAccessState(this.data.quotaNeeded);
@@ -120,6 +124,7 @@ Page({
         ...gate,
       });
       this._cartLoadedAt = Date.now();
+      this._membershipDataVersion = cacheVersion;
       return this.refreshAccessState(quotaNeeded);
     }).catch(() => this.refreshAccessState(this.data.quotaNeeded));
   },

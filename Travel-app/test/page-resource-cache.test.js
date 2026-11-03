@@ -6,7 +6,8 @@ const ROOT = path.resolve(__dirname, '..');
 const origLoad = Module._load;
 let pageDef = null;
 global.Page = def => { pageDef = def; };
-global.getApp = () => ({ globalData: { statusBarHeight: 20, navBarHeight: 44 } });
+const appState = { globalData: { statusBarHeight: 20, navBarHeight: 44, membershipDataVersion: 0 } };
+global.getApp = () => appState;
 global.wx = {
   getStorageSync() { return null; },
   setStorageSync() {},
@@ -73,6 +74,7 @@ const notifyStub = {
   requestSubscribeBurst: () => Promise.reject(new Error('not used')),
   getSubscribeQuota: () => Promise.reject(new Error('not used')),
 };
+const membershipCache = require('../miniprogram/utils/membership-cache.js');
 
 function loadPage(rel, apiStub) {
   pageDef = null;
@@ -106,6 +108,10 @@ async function run() {
   setup.onShow();
   await wait(10);
   assert.strictEqual(cartBootstrapCalls, 1, '设置页五分钟内重入不重复请求 bootstrap');
+  membershipCache.markDirty();
+  setup.onShow();
+  await wait(10);
+  assert.strictEqual(cartBootstrapCalls, 2, '会员状态写后版本变化时设置页绕过 5 分钟缓存');
 
   process.env.TZ = 'Asia/Shanghai';
   const profile = instantiate(loadPage('miniprogram/pages/profile/profile.js', userApi));
@@ -114,6 +120,10 @@ async function run() {
   profile.onShow();
   await wait(10);
   assert.strictEqual(userBootstrapCalls, 1, '个人页五分钟内重入不重复请求 bootstrap');
+  membershipCache.markDirty();
+  profile.onShow();
+  await wait(10);
+  assert.strictEqual(userBootstrapCalls, 2, '会员状态写后版本变化时个人页绕过 5 分钟缓存');
 
   console.log('page-resource-cache.test.js 全部通过');
 }
