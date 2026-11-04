@@ -1,6 +1,6 @@
 # 会员支付、售后与提醒名额
 
-> 2026-11-04 已部署并进入体验版：会员统一升级为 `¥8 / 30 天` 且有效期内不限提醒名额；免费额度保持 5。加量包停止新售，历史订单、待支付订单、权益快照和退款继续兼容。当前有效老会员自动获得不限权益且到期时间不变。`payment` / `reminder` 于 14:36 部署，体验版 `2.3.0` 已上传；实体手机扫码验收待完成。
+> 2026-11-04 生产回滚：新方案曾在客户端全量发布前先部署生产，旧线上客户端把 `taskLimit=10000` 兼容占位显示为 `提醒名额 11/10000`。`payment` / `reminder` 已于 14:48 回滚到 `e308752` 的 ¥3/15 口径，云端下载代码已复核。体验版 `2.3.0` 依赖新后端，当前暂停设为体验版；下一轮必须先完成客户端版本协商或独立测试环境。
 >
 > 2026-11-02 当前状态：会员购买断路器为 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），会员限制运行期为 `payment_config/membership_enforcement={mode:"all"}`。`payment` 与 `reminder` 已于 16:14 / 16:15 部署为 `Active`，`paymentReconcileEveryTwoMinutes` 保持启用；管理员接口返回配置来源 `DB`，`membership.status` 返回 `enforced=true`。客服工作台已部署当日统计、近 7 / 30 / 90 天 / 全部筛选和 Apple 超时待支付关闭，并通过云端冒烟。正式客户端 `2.1.1` 已从 `main@af05573` / `v2.1.1-rc.2` 完成体验验收、送审和全量发布，新功能已在正式版可见。累计观察到 8 笔已支付订单。真实停售切换未执行；保护额度完成标记当前缺失，后台从其他模式切回 `all` 前需单独治理。
 >
@@ -211,7 +211,7 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 
 云端已验证：
 
-- 2026-11-04 会员升级：`payment` 与 `reminder` 于 14:36:04 / 14:36:40 更新为 `Active`，运行时保持 Nodejs16.13、超时 60 秒；`payment` 20 个环境变量键和 `paymentReconcileEveryTwoMinutes` 触发器保留，`reminder` 2 个环境变量键保留。手动执行定时补偿返回 `success=true`、`NO_RECONCILE_WORK`、`errors=0`，`payment_config/reconcile_health.lastRunAt` 已刷新。真实云环境模拟器调用 `membership.status` 返回 `sales=OPEN`、`enforced=true`、`taskLimitUnlimited=true`、唯一 `member` 套餐 `¥8`，会员页真实渲染“已开启 11 个提醒 / 不限名额”。体验版 `2.3.0` 来自 `cb418e9` / `v2.3.0-rc.1`，包体 `1,125,269` 字节；未提交审核、未发布正式版，实体手机扫码验收待完成。
+- 2026-11-04 会员升级生产回滚：生产曾于 14:36 部署新方案并通过真实云模拟器冒烟，但旧线上客户端在“我的”页把兼容字段 `taskLimit=10000` 显示为 `11/10000`。14:48 已从 `e308752` 回滚 `payment` / `reminder`，均为 `Active`、Nodejs16.13、60 秒；`paymentReconcileEveryTwoMinutes` 与 20 个环境变量键保留。云端下载代码复核为 `MEMBER_PRICE_FEN=300`、`MEMBER_TASK_SLOTS=15`，且 `payment` 不再包含 `unlimitedReminders`。体验版 `2.3.0` 依赖新后端，当前不得用于验收。
 - 2026-11-04 00:05 已从 `codex/unify-reminder-payment-sheet@1f9cfc4` 上传体验版 `2.2.5`，包体 `1,127,622` 字节，tag 为 `v2.2.5-rc.1`。本版统一 PAGE-008、景点设提醒浮层与会员页的支付确认层，协议默认未勾选且未勾选不能支付；iOS / Android 渠道提示继续按设备区分。本轮只改小程序端，不部署云函数；未提交审核、未发布正式版。
 - 2026-11-03 23:43 已将 `payment` 整包部署到 `cloud1`，保留 Nodejs16.13 与 60 秒超时；真实管理员 `adminOrders.stats` 已返回 `refundedOrders=8`。`paymentReconcileEveryTwoMinutes` 触发器保留，`payment_config/reconcile_health.lastRunAt` 于 23:44:01 刷新且 `errors=0`。
 - 2026-11-03 23:45 已从 `main@aa1db3b` 上传体验版 `2.2.4`，包体 `1,129,989` 字节，tag 为 `v2.2.4-rc.1`。本版包含客服售后队列与退款统计、iOS 付款方式提示、反馈入口与未读角标；未提交审核、未发布正式版。
