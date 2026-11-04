@@ -48,6 +48,7 @@
 | `RULE-MEMBER-002` | 2026-11-02 会员限制模式切换 | `payment_config/membership_enforcement` 是运行期唯一真身；后台可切 `off/test/all`，切全量前必须完成保护额度与权益账本迁移；环境变量只作配置缺失或读取失败时的兼容兜底 | `产品文档.md` PAGE-017、`API-契约.md`、`.claude/rules/deployment.md`、`docs/engineering/membership-payment.md`、`数据库索引.md` | `delegated` |
 | `RULE-PAY-001` | `API-契约.md` 会员与支付 | 订单金额服务端决定；API v3 与虚拟支付双通道、按订单固化渠道；请求号幂等、额度锁、持久化补偿游标；退款生命周期与本单权益快照回收；售后工作台审计 | `API-契约.md`、`.claude/rules/deployment.md`、`docs/engineering/membership-payment.md`、`docs/engineering/payment-v3-runbook.md`、`docs/engineering/payment-virtual-runbook.md` | `delegated` |
 | `RULE-SALES-001` | 2026-11-02 会员购买断路器 | 独立停售开关只阻止新下单和新发起支付；已付款、查单、权益、退款和售后继续；唯一配置为 `payment_config/membership_sales` | `API-契约.md`、`.claude/rules/deployment.md`、`docs/engineering/membership-payment.md`、`数据库索引.md` | `delegated` |
+| `RULE-ROLLOUT-001` | 2026-11-04 生产事故 | 新功能不得影响线上；会员改版必须用 `MEMBERSHIP_ENFORCEMENT_MODE=test` 与 `MEMBERSHIP_TEST_OPENIDS` 限定白名单，非白名单保持旧契约；影响线上的阻塞、体验版上传和全量切换必须单独授权 | `CLAUDE.md`、`.claude/rules/deployment.md`、`API-契约.md`、`docs/engineering/membership-payment.md` | `root-current` |
 | `RULE-NOTIFYOPS-001` | `CLAUDE.md` 128-137 | 状态收敛、台账自愈、发送链路 | `docs/engineering/reminder-troubleshooting.md`、`.claude/rules/deployment.md` | `delegated` |
 | `RULE-AUTH-001` | `CLAUDE.md` 138-139 | 无感登录、资料编辑与反馈管理 | `docs/engineering/architecture.md` | `extracted` |
 | `RULE-DIFF-001` | `CLAUDE.md` 140-143 | 难度真身、mock/seed 与数据确认 | `.claude/rules/data-contracts.md` | `extracted` |

@@ -23,6 +23,9 @@ const membershipEnforcement = require('./membership-enforcement');
 
 const FREE_TASK_SLOTS = 5;
 const MEMBER_PRICE_FEN = 800;
+const LEGACY_MEMBER_PRICE_FEN = 300;
+const LEGACY_MEMBER_TASK_SLOTS = 15;
+const LEGACY_CURRENT_TASK_PACK_SIZE = 10;
 const MEMBER_DURATION_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const LEGACY_TASK_PACK_SIZE = 5;
@@ -80,8 +83,46 @@ const PACKAGES = Object.freeze([
   },
 ]);
 
-function packageOf(packageId) {
-  return PACKAGES.find(item => item.id === packageId) || null;
+const LEGACY_PACKAGES = Object.freeze([
+  {
+    id: 'member',
+    type: 'MEMBER',
+    title: '会员 30 天',
+    priceFen: LEGACY_MEMBER_PRICE_FEN,
+    priceText: '¥3',
+    taskSlots: LEGACY_MEMBER_TASK_SLOTS,
+    addedSlots: LEGACY_MEMBER_TASK_SLOTS - FREE_TASK_SLOTS,
+    unlimitedReminders: false,
+    memberDays: MEMBER_DURATION_DAYS,
+    memberFloorDays: MEMBER_DURATION_DAYS,
+    description: `30 天内最多 ${LEGACY_MEMBER_TASK_SLOTS} 个提醒名额`,
+    badge: '推荐',
+    specVersion: 'member-30d-v2',
+  },
+  {
+    id: 'task_pack_5',
+    type: 'TASK_PACK',
+    title: `${LEGACY_CURRENT_TASK_PACK_SIZE} 个提醒名额`,
+    priceFen: LEGACY_MEMBER_PRICE_FEN,
+    priceText: '¥3',
+    taskSlots: LEGACY_CURRENT_TASK_PACK_SIZE,
+    addedSlots: LEGACY_CURRENT_TASK_PACK_SIZE,
+    unlimitedReminders: false,
+    memberDays: 0,
+    memberFloorDays: MEMBER_DURATION_DAYS,
+    description: '名额永久记录，会员有效期内生效',
+    badge: '',
+    specVersion: 'task-pack-10-v2',
+  },
+]);
+
+function packagesForPlan(newPlan) {
+  return newPlan ? PACKAGES : LEGACY_PACKAGES;
+}
+
+function packageOf(packageId, options = {}) {
+  return packagesForPlan(options.newPlan === true)
+    .find(item => item.id === packageId) || null;
 }
 
 /**
@@ -107,6 +148,22 @@ function testOpenIdsOf() {
     ? raw.split(',').map(item => item.trim()).filter(Boolean)
     : DEFAULT_TEST_OPENIDS;
   return new Set(values);
+}
+
+/**
+ * 会员方案灰度与额度限制解耦：
+ * - MEMBERSHIP_ENFORCEMENT_MODE=test：仅 MEMBERSHIP_TEST_OPENIDS 使用新会员方案；
+ * - all：所有用户使用新会员方案；
+ * - off 或缺失：保持旧会员方案。
+ *
+ * 数据库 membership_enforcement 仍决定额度限制模式，本函数只决定返回哪套商品和权益。
+ * 生产验收期间必须保持 test，避免旧客户端读取新价格或兼容字段。
+ */
+function isNewPlanEnabledFor(userId) {
+  const mode = enforcementModeOf();
+  if (mode === 'all') return true;
+  if (mode === 'test' && userId) return testOpenIdsOf().has(userId);
+  return false;
 }
 
 function shouldEnforceFor(userId) {
@@ -345,7 +402,8 @@ function orderViewOf(order = {}, user = {}, nowTs = time.now(), sales = null) {
 }
 
 /** 用户资料容错：会员是否生效只看 memberExpiresAt。 */
-function normalizeUser(user = {}, nowTs = time.now()) {
+function normalizeUser(user = {}, nowTs = time.now(), options = {}) {
+  const newPlan = options.newPlan === true;
   const isMember = isMemberAt(user, nowTs);
   const purchasedPackCount = Math.max(0, parseInt(user.taskPackCount, 10) || 0);
   const purchasedPackSlots = user.taskPackSlots != null
@@ -360,9 +418,11 @@ function normalizeUser(user = {}, nowTs = time.now()) {
     FREE_TASK_SLOTS,
     parseInt(user.protectedTaskQuota, 10) || FREE_TASK_SLOTS
   );
-  const entitlementTaskLimit = isMember
-    ? LEGACY_CLIENT_UNLIMITED_TASK_LIMIT
-    : FREE_TASK_SLOTS;
+  const entitlementTaskLimit = newPlan
+    ? (isMember ? LEGACY_CLIENT_UNLIMITED_TASK_LIMIT : FREE_TASK_SLOTS)
+    : FREE_TASK_SLOTS
+      + (isMember ? LEGACY_MEMBER_TASK_SLOTS - FREE_TASK_SLOTS : 0)
+      + taskPackSlots;
   return {
     member: isMember,
     memberLevel: isMember ? MemberLevel.MEMBER : MemberLevel.NORMAL,
@@ -371,7 +431,8 @@ function normalizeUser(user = {}, nowTs = time.now()) {
     memberDaysRemaining: isMember
       ? Math.max(1, Math.ceil((memberExpiresMs - nowMs) / DAY_MS))
       : 0,
-    taskLimitUnlimited: isMember,
+    taskLimitUnlimited: newPlan && isMember,
+    planVersion: newPlan ? 'unlimited-v3' : 'legacy-v2',
     taskLimit: entitlementTaskLimit,
     entitlementTaskLimit,
     protectedTaskQuota,
@@ -381,13 +442,13 @@ function normalizeUser(user = {}, nowTs = time.now()) {
     ownedTaskPackSlots: purchasedPackSlots,
     memberDurationDays: MEMBER_DURATION_DAYS,
     freeTaskSlots: FREE_TASK_SLOTS,
-    memberTaskSlots: LEGACY_CLIENT_UNLIMITED_TASK_LIMIT,
-    taskPackSize: 0,
+    memberTaskSlots: newPlan ? LEGACY_CLIENT_UNLIMITED_TASK_LIMIT : LEGACY_MEMBER_TASK_SLOTS,
+    taskPackSize: newPlan ? 0 : LEGACY_CURRENT_TASK_PACK_SIZE,
   };
 }
 
-function snapshotFromTasks(user, tasks, nowTs = time.now()) {
-  const base = normalizeUser(user, nowTs);
+function snapshotFromTasks(user, tasks, nowTs = time.now(), options = {}) {
+  const base = normalizeUser(user, nowTs, options);
   const activeTasks = (tasks || []).filter(task => activeTaskOf(task, nowTs));
   const protectedTaskUsed = activeTasks
     .filter(task => quotaPoolOfTask(task) === TASK_QUOTA_POOL.PROTECTED)
@@ -403,19 +464,27 @@ function snapshotFromTasks(user, tasks, nowTs = time.now()) {
   };
 }
 
-function packageViews(snapshot, sales = null) {
+function packageViews(snapshot, sales = null, newPlan = false) {
   const purchaseEnabled = !sales || sales.purchaseEnabled === true;
-  return PACKAGES.map(item => {
+  return packagesForPlan(newPlan).map(item => {
     const isMemberPackage = item.type === 'MEMBER';
-    const available = purchaseEnabled && isMemberPackage;
+    const available = purchaseEnabled && (newPlan ? isMemberPackage : (isMemberPackage || snapshot.member));
     return {
       ...item,
       available,
       actionText: !purchaseEnabled
         ? (sales && sales.message) || '会员购买暂停中'
-        : (snapshot.member
-          ? `续费 ${item.memberDays} 天 ${item.priceText}`
-          : `开通会员 ${item.priceText}`),
+        : (newPlan
+          ? (snapshot.member
+            ? `续费 ${item.memberDays} 天 ${item.priceText}`
+            : `开通会员 ${item.priceText}`)
+          : (isMemberPackage
+            ? (snapshot.member
+              ? `续费 ${item.memberDays} 天 ${item.priceText}`
+              : `开通会员 ${item.priceText}`)
+            : (snapshot.member
+              ? `加购 ${item.addedSlots} 个名额 ${item.priceText}`
+              : '先开通会员'))),
     };
   });
 }
@@ -477,11 +546,12 @@ async function status(db, userId, nowTs = time.now(), options = {}) {
     await db.collection(COLLECTIONS.USERS).doc(user._id).update({ data: migrationPatch });
     Object.assign(user, migrationPatch);
   }
-  const snapshot = snapshotFromTasks(user, activeTasks, nowTs);
+  const newPlan = isNewPlanEnabledFor(userId);
+  const snapshot = snapshotFromTasks(user, activeTasks, nowTs, { newPlan });
   const salesView = membershipSales.publicView(sales);
   return ok({
     membership: snapshot,
-    packages: packageViews(snapshot, salesView),
+    packages: packageViews(snapshot, salesView, newPlan),
     sales: salesView,
     enforced: shouldEnforceForState(enforcement, userId),
   });
@@ -540,7 +610,7 @@ function orderSpecMatches(order, pkg) {
     && Number(order.amountFen) === pkg.priceFen
     && Number(order.addedSlots) === pkg.addedSlots
     && Number(order.memberDays) === pkg.memberDays
-    && order.unlimitedReminders === (pkg.unlimitedReminders === true)
+    && (order.unlimitedReminders === true) === (pkg.unlimitedReminders === true)
     && order.specVersion === pkg.specVersion;
 }
 
@@ -567,7 +637,8 @@ function orderResponseOf(order, reused = false) {
 }
 
 async function createOrder(db, userId, { packageId, requestId } = {}) {
-  const pkg = packageOf(packageId);
+  const newPlan = isNewPlanEnabledFor(userId);
+  const pkg = packageOf(packageId, { newPlan });
   if (!pkg || !REQUEST_ID_PATTERN.test(String(requestId || ''))) return fail(ERRORS.BAD_PARAM);
   const requestHash = requestIdHashOf(userId, requestId);
   const deterministicOrderId = orderIdOfRequest(requestHash);
@@ -766,10 +837,16 @@ module.exports = {
   LEGACY_CLIENT_UNLIMITED_TASK_LIMIT,
   ORDER_GRANT_SCHEMA_VERSION,
   MEMBER_PRICE_FEN,
+  LEGACY_MEMBER_PRICE_FEN,
+  LEGACY_MEMBER_TASK_SLOTS,
+  LEGACY_CURRENT_TASK_PACK_SIZE,
   MEMBER_DURATION_DAYS,
   TASK_QUOTA_POOL,
   PACKAGES,
+  LEGACY_PACKAGES,
   packageOf,
+  packagesForPlan,
+  isNewPlanEnabledFor,
   enforcementModeOf,
   enforcementState,
   shouldEnforceFor,

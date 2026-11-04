@@ -204,6 +204,36 @@ async function run() {
   eq(new Date(unlimitedDb._dump(COLLECTIONS.USERS)[0].memberExpiresAt).getTime(),
     fixedExpiry.getTime(), '新建提醒不会改写老会员到期时间');
 
+  console.log('\n=== 1.1 会员方案受 MEMBERSHIP_ENFORCEMENT_MODE 白名单约束 ===');
+  process.env.MEMBERSHIP_ENFORCEMENT_MODE = 'test';
+  process.env.MEMBERSHIP_TEST_OPENIDS = USER;
+  const gatedDb = createDb();
+  seedUser(gatedDb);
+  gatedDb._seed(COLLECTIONS.USERS, [{
+    _id: 'user_legacy_scope_001',
+    openId: 'openid_legacy_scope_001',
+    memberLevel: MemberLevel.NORMAL,
+    taskPackCount: 0,
+  }]);
+  const gatedNew = await membership.status(gatedDb, USER);
+  const gatedLegacy = await membership.status(gatedDb, 'openid_legacy_scope_001');
+  eq(gatedNew.membership.planVersion, 'unlimited-v3', '白名单用户进入新会员方案');
+  eq(gatedNew.packages.map(item => item.id).join(','), 'member', '白名单只看到唯一新会员 SKU');
+  eq(gatedNew.packages[0].priceFen, 800, '白名单看到 8 元会员');
+  eq(gatedLegacy.membership.planVersion, 'legacy-v2', '非白名单继续旧会员方案');
+  eq(gatedLegacy.packages.map(item => item.id).join(','), 'member,task_pack_5',
+    '非白名单继续看到旧会员和加量包');
+  eq(gatedLegacy.packages.find(item => item.id === 'member').priceFen, 300,
+    '非白名单仍看到 3 元会员');
+  const legacyOrder = await membership.createOrder(gatedDb, 'openid_legacy_scope_001', {
+    packageId: 'member',
+    requestId: 'req_legacy_scope_member_001',
+  });
+  eq(legacyOrder.amountFen, 300, '非白名单创建旧价会员订单');
+  eq(legacyOrder.unlimitedReminders, false, '旧方案订单不携带不限权益');
+  process.env.MEMBERSHIP_ENFORCEMENT_MODE = 'all';
+  delete process.env.MEMBERSHIP_TEST_OPENIDS;
+
   console.log('\n=== 2. 过期任务不占新提醒名额 ===');
   db = createDb();
   seedUser(db);
