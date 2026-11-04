@@ -3,7 +3,9 @@
 > 面向：前端（微信小程序页面开发）
 > 2026-11-02 更新：新增 `tripShare.create/status/revoke/open` 与 PAGE-018 行程只读分享。分享令牌只从公开路径传入，普通行程接口仅返回 `shareActive`；主人接口可通过 `ownerNickname` 读取应用内昵称用于会话标题，接收方数据只含城市、日期、天数和景点名称。
 > 2026-11-03 更新：客服工作台 `adminReminderQuality.stats` 改为读取由 `payment` 两分钟定时器在北京时间 `13:00 / 21:00` 后首个 tick 持久化的质量快照；工作台打开和刷新不再扫描 `reminder_events` / `reminder_tasks`。仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用。
-> 2026-11-04 更新：会员升级通过 `MEMBERSHIP_ENFORCEMENT_MODE` 做方案灰度。仅 `test` 且命中 `MEMBERSHIP_TEST_OPENIDS` 的用户返回 `¥8 / 30 天 / 不限提醒名额`；非白名单继续旧 `¥3 / 15 个 / task_pack_5` 契约。`all` 仅供用户明确授权的全量切换。`taskLimitUnlimited` 是白名单不限权益标志；禁止用 `taskLimit=10000` 等占位影响线上旧客户端。
+> 2026-11-04 更新：会员升级通过 `MEMBERSHIP_ENFORCEMENT_MODE` 做方案灰度。仅 `test` 且命中 `MEMBERSHIP_TEST_OPENIDS` 的用户返回不限会员方案；非白名单继续旧 `¥3 / 15 个 / task_pack_5` 契约。`all` 仅供用户明确授权的全量切换。`taskLimitUnlimited` 是白名单不限权益标志；禁止用 `taskLimit=10000` 等占位影响线上旧客户端。
+>
+> 2026-11-05 更新：当前不限会员价格由 ¥8 调整为 ¥6 / 30 天，规格版本升级为 `member-unlimited-30d-v4`。历史 `member-unlimited-30d-v3` / 800 分订单继续按订单快照支付、查单、发放和退款。
 > 2026-11-02 更新：客服工作台新增会员限制模式切换。运行期真身为 `payment_config/membership_enforcement`，管理员可切 `off/test/all` 并即时生效；切 `all` 前服务端强制核验两项上线迁移。
 > 2026-11-02 更新：新增客服工作台。管理员可通过 `adminOrders.list/detail` 查询全部会员订单，售后列表补全昵称、完整 OpenID 与关键词搜索；会员购买总开关保留在页面顶部。
 > 2026-11-02 更新：新增会员购买总开关 `payment_config/membership_sales`。暂停只阻止新订单和新发起支付；已支付订单继续查单与发权益，会员状态、订单、退款和售后不受影响。
@@ -919,6 +921,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     membership: {
       member: false,
       memberExpiresAtText: "",
+      planVersion: "legacy-v2",
+      taskLimitUnlimited: false,
       taskLimit: 5,
       taskUsed: 2,
       taskRemaining: 3,
@@ -930,11 +934,16 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
       purchaseEnabled: true,
       message: ""
     }
-  }
+  },
+  membershipUpgradeNotice: {
+    id: "membership-unlimited-upgrade",
+    endsAt: "2026-11-07T12:00:00.000Z"
+  } // 可选；仅公告前已开通的 unlimited-v3 白名单有效会员且公告有效时返回
 }
 ```
 
 - `membershipSales` 与 `membership.status.sales` 同口径，供 PAGE-010 在不增加额外请求时把“开通/升级”降级为“查看”；不能由客户端自行推断。
+- `membershipUpgradeNotice` 只用于“我的”页临时一次性横幅，且只面向公告开始前已成为会员的当前有效会员。服务端比较 `users.memberSince < payment_config.membership_upgrade_notice.startsAt`；公告上线后新开通、缺少 `memberSince`、免费、`legacy-v2`、非白名单、公告停用或过期时字段整体省略，不返回 `null` 占位。
 
 #### `user.updateProfile` — 保存头像/昵称/手机号（编辑资料页）
 
@@ -1019,7 +1028,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 唯一额度口径在 `cloudfunctions/reminder/lib/membership.js`，唯一支付/退款状态机在 `cloudfunctions/payment/lib/order.js` 与 `cloudfunctions/payment/lib/after-sales.js`。客户端只消费服务端返回的额度、价格、有效期、退款资格和可执行动作。
 
-- 用户侧统一使用「提醒名额」。免费版 5 个；会员统一为 `¥8 / 30 天`，有效会员不限提醒名额，但每条微信订阅消息仍需按条授权。新购买或续费在原有效期末尾增加 30 天；已过期会员从支付成功时起算 30 天；不自动续费。
+- 用户侧统一使用「提醒名额」。免费版 5 个；会员统一为 `¥6 / 30 天`，有效会员不限提醒名额，但每条微信订阅消息仍需按条授权。新购买或续费在原有效期末尾增加 30 天；已过期会员从支付成功时起算 30 天；不自动续费。
 - 会员方案是否返回新版由 `MEMBERSHIP_ENFORCEMENT_MODE` 控制：`test` 只对 `MEMBERSHIP_TEST_OPENIDS` 生效，其他用户必须得到 `planVersion='legacy-v2'`、旧价格、旧额度与旧加量包；`all` 才让全量用户使用 `planVersion='unlimited-v3'`。数据库 `payment_config/membership_enforcement` 继续负责额度限制模式，不能代替方案灰度。
 - 当前有效老会员自动获得不限权益，`memberExpiresAt` 不变，不需要批量迁移。提醒加量包已停售，新订单只接受 `member`；历史 `taskPackCount/taskPackSlots` 保留用于展示、对账和退款，不再影响会员额度。
 - 老用户保护池与新增池彼此独立：任务创建时若用户尚未进入会员限制（`off`，或 `test` 模式下不在白名单），任务进入历史保护池；只有 `test` 白名单或 `all` 模式下新建的任务进入免费/会员新增池。无 `quotaPool` 字段的旧任务一律兼容为保护池。`taskLimit / taskUsed / taskRemaining` 只描述新增池，`protectedTaskUsed` 单独返回保护池占用。
@@ -1091,7 +1100,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 - 金额、商品类型和权益只从服务端套餐表读取，客户端不能传价格。
 - `requestId` 必填，8-80 位，只允许字母、数字、下划线和短横线。服务端用 `OpenID + requestId` 生成确定性订单 ID；同一请求重试返回同一订单，同一 `requestId` 改商品或规格必须拒绝。
-- 白名单 `unlimited-v3` 新会员订单固定为 800 分、30 天、`unlimitedReminders=true`、`addedSlots=0`，规格版本为 `member-unlimited-30d-v3`；该方案不创建 `task_pack_5`。非白名单 `legacy-v2` 继续按 300 分会员和 300 分 `task_pack_5` 创建订单。已创建的旧价订单和旧加量包待支付订单仍可按订单快照继续支付和发放。
+- 白名单 `unlimited-v3` 新会员订单固定为 600 分、30 天、`unlimitedReminders=true`、`addedSlots=0`，规格版本为 `member-unlimited-30d-v4`；该方案不创建 `task_pack_5`。非白名单 `legacy-v2` 继续按 300 分会员和 300 分 `task_pack_5` 创建订单。已创建的 800 分 v3、旧价订单和旧加量包待支付订单仍可按订单快照继续支付和发放。
 - 只有 `productType + specVersion + addedSlots + unlimitedReminders + memberDays + amountFen` 全部一致且未过期的 `PENDING` 订单才可复用；旧规格订单只按 `status=PENDING` 条件关闭，不能覆盖并发回调已经置为 `PAID` 的订单。客户端取消或服务端关闭后再次购买必须生成新的 `requestId`、订单 ID 和 `outTradeNo`。
 - 新会员订单权益快照保存 `memberDaysAddedMs` 与 `unlimitedReminders=true`；历史会员订单和加量包缺少新字段时继续按原订单快照兼容，不回写历史金额或权益。
 - 提醒名额不足统一返回错误码 `1026`，携带 `taskLimit`、`membership` 和 `packages`；失败时不得创建行程、任务或清空清单。
@@ -1191,7 +1200,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - 金额不一致拒绝发放；重复回调幂等，不重复增加会员时长或权益。退款完成后的重复支付回调也不得重新发放权益。
 - 15 分钟未支付订单自动关闭；2 分钟定时任务主动查单、重试权益发放、自动核验售后和同步退款结果。补偿使用 `payment_reconcile_state` 中 `failedGrants / pendingPayments / refundProcessing / autoChecking` 四条独立游标，每队列最多 50 条、10 秒，单次总预算 45 秒；游标到尾部后回到队首，不能固定只处理前 100 条。
 - API v3 环境变量：`WECHAT_PAY_MCH_ID`、`WECHAT_PAY_SERIAL_NO`、`WECHAT_PAY_PRIVATE_KEY`、`WECHAT_PAY_API_V3_KEY`、`WECHAT_PAY_NOTIFY_URL`、`WECHAT_PAY_REFUND_NOTIFY_URL`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID`；`WECHAT_PAY_PLATFORM_CERT` / `WECHAT_PAY_PLATFORM_CERT_SERIAL` 只作旧平台证书兼容，不能与公钥模式隐式混用。`AFTER_SALES_ADMIN_OPENIDS` 为售后管理员白名单。
-- 虚拟支付环境变量：`PAYMENT_PROVIDER=VIRTUAL_PAY`、`WECHAT_APP_ID`、`WECHAT_APP_SECRET`、`WECHAT_VIRTUAL_PAY_ENV`、`WECHAT_VIRTUAL_PAY_OFFER_ID`、`WECHAT_VIRTUAL_PAY_PRODUCTION_APP_KEY`、`WECHAT_VIRTUAL_PAY_SANDBOX_APP_KEY`、`WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER`、`WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK`。
+- 虚拟支付环境变量：`PAYMENT_PROVIDER=VIRTUAL_PAY`、`WECHAT_APP_ID`、`WECHAT_APP_SECRET`、`WECHAT_VIRTUAL_PAY_ENV`、`WECHAT_VIRTUAL_PAY_OFFER_ID`、`WECHAT_VIRTUAL_PAY_PRODUCTION_APP_KEY`、`WECHAT_VIRTUAL_PAY_SANDBOX_APP_KEY`、`WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER`、`WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_V6`、`WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED`、`WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK`。`..._V6` 只用于当前 600 分新订单，`..._UNLIMITED` 保留给历史 800 分订单。
 
 #### 支付与退款回调
 
@@ -1228,6 +1237,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 { action: 'afterSales.adminStatus' }
 { action: 'afterSales.adminSetMembershipSales', state: 'OPEN' | 'PAUSED', reason }
 { action: 'afterSales.adminSetMembershipEnforcement', mode: 'off' | 'test' | 'all' }
+{ action: 'afterSales.adminSetMembershipUpgradeNotice', enabled: Boolean }
 { action: 'afterSales.adminList', status?, keyword?, page?, pageSize? }
 { action: 'afterSales.adminDetail', caseId }
 { action: 'afterSales.adminApproveRefund', caseId }
@@ -1284,9 +1294,11 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - `adminOrders.detail` 返回本人订单管理详情，包括用户会员状态、支付渠道、微信交易号、权益发放快照和关联售后记录。订单不存在统一返回 `1024`。
 - `afterSales.adminList` 的 `items[].user` 返回当前昵称、完整 OpenID、会员到期和已购名额；同样支持分页与关键词搜索。
 - 管理员搜索订单写 `SEARCH_ADMIN_ORDERS`，搜索售后写 `SEARCH_ADMIN_AFTER_SALES`，查看订单详情写 `VIEW_ADMIN_ORDER_DETAIL`。审计只记录关键词类型和状态，不记录原始搜索词；订单详情审计只记录交易号是否存在，不记录交易号全文。
-- `adminStatus` 返回 `{ isAdmin, migrationCompleted, entitlementMigrationCompleted, pendingCount, fundingBlockedCount, membershipSales, membershipEnforcement }`。`pendingCount` 是未结束售后单数量，用户已取消的单不计入；`fundingBlockedCount` 是其中因商户基本账户余额不足而未能发起退款的数量；`membershipSales` 含当前购买状态、暂停原因、更新时间和配置读取失败标记；`membershipEnforcement` 返回当前模式、模式文案、完整说明、单行简述、配置来源、更新时间和读取失败标记。非管理员不返回购买或限制配置。
+- `adminStatus` 返回 `{ isAdmin, migrationCompleted, entitlementMigrationCompleted, pendingCount, fundingBlockedCount, membershipSales, membershipEnforcement, membershipUpgradeNotice }`。`pendingCount` 是未结束售后单数量，用户已取消的单不计入；`fundingBlockedCount` 是其中因商户基本账户余额不足而未能发起退款的数量；`membershipSales` 含当前购买状态、暂停原因、更新时间和配置读取失败标记；`membershipEnforcement` 返回当前模式、模式文案、完整说明、单行简述、配置来源、更新时间和读取失败标记。非管理员不返回购买、限制或公告配置。
+- `membershipUpgradeNotice` 返回公告配置状态：`configured / enabled / active / noticeId / startsAt / endsAt / endsAtText / updatedAt / updatedBy / readError / statusLabel / description / actionText / toggleToEnabled / unavailable`。全局唯一真身为 `payment_config/membership_upgrade_notice`；`active` 同时校验开关和北京时间有效期。
 - `adminSetMembershipSales` 仅管理员可调用。暂停时必须填写原因；恢复时清空暂停原因。切换写 `admin_audit_logs`，不得依赖客户端隐藏按钮。
 - `adminSetMembershipEnforcement` 仅管理员可调用，只接受 `off / test / all`。切换写 `SET_MEMBERSHIP_ENFORCEMENT` 审计，记录前后模式；切 `all` 时两项迁移未完成返回 `1033`。配置文档缺失时提醒链路继续使用环境变量兜底，后台显式展示该来源，不猜测运行模式。
+- `adminSetMembershipUpgradeNotice` 仅管理员可调用，写 `SET_MEMBERSHIP_UPGRADE_NOTICE` 审计。`enabled=false` 立即停止向白名单用户返回公告；重新开启且原截止时间已过时，默认从当前时间延长 72 小时。公告开关只影响“我的”页横幅，不影响会员权益、订单、退款或提醒任务。
 - 管理员可从「全部」列表查看“用户已取消”、取消时间和取消前异常原因；取消单不显示同意退款、驳回或重试退款操作。
 - 上线前迁移完成后正式工作台已关闭迁移入口；若未来重新开启，工作台可据 `migrationCompleted=true` 自动隐藏。
 - `adminDetail` 返回订单、用户权益、支付渠道、支付查单结果、权益发放快照、支付后新增提醒数、重复支付证据和历史售后记录。系统自动补建的平台退款记录会返回 `systemGenerated=true`、退款单号和退款金额。
@@ -2131,7 +2143,8 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   membership, packages, sales,
   subscription: { quota, totalQuota, availableQuota, pendingMessageCount, level, shortfall },
   capabilities: { adminStatusKnown: false },
-  runtimeVersion: 'legacy:<ts>'
+  runtimeVersion: 'legacy:<ts>',
+  membershipUpgradeNotice: { id, endsAt } // 可选；仅公告前已开通的 unlimited-v3 白名单有效会员且公告有效
 }
 
 调用：{ action: 'cart.bootstrap' }
@@ -2139,6 +2152,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 ```
 
 - `user.bootstrap` 共享一次用户与任务读取，替代个人页顺序调用 `user.profile + subscribe.get`；管理端能力标记仍由对应部署单元鉴权。
+- `membershipUpgradeNotice` 是可省略字段。服务端先判断当前 OpenID 是否进入 `unlimited-v3`、当前会员有效，且 `memberSince` 早于公告 `startsAt`，再校验公告有效期；新会员、非白名单或免费用户响应不得增加该字段。
 - `cart.bootstrap` 替代设置提醒页的 `cart.list(includeMembership=true) + subscribe.get` 两个云函数往返。
 
 2. **清单命令返回规范视图**

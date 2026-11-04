@@ -89,7 +89,7 @@ PENDING / BOOKABLE / SUCCESS / FAILED / UNMARKED / NO_RESERVATION
 ## 会员、提醒名额与支付
 
 - 用户侧统一使用「提醒名额」，不再使用「任务位」；会员定义为 30 天提醒名额扩容，不是抢票服务。
-- 免费版上限 5。会员统一为 `¥8 / 30 天`，有效期内不限提醒名额；不自动续费。调价前订单仍按订单快照处理。
+- 免费版上限 5。会员统一为 `¥6 / 30 天`，有效期内不限提醒名额；不自动续费。调价前订单仍按订单快照处理。
 - 会员方案灰度唯一开关为 `MEMBERSHIP_ENFORCEMENT_MODE`：`test` 只对 `MEMBERSHIP_TEST_OPENIDS` 返回新方案，非白名单继续旧 `¥3 / 15 个 / 加量包`；`all` 仅在用户明确授权全量后使用。`payment_config/membership_enforcement` 仍独立负责额度限制模式。
 - 当前有效老会员自动获得不限权益，`memberExpiresAt` 不变。新购买或续费在原有效期末尾增加 30 天，已过期会员从支付成功时起算 30 天。
 - 提醒加量包已停售。历史 `taskPackCount/taskPackSlots` 保留用于展示、对账和退款，不再参与新会员额度计算。

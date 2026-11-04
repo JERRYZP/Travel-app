@@ -8,6 +8,7 @@ const feedbackEntryCache = require('../../utils/feedback-entry-cache.js');
 const PROFILE_BOOTSTRAP_TTL_MS = 5 * 60 * 1000;
 const ADMIN_STATUS_CACHE_KEY = 'profileAdminStatusV2';
 const ADMIN_STATUS_TTL_MS = 24 * 60 * 60 * 1000;
+const MEMBERSHIP_NOTICE_DISMISSED_KEY = 'membershipUpgradeNoticeDismissedV1';
 
 function reminderHintOf(health) {
   if (health.permissionState === 'none') return { text: '未开启', state: 'none' };
@@ -59,7 +60,7 @@ Page({
   },
 
   onShow() {
-    this.loadUser();
+    this.loadUser({ force: !!this.data.membershipUpgradeNotice });
     if (this.profileCacheFresh()) this.loadNotifyHint();
     this.loadAdminEntries();
     this.loadFeedbackEntry();
@@ -86,6 +87,10 @@ Page({
       this._profileLoadedAt = Date.now();
       this._membershipDataVersion = cacheVersion;
       this.applyUser(res.user || {});
+      this.applyMembershipUpgradeNotice(
+        res.membershipUpgradeNotice,
+        res.membership || (res.user && res.user.membership)
+      );
       this.applySubscriptionHint(res.subscription);
       return res;
     }).catch(() => {
@@ -95,6 +100,10 @@ Page({
         this._profileLoadedAt = Date.now();
         this._membershipDataVersion = cacheVersion;
         this.applyUser(res.user || {});
+        this.applyMembershipUpgradeNotice(
+          res.membershipUpgradeNotice,
+          res.user && res.user.membership
+        );
         return res;
       }).then(res => {
         this.loadNotifyHint();
@@ -138,8 +147,41 @@ Page({
         : (purchaseEnabled
           ? `免费版可用 ${freeSlots} 个提醒名额；开通后不限提醒名额`
           : `免费版可用 ${freeSlots} 个提醒名额；会员购买暂停中`),
-      memberCardAction: purchaseEnabled ? (current.member ? '续费' : '开通') : '查看',
+      memberCardAction: purchaseEnabled && current.member !== true ? '开通' : '查看',
     });
+  },
+
+  applyMembershipUpgradeNotice(notice, membership) {
+    const current = membership || {};
+    if (!notice || current.planVersion !== 'unlimited-v3' || current.member !== true) {
+      this.setData({ membershipUpgradeNotice: null });
+      return;
+    }
+    let dismissed = '';
+    try {
+      dismissed = String(wx.getStorageSync(MEMBERSHIP_NOTICE_DISMISSED_KEY) || '');
+    } catch (err) {}
+    if (dismissed && dismissed === String(notice.id || '')) {
+      this.setData({ membershipUpgradeNotice: null });
+      return;
+    }
+    this.setData({
+      membershipUpgradeNotice: {
+        id: String(notice.id || ''),
+        title: '您的会员权益已升级',
+        body: '您的会员有效期不变，提醒名额已升级为不限',
+      },
+    });
+  },
+
+  onDismissMembershipUpgradeNotice() {
+    const notice = this.data.membershipUpgradeNotice;
+    if (notice && notice.id) {
+      try {
+        wx.setStorageSync(MEMBERSHIP_NOTICE_DISMISSED_KEY, notice.id);
+      } catch (err) {}
+    }
+    this.setData({ membershipUpgradeNotice: null });
   },
 
   /* 提醒设置状态：权限三态 + 授权额度健康度（onShow 刷新，从内页返回即时更新） */

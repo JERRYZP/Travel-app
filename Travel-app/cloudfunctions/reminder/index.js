@@ -280,13 +280,18 @@ async function main(event) {
       /* ======== 用户 ======== */
       case 'user.profile': {
         const profile = await getOrCreateUser(userId);
-        const current = await membership.status(db, userId);
+        const current = await membership.status(db, userId, undefined, {
+          includeUpgradeNotice: true,
+        });
         return ok({
           user: {
             ...profile.user,
             membership: current.membership,
             membershipSales: current.sales,
           },
+          ...(current.upgradeNotice
+            ? { membershipUpgradeNotice: current.upgradeNotice }
+            : {}),
         });
       }
       case 'user.bootstrap':
@@ -604,6 +609,7 @@ async function userBootstrap(userId) {
       activeTasks,
       latestTask,
       configCache: true,
+      includeUpgradeNotice: true,
     }),
     task.subscriptionStatus(db, userId, DEFAULT_SUBSCRIBE_TEMPLATE_ID, {
       user: rawUser,
@@ -620,6 +626,9 @@ async function userBootstrap(userId) {
     membership: current.membership,
     packages: current.packages,
     sales: current.sales,
+    ...(current.upgradeNotice
+      ? { membershipUpgradeNotice: current.upgradeNotice }
+      : {}),
     subscription,
     capabilities: {
       /* 管理端白名单分属 payment / feedback 部署单元，客户端可缓存一次能力探测。 */

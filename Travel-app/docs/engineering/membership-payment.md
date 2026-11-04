@@ -10,8 +10,8 @@
 
 - 会员不是抢票服务，而是 **30 天提醒名额扩容**。
 - 免费版：5 个提醒名额。
-- 会员：当前新订单为 ¥8 / 30 天，会员有效期内不限提醒名额，不自动续费。新购买或续费在原有效期末尾增加 30 天；已过期会员从支付成功时起算 30 天。
-- 方案灰度复用 `MEMBERSHIP_ENFORCEMENT_MODE`：生产验收期间必须为 `test`，只有 `MEMBERSHIP_TEST_OPENIDS` 命中用户返回 ¥8 不限方案；非白名单继续完整旧契约 `¥3 / 15 个 / task_pack_5`。`all` 只在用户明确授权全量后切换，不能与数据库额度限制模式混为一谈。
+- 会员：当前新订单为 ¥6 / 30 天，会员有效期内不限提醒名额，不自动续费。新购买或续费在原有效期末尾增加 30 天；已过期会员从支付成功时起算 30 天。历史 ¥8 订单继续按订单快照支付、查单、发放和退款。
+- 方案灰度复用 `MEMBERSHIP_ENFORCEMENT_MODE`：生产验收期间必须为 `test`，只有 `MEMBERSHIP_TEST_OPENIDS` 命中用户返回 ¥6 不限方案；非白名单继续完整旧契约 `¥3 / 15 个 / task_pack_5`。`all` 只在用户明确授权全量后切换，不能与数据库额度限制模式混为一谈。
 - 当前有效老会员自动获得不限权益，`memberExpiresAt` 不变，不执行批量权益写入。
 - 提醒加量包停止新售，`membership.createOrder` 只接受 `member`；历史 `task_pack_5` 待支付订单仍可按订单快照完成，历史包继续用于展示、对账和退款，但不再参与会员额度计算。
 - 微信订阅消息仍需按条授权；“不限提醒名额”不替代订阅授权，会员到期不删除已有提醒；不保证景点有票，不代抢、不代约。
@@ -87,6 +87,15 @@ iOS Apple 内购订单在订单展示接口中返回 `paymentChannel=APPLE`。�
 - 切 `all` 前服务端强制检查保护额度迁移和权益账本迁移，任一未完成返回 `1033`。所有切换写 `SET_MEMBERSHIP_ENFORCEMENT` 审计。
 - 配置缺失、非法或读取失败时，`reminder` 回退 `MEMBERSHIP_ENFORCEMENT_MODE`。后台显示“环境变量兜底”，不猜测当前有效模式。
 - 客服工作台顺序固定为会员购买开关、会员限制模式、资金阻断、页签与列表；购买开关保持在页面最顶部。
+
+### 会员升级临时公告
+
+- 唯一真身：`payment_config/membership_upgrade_notice`，字段固定为 `noticeId / enabled / startsAt / endsAt / updatedAt / updatedBy`。它只控制“我的”页一次性横幅，不参与会员价格、有效期、额度、支付或退款。
+- 公开返回条件：当前 OpenID 命中 `unlimited-v3`、当前会员有效、`users.memberSince < startsAt`、`enabled=true`、当前北京时间位于 `startsAt..endsAt`。任一条件不满足时，`user.profile` / `user.bootstrap` 整体省略 `membershipUpgradeNotice`；非白名单、免费用户及公告上线后新开通会员不得新增空字段或占位。缺少 `memberSince` 时按保守策略不展示。
+- 默认窗口 72 小时。管理员在客服工作台一次确认即可下架；再次开启时如旧的 `endsAt` 已过，自动续到当前时间后 72 小时。开关写 `SET_MEMBERSHIP_UPGRADE_NOTICE` 审计。
+- `payment` 写配置后直接失效本实例缓存；`reminder` 公告配置实例缓存 45 秒。用户停留在“我的”页时不做秒级轮询，下次 `onShow` 才重新读取，因此下架的最迟可见延迟为 45 秒加下一次页面回到前台。
+- 客户端按公告 ID 本地关闭，不按天重置。横幅只对公告开始前已成为会员的当前有效会员展示，文案只说明有效期不变、提醒名额升级。统一使用“不限提醒名额”，不得写“不限次数”或暗示免除微信逐条订阅授权。
+- 会员页套餐使用方形勾选框。对当前有效会员不再默认勾选续费套餐：页面初始 `selectedPackage=null`，底部按钮固定显示「续费30天会员」且点击无动作；用户手动选择后文案不变并生成支付确认，再次点击已选项可取消并恢复禁用。会员在“我的”页的会员卡动作固定为「查看」。非会员仍默认选中唯一会员套餐。
 
 - 支付回调与退款回调都使用微信支付公钥模式，校验 `Wechatpay-Timestamp`、`Wechatpay-Nonce`、`Wechatpay-Signature`、`Wechatpay-Serial`。
 - `cloud1` 的 HTTP 路由已用错误签名请求验证可达并返回 401；真实签名的支付/退款回调样本尚未观察到，因此回调代码路径存在不等于端到端已通过。当前真实支付与退款到账由客户端查单、定时补偿和主动退款查询完成。
@@ -173,6 +182,8 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 
 - 唯一提醒名额规则：`cloudfunctions/reminder/lib/membership.js`
 - 会员购买开关：`cloudfunctions/{reminder,payment}/lib/membership-sales.js`
+- 会员升级公告读取：`cloudfunctions/reminder/lib/membership-upgrade-notice.js`
+- 会员升级公告管理：`cloudfunctions/payment/lib/membership-upgrade-notice.js`
 - 订单创建：`reminder.membership.createOrder`
 - 权益硬闸门：`cart.commit`、`tripItem.updateReminder`
 - 支付、查单、退款、定时补偿：`cloudfunctions/payment/index.js`
@@ -195,6 +206,9 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 本地已通过：
 
 - 2026-11-04 会员不限权益候选：`npm test`、`npm run check`、`npm run test:admin-web` 与 `git diff --check` 通过；覆盖有效老会员超过旧 15 条上限仍可创建、到期时间不变、过期回免费 5 条、¥8 新订单、停售加量包拒绝新下单、旧价订单继续支付、退款快照和 mock 一致性。
+- 2026-11-05 不限会员价格已调整为 ¥6 / 30 天：套餐金额改为 600 分，规格版本升级为 `member-unlimited-30d-v4`；新订单使用 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_V6=travel_task_vip_6` 的 600 分固定商品，历史 ¥8 / v3 订单继续使用 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED` 对应商品查单、补发、退款和售后。`payment` / `reminder` 已于 07:19:44 / 07:20:21 部署，均 Active、Nodejs16.13、60 秒，云端源码与工作区一致；原有 payment 环境变量逐项核验未变化，两分钟触发器保持启用。体验版 `2.3.4` 于 07:21 上传，未提交审核、未发布正式版。
+- 2026-11-04 会员升级临时公告已部署白名单灰度：专项测试覆盖白名单/legacy 隔离、免费会员不展示、启用/停用/过期、管理员 72 小时恢复、审计、会员文案、按公告 ID 关闭和后台快速下架；静态检查保持主包低于 1536KB 硬线。`reminder` 于 23:43:58 补部署会员专属公告门槛，云端源码与工作区一致，保持 Nodejs16.13 / 60 秒，2 个环境变量哈希与 `MEMBERSHIP_ENFORCEMENT_MODE=test` 不变；公告配置窗口为 11-04 22:59:50 至 11-07 22:59:50（北京时间）。体验版 `2.3.2` 于 23:44 上传，包体 1,133,028 字节；未提交审核、未发布正式版。
+- 2026-11-04 公告“仅公告前老会员可见”已部署：专项测试覆盖 `memberSince < startsAt` 可见、公告后新会员不可见、缺少 `memberSince` 保守隐藏及 mock 镜像。`reminder` 于 23:55:30 更新为 `Active`、Nodejs16.13、60 秒，云端源码与工作区一致，环境变量哈希和 `MEMBERSHIP_ENFORCEMENT_MODE=test` 不变；体验版 `2.3.3` 于 23:56 上传，包体 1,133,122 字节；未提交审核、未发布正式版。
 - `test/payment-v3.test.js`
 - `test/payment-virtual.test.js`
 - `test/payment-order.test.js`
@@ -204,6 +218,7 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 - `test/payment-refund-callback.test.js`
 - `test/membership.test.js`
 - `test/membership-sales.test.js`
+- `test/membership-upgrade-notice.test.js`
 - `test/admin-orders.test.js`
 - `test/membership-ux.test.js`
 - `test/membership-pay.test.js`

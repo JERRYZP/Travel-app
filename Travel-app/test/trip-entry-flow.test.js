@@ -486,8 +486,8 @@ function instantiateComponent(def) {
     },
     packages: [{
       id: 'member', type: 'MEMBER', available: true,
-      priceText: '¥8', addedSlots: 0, memberDays: 30, unlimitedReminders: true,
-      actionText: '续费 30 天 ¥8', description: '会员有效期内不限提醒名额',
+      priceText: '¥6', addedSlots: 0, memberDays: 30, unlimitedReminders: true,
+      actionText: '续费 30 天 ¥6', description: '会员有效期内不限提醒名额',
     }],
   };
   await hub.openDateSheet('gugong', '故宫博物院', '设置提醒', true, { multiple: true });
@@ -519,8 +519,8 @@ function instantiateComponent(def) {
     },
     packages: [{
       id: 'member', type: 'MEMBER', available: true,
-      priceText: '¥8', addedSlots: 0, memberDays: 30, unlimitedReminders: true,
-      actionText: '开通会员 ¥8', description: '会员有效期内不限提醒名额',
+      priceText: '¥6', addedSlots: 0, memberDays: 30, unlimitedReminders: true,
+      actionText: '开通会员 ¥6', description: '会员有效期内不限提醒名额',
     }],
   };
   await hub.openDateSheet('gugong', '故宫博物院', '设置提醒', true, { multiple: true });
@@ -709,11 +709,11 @@ function instantiateComponent(def) {
       type: 'MEMBER',
       available: true,
       title: '会员',
-      priceText: '¥8',
+      priceText: '¥6',
       addedSlots: 0,
       memberDays: 30,
       unlimitedReminders: true,
-      actionText: '开通会员 ¥8',
+      actionText: '开通会员 ¥6',
       description: '会员有效期内不限提醒名额',
     }],
   };
@@ -726,14 +726,14 @@ function instantiateComponent(def) {
   eq(hub.data.membershipLimit.used, 4, '浮层展示服务端已占额度');
   eq(hub.data.membershipLimit.remaining, 1, '浮层展示服务端剩余额度');
   eq(hub.data.membershipLimit.requested, 3, '浮层展示本次新建数');
-  eq(hub.data.membershipLimit.actionText, '开通会员 ¥8', '主按钮文案直接复用服务端套餐');
-  eq(hub.data.membershipLimit.payText, '支付 ¥8，购买会员并继续',
+  eq(hub.data.membershipLimit.actionText, '开通会员 ¥6', '主按钮文案直接复用服务端套餐');
+  eq(hub.data.membershipLimit.payText, '支付 ¥6，购买会员并继续',
     '名额主按钮直接说明支付后继续完成提醒');
   eq(calls.navigations.length, 0, '关闭说明前不自动跳会员页');
   await hub.onReminderAuthPay();
   eq(hub.data.taskLimitPayConfirm.title, '30 天会员', '主按钮在原浮层内打开支付确认');
-  eq(hub.data.taskLimitPayConfirm.amount, '¥8', '支付确认展示服务端金额');
-  eq(hub.data.taskLimitPayButtonText, '支付 ¥8', '支付确认按钮明确金额');
+  eq(hub.data.taskLimitPayConfirm.amount, '¥6', '支付确认展示服务端金额');
+  eq(hub.data.taskLimitPayButtonText, '支付 ¥6', '支付确认按钮明确金额');
   eq(calls.navigations.length, 0, '支付确认不跳会员页');
   hub.onReminderAuthPayClose();
   eq(hub.data.taskLimitPayConfirm, null, '取消确认只关闭支付确认，不丢当前名额说明');
@@ -768,11 +768,11 @@ function instantiateComponent(def) {
       type: 'MEMBER',
       available: true,
       title: '会员 30 天',
-      priceText: '¥8',
+      priceText: '¥6',
       addedSlots: 0,
       memberDays: 30,
       unlimitedReminders: true,
-      actionText: '续费 30 天 ¥8',
+      actionText: '续费 30 天 ¥6',
       description: '会员有效期内不限提醒名额',
     }],
   };
@@ -819,8 +819,8 @@ function instantiateComponent(def) {
     taskLimit: { limit: 5, used: 5, remaining: 0, requested: 1, shortfall: 1 },
     packages: [{
       id: 'member', type: 'MEMBER', available: true,
-      priceText: '¥8', addedSlots: 0, memberDays: 30, unlimitedReminders: true,
-      actionText: '开通会员 ¥8', description: '会员有效期内不限提醒名额',
+      priceText: '¥6', addedSlots: 0, memberDays: 30, unlimitedReminders: true,
+      actionText: '开通会员 ¥6', description: '会员有效期内不限提醒名额',
     }],
   };
   await hub.openDateSheet('gugong', '故宫博物院', '设置提醒', true, { multiple: true });
@@ -854,8 +854,8 @@ function instantiateComponent(def) {
     taskLimit: { limit: 5, used: 5, remaining: 0, requested: 1, shortfall: 1 },
     packages: [{
       id: 'member', type: 'MEMBER', available: true,
-      priceText: '¥8', addedSlots: 0, memberDays: 30, unlimitedReminders: true,
-      actionText: '开通会员 ¥8', description: '会员有效期内不限提醒名额',
+      priceText: '¥6', addedSlots: 0, memberDays: 30, unlimitedReminders: true,
+      actionText: '开通会员 ¥6', description: '会员有效期内不限提醒名额',
     }],
   };
   await hub.openDateSheet('gugong', '故宫博物院', '设置提醒', true, { multiple: true });
@@ -946,8 +946,8 @@ function instantiateComponent(def) {
     },
     packages: [{
       id: 'member', type: 'MEMBER', available: true,
-      priceText: '¥8', addedSlots: 0, memberDays: 30, unlimitedReminders: true,
-      actionText: '开通会员 ¥8', description: '会员有效期内不限提醒名额',
+      priceText: '¥6', addedSlots: 0, memberDays: 30, unlimitedReminders: true,
+      actionText: '开通会员 ¥6', description: '会员有效期内不限提醒名额',
     }],
   };
   home.data.dateAction = { spotId: 'gugong', remindOn: true };

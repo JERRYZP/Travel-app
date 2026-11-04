@@ -65,6 +65,12 @@
 .enforcement-select { width: 112rpx; height: 54rpx; padding: 0 9rpx; border: 1rpx solid #D8CBB3; border-radius: 11rpx; box-sizing: border-box; background: #F7F2E8; color: var(--color-text); display: flex; align-items: center; justify-content: space-between; gap: 5rpx; }
 .enforcement-select.disabled { opacity: .55; }
 .enforcement-select-value { min-width: 0; overflow: hidden; font-size: 18rpx; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-notice-card { margin-bottom: 18rpx; padding: 18rpx 20rpx; }
+.upgrade-notice-card.active { border-color: #E2C896; background: #FFF9EA; }
+.upgrade-notice-card.active .upgrade-notice-status { background: #F7ECD4; color: #8A5A12; }
+.upgrade-notice-status.upgrade-inactive { background: #F1F0ED; color: #77736B; }
+.upgrade-notice-time { min-width: 0; overflow: hidden; color: var(--color-muted); font-size: 17rpx; text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-notice-action { width: 112rpx; }
 .sales-confirm-mask { position: fixed; inset: 0; z-index: 320; display: flex; align-items: flex-end; background: rgba(34,25,19,.5); }
 .sales-confirm-sheet { width: 100%; padding: 26rpx 30rpx calc(22rpx + env(safe-area-inset-bottom)); border-radius: 28rpx 28rpx 0 0; box-sizing: border-box; background: #FFFDF8; }
 .sales-confirm-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14rpx; }
@@ -194,4 +200,6 @@
   .sales-action { width: 80rpx; }
   .enforcement-select { width: 112rpx; padding: 0 6rpx; }
   .enforcement-select-value { font-size: 17rpx; }
+  .upgrade-notice-card { gap: 10rpx; padding: 16rpx; }
+  .upgrade-notice-action { width: 104rpx; }
 }

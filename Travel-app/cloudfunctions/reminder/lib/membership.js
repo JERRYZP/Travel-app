@@ -3,7 +3,7 @@
  *
  * 这里是小程序端唯一可以消费的提醒名额口径：
  * - 免费用户最多保留 5 个未来待发送提醒任务；
- * - 8 元会员有效 30 天，会员期内不限提醒名额；
+ * - 6 元会员有效 30 天，会员期内不限提醒名额；
  * - 提醒加量包已停售，历史订单和退款快照继续兼容；
  * - 会员到期后回到免费 5 个提醒名额，已有提醒任务继续发送。
  *
@@ -20,9 +20,10 @@ const userDomain = require('./user');
 const quotaLock = require('./quota-lock');
 const membershipSales = require('./membership-sales');
 const membershipEnforcement = require('./membership-enforcement');
+const upgradeNotice = require('./membership-upgrade-notice');
 
 const FREE_TASK_SLOTS = 5;
-const MEMBER_PRICE_FEN = 800;
+const MEMBER_PRICE_FEN = 600;
 const LEGACY_MEMBER_PRICE_FEN = 300;
 const LEGACY_MEMBER_TASK_SLOTS = 15;
 const LEGACY_CURRENT_TASK_PACK_SIZE = 10;
@@ -71,7 +72,7 @@ const PACKAGES = Object.freeze([
     type: 'MEMBER',
     title: '会员 30 天',
     priceFen: MEMBER_PRICE_FEN,
-    priceText: '¥8',
+    priceText: '¥6',
     taskSlots: 0,
     addedSlots: 0,
     unlimitedReminders: true,
@@ -79,7 +80,7 @@ const PACKAGES = Object.freeze([
     memberFloorDays: MEMBER_DURATION_DAYS,
     description: '会员有效期内不限提醒名额',
     badge: '推荐',
-    specVersion: 'member-unlimited-30d-v3',
+    specVersion: 'member-unlimited-30d-v4',
   },
 ]);
 
@@ -496,7 +497,10 @@ async function status(db, userId, nowTs = time.now(), options = {}) {
   const hasUser = Object.prototype.hasOwnProperty.call(options, 'user');
   const hasActiveTasks = Object.prototype.hasOwnProperty.call(options, 'activeTasks');
   const hasLatestTask = Object.prototype.hasOwnProperty.call(options, 'latestTask');
-  const [userRes, taskRes, latestTaskRes, sales, enforcement] = await Promise.all([
+  const noticePromise = options.includeUpgradeNotice
+    ? upgradeNotice.read(db, { cache: options.configCache === true })
+    : Promise.resolve(null);
+  const [userRes, taskRes, latestTaskRes, sales, enforcement, noticeConfig] = await Promise.all([
     hasUser
       ? Promise.resolve({ data: options.user ? [options.user] : [] })
       : db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
@@ -519,6 +523,7 @@ async function status(db, userId, nowTs = time.now(), options = {}) {
         .get(),
     membershipSales.read(db, { cache: options.configCache === true }),
     enforcementPromise,
+    noticePromise,
   ]);
 
   const user = (userRes.data || [])[0] || {};
@@ -549,11 +554,17 @@ async function status(db, userId, nowTs = time.now(), options = {}) {
   const newPlan = isNewPlanEnabledFor(userId);
   const snapshot = snapshotFromTasks(user, activeTasks, nowTs, { newPlan });
   const salesView = membershipSales.publicView(sales);
+  const upgradeNoticeView = upgradeNotice.publicViewOf(noticeConfig, nowTs, {
+    newPlan,
+    member: snapshot.member,
+    memberSince: user.memberSince,
+  });
   return ok({
     membership: snapshot,
     packages: packageViews(snapshot, salesView, newPlan),
     sales: salesView,
     enforced: shouldEnforceForState(enforcement, userId),
+    ...(upgradeNoticeView ? { upgradeNotice: upgradeNoticeView } : {}),
   });
 }
 

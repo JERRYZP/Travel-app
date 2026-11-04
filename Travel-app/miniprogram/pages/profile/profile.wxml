@@ -26,6 +26,16 @@
     </button>
   </view>
 
+  <view wx:if="{{membershipUpgradeNotice}}" class="membership-entry upgrade-notice" bindtap="onMembership">
+    <svg-icon name="sparkle" size="17px" />
+    <view class="membership-entry-copy">
+      <text class="upgrade-notice-title">{{membershipUpgradeNotice.title}}</text>
+      <text class="membership-entry-desc">{{membershipUpgradeNotice.body}}</text>
+    </view>
+    <text class="upgrade-action">查看</text>
+    <view class="upgrade-close" catchtap="onDismissMembershipUpgradeNotice"><svg-icon name="close" size="11px" /></view>
+  </view>
+
   <!-- 会员身份独立成块：普通用户与有效会员使用不同的底色、标签和行动文案。 -->
   <view class="membership-entry {{isMember ? 'member' : 'normal'}}" bindtap="onMembership">
     <view class="membership-entry-copy">

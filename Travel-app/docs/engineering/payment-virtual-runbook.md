@@ -46,7 +46,8 @@
 | 业务 SKU | 服务端套餐 | 道具价格 | 权益 |
 |---|---|---:|---|
 | 旧会员 30 天 | `member` / `legacy-v2` | 300 分 | 旧线上契约，最多 15 个提醒名额 |
-| 不限会员 30 天 | `member` / `unlimited-v3` | 800 分 | 30 天会员，有效期内不限提醒名额 |
+| 不限会员 30 天（当前） | `member` / `unlimited-v3` | 600 分 | 30 天会员，有效期内不限提醒名额，规格 `member-unlimited-30d-v4` |
+| 不限会员 30 天（历史） | `member` / `unlimited-v3` | 800 分 | 仅兼容历史 v3 订单的支付、查单、发放和退款 |
 | 历史提醒名额包 | `task_pack_5`（已停售） | 按历史订单快照 | 仅兼容旧待支付订单、查单、退款和售后，不创建新订单 |
 
 4. 后台道具价格必须与 `cloudfunctions/reminder/lib/membership.js` 的订单金额一致；客户端传入的 `goodsPrice` 由服务端订单决定。
@@ -71,12 +72,13 @@
 | `WECHAT_VIRTUAL_PAY_PRODUCTION_APP_KEY` | 现网必填 | 现网 AppKey |
 | `WECHAT_VIRTUAL_PAY_SANDBOX_APP_KEY` | 沙箱必填 | 沙箱 AppKey |
 | `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER` | 是 | 旧会员 300 分固定道具 ProductId；非白名单 legacy-v2 继续使用 |
-| `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED` | 白名单新方案必填 | 不限会员 800 分固定道具 ProductId；`unlimited-v3` 只使用此项 |
+| `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_V6` | 新方案售卖必填 | 当前不限会员 600 分固定道具 ProductId；`member-unlimited-30d-v4` 只使用此项 |
+| `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED` | 历史订单兼容必填 | 历史不限会员 800 分固定道具 ProductId；只供 v3 / 800 分订单继续支付、查单、补发和退款 |
 | `WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK` | 是 | 历史提醒名额包道具的 ProductId；新售停用后仍需保留，供旧待支付订单查单和退款 |
 
 `WECHAT_VIRTUAL_PAY_APP_KEY` 只作为单一 AppKey 的兼容回退，不建议正式环境依赖。
 
-服务端查单和退款只依赖 AppID、AppSecret、OfferId 和对应环境 AppKey；商品 ID 在签名前按订单 `specVersion/unlimitedReminders` 选择对应固定道具，并在发放前再次核对订单固化的 `virtualProductId`。旧会员与不限会员必须使用两个不同道具 ID，禁止通过修改旧 300 分道具价格来承载新 800 分订单，否则会破坏非白名单线上支付。
+服务端查单和退款只依赖 AppID、AppSecret、OfferId 和对应环境 AppKey；商品 ID 在签名前按订单金额、`specVersion/unlimitedReminders` 选择对应固定道具，并在发放前再次核对订单固化的 `virtualProductId`。旧会员、历史 800 分不限会员和当前 600 分不限会员必须使用不同道具 ID，禁止通过修改旧道具价格承载新价格订单。
 
 API v3 原有 `WECHAT_PAY_*` 变量和 HTTP 网关继续保留，不需要删除。两项配置可同时存在；渠道由 `PAYMENT_PROVIDER` 控制。
 

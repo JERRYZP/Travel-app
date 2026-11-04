@@ -87,6 +87,7 @@ function expectedExpiryOf(pkg, membership, now = Date.now()) {
 }
 
 function defaultPackageIdOf(membership, available) {
+  if (membership && membership.member === true) return '';
   const packages = available || [];
   const preferred = packages.find(item => item && item.type === 'MEMBER')
     || packages[0];
@@ -399,11 +400,16 @@ Page({
   defaultPackageIdOf,
 
   payButtonOf(pkg, membership) {
-    if (!pkg) return '暂无可购买项';
     const current = membership || this.data.membership || {};
+    if (current.member === true) {
+      const days = Math.max(0, Number(current.memberDurationDays)
+        || Number(pkg && pkg.memberDays) || 30);
+      return `续费${days}天会员`;
+    }
+    if (!pkg) return '请先选择会员套餐';
     if (pkg.type === 'MEMBER') {
       const days = Math.max(0, Number(pkg.memberDays) || 0);
-      return `支付 ${pkg.priceText}，${current.member ? `续费 ${days} 天会员` : `开通 ${days} 天会员并继续`}`;
+      return `支付 ${pkg.priceText}，开通 ${days} 天会员并继续`;
     }
     return '暂无可购买项';
   },
@@ -416,12 +422,15 @@ Page({
       wx.showToast({ title: pkg.actionText, icon: 'none' });
       return;
     }
-    const selectedPackage = this.data.packages.find(item => item.id === id) || pkg;
+    const selectedId = this.data.selectedPackageId === id ? '' : id;
+    const selectedPackage = selectedId
+      ? (this.data.packages.find(item => item.id === selectedId) || pkg)
+      : null;
     this.setData({
-      selectedPackageId: id,
+      selectedPackageId: selectedId,
       selectedPackage,
-      packages: this.markPackages(this.data.packages, id),
-      visiblePackages: this.markPackages(this.data.visiblePackages, id),
+      packages: this.markPackages(this.data.packages, selectedId),
+      visiblePackages: this.markPackages(this.data.visiblePackages, selectedId),
       payButtonText: this.payButtonOf(selectedPackage, this.data.membership),
     });
   },
@@ -446,7 +455,7 @@ Page({
   },
 
   onPay() {
-    if (this.data.purchasing) return;
+    if (this.data.purchasing || !this.data.selectedPackage) return;
     if (this.data.sales && this.data.sales.purchaseEnabled === false) {
       wx.showToast({ title: this.data.sales.message || '会员购买暂停中', icon: 'none' });
       return;
@@ -456,7 +465,6 @@ Page({
       return;
     }
     const pkg = this.data.selectedPackage;
-    if (!pkg) return;
     const expiry = expectedExpiryOf(pkg, this.data.membership);
     this.setData({
       showPayConfirm: true,

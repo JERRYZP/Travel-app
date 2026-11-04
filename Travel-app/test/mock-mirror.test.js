@@ -599,13 +599,18 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     const initial = await c('membership.status', {});
     const memberPackage = initial.packages.find(item => item.type === 'MEMBER');
     const taskPackPackage = initial.packages.find(item => item.type === 'TASK_PACK');
-    eq(memberPackage.priceText, '¥8', 'mock 会员价格由套餐镜像生成');
+    eq(memberPackage.priceText, '¥6', 'mock 会员价格由套餐镜像生成');
     eq(memberPackage.unlimitedReminders, true, 'mock 会员权益为不限提醒名额');
     eq(memberPackage.memberDays, 30, 'mock 会员有效期由套餐镜像生成');
     eq(taskPackPackage, undefined, 'mock 不再销售提醒名额包');
     eq(initial.membership.freeTaskSlots, 5, 'mock 免费额度与云端一致');
+    eq(initial.membership.planVersion, 'unlimited-v3', 'mock 使用白名单新方案版本');
     eq(initial.membership.taskLimitUnlimited, false, 'mock 免费用户没有不限权益');
     eq(initial.membership.memberTaskSlots, 10000, 'mock 旧客户端兼容字段与云端一致');
+    const freeProfile = await c('user.profile', {});
+    eq(freeProfile.membershipUpgradeNotice, undefined, 'mock 免费用户资料不返回临时会员升级公告');
+    const freeBootstrap = await c('user.bootstrap', {});
+    eq(freeBootstrap.membershipUpgradeNotice, undefined, 'mock 免费用户 bootstrap 不返回公告');
 
     const requestId = 'mock_membership_request_001';
     const memberOrder = await c('membership.createOrder', { packageId: 'member', requestId });
@@ -616,6 +621,15 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     const afterMember = await c('membership.status', {});
     eq(afterMember.membership.taskLimitUnlimited, true, 'mock 会员开通后不限提醒名额');
     eq(afterMember.membership.taskLimit, 10000, 'mock 兼容字段不参与业务限制');
+    const newMemberProfile = await c('user.profile', {});
+    eq(newMemberProfile.membershipUpgradeNotice, undefined,
+      'mock 公告后新开通会员不返回升级公告');
+    const disabledNotice = await c('afterSales.adminSetMembershipUpgradeNotice', { enabled: false });
+    eq(disabledNotice.membershipUpgradeNotice.active, false, 'mock 支持后台快速下架公告');
+    const hiddenBootstrap = await c('user.bootstrap', {});
+    eq(hiddenBootstrap.membershipUpgradeNotice, undefined, 'mock 下架后会员 bootstrap 不再返回公告');
+    const restoredNotice = await c('afterSales.adminSetMembershipUpgradeNotice', { enabled: true });
+    eq(restoredNotice.membershipUpgradeNotice.active, true, 'mock 支持恢复公告');
 
     const retiredPack = await errOf(c('membership.createOrder', {
       packageId: 'task_pack_5', requestId: 'mock_task_pack_request_001',

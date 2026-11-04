@@ -200,6 +200,8 @@ Page({
     migrationTotalScanned: 0,
     migrationTotalUpdated: 0,
     membershipSales: null,
+    membershipUpgradeNotice: null,
+    membershipUpgradeNoticeSaving: false,
     salesReason: '',
     salesSaving: false,
     showSalesConfirm: false,
@@ -385,6 +387,7 @@ Page({
       pendingCount: Math.max(0, Number(res && res.pendingCount) || 0),
       fundingBlockedCount: Math.max(0, Number(res && res.fundingBlockedCount) || 0),
       membershipSales: (res && res.membershipSales) || null,
+      membershipUpgradeNotice: (res && res.membershipUpgradeNotice) || null,
       membershipEnforcement,
       enforcementPickerLabels: enforcementPicker.labels,
       enforcementPickerIndex: enforcementPicker.index,
@@ -448,6 +451,48 @@ Page({
       .catch(err => {
         this.setData({ salesSaving: false });
         api.toastError(err);
+        return false;
+      });
+  },
+
+  onToggleMembershipUpgradeNotice() {
+    const notice = this.data.membershipUpgradeNotice;
+    if (this.data.membershipUpgradeNoticeSaving || !notice || notice.unavailable) return;
+    const nextEnabled = notice.toggleToEnabled !== false;
+    wx.showModal({
+      title: nextEnabled ? '恢复会员升级公告' : '下架会员升级公告',
+      content: nextEnabled
+        ? '恢复后默认展示 72 小时；白名单用户再次进入“我的”页会看到临时公告。'
+        : '下架后白名单用户不再看到临时公告，不影响会员权益。',
+      confirmText: nextEnabled ? '恢复' : '下架',
+      success: res => {
+        if (res.confirm) this.setMembershipUpgradeNoticeState(nextEnabled);
+      },
+    });
+  },
+
+  setMembershipUpgradeNoticeState(enabled) {
+    if (this.data.membershipUpgradeNoticeSaving) return Promise.resolve(false);
+    this.setData({ membershipUpgradeNoticeSaving: true });
+    return api.payment.afterSales.adminSetMembershipUpgradeNotice({ enabled })
+      .then(result => {
+        this.setData({
+          membershipUpgradeNoticeSaving: false,
+          membershipUpgradeNotice: (result && result.membershipUpgradeNotice)
+            || this.data.membershipUpgradeNotice,
+        });
+        wx.showToast({
+          title: enabled ? '公告已恢复' : '公告已下架',
+          icon: 'none',
+        });
+        return true;
+      })
+      .catch(err => {
+        this.setData({ membershipUpgradeNoticeSaving: false });
+        wx.showToast({
+          title: (err && err.error) || '公告开关更新失败',
+          icon: 'none',
+        });
         return false;
       });
   },

@@ -48,6 +48,7 @@ const {
 const afterSales = require('./lib/after-sales');
 const membershipSales = require('./lib/membership-sales');
 const membershipEnforcement = require('./lib/membership-enforcement');
+const membershipUpgradeNotice = require('./lib/membership-upgrade-notice');
 const adminOrders = require('./lib/admin-orders');
 const adminReminderQuality = require('./lib/admin-reminder-quality');
 const {
@@ -1139,6 +1140,49 @@ async function setMembershipEnforcement(context, event) {
   membershipEnforcement.invalidate(db);
   const current = await membershipEnforcement.read(db);
   return ok({ membershipEnforcement: membershipEnforcement.adminView(current) });
+}
+
+async function setMembershipUpgradeNotice(context, event) {
+  const denied = adminRequired(context);
+  if (denied) return denied;
+  const enabled = event.enabled === true;
+  const current = await membershipUpgradeNotice.read(db, { cache: false });
+  const nowTs = new Date();
+  const currentEndsMs = new Date(current.endsAt || 0).getTime();
+  const restarting = enabled && (current.enabled !== true
+    || !Number.isFinite(currentEndsMs)
+    || currentEndsMs <= nowTs.getTime());
+  const startsAt = restarting ? nowTs : (current.startsAt || nowTs);
+  const endsAt = restarting
+    ? new Date(nowTs.getTime() + 72 * 60 * 60 * 1000)
+    : (current.endsAt || new Date(nowTs.getTime() + 72 * 60 * 60 * 1000));
+  await db.runTransaction(async transaction => {
+    await transaction.collection(COLLECTIONS.PAYMENT_CONFIG)
+      .doc(membershipUpgradeNotice.CONFIG_ID)
+      .set({
+        data: {
+          noticeId: current.noticeId || 'membership-unlimited-upgrade',
+          enabled,
+          startsAt,
+          endsAt,
+          updatedAt: nowTs,
+          updatedBy: context.OPENID,
+        },
+      });
+    await transaction.collection(COLLECTIONS.ADMIN_AUDIT_LOGS).add({
+      data: {
+        adminOpenId: context.OPENID,
+        action: 'SET_MEMBERSHIP_UPGRADE_NOTICE',
+        caseId: '',
+        orderId: '',
+        details: { enabled },
+        createdAt: nowTs,
+      },
+    });
+  });
+  membershipUpgradeNotice.invalidate(db);
+  const fresh = await membershipUpgradeNotice.read(db, { cache: false });
+  return ok({ membershipUpgradeNotice: membershipUpgradeNotice.adminViewOf(fresh) });
 }
 
 async function adminCaseBundle(caseItem) {
@@ -2447,6 +2491,7 @@ async function main(event = {}) {
           fundingBlockedCount,
           sales,
           enforcement,
+          upgradeNotice,
         ] = await Promise.all([
           protectionMigrationCompleted(db).catch(() => false),
           entitlementMigrationCompleted(db).catch(() => false),
@@ -2454,6 +2499,7 @@ async function main(event = {}) {
           afterSales.countFundingBlockedCases(db).catch(() => 0),
           membershipSales.read(db),
           membershipEnforcement.read(db),
+          membershipUpgradeNotice.read(db),
         ]);
         return ok({
           isAdmin: true,
@@ -2463,12 +2509,15 @@ async function main(event = {}) {
           fundingBlockedCount,
           membershipSales: membershipSales.adminView(sales),
           membershipEnforcement: membershipEnforcement.adminView(enforcement),
+          membershipUpgradeNotice: membershipUpgradeNotice.adminViewOf(upgradeNotice),
         });
       }
       case 'afterSales.adminSetMembershipSales':
         return await setMembershipSales(context, event);
       case 'afterSales.adminSetMembershipEnforcement':
         return await setMembershipEnforcement(context, event);
+      case 'afterSales.adminSetMembershipUpgradeNotice':
+        return await setMembershipUpgradeNotice(context, event);
       case 'adminOrders.list':
         return await adminOrderList(context, event);
       case 'adminOrders.stats':

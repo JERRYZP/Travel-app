@@ -124,6 +124,7 @@ async function testProviderAndSignatures() {
     WECHAT_VIRTUAL_PAY_PRODUCTION_APP_KEY: '12345',
     WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER: 'member-product',
     WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED: 'member-unlimited-product',
+    WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_V6: 'member-unlimited-v6-product',
     WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK: 'pack-product',
   });
   eq(virtualPay.hasPaymentConfig(config), true, '完整虚拟支付配置判定为可用');
@@ -167,6 +168,22 @@ async function testProviderAndSignatures() {
       _id: 'order-virtual-unlimited',
       outTradeNo: 'TVIRTUNLIMITED',
       productType: 'MEMBER',
+      specVersion: 'member-unlimited-30d-v4',
+      unlimitedReminders: true,
+      amountFen: 600,
+    },
+    sessionKey: '9hAb/NEYUlkaMBEsmFgzig==',
+    config,
+  });
+  eq(JSON.parse(unlimitedClient.signData).productId, 'member-unlimited-v6-product',
+    '不限会员新订单使用独立 6 元固定道具');
+  eq(JSON.parse(unlimitedClient.signData).goodsPrice, 600,
+    '不限会员道具价格与订单 600 分一致');
+  const legacyUnlimitedClient = virtualPay.createClientPayment({
+    order: {
+      _id: 'order-virtual-unlimited-v3',
+      outTradeNo: 'TVIRTUNLIMITEDV3',
+      productType: 'MEMBER',
       specVersion: 'member-unlimited-30d-v3',
       unlimitedReminders: true,
       amountFen: 800,
@@ -174,28 +191,28 @@ async function testProviderAndSignatures() {
     sessionKey: '9hAb/NEYUlkaMBEsmFgzig==',
     config,
   });
-  eq(JSON.parse(unlimitedClient.signData).productId, 'member-unlimited-product',
-    '不限会员新订单使用独立 8 元固定道具');
-  eq(JSON.parse(unlimitedClient.signData).goodsPrice, 800,
-    '不限会员道具价格与订单 800 分一致');
-  let missingUnlimitedProduct = false;
+  eq(JSON.parse(legacyUnlimitedClient.signData).productId, 'member-unlimited-product',
+    '历史 8 元订单继续使用原固定道具');
+  eq(JSON.parse(legacyUnlimitedClient.signData).goodsPrice, 800,
+    '历史 8 元订单金额保持订单快照');
+  let missingV6Product = false;
   try {
     virtualPay.createClientPayment({
       order: {
-        _id: 'order-virtual-unlimited-missing',
-        outTradeNo: 'TVIRTUNLIMITEDMISSING',
+        _id: 'order-virtual-unlimited-v6-missing',
+        outTradeNo: 'TVIRTUNLIMITEDV6MISSING',
         productType: 'MEMBER',
-        specVersion: 'member-unlimited-30d-v3',
+        specVersion: 'member-unlimited-30d-v4',
         unlimitedReminders: true,
-        amountFen: 800,
+        amountFen: 600,
       },
       sessionKey: '9hAb/NEYUlkaMBEsmFgzig==',
-      config: { ...config, memberUnlimitedProductId: '' },
+      config: { ...config, memberUnlimitedV6ProductId: '' },
     });
   } catch (err) {
-    missingUnlimitedProduct = /商品未配置/.test(err.message);
+    missingV6Product = /商品未配置/.test(err.message);
   }
-  eq(missingUnlimitedProduct, true, '缺少 8 元固定道具时停止拉起支付');
+  eq(missingV6Product, true, '缺少 6 元固定道具时停止拉起支付');
 
   const officialBody = '{"openid": "xxx", "user_ip": "127.0.0.1", "env": 0}';
   eq(virtualPay.serverPaySigOf('/xpay/query_user_balance', officialBody, '12345'),
@@ -315,6 +332,7 @@ const VIRTUAL_PAY_ENV = {
   WECHAT_VIRTUAL_PAY_PRODUCTION_APP_KEY: '12345',
   WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER: 'member-product',
   WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED: 'member-unlimited-product',
+  WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_V6: 'member-unlimited-v6-product',
   WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK: 'pack-product',
 };
 

@@ -108,7 +108,7 @@ reminder.membership.createOrder
   -> 按本单快照回收权益
 ```
 
-- 免费用户 5 个提醒名额；会员统一为 ¥8/30 天，有效期内不限提醒名额。当前有效老会员刷新后自动获得不限权益且到期时间不变；加量包停售，历史订单和待支付订单按快照兼容。微信订阅授权仍按条校验，不受会员身份替代。
+- 免费用户 5 个提醒名额；会员统一为 ¥6/30 天，有效期内不限提醒名额。当前有效老会员刷新后自动获得不限权益且到期时间不变；加量包停售，历史 ¥8 订单和待支付订单按快照兼容。微信订阅授权仍按条校验，不受会员身份替代。
 - 用户权益账本继续保存历史 `taskPackCount` 与 `taskPackSlots`，但不再参与会员额度计算；创建订单、提醒提交、行程项重新开启提醒、权益发放和退款回收共用用户级短期额度锁，锁内重读容量后事务提交。
 - 唯一规则在 `cloudfunctions/reminder/lib/membership.js`；`cart.commit` 与 `tripItem.updateReminder` 都必须过同一服务端闸门。
 - 老用户历史保护池 `protectedTaskQuota=max(5, 迁移时未来 WAITING 提醒数)`，迁移由管理员分批触发。是否占用新增池由任务创建时的会员灰度决定：`off` / `test` 非白名单写入保护池，`test` 白名单 / `all` 才写新增池。
@@ -116,6 +116,7 @@ reminder.membership.createOrder
 - 订单只由 `payment` 云函数在渠道回调或主动查单确认后置为 `PAID`；客户端不能自行改会员。虚拟支付发货和退款推送必须再次查询微信订单，不信任客户端或推送正文直接发权益。
 - 会员购买总开关存于 `payment_config/membership_sales`，由 `reminder` 与 `payment` 共同读取。暂停只阻止新订单和待支付订单新发起支付；已支付查单、回调发权益、退款和售后不经过该闸门。
 - 会员限制模式存于 `payment_config/membership_enforcement`，由 `payment` 管理端写入、`reminder` 每次创建或展示额度时读取。配置缺失或读取失败才回退环境变量；后台切换不需要重新部署，已有任务保留原 `quotaPool`。
+- 会员升级临时公告存于 `payment_config/membership_upgrade_notice`，只注入 `user.profile` / `user.bootstrap` 的可选 `membershipUpgradeNotice`。`reminder` 先判定 `planVersion=unlimited-v3`、当前会员有效且 `memberSince < startsAt`，再校验公告开关和北京时间有效期；`payment` 管理端负责开关、72 小时默认窗口与审计。横幅不参与会员权益或任务额度计算。
 - 订单创建必须带 `requestId`，以 OpenID + 请求号生成确定性订单 ID；待支付复用严格匹配完整规格，同请求改商品拒绝。售后同样以请求号幂等，并在订单上维护唯一 `activeAfterSalesCaseId`。
 - API v3 回调必须校验微信支付公钥 ID 和原始 body 签名并解密；虚拟支付使用云开发消息推送事件，回包使用 `ErrCode/ErrMsg`，iOS 退款问询额外返回 `IosRefundQueryResponse`。
 - `orders.status` 保持 `PENDING/PAID/CLOSED`；退款生命周期独立写入 `refundStatus`，历史 `REFUNDED` 只兼容展示。

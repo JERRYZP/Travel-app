@@ -50,6 +50,8 @@ paths:
 - 客服工作台订单查询部署前必须存在 `users(nickname)`、`orders(createdAt)`、`orders(status,createdAt)` 和 `after_sales_cases(caseNo)` 索引；时间范围查询复用 `orders(createdAt)` 与 `orders(status,createdAt)`，缺索引时不得部署含 `adminOrders.*` 的 `payment`。
 - 名额账本迁移固定在后端部署后执行：先全量分批 `dryRun=true` 保存差异，再从头以 `dryRun=false` 沿 `nextCursor` 迁移到 `hasMore=false`；迁移完成前会员限制只能保持 `test`。
 - 会员限制运行期真身为 `payment_config/membership_enforcement`，`mode=off|test|all`。管理端切换写该文档并立即对新任务生效，不重新部署；已有任务保留原 `quotaPool`。配置缺失、非法或读取失败时，`reminder` 回退 `MEMBERSHIP_ENFORCEMENT_MODE`，白名单仍由 `MEMBERSHIP_TEST_OPENIDS` 控制。
+- 会员升级临时公告真身为 `payment_config/membership_upgrade_notice`，固定字段 `noticeId / enabled / startsAt / endsAt`。公开展示必须同时满足 `unlimited-v3` 命中、当前有效会员、`memberSince < startsAt`、`enabled=true` 和在有效期内；非白名单、免费用户及公告上线后新开通会员不得返回公告字段。
+- 公告默认只跑 72 小时。上线顺序为先部署 `payment`（后台写开关与审计），再部署 `reminder`（公开读取与会员状态注入），最后由管理员把配置切为 `enabled=true`；下架由客服工作台直接切 `enabled=false`，不需要重新部署。`payment` 写后失效本函数实例缓存，`reminder` 读取缓存最多 45 秒，用户下次进入“我的”页时隐藏。
 - 上线前先分批迁移老用户 `protectedTaskQuota`；保护额度迁移和权益账本迁移任一未完成时，后台切 `all` 必须返回 `1033`。审核与等待发布期间保持 `test`；`test` 非白名单 / `off` 期间新任务进入历史保护池，切 `all` 后新建的任务才占新增额度。
 - 只改小程序页面通常不需要部署云函数，但如果接口契约变化则必须部署。
 - 首页读模型运行期为 `HOME_RUNTIME_MODE=off|shadow|on`，默认 `off`。启用前必须创建 `user_runtime` 集合；先跑 `shadow`，连续 24 小时结构化比对零差异后再切 `on`。`HOME_RUNTIME_MAX_AGE_MS` 只控制派生文档的最长复用时间，不能替代写后失效。

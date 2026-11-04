@@ -51,6 +51,11 @@
   font-weight: 600;
 }
 
+.upgrade-notice { height: auto; min-height: 94rpx; padding-top: 18rpx; padding-bottom: 18rpx; border-color: #E5CFA7; background: #FFF8E8; box-shadow: none; }
+.upgrade-notice-title { color: #6B4718; font-size: 24rpx; font-weight: 600; }
+.upgrade-action { flex-shrink: 0; color: #A56B16; font-size: 21rpx; font-weight: 600; }
+.upgrade-close { display: flex; align-items: center; justify-content: center; width: 64rpx; height: 64rpx; flex-shrink: 0; opacity: 0.45; }
+
 /* 会员身份：独立于头像卡和设置列表，普通/会员用两种明度区分。 */
 .membership-entry {
   display: flex;

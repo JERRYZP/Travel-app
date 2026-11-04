@@ -111,8 +111,8 @@
 .package-lock { color: var(--color-primary); font-size: 21rpx; }
 .package-price { display: flex; align-items: center; gap: 16rpx; flex-shrink: 0; }
 .package-price-value { color: var(--color-primary); font-size: 28rpx; font-weight: 700; }
-.package-radio { width: 28rpx; height: 28rpx; border: 2rpx solid var(--color-border); border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-.package-radio.checked { border-color: #B8904A; background: #B8904A; }
+.package-check { width: 30rpx; height: 30rpx; border: 2rpx solid var(--color-border); border-radius: 7rpx; box-sizing: border-box; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.package-check.checked { border-color: #B8904A; background: #B8904A; }
 .purchase-note { margin-top: 24rpx; padding: 20rpx 22rpx; border-radius: 16rpx; background: var(--color-cream); color: var(--color-text); font-size: 21rpx; line-height: 1.65; }
 .sales-paused-card { display: flex; flex-direction: column; gap: 10rpx; margin-top: 28rpx; padding: 24rpx 22rpx; border: 1rpx solid #D8A08E; border-radius: 16rpx; background: #FFF1EC; }
 .sales-paused-title { color: #A7462B; font-size: 25rpx; font-weight: 600; }

@@ -53,7 +53,7 @@ const serverPackages = [
     id: 'member',
     type: 'MEMBER',
     title: '会员 30 天',
-    priceText: '¥8',
+    priceText: '¥6',
     taskSlots: 0,
     addedSlots: 0,
     unlimitedReminders: true,
@@ -83,7 +83,7 @@ async function run() {
   eq(gate.membershipQuotaRequested, 5, '公式展示本次新建 5');
   eq(gate.membershipQuotaGap, 3, '公式展示还差 3');
   eq(gate.upgradePackageId, 'member', '普通用户优先开会员');
-  eq(gate.membershipActionText, '支付 ¥8，开通 30 天会员并继续', '按钮直接说明商品、金额并继续原流程');
+  eq(gate.membershipActionText, '支付 ¥6，开通 30 天会员并继续', '按钮直接说明商品、金额并继续原流程');
 
   console.log('\n=== 2. 会员不限名额，不再出现加购 ===');
   gate = membershipGateOf(1, {
@@ -106,10 +106,33 @@ async function run() {
   });
   eq(gate.showMembershipGate, false, '会员一次新建 500 条也不触发有限名额闸门');
   eq(gate.upgradePackageId, '', '会员不再出现加购 SKU');
-  eq(membershipDef.defaultPackageIdOf({ member: true }, serverPackages), 'member',
-    '会员页只保留一个会员 SKU');
+  eq(membershipDef.defaultPackageIdOf({ member: true }, serverPackages), '',
+    '有效会员进入会员页默认不勾选套餐');
   eq(membershipDef.defaultPackageIdOf({ member: false }, serverPackages), 'member',
     '非会员同样默认选中唯一会员 SKU');
+  eq(membershipDef.payButtonOf(null, { member: true }), '续费30天会员',
+    '会员未选择套餐时按钮仍显示续费30天会员');
+  eq(membershipDef.payButtonOf(serverPackages[0], { member: true }), '续费30天会员',
+    '会员选中套餐后按钮文案保持不变');
+  let packageToggleData = {
+    selectedPackageId: 'member',
+    selectedPackage: serverPackages[0],
+    packages: serverPackages.map(item => ({ ...item, _selected: true })),
+    visiblePackages: serverPackages.map(item => ({ ...item, _selected: true, _available: true })),
+    membership: { member: true },
+    payButtonText: '续费30天会员',
+  };
+  membershipDef.onPackageTap.call({
+    data: packageToggleData,
+    setData(patch) { packageToggleData = { ...packageToggleData, ...patch }; },
+    markPackages: membershipDef.markPackages,
+    payButtonOf: membershipDef.payButtonOf,
+  }, { currentTarget: { dataset: { id: 'member' } } });
+  eq(packageToggleData.selectedPackageId, '', '再次点击已选套餐可取消勾选');
+  eq(packageToggleData.selectedPackage, null, '取消勾选后清空已选套餐');
+  eq(packageToggleData.payButtonText, '续费30天会员', '取消勾选后按钮文案保持不变');
+  eq(packageToggleData.visiblePackages.every(item => item._selected === false), true,
+    '取消勾选后所有勾选态同步清除');
   let preferredMembershipUrl = '';
   const originalWx = global.wx;
   global.wx = { navigateTo: ({ url }) => { preferredMembershipUrl = url; } };
@@ -387,6 +410,12 @@ async function run() {
     '订单入口副文案只保留支付结果与售后信息');
   eq((membershipWxml.match(/<view class="benefit-row">/g) || []).length, 1,
     '你能得到什么只保留不限提醒名额这一条核心权益');
+  eq(membershipWxml.includes('<text class="benefit-title">会员有效期内不限提醒名额</text>'), true,
+    '权益主文案直接展示会员不限提醒名额');
+  eq(membershipWxml.includes('免费版限{{membership.freeTaskSlots}}个提醒名额；开通会员后，有效期内不限提醒名额。只影响可同时开启的提醒数量'), true,
+    '权益小字说明免费门槛、会员权益和影响范围');
+  eq(membershipWxml.includes('微信订阅消息仍需按条授权'), false,
+    '会员权益说明不混入订阅授权提示');
   eq(/加购|提醒名额包|TASK_PACK|task_pack_5/.test(membershipAll), false,
     '会员页彻底移除加量包入口与文案');
   eq(membershipWxml.includes('到期不删除已有提醒'), false,
@@ -454,8 +483,26 @@ async function run() {
     purchasing: false,
     sales: null,
     selectedPackage: null,
+    payCapability: { supported: true, reason: '' },
+    payUnsupportedTip: '',
+    membership: { member: true },
+  };
+  const unselectedCtx = {
+    data: payData,
+    setData: patch => { payData = { ...payData, ...patch }; },
+  };
+  unselectedCtx.showPayUnsupported = membershipDef.showPayUnsupported.bind(unselectedCtx);
+  membershipDef.onPay.call(unselectedCtx);
+  eq(modalCalls.length, 0, '会员未选择套餐时点击底部按钮无任何支付动作');
+  eq(payData.showPayConfirm, undefined, '会员未选择套餐时不打开支付确认层');
+
+  payData = {
+    purchasing: false,
+    sales: null,
+    selectedPackage: { id: 'member', priceText: '¥6', memberDays: 30 },
     payCapability: { supported: false, reason: '当前微信版本暂不支持虚拟支付' },
     payUnsupportedTip: '请确认 iPhone 系统为 iOS 15 及以上，并将微信更新到最新版本后重试。',
+    membership: { member: true },
   };
   const payCtx = {
     data: payData,
@@ -474,7 +521,7 @@ async function run() {
   payData = {
     purchasing: false,
     sales: null,
-    selectedPackage: { id: 'member', priceText: '¥8', memberDays: 30 },
+    selectedPackage: { id: 'member', priceText: '¥6', memberDays: 30 },
     payCapability: { supported: true, reason: '' },
     payUnsupportedTip: '',
     membership: {},
@@ -624,7 +671,7 @@ async function run() {
   eq(profileData.memberCardTitle, '尊贵会员', '会员卡标题');
   eq(profileData.memberCardDesc, '2026-11-26 到期｜已开启 3 个提醒｜不限名额',
     '会员卡显示到期和不限名额');
-  eq(profileData.memberCardAction, '续费', '会员卡行动为续费');
+  eq(profileData.memberCardAction, '查看', '会员卡行动为查看');
 
   console.log('\n=== 5b. 售后入口只在有待处理单时显示数量标识 ===');
   profileData = {};

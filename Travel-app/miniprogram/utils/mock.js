@@ -22,6 +22,10 @@ const db = {
   paymentConfig: {
     membership_sales: { state: 'OPEN', reason: '', updatedAt: null, updatedBy: '' },
     membership_enforcement: { mode: 'all', updatedAt: null, updatedBy: '' },
+    membership_upgrade_notice: {
+      noticeId: 'membership-unlimited-upgrade', enabled: true,
+      startsAt: new Date(Date.now() - 60 * 1000), endsAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+    },
   },
   searchHistory: [],
 };
@@ -1133,7 +1137,7 @@ const mockUser = {
 const FREE_TASK_SLOTS = 5;
 const LEGACY_TASK_PACK_SIZE = 5;
 const LEGACY_CLIENT_UNLIMITED_TASK_LIMIT = 10000;
-const MEMBER_PRICE_FEN = 800;
+const MEMBER_PRICE_FEN = 600;
 const MEMBER_DURATION_DAYS = 30;
 const MOCK_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
 
@@ -1154,7 +1158,7 @@ const MOCK_MEMBERSHIP_PACKAGES = Object.freeze([
     memberFloorDays: MEMBER_DURATION_DAYS,
     description: '会员有效期内不限提醒名额',
     badge: '推荐',
-    specVersion: 'member-unlimited-30d-v3',
+    specVersion: 'member-unlimited-30d-v4',
   },
 ]);
 
@@ -1193,6 +1197,7 @@ function mockMembershipSnapshot(nowTs = new Date()) {
     memberDaysRemaining: member
       ? Math.max(1, Math.ceil((memberExpiresMs - nowTs.getTime()) / DAY_MS))
       : 0,
+    planVersion: 'unlimited-v3',
     taskLimitUnlimited: member,
     taskLimit: entitlementTaskLimit,
     entitlementTaskLimit,
@@ -1254,6 +1259,52 @@ function mockMembershipEnforcementView() {
     updatedAt: current.updatedAt || null,
     updatedBy: current.updatedBy || '',
     readError: false,
+  };
+}
+
+function mockUpgradeNoticeActive(c, nowTs = new Date()) {
+  if (!c || c.enabled !== true) return false;
+  const nowMs = new Date(nowTs).getTime(), startsMs = new Date(c.startsAt || 0).getTime(), endsMs = new Date(c.endsAt || 0).getTime();
+  return !((Number.isFinite(startsMs) && startsMs > nowMs)
+    || (Number.isFinite(endsMs) && endsMs > 0 && endsMs <= nowMs));
+}
+
+function mockUpgradeNoticeView(s, nowTs = new Date()) {
+  const c = db.paymentConfig.membership_upgrade_notice,
+    since = new Date(mockUser.memberSince || 0).getTime(),
+    start = new Date((c && c.startsAt) || 0).getTime();
+  if (!s || s.member !== true || !since || !start || since >= start
+    || !mockUpgradeNoticeActive(c, nowTs)) return null;
+  return { id: String((c && c.noticeId) || 'membership_upgrade_notice'), endsAt: (c && c.endsAt) || null };
+}
+
+function mockAdminMembershipUpgradeNoticeView(nowTs = new Date()) {
+  const config = db.paymentConfig.membership_upgrade_notice;
+  const configured = !!config, enabled = !!(config && config.enabled === true);
+  const active = mockUpgradeNoticeActive(config, nowTs);
+  const endsAt = config && config.endsAt, endsMs = new Date(endsAt || 0).getTime(), endsDate = new Date(endsMs);
+  const expired = enabled && Number.isFinite(endsMs) && endsMs > 0 && endsMs <= new Date(nowTs).getTime();
+  const [statusLabel, description, actionText, toggleToEnabled] = active
+    ? ['展示中', '白名单用户进入“我的”页时会看到临时公告。', '下架', false]
+    : (enabled
+      ? [expired ? '已到期' : '已排期',
+        expired ? '已到截止时间，当前不会向用户展示。' : '尚未到开始时间，当前不会向用户展示。',
+        expired ? '重新展示' : '取消排期',
+        expired]
+      : [configured ? '已下架' : '未开启',
+        configured ? '公告已关闭，不影响会员权益和订单。' : '尚未创建临时公告配置。',
+        '恢复',
+        true]);
+  return {
+    configured, enabled, active,
+    noticeId: String((config && config.noticeId) || 'membership_upgrade_notice'),
+    startsAt: (config && config.startsAt) || null,
+    endsAt: endsAt || null,
+    endsAtText: Number.isFinite(endsMs) && endsMs > 0
+      ? `${fmt(endsDate)} ${pad(beijingParts(endsDate).hour)}:${pad(beijingParts(endsDate).minute)}`
+      : '',
+    updatedAt: (config && config.updatedAt) || null, updatedBy: (config && config.updatedBy) || '',
+    readError: false, statusLabel, description, actionText, toggleToEnabled, unavailable: false,
   };
 }
 
@@ -2674,15 +2725,20 @@ const handlers = {
   },
 
   /* ----- user ----- */
-  'user.profile': () => ({
-    success: true,
-    user: {
-      ...mockUser,
-      subscribeQuota: subscribeSeq,
-      membership: mockMembershipSnapshot(),
-      membershipSales: mockMembershipSalesView(),
-    },
-  }),
+  'user.profile': () => {
+    const membershipSnapshot = mockMembershipSnapshot();
+    const notice = mockUpgradeNoticeView(membershipSnapshot);
+    return {
+      success: true,
+      user: {
+        ...mockUser,
+        subscribeQuota: subscribeSeq,
+        membership: membershipSnapshot,
+        membershipSales: mockMembershipSalesView(),
+      },
+      ...(notice ? { membershipUpgradeNotice: notice } : {}),
+    };
+  },
   'user.bootstrap': () => {
     const profile = handlers['user.profile']();
     const membership = handlers['membership.status']();
@@ -2695,6 +2751,9 @@ const handlers = {
       subscription: handlers['subscribe.get']({}),
       capabilities: { adminStatusKnown: false },
       runtimeVersion: 'mock:user',
+      ...(profile.membershipUpgradeNotice
+        ? { membershipUpgradeNotice: profile.membershipUpgradeNotice }
+        : {}),
     };
   },
   'user.updateProfile': (data) => {
@@ -3198,6 +3257,7 @@ const handlers = {
       fundingBlockedCount,
       membershipSales: sales,
       membershipEnforcement: mockMembershipEnforcementView(),
+      membershipUpgradeNotice: mockAdminMembershipUpgradeNoticeView(),
     };
   },
   'afterSales.adminSetMembershipSales': (data) => {
@@ -3225,6 +3285,30 @@ const handlers = {
       updatedBy: mockUser.openId,
     };
     return { success: true, membershipEnforcement: mockMembershipEnforcementView() };
+  },
+  'afterSales.adminSetMembershipUpgradeNotice': (data) => {
+    const current = db.paymentConfig.membership_upgrade_notice || {};
+    const enabled = data.enabled === true;
+    const nowTs = new Date();
+    const currentEndsMs = new Date(current.endsAt || 0).getTime();
+    const restarting = enabled && (current.enabled !== true
+      || !Number.isFinite(currentEndsMs)
+      || currentEndsMs <= nowTs.getTime());
+    const endsAt = restarting
+      ? new Date(nowTs.getTime() + 72 * 60 * 60 * 1000)
+      : (current.endsAt || new Date(nowTs.getTime() + 72 * 60 * 60 * 1000));
+    db.paymentConfig.membership_upgrade_notice = {
+      noticeId: current.noticeId || 'membership-unlimited-upgrade',
+      enabled,
+      startsAt: restarting ? nowTs : (current.startsAt || nowTs),
+      endsAt,
+      updatedAt: nowTs,
+      updatedBy: mockUser.openId,
+    };
+    return {
+      success: true,
+      membershipUpgradeNotice: mockAdminMembershipUpgradeNoticeView(nowTs),
+    };
   },
   'afterSales.adminList': (data) => {
     const keyword = String(data.keyword || '').trim();

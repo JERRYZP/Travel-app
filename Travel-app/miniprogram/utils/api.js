@@ -241,6 +241,9 @@ const payment = {
     adminSetMembershipEnforcement: (p) => call('payment', {
       action: 'afterSales.adminSetMembershipEnforcement', ...(p || {}),
     }),
+    adminSetMembershipUpgradeNotice: (p) => call('payment', {
+      action: 'afterSales.adminSetMembershipUpgradeNotice', ...(p || {}),
+    }),
     adminList: (p) => call('payment', { action: 'afterSales.adminList', ...(p || {}) }),
     adminDetail: (caseId) => call('payment', { action: 'afterSales.adminDetail', caseId }),
     adminApproveRefund: (caseId) => call('payment', { action: 'afterSales.adminApproveRefund', caseId }),

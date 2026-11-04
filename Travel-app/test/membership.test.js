@@ -151,8 +151,8 @@ async function run() {
   eq(current.membership.taskRemaining, 0, '剩余 0');
   const memberPackage = current.packages.find(item => item.id === 'member');
   const taskPack = current.packages.find(item => item.id === 'task_pack_5');
-  eq(memberPackage.priceFen, 800, '会员当前价格 800 分');
-  eq(memberPackage.priceText, '¥8', '会员价格展示为 8 元');
+  eq(memberPackage.priceFen, 600, '会员当前价格 600 分');
+  eq(memberPackage.priceText, '¥6', '会员价格展示为 6 元');
   eq(memberPackage.unlimitedReminders, true, '会员权益为不限提醒名额');
   eq(memberPackage.taskSlots, 0, '不限套餐不伪造有限额度');
   eq(memberPackage.addedSlots, 0, '不限套餐不伪造相对增量');
@@ -219,7 +219,7 @@ async function run() {
   const gatedLegacy = await membership.status(gatedDb, 'openid_legacy_scope_001');
   eq(gatedNew.membership.planVersion, 'unlimited-v3', '白名单用户进入新会员方案');
   eq(gatedNew.packages.map(item => item.id).join(','), 'member', '白名单只看到唯一新会员 SKU');
-  eq(gatedNew.packages[0].priceFen, 800, '白名单看到 8 元会员');
+  eq(gatedNew.packages[0].priceFen, 600, '白名单看到 6 元会员');
   eq(gatedLegacy.membership.planVersion, 'legacy-v2', '非白名单继续旧会员方案');
   eq(gatedLegacy.packages.map(item => item.id).join(','), 'member,task_pack_5',
     '非白名单继续看到旧会员和加量包');
@@ -416,7 +416,7 @@ async function run() {
     requestId: 'req_membership_renew_expired_001',
   });
   eq(renewOrder.success, true, '过期会员可续费');
-  eq(renewOrder.amountFen, 800, '新会员订单按 800 分创建');
+  eq(renewOrder.amountFen, 600, '新会员订单按 600 分创建');
   eq(renewOrder.unlimitedReminders, true, '新会员订单保存不限权益快照');
   eq(db._dump(COLLECTIONS.ORDERS)[0].memberDays, 30, '会员订单快照为 30 天');
 
@@ -432,7 +432,7 @@ async function run() {
     requestId: 'req_membership_cloud_missing_001',
   });
   eq(firstRealisticOrder.success, true, '确定性订单不存在时可正常创建首单');
-  eq(firstRealisticOrder.amountFen, 800, '首单按当前 8 元价格创建');
+  eq(firstRealisticOrder.amountFen, 600, '首单按当前 6 元价格创建');
   eq(firstRealisticOrder.unlimitedReminders, true, '首单保存不限权益快照');
   eq(firstRealisticOrder.orderId, retriedRealisticOrder.orderId, '同 requestId 重试返回同一订单');
   eq(retriedRealisticOrder.reused, true, '重试明确标记为复用订单');
@@ -519,7 +519,7 @@ async function run() {
   });
   const orderRows = db._dump(COLLECTIONS.ORDERS);
   eq(freshOrder.success, true, '过期订单后仍可创建新订单');
-  eq(freshOrder.amountFen, 800, '新订单按当前 8 元价格创建');
+  eq(freshOrder.amountFen, 600, '新订单按当前 6 元价格创建');
   eq(orderRows.find(item => item._id === 'order_expired').status, 'CLOSED', '旧待支付订单立即关闭');
   eq(freshOrder.orderId === 'order_expired', false, '不会复用已过期待支付订单');
   eq(orderRows.filter(item => item.status === 'PENDING').length, 1, '只保留一笔有效待支付订单');
@@ -547,7 +547,7 @@ async function run() {
   const priceChangedRows = db._dump(COLLECTIONS.ORDERS);
   const oldPriceOrder = priceChangedRows.find(item => item._id === 'order_old_price');
   eq(priceChangedOrder.success, true, '价格变更后仍可创建新订单');
-  eq(priceChangedOrder.amountFen, 800, '新订单使用当前 8 元价格');
+  eq(priceChangedOrder.amountFen, 600, '新订单使用当前 6 元价格');
   eq(priceChangedOrder.orderId === 'order_old_price', false, '不会复用旧价格待支付订单');
   eq(oldPriceOrder.status, 'CLOSED', '未过期的旧价格待支付订单也会关闭');
   eq(oldPriceOrder.closeReason, 'PRICE_CHANGED', '旧价格订单记录价格变更关闭原因');
