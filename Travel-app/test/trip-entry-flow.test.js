@@ -163,7 +163,7 @@ const apiStub = {
             taskUsed: 0,
             taskRemaining: 5,
             freeTaskSlots: 5,
-            memberTaskSlots: 15,
+            memberTaskSlots: 10000,
             memberDurationDays: 30,
           },
           packages: [],
@@ -468,7 +468,7 @@ function instantiateComponent(def) {
     '继续后反馈提醒设置完成');
 
   console.log('\n=== 3.6 授权与提醒名额检查合并到同一个浮层 ===');
-  calls.add = []; calls.commit = []; calls.toasts = []; calls.remove = []; calls.authRequests = [];
+  calls.add = []; calls.commit = []; calls.toasts = []; calls.remove = []; calls.authRequests = []; calls.quickCommit = [];
   addIdQueue = ['cart-unified'];
   authAvailableQuota = 10; authLedgerQuota = 10;
   membershipEnforced = true;
@@ -477,28 +477,25 @@ function instantiateComponent(def) {
     enforced: true,
     membership: {
       member: true,
-      taskLimit: 15,
-      taskUsed: 15,
-      taskRemaining: 0,
+      taskLimitUnlimited: true,
+      taskLimit: 10000,
+      taskUsed: 25,
+      taskRemaining: 9975,
       memberExpiresAtText: '2026年11月30日',
-      taskPackSize: 10,
+      taskPackSize: 0,
     },
     packages: [{
-      id: 'task_pack_5', type: 'TASK_PACK', available: true,
-      priceText: '¥3', addedSlots: 10, memberDays: 0,
-      actionText: '加购 10 个名额 ¥3', description: '名额永久记录，会员有效期内生效',
+      id: 'member', type: 'MEMBER', available: true,
+      priceText: '¥8', addedSlots: 0, memberDays: 30, unlimitedReminders: true,
+      actionText: '续费 30 天 ¥8', description: '会员有效期内不限提醒名额',
     }],
   };
   await hub.openDateSheet('gugong', '故宫博物院', '设置提醒', true, { multiple: true });
   const unifiedCheckoutFlow = hub.onDateConfirm({ detail: { visitDates: ['2026-11-22'] } });
-  await wait(30);
-  eq(hub.data.showReminderAuth, true, '授权与名额检查共用一个浮层');
-  eq(hub.data.reminderAuth.authReady, true, '浮层内显示授权已满足');
-  eq(hub.data.membershipLimit.title, '还差 1 个提醒名额', '同一浮层内显示提醒名额缺口');
-  eq(hub.data.reminderCheckoutReady, false, '任一硬闸门未满足时不能继续');
-  eq(calls.commit.length, 0, '合并检查未通过前不提交提醒');
-  await hub.onReminderAuthClose();
   await unifiedCheckoutFlow;
+  eq(hub.data.showReminderAuth, false, '会员超过旧 15 条上限时不再打开名额付费浮层');
+  eq(hub.data.membershipLimit, null, '有效会员没有提醒名额缺口');
+  eq(calls.quickCommit.length, 1, '授权满足后直接提交会员的不限提醒');
   membershipEnforced = false;
   membershipStatusOverride = null;
 
@@ -517,13 +514,13 @@ function instantiateComponent(def) {
       taskUsed: 5,
       taskRemaining: 0,
       freeTaskSlots: 5,
-      memberTaskSlots: 15,
+      memberTaskSlots: 10000,
       memberDurationDays: 30,
     },
     packages: [{
       id: 'member', type: 'MEMBER', available: true,
-      priceText: '¥3', addedSlots: 10, memberDays: 30,
-      actionText: '开通会员 ¥3', description: '30 天内最多 15 个提醒名额',
+      priceText: '¥8', addedSlots: 0, memberDays: 30, unlimitedReminders: true,
+      actionText: '开通会员 ¥8', description: '会员有效期内不限提醒名额',
     }],
   };
   await hub.openDateSheet('gugong', '故宫博物院', '设置提醒', true, { multiple: true });
@@ -696,14 +693,14 @@ function instantiateComponent(def) {
   commitError = {
     success: false,
     errorCode: 1026,
-    error: '提醒名额不足，请先开通会员或加购名额',
+    error: '提醒名额不足，请先开通会员',
     membership: {
       member: false,
       taskLimit: 5,
       taskUsed: 4,
       taskRemaining: 1,
       freeTaskSlots: 5,
-      memberTaskSlots: 15,
+      memberTaskSlots: 10000,
       memberDurationDays: 30,
     },
     taskLimit: { limit: 5, used: 4, remaining: 1, requested: 3, shortfall: 2 },
@@ -712,11 +709,12 @@ function instantiateComponent(def) {
       type: 'MEMBER',
       available: true,
       title: '会员',
-      priceText: '¥3',
-      addedSlots: 10,
+      priceText: '¥8',
+      addedSlots: 0,
       memberDays: 30,
-      actionText: '开通会员 ¥3',
-      description: '30 天内最多 15 个提醒名额',
+      unlimitedReminders: true,
+      actionText: '开通会员 ¥8',
+      description: '会员有效期内不限提醒名额',
     }],
   };
   await hub.openDateSheet('gugong', '故宫博物院', '设置提醒', true, { multiple: true });
@@ -728,14 +726,14 @@ function instantiateComponent(def) {
   eq(hub.data.membershipLimit.used, 4, '浮层展示服务端已占额度');
   eq(hub.data.membershipLimit.remaining, 1, '浮层展示服务端剩余额度');
   eq(hub.data.membershipLimit.requested, 3, '浮层展示本次新建数');
-  eq(hub.data.membershipLimit.actionText, '开通会员 ¥3', '主按钮文案直接复用服务端套餐');
-  eq(hub.data.membershipLimit.payText, '支付 ¥3，购买会员并继续',
+  eq(hub.data.membershipLimit.actionText, '开通会员 ¥8', '主按钮文案直接复用服务端套餐');
+  eq(hub.data.membershipLimit.payText, '支付 ¥8，购买会员并继续',
     '名额主按钮直接说明支付后继续完成提醒');
   eq(calls.navigations.length, 0, '关闭说明前不自动跳会员页');
   await hub.onReminderAuthPay();
   eq(hub.data.taskLimitPayConfirm.title, '30 天会员', '主按钮在原浮层内打开支付确认');
-  eq(hub.data.taskLimitPayConfirm.amount, '¥3', '支付确认展示服务端金额');
-  eq(hub.data.taskLimitPayButtonText, '支付 ¥3', '支付确认按钮明确金额');
+  eq(hub.data.taskLimitPayConfirm.amount, '¥8', '支付确认展示服务端金额');
+  eq(hub.data.taskLimitPayButtonText, '支付 ¥8', '支付确认按钮明确金额');
   eq(calls.navigations.length, 0, '支付确认不跳会员页');
   hub.onReminderAuthPayClose();
   eq(hub.data.taskLimitPayConfirm, null, '取消确认只关闭支付确认，不丢当前名额说明');
@@ -745,69 +743,58 @@ function instantiateComponent(def) {
   eq(hub.data.showReminderAuth, false, '用户可以关闭统一提醒检查浮层');
   eq(calls.remove.length, 0, '快捷入口未写临时清单，关闭时无需清理');
 
-  console.log('\n=== 3.3 会员超额原地支付后自动设置提醒 ===');
-  calls.add = []; calls.commit = []; calls.remove = []; calls.navigations = []; calls.payments = []; calls.toasts = [];
+  console.log('\n=== 3.3 有效会员超过旧 15 条上限也不再购买名额 ===');
+  calls.add = []; calls.commit = []; calls.remove = []; calls.navigations = []; calls.payments = []; calls.toasts = []; calls.quickCommit = [];
   addIdQueue = ['cart-limit-member'];
   accessResult = { action: 'ready' };
   authAvailableQuota = 10; authLedgerQuota = 10;
   paymentResult = { status: 'PAID_GRANTED', orderId: 'order-limit' };
-  commitError = {
-    success: false,
-    errorCode: 1026,
+  commitError = null;
+  membershipEnforced = true;
+  membershipStatusOverride = {
+    success: true,
+    enforced: true,
     membership: {
       member: true,
-      taskLimit: 15,
-      taskUsed: 15,
-      taskRemaining: 0,
+      taskLimitUnlimited: true,
+      taskLimit: 10000,
+      taskUsed: 20,
+      taskRemaining: 9980,
       memberExpiresAtText: '2026年11月30日',
-      taskPackSize: 10,
+      taskPackSize: 0,
     },
-    taskLimit: { limit: 15, used: 15, remaining: 0, requested: 1, shortfall: 1 },
     packages: [{
-      id: 'task_pack_5',
-      type: 'TASK_PACK',
+      id: 'member',
+      type: 'MEMBER',
       available: true,
-      title: '10 个提醒名额',
-      priceText: '¥3',
-      addedSlots: 10,
-      memberDays: 0,
-      actionText: '加购 10 个名额 ¥3',
-      description: '名额永久记录，会员有效期内生效',
+      title: '会员 30 天',
+      priceText: '¥8',
+      addedSlots: 0,
+      memberDays: 30,
+      unlimitedReminders: true,
+      actionText: '续费 30 天 ¥8',
+      description: '会员有效期内不限提醒名额',
     }],
   };
   await hub.openDateSheet('gugong', '故宫博物院', '设置提醒', true, { multiple: true });
-  hub.onDateConfirm({ detail: { visitDates: ['2026-11-18'] } });
-  await wait(30);
-  eq(hub.data.membershipLimit.member, true, '有效会员走加购分支');
-  eq(hub.data.membershipLimit.packageId, 'task_pack_5', '会员默认选中加购套餐');
-  eq(hub.data.membershipLimit.payText, '支付 ¥3，购买 10 个提醒名额并继续',
-    '会员名额主按钮说明实际加购数量');
-  eq(hub.data.membershipLimit.note, '会员到期：2026年11月30日', '会员浮层展示真实到期时间');
-  eq(calls.navigations.length, 0, '浮层出现时仍不自动跳转');
-  await hub.onReminderAuthPay();
-  eq(hub.data.taskLimitPayConfirm.title, '10 个提醒名额', '会员支付确认展示加购名额数');
-  eq(calls.payments.length, 0, '打开确认层时尚未发起支付');
-  commitError = null;
-  const failedCommitCount = calls.commit.length;
-  await hub.onReminderAuthPayConfirm();
-  await wait(20);
-  eq(calls.payments[0].packageId, 'task_pack_5', '在景点浮层原地购买服务端指定套餐');
-  eq(calls.commit.length, failedCommitCount + 1, '支付确认后自动重提本次提醒');
-  eq(calls.commit[calls.commit.length - 1].visitDates.join(','), '2026-11-18',
-    '支付后只继续原景点日期');
-  eq(hub.data.showReminderAuth, false, '支付并设置提醒后关闭统一提醒检查浮层');
-  eq(hub.data.taskLimitPayConfirm, null, '支付成功后关闭确认层');
+  const memberOverOldCap = hub.onDateConfirm({ detail: { visitDates: ['2026-11-18'] } });
+  await memberOverOldCap;
+  eq(hub.data.membershipLimit, null, '有效会员不出现加购或续费拦截');
+  eq(calls.payments.length, 0, '超过旧 15 条上限不发起支付');
+  eq(calls.quickCommit.length, 1, '会员提醒直接提交');
   eq(calls.toasts[calls.toasts.length - 1], '提醒已设置，放票前见',
-    '支付并使用权益后直接反馈提醒已设置');
-  eq(calls.navigations.length, 0, '原地支付全程不跳会员页');
+    '不限权益直接完成提醒');
+  eq(calls.navigations.length, 0, '全程不跳会员页');
+  membershipEnforced = false;
+  membershipStatusOverride = null;
 
   calls.navigations = [];
   calls.remove = [];
   calls.payments = [];
   hub.data.membershipLimit = {
-    packageId: 'task_pack_5',
-    used: 15,
-    limit: 15,
+    packageId: 'member',
+    used: 5,
+    limit: 5,
     requested: 1,
     shortfall: 1,
   };
@@ -815,7 +802,7 @@ function instantiateComponent(def) {
   await hub.onReminderAuthBenefits();
   await wait(10);
   eq(calls.remove.length, 0, '快捷入口未写临时清单，权益入口无需清理');
-  eq(String(calls.navigations[0] || '').includes('packageId=task_pack_5'), true, '权益入口仍保留当前套餐意向');
+  eq(String(calls.navigations[0] || '').includes('packageId=member'), true, '权益入口仍保留唯一会员套餐意向');
   eq(calls.payments.length, 0, '权益入口不会发起支付');
   commitError = null;
 
@@ -832,8 +819,8 @@ function instantiateComponent(def) {
     taskLimit: { limit: 5, used: 5, remaining: 0, requested: 1, shortfall: 1 },
     packages: [{
       id: 'member', type: 'MEMBER', available: true,
-      priceText: '¥3', addedSlots: 10, memberDays: 30,
-      actionText: '开通会员 ¥3', description: '30 天内最多 15 个提醒名额',
+      priceText: '¥8', addedSlots: 0, memberDays: 30, unlimitedReminders: true,
+      actionText: '开通会员 ¥8', description: '会员有效期内不限提醒名额',
     }],
   };
   await hub.openDateSheet('gugong', '故宫博物院', '设置提醒', true, { multiple: true });
@@ -867,8 +854,8 @@ function instantiateComponent(def) {
     taskLimit: { limit: 5, used: 5, remaining: 0, requested: 1, shortfall: 1 },
     packages: [{
       id: 'member', type: 'MEMBER', available: true,
-      priceText: '¥3', addedSlots: 10, memberDays: 30,
-      actionText: '开通会员 ¥3', description: '30 天内最多 15 个提醒名额',
+      priceText: '¥8', addedSlots: 0, memberDays: 30, unlimitedReminders: true,
+      actionText: '开通会员 ¥8', description: '会员有效期内不限提醒名额',
     }],
   };
   await hub.openDateSheet('gugong', '故宫博物院', '设置提醒', true, { multiple: true });
@@ -954,13 +941,13 @@ function instantiateComponent(def) {
       taskUsed: 5,
       taskRemaining: 0,
       freeTaskSlots: 5,
-      memberTaskSlots: 15,
+      memberTaskSlots: 10000,
       memberDurationDays: 30,
     },
     packages: [{
       id: 'member', type: 'MEMBER', available: true,
-      priceText: '¥3', addedSlots: 10, memberDays: 30,
-      actionText: '开通会员 ¥3', description: '30 天内最多 15 个提醒名额',
+      priceText: '¥8', addedSlots: 0, memberDays: 30, unlimitedReminders: true,
+      actionText: '开通会员 ¥8', description: '会员有效期内不限提醒名额',
     }],
   };
   home.data.dateAction = { spotId: 'gugong', remindOn: true };
@@ -977,8 +964,10 @@ function instantiateComponent(def) {
   membershipStatusOverride = Object.assign({}, membershipStatusOverride, {
     membership: Object.assign({}, membershipStatusOverride.membership, {
       member: true,
+      taskLimitUnlimited: true,
       taskUsed: 0,
-      taskRemaining: 15,
+      taskLimit: 10000,
+      taskRemaining: 10000,
     }),
   });
   await home.onReminderAuthPayConfirm();

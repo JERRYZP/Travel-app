@@ -176,6 +176,7 @@ function orderViewOf(order = {}, user = {}, cases = [], options = {}) {
     amountFen: Math.max(0, Number(order.amountFen) || 0),
     amountText: amountText(order.amountFen),
     addedSlots: Math.max(0, Number(order.addedSlots) || 0),
+    unlimitedReminders: order.unlimitedReminders === true,
     memberDays: Math.max(0, Number(order.memberDays) || 0),
     status: order.status || OrderStatus.PENDING,
     statusLabel: STATUS_LABEL[order.status] || '处理中',

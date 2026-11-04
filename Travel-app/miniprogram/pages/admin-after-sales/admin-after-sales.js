@@ -471,7 +471,7 @@ Page({
     }
     const currentLabel = this.data.membershipEnforcement.modeLabel || '环境变量';
     const impact = mode === 'all'
-      ? '所有用户之后新建的提醒都会占用 5 / 15 个名额。'
+      ? '免费用户之后新建的提醒占用 5 个名额，有效会员不限提醒名额。'
       : (mode === 'test'
         ? '只有测试 OpenID 之后新建的提醒占用名额。'
         : '所有用户之后新建的提醒都进入历史保护池。');

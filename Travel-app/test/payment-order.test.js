@@ -36,7 +36,9 @@ async function addOrder(db, patch = {}) {
       userId: USER,
       outTradeNo: 'T' + Math.random().toString(36).slice(2),
       productType: 'MEMBER',
-      amountFen: 200,
+      amountFen: 800,
+      unlimitedReminders: true,
+      specVersion: 'member-unlimited-30d-v3',
       memberDays: 30,
       status: OrderStatus.PENDING,
       ...patch,
@@ -50,7 +52,7 @@ async function run() {
   seedUser(db);
   let added = await addOrder(db);
   let order = await findOrderById(db, added._id);
-  let paid = await fulfillOrder(db, order, { totalFee: 200, transactionId: 'wx_tx_1' });
+  let paid = await fulfillOrder(db, order, { totalFee: 800, transactionId: 'wx_tx_1' });
   eq(paid.success, true, '订单发放成功');
   let user = db._dump(COLLECTIONS.USERS)[0];
   order = await findOrderById(db, added._id);
@@ -62,9 +64,32 @@ async function run() {
   );
   eq(order.status, OrderStatus.PAID, '订单置为 PAID');
   eq(order.transactionId, 'wx_tx_1', '保存微信交易号');
+  eq(order.entitlementGrant.unlimitedReminders, true, '权益快照记录不限提醒名额');
+
+  console.log('\n=== 1b. 规则上线前的旧价待支付订单按原快照完成 ===');
+  db = createDb();
+  seedUser(db);
+  added = await addOrder(db, {
+    amountFen: 300,
+    unlimitedReminders: false,
+    specVersion: 'member-30d-v2',
+  });
+  order = await findOrderById(db, added._id);
+  paid = await fulfillOrder(db, order, { totalFee: 300, transactionId: 'wx_tx_legacy' });
+  eq(paid.success, true, '旧价会员待支付订单仍可完成');
+  order = await findOrderById(db, added._id);
+  eq(order.status, OrderStatus.PAID, '旧价订单正常置为已支付');
+  eq(order.entitlementGrant.unlimitedReminders, false, '旧订单不伪造新权益快照');
+  eq(new Date(db._dump(COLLECTIONS.USERS)[0].memberExpiresAt).getTime() >= Date.now() + 29 * 86400000,
+    true, '旧价会员订单仍按快照发放 30 天会员时长');
 
   console.log('\n=== 2. 重复回调幂等 ===');
-  paid = await fulfillOrder(db, order, { totalFee: 200, transactionId: 'wx_tx_1' });
+  db = createDb();
+  seedUser(db);
+  added = await addOrder(db);
+  order = await findOrderById(db, added._id);
+  paid = await fulfillOrder(db, order, { totalFee: 800, transactionId: 'wx_tx_1' });
+  paid = await fulfillOrder(db, order, { totalFee: 800, transactionId: 'wx_tx_1' });
   eq(paid.success, true, '重复回调返回成功');
   eq(paid.alreadyPaid, true, '标记已发放');
   user = db._dump(COLLECTIONS.USERS)[0];
@@ -76,13 +101,17 @@ async function run() {
   });
   added = await addOrder(db, {
     productType: 'TASK_PACK',
+    amountFen: 200,
+    unlimitedReminders: false,
     memberFloorDays: 30,
   });
   order = await findOrderById(db, added._id);
   paid = await fulfillOrder(db, order, { totalFee: 200 });
   eq(paid.success, true, '任务包发放成功');
   user = db._dump(COLLECTIONS.USERS)[0];
+  order = await findOrderById(db, added._id);
   eq(user.taskPackCount, 1, 'taskPackCount +1');
+  eq(order.entitlementGrant.unlimitedReminders, false, '历史加量包不透传不限权益');
   eq(
     new Date(user.memberExpiresAt).getTime() >= Date.now() + 29 * 86400000,
     true,
@@ -122,7 +151,7 @@ async function run() {
     refundStatus: RefundStatus.REFUNDED,
   });
   order = await findOrderById(db, added._id);
-  paid = await fulfillOrder(db, order, { totalFee: 200 });
+  paid = await fulfillOrder(db, order, { totalFee: 800 });
   eq(paid.success, true, '重复回调仍返回成功以停止微信重试');
   eq(paid.entitlementStatus, 'REFUNDED', '明确返回已退款状态');
   user = db._dump(COLLECTIONS.USERS)[0];

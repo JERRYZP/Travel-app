@@ -80,20 +80,15 @@ function expectedExpiryOf(pkg, membership, now = Date.now()) {
   const currentMs = new Date((membership && membership.memberExpiresAt) || 0).getTime();
   const validCurrent = Number.isFinite(currentMs) && currentMs > now ? currentMs : now;
   const memberDays = Math.max(0, Number(pkg && pkg.memberDays) || 0);
-  const floorDays = pkg && pkg.type === 'TASK_PACK'
-    ? Math.max(0, Number(pkg.memberFloorDays) || 0)
-    : 0;
   return new Date(Math.max(
     memberDays ? validCurrent + memberDays * 86400000 : 0,
-    floorDays ? now + floorDays * 86400000 : 0,
     Number.isFinite(currentMs) ? currentMs : 0
   ));
 }
 
 function defaultPackageIdOf(membership, available) {
-  const preferredType = membership && membership.member ? 'TASK_PACK' : 'MEMBER';
   const packages = available || [];
-  const preferred = packages.find(item => item && item.type === preferredType)
+  const preferred = packages.find(item => item && item.type === 'MEMBER')
     || packages[0];
   return preferred ? preferred.id : '';
 }
@@ -248,13 +243,11 @@ Page({
       const sales = res.sales || { state: 'OPEN', purchaseEnabled: true, message: '' };
       const packages = (res.packages || []).map(item => ({ ...item }));
       const memberPackage = packages.find(item => item && item.type === 'MEMBER') || null;
-      const taskPackPackage = packages.find(item => item && item.type === 'TASK_PACK') || null;
       const membershipView = {
         ...membership,
         memberPackagePriceText: (memberPackage && memberPackage.priceText) || '',
-        taskPackPriceText: (taskPackPackage && taskPackPackage.priceText) || '',
       };
-      const visible = packages.filter(item => membership.member || item.type === 'MEMBER');
+      const visible = packages.filter(item => item.type === 'MEMBER');
       const available = visible.filter(item => item.available);
       let selectedId = preferredId;
       if (!selectedId || !available.some(item => item.id === selectedId)) {
@@ -263,6 +256,7 @@ Page({
       const selectedPackage = visible.find(item => item.id === selectedId) || null;
       const used = Number(membership.taskUsed) || 0;
       const limit = Number(membership.taskLimit) || 0;
+      const unlimited = membership.taskLimitUnlimited === true;
       const freeSlots = Math.max(0, Number(membership.freeTaskSlots) || 0);
       this.setData({
         loading: false,
@@ -274,7 +268,7 @@ Page({
         selectedPackageId: selectedId,
         selectedPackage,
         payButtonText: this.payButtonOf(selectedPackage, membership),
-        usagePercent: usagePercentOf(used, limit),
+        usagePercent: unlimited ? 100 : usagePercentOf(used, limit),
         memberStateText: membership.member ? '会员生效中' : '免费版',
         expiryText: membership.member
           ? `有效期至 ${membership.memberExpiresAtText}`
@@ -411,7 +405,7 @@ Page({
       const days = Math.max(0, Number(pkg.memberDays) || 0);
       return `支付 ${pkg.priceText}，${current.member ? `续费 ${days} 天会员` : `开通 ${days} 天会员并继续`}`;
     }
-    return `支付 ${pkg.priceText}，加购 ${pkg.addedSlots} 个提醒名额`;
+    return '暂无可购买项';
   },
 
   onPackageTap(e) {
@@ -464,14 +458,11 @@ Page({
     const pkg = this.data.selectedPackage;
     if (!pkg) return;
     const expiry = expectedExpiryOf(pkg, this.data.membership);
-    const memberSlots = Math.max(0, Number(this.data.membership && this.data.membership.memberTaskSlots) || 0);
     this.setData({
       showPayConfirm: true,
-      confirmTitle: pkg.type === 'MEMBER' ? `${Number(pkg.memberDays) || 0} 天会员` : `${pkg.addedSlots} 个提醒名额`,
+      confirmTitle: `${Number(pkg.memberDays) || 0} 天会员`,
       confirmAmount: pkg.priceText,
-      confirmEffect: pkg.type === 'MEMBER'
-        ? `支付成功后立即生效，提醒名额提升到 ${memberSlots} 个`
-        : `支付成功后立即记录 ${pkg.addedSlots} 个名额，会员有效期内生效`,
+      confirmEffect: '支付成功后立即生效，会员有效期内不限提醒名额',
       confirmExpiry: `会员有效期至 ${formatBeijingDate(expiry)}`,
       confirmPayButtonText: `支付 ${pkg.priceText}`,
     });

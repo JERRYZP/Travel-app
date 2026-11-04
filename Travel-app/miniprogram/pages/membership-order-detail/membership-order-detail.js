@@ -31,13 +31,13 @@ function stateOfOrder(order, latestCase) {
       return {
         tone: 'review',
         title: '退款已到账，权益正在回收',
-        desc: `${refundChannelName(order)}退款已完成；系统正在按本单快照回收会员时长和提醒名额，页面会自动更新，已有提醒不会被删除。`,
+        desc: `${refundChannelName(order)}退款已完成；系统正在按本单快照回收会员权益，页面会自动更新，已有提醒不会被删除。`,
       };
     }
     return {
       tone: 'refunded',
       title: '退款已完成',
-      desc: '本订单新增的会员时长和提醒名额已按订单快照回收，已有提醒未被删除。',
+      desc: '本订单新增的会员权益已按订单快照回收，已有提醒未被删除。',
     };
   }
   if (['REQUESTED', 'UNDER_REVIEW', 'PROCESSING'].includes(order.refundStatus)) {
@@ -74,7 +74,7 @@ function stateOfOrder(order, latestCase) {
     return {
       tone: 'success',
       title: '支付已完成，权益已到账',
-      desc: '本订单对应的会员时长和提醒名额已经生效。',
+      desc: '本订单对应的会员权益已经生效。',
     };
   }
   if (order.status === 'PAID' && order.grantStatus === 'FAILED') {

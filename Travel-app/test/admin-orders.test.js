@@ -331,6 +331,19 @@ async function run() {
   eq(detail.order.transactionId, 'wx_alpha_tx', '详情包含微信交易号');
   eq(detail.order.relatedCases.length, 1, '详情包含本单售后记录');
   eq(detail.order.entitlementGrant.memberDaysAddedMs, 30 * 86400000, '详情包含权益快照');
+  const unlimitedView = adminOrders.orderViewOf({
+    _id: 'ord_unlimited',
+    userId: USER_A,
+    outTradeNo: 'TUNLIMITED',
+    packageId: 'member',
+    productType: 'MEMBER',
+    title: '会员 30 天',
+    amountFen: 800,
+    unlimitedReminders: true,
+    memberDays: 30,
+    status: OrderStatus.PENDING,
+  }, {}, []);
+  eq(unlimitedView.unlimitedReminders, true, '后台订单快照明确标记不限提醒权益');
   const missing = await adminOrders.getOrderForAdmin(db, 'ord_missing');
   eq(missing.errorCode, 1024, '不存在的订单返回 1024');
 

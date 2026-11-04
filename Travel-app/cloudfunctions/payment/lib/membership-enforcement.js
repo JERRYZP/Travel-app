@@ -24,7 +24,7 @@ const MODE_LABEL = Object.freeze({
 const MODE_DESCRIPTION = Object.freeze({
   [EnforcementMode.OFF]: '所有新提醒进入历史保护池，不占免费或会员名额。',
   [EnforcementMode.TEST]: '仅测试 OpenID 的新提醒受名额限制，其他用户进入保护池。',
-  [EnforcementMode.ALL]: '所有用户的新提醒都受 5 / 15 个名额限制。',
+  [EnforcementMode.ALL]: '所有用户的新提醒按免费 5 个或会员不限名额规则校验。',
 });
 const MODE_SHORT_DESCRIPTION = Object.freeze({
   [EnforcementMode.OFF]: '新提醒不进入名额池',

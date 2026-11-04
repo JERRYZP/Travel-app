@@ -30,12 +30,12 @@
 
   <view wx:elif="{{items.length === 0}}" class="empty-state">
     <text class="empty-title">还没有会员订单</text>
-    <text class="empty-desc">开通会员或加购提醒名额后，支付和退款进度会显示在这里。</text>
+    <text class="empty-desc">开通会员后，支付和退款进度会显示在这里。</text>
   </view>
 
   <block wx:else>
     <view class="order-summary">
-      <text class="order-summary-title">会员与提醒名额记录</text>
+      <text class="order-summary-title">会员订单记录</text>
       <text class="order-summary-count">共 {{count}} 笔</text>
     </view>
 

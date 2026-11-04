@@ -599,11 +599,13 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     const initial = await c('membership.status', {});
     const memberPackage = initial.packages.find(item => item.type === 'MEMBER');
     const taskPackPackage = initial.packages.find(item => item.type === 'TASK_PACK');
-    eq(memberPackage.priceText, '¥3', 'mock 会员价格由套餐镜像生成');
+    eq(memberPackage.priceText, '¥8', 'mock 会员价格由套餐镜像生成');
+    eq(memberPackage.unlimitedReminders, true, 'mock 会员权益为不限提醒名额');
     eq(memberPackage.memberDays, 30, 'mock 会员有效期由套餐镜像生成');
-    eq(taskPackPackage.addedSlots, 10, 'mock 名额包数量由套餐镜像生成');
+    eq(taskPackPackage, undefined, 'mock 不再销售提醒名额包');
     eq(initial.membership.freeTaskSlots, 5, 'mock 免费额度与云端一致');
-    eq(initial.membership.memberTaskSlots, 15, 'mock 会员总额度与云端一致');
+    eq(initial.membership.taskLimitUnlimited, false, 'mock 免费用户没有不限权益');
+    eq(initial.membership.memberTaskSlots, 10000, 'mock 旧客户端兼容字段与云端一致');
 
     const requestId = 'mock_membership_request_001';
     const memberOrder = await c('membership.createOrder', { packageId: 'member', requestId });
@@ -611,25 +613,17 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     eq(retry.orderId, memberOrder.orderId, 'mock 同一 requestId 返回同一订单');
     const paidMember = await c('create', { orderId: memberOrder.orderId });
     eq(paidMember.entitlementStatus, 'PAID_GRANTED', 'mock 会员订单发放成功');
-    const changed = await errOf(c('membership.createOrder', {
-      packageId: 'task_pack_5', requestId,
-    }));
-    eq(changed && changed.errorCode, 1010, 'mock 同一 requestId 改商品被拒绝');
     const afterMember = await c('membership.status', {});
-    eq(afterMember.membership.taskLimit, 15, 'mock 会员开通后总额度提升到 15');
+    eq(afterMember.membership.taskLimitUnlimited, true, 'mock 会员开通后不限提醒名额');
+    eq(afterMember.membership.taskLimit, 10000, 'mock 兼容字段不参与业务限制');
 
-    const packOrder = await c('membership.createOrder', {
+    const retiredPack = await errOf(c('membership.createOrder', {
       packageId: 'task_pack_5', requestId: 'mock_task_pack_request_001',
-    });
-    const paidPack = await c('create', { orderId: packOrder.orderId });
-    eq(paidPack.taskPackSlots, 10, 'mock 新名额包按 10 个发放');
-    const afterPack = await c('membership.status', {});
-    eq(afterPack.membership.taskPackCount, 1, 'mock 用户保存名额包数量');
-    eq(afterPack.membership.taskPackSlots, 10, 'mock 用户保存名额总数');
-    eq(afterPack.membership.taskLimit, 25, 'mock 会员与加购名额混合累计');
+    }));
+    eq(retiredPack && retiredPack.errorCode, 1010, 'mock 加量包已停售且不能生成订单');
 
     const submittedCase = await c('afterSales.submit', {
-      orderId: packOrder.orderId,
+      orderId: memberOrder.orderId,
       type: 'OTHER',
       requestId: 'mock_after_sales_cancel_001',
       description: '暂不处理',
@@ -638,7 +632,7 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     const cancelledCase = await c('afterSales.cancel', { caseId: submittedCase.case._id });
     eq(cancelledCase.case.status, 'CANCELLED', 'mock 用户取消进入终态');
     eq(cancelledCase.case.cancelledBy, 'USER', 'mock 保留用户取消来源');
-    const cancelledOrderId = packOrder.orderId;
+    const cancelledOrderId = memberOrder.orderId;
     eq(m.__internals.db.orders[cancelledOrderId].activeAfterSalesCaseId, '',
       'mock 取消后释放订单售后锁');
     const reappliedCase = await c('afterSales.submit', {

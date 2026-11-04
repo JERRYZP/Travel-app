@@ -42,7 +42,9 @@
     <view wx:if="{{order.entitlementGrant}}" class="rights-card">
       <text class="rights-title">本单权益发放记录</text>
       <text>会员时长增加：{{order.entitlementGrant.memberDaysAddedMs ? '已记录' : '无'}}</text>
-      <text>提醒名额增加：{{order.entitlementGrant.taskPackDelta ? order.entitlementGrant.taskPackDelta * order.addedSlots + ' 个' : '会员基础额度'}}</text>
+      <text wx:if="{{order.unlimitedReminders}}">会员有效期内不限提醒名额</text>
+      <text wx:elif="{{order.entitlementGrant.taskPackDelta}}">提醒名额增加：{{order.entitlementGrant.taskPackDelta * order.addedSlots}} 个</text>
+      <text wx:else>会员基础额度</text>
       <text wx:if="{{order.entitlementGrant.revertedAt}}">退款后已按本单快照回收；不会删除已有提醒。</text>
     </view>
 
@@ -96,18 +98,18 @@
       <view class="refund-section">
         <text class="refund-section-title">申请路径</text>
         <text class="refund-step">1. 打开 App Store，点击右上角头像。</text>
-        <text class="refund-step">2. 进入“购买记录”，找到本次会员或提醒名额购买。</text>
+        <text class="refund-step">2. 进入“购买记录”，找到本次会员购买。</text>
         <text class="refund-step">3. 点击“报告问题”，选择退款原因并提交。</text>
         <text class="refund-url">也可以使用购买时的 Apple ID 登录 reportaproblem.apple.com 申请。</text>
       </view>
       <view class="refund-section">
         <text class="refund-section-title">审核期间</text>
-        <text>Apple 审核期间，会员和提醒名额继续有效，不影响使用。审核进度请在 App Store 购买记录中查看。</text>
+        <text>Apple 审核期间，会员权益继续有效，不影响使用。审核进度请在 App Store 购买记录中查看。</text>
       </view>
       <view class="refund-section">
         <text class="refund-section-title">处理结果</text>
         <text>Apple 拒绝退款：会员权益保持不变。</text>
-        <text>Apple 确认退款：系统收到结果后自动回收本订单新增的会员时长和提醒名额，不删除你已经创建的提醒。</text>
+        <text>Apple 确认退款：系统收到结果后自动回收本订单新增的会员权益，不删除你已经创建的提醒。</text>
         <text>我们会在 Apple 问询时提供订单使用情况作为核验意见，最终是否退款由 Apple 决定。</text>
       </view>
       <text class="refund-note">小程序内无需再次提交退款申请；最终结果和到账时间以 Apple 通知为准。</text>

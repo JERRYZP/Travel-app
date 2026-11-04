@@ -166,6 +166,7 @@ function resolveReminderAuth(page, result) {
 function membershipLimitOfStatus(status, needed) {
   const membership = status && status.membership;
   if (!status || status.enforced !== true || !membership) return null;
+  if (membership.taskLimitUnlimited === true) return null;
   const remaining = Math.max(0, Number(membership.taskRemaining) || 0);
   const requested = Math.max(0, Number(needed) || 0);
   if (requested <= remaining) return null;

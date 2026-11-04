@@ -1,5 +1,7 @@
 # 会员支付、售后与提醒名额
 
+> 2026-11-04 本地候选：会员统一升级为 `¥8 / 30 天` 且有效期内不限提醒名额；免费额度保持 5。加量包停止新售，历史订单、待支付订单、权益快照和退款继续兼容。当前有效老会员自动获得不限权益且到期时间不变；本次尚未部署或发布。
+>
 > 2026-11-02 当前状态：会员购买断路器为 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），会员限制运行期为 `payment_config/membership_enforcement={mode:"all"}`。`payment` 与 `reminder` 已于 16:14 / 16:15 部署为 `Active`，`paymentReconcileEveryTwoMinutes` 保持启用；管理员接口返回配置来源 `DB`，`membership.status` 返回 `enforced=true`。客服工作台已部署当日统计、近 7 / 30 / 90 天 / 全部筛选和 Apple 超时待支付关闭，并通过云端冒烟。正式客户端 `2.1.1` 已从 `main@af05573` / `v2.1.1-rc.2` 完成体验验收、送审和全量发布，新功能已在正式版可见。累计观察到 8 笔已支付订单。真实停售切换未执行；保护额度完成标记当前缺失，后台从其他模式切回 `all` 前需单独治理。
 >
 > 权威业务口径以 `产品文档.md` 为准，接口以 `API-契约.md` 为准，索引以 `数据库索引.md` 为准。
@@ -8,12 +10,12 @@
 
 - 会员不是抢票服务，而是 **30 天提醒名额扩容**。
 - 免费版：5 个提醒名额。
-- 会员：当前新订单为 ¥3 / 30 天，会员有效期内最多 15 个提醒名额，不自动续费。
-- 提醒名额包：当前新订单为 ¥3，每个名额包记录 10 个提醒名额；仅在会员有效期内生效，续费后自动恢复。内部 `task_pack_5` 标识为兼容保留，不代表当前套餐数量。历史包永久按每包 5 个保护，新包按每包 10 个记录，二者允许混合累计。
-- 加购名额包时，会员有效期至少延长到支付成功后 30 天。
-- 会员到期不删除已有提醒；不保证景点有票，不代抢、不代约。
+- 会员：当前新订单为 ¥8 / 30 天，会员有效期内不限提醒名额，不自动续费。新购买或续费在原有效期末尾增加 30 天；已过期会员从支付成功时起算 30 天。
+- 当前有效老会员自动获得不限权益，`memberExpiresAt` 不变，不执行批量权益写入。
+- 提醒加量包停止新售，`membership.createOrder` 只接受 `member`；历史 `task_pack_5` 待支付订单仍可按订单快照完成，历史包继续用于展示、对账和退款，但不再参与会员额度计算。
+- 微信订阅消息仍需按条授权；“不限提醒名额”不替代订阅授权，会员到期不删除已有提醒；不保证景点有票，不代抢、不代约。
 - 用户侧统一使用「提醒名额」，不再使用「任务位」。
-- 老用户历史保护池：`max(5, 上线前当前未来 WAITING 提醒数)`。历史任务与免费/会员/加购新增池独立，不挤占会员新增名额。创建任务时处于 `off` 或 `test` 非白名单的进入保护池；只有 `test` 白名单或 `all` 下创建的任务才计新增池，因此审核等待期不会提前收费。
+- 老用户历史保护池：`max(5, 上线前当前未来 WAITING 提醒数)`。历史任务与免费/会员新增池独立，不挤占会员不限权益。创建任务时处于 `off` 或 `test` 非白名单的进入保护池；只有 `test` 白名单或 `all` 下创建的任务才计新增池，因此审核等待期不会提前收费。
 
 ## 2. 支付可靠性
 
@@ -79,7 +81,7 @@ iOS Apple 内购订单在订单展示接口中返回 `paymentChannel=APPLE`。�
 ### 会员限制模式开关
 
 - `payment_config/membership_enforcement` 是运行期唯一真身，`mode=off|test|all`。`payment` 负责管理员写入，`reminder` 在额度状态和新建任务时读取。
-- `off` 让新任务进入历史保护池；`test` 只限制 `MEMBERSHIP_TEST_OPENIDS`；`all` 让所有新任务进入免费/会员/加购新增池。
+- `off` 让新任务进入历史保护池；`test` 只限制 `MEMBERSHIP_TEST_OPENIDS`；`all` 让所有新任务按免费 5 个或会员不限规则校验。
 - 切换只影响之后新建任务，已有任务保留原 `quotaPool`，不追溯重算。一次任务提交使用同一份模式快照，避免切换中途出现半旧半新。
 - 切 `all` 前服务端强制检查保护额度迁移和权益账本迁移，任一未完成返回 `1033`。所有切换写 `SET_MEMBERSHIP_ENFORCEMENT` 审计。
 - 配置缺失、非法或读取失败时，`reminder` 回退 `MEMBERSHIP_ENFORCEMENT_MODE`。后台显示“环境变量兜底”，不猜测当前有效模式。
@@ -105,7 +107,7 @@ iOS Apple 内购订单在订单展示接口中返回 `paymentChannel=APPLE`。�
 - 每 2 分钟定时扫描：`PENDING` 订单查单补偿、`PAID_GRANT_FAILED` 重试发放、自动售后核验、退款处理中/失败单同步。四类队列分别在 `payment_reconcile_state` 保存游标，每队列最多 50 条、10 秒，单次总预算 45 秒，超过 100 条时也能持续轮转到尾部。游标集合是可选加速能力：缺失时尝试自动创建；创建或读写仍失败时只降低轮转效率，必须继续扫描业务集合并推进退款，单队列异常也不能阻断后续退款队列。
 - 每轮补偿结束都写 `payment_config/reconcile_health`：`lastRunAt`、`lastDurationMs`、`skipped`、`reason`、`errors`、`queues`、`error`。正常轮次、`NO_RECONCILE_WORK` 跳过、`PAYMENT_NOT_READY` 跳过和异常轮次都写。**`lastRunAt` 不再更新说明定时器没跑；`lastRunAt` 在更新但 `errors > 0` 说明补偿在跑但一直失败。** 这是区分这两种故障的唯一稳定信号，排障时先看它再翻日志。
 - 查单成功但权益发放失败：订单保持 `PAID`，写 `grantStatus=FAILED`，自动生成高优先级 `RIGHTS_NOT_RECEIVED` 售后单，不要求用户重复支付。
-- 同用户同商品 **1 分钟内**出现两笔已支付订单时，自动识别较新的订单并生成一条**只给客服看的核验工单**。窗口不能放大到分钟级之外：¥3 的提醒名额包连买两份是正常操作，10 分钟窗口会把用户主动买第二份误判成重复支付。
+- 同用户同商品 **1 分钟内**出现两笔已支付订单时，自动识别较新的订单并生成一条**只给客服看的核验工单**。窗口不能放大到分钟级之外，以免把正常续费误判成重复支付。
 - 系统自查的重复单**不自动退款，也不写订单状态**：建单时不置 `refundStatus`、不占用 `activeAfterSalesCaseId`，自动核验后只会转 `UNDER_REVIEW` 等人工判断；客服驳回时也只关工单、不把订单写成 `REJECTED`。用户没有申请过售后，打开订单必须仍是正常的「权益已到账」。
 - 系统自查单通过 `evidence.reviewOnly=true` 标记，并在 `afterSales.list` 里对用户隐藏；用户自己提交的售后单不受影响，照常可见可驳回。
 - **Apple 订单不生成重复支付工单**：iOS 退款只能由用户在 App Store 发起，服务端不能代退，客服也没有可执行动作，建单只会产生一条处理不了的记录。跳过时打 `[payment] skip duplicate charge case for apple order` 日志保留观测。`RIGHTS_NOT_RECEIVED`（我们没发权益）和平台退款补建记录不受此限，Apple 订单照常处理。
@@ -150,8 +152,8 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 
 - 退款调用 `POST /v3/refund/domestic/refunds`，`outRefundNo` 由原商户订单号确定性生成，网络重试不重复退款。
 - 退款结果只认退款回调或主动退款查询；客户端操作成功不代表到账。
-- 退款成功后按订单 `entitlementGrant` 快照回收本单新增会员时长和名额包，不影响其他订单，不删除已有提醒。
-- 发放失败的订单只更新退款结果，不修改用户权益。历史订单缺少 `taskPackCountAdded` 时按 1 包兼容、缺少 `taskPackSlotsAdded` 时按本单 `addedSlots`（再缺省为 5）回收；新订单严格以 10 个名额快照为准。
+- 退款成功后按订单 `entitlementGrant` 快照回收本单新增会员时长和权益，不影响其他订单，不删除已有提醒。
+- 发放失败的订单只更新退款结果，不修改用户权益。新会员订单以 `memberDaysAddedMs` 和 `unlimitedReminders=true` 快照记录权益；历史加量包继续按历史包数及名额快照回收。
 - 用户额度被回收后若当前提醒数超过上限，只禁止继续新增，不删除既有提醒。
 - 售后集合：`after_sales_cases`；审计集合：`admin_audit_logs`；补偿游标：`payment_reconcile_state`。
 - 客服工作台只对显式配置的 `AFTER_SALES_ADMIN_OPENIDS` 开放；未配置时关闭，不存在代码内置兜底账号。所有查看敏感信息、同步、补发、同意、驳回、重试退款都必须在服务端二次鉴权并写审计日志。
@@ -191,6 +193,7 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 
 本地已通过：
 
+- 2026-11-04 会员不限权益候选：`npm test`、`npm run check`、`npm run test:admin-web` 与 `git diff --check` 通过；覆盖有效老会员超过旧 15 条上限仍可创建、到期时间不变、过期回免费 5 条、¥8 新订单、停售加量包拒绝新下单、旧价订单继续支付、退款快照和 mock 一致性。
 - `test/payment-v3.test.js`
 - `test/payment-virtual.test.js`
 - `test/payment-order.test.js`
@@ -222,7 +225,7 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 - 2026-11-01 复核发现 `payment_reconcile_state` 实际不存在，定时补偿报 `-502005` 后中断，导致已到账退款仍停留“退款中”。工作区已补自动创建与无游标降级，并增加退款队列隔离与状态收口回归；新版 `payment` 部署前该问题仍存在于线上。
 - 已创建、核验 `orders_status_id`、`orders_status_grant_id`、`orders_user_status_id`、`after_sales_status_id`；`orders` 共 9 个索引、`after_sales_cases` 共 8 个索引。
 - 名额账本迁移 dry-run 共 133 批、扫描 6605 人、预计变更 6597 人、人工核查 0、历史补签 1；正式迁移共 133 批、扫描并更新 6620 人、人工核查 0、历史补签 1，最终 `hasMore=false`。再次执行已返回 `alreadyCompleted=true`，未产生新写入。
-- `membership.status` 与 `home.bootstrap` 已完成云端只读冒烟。白名单测试账号处于强制校验状态，会员有效期已到账，当前为免费 5 个 + 历史包 5 个 + 新名额包 10 个，合计最多 25 个提醒名额；订单快照 `taskPackCountAdded=1`、`taskPackSlotsAdded=10`、`grantStatus=GRANTED`。
+- `membership.status` 与 `home.bootstrap` 已完成云端只读冒烟。2026-11-01 当时白名单测试账号为免费 5 个 + 历史包 5 个 + 新名额包 10 个，合计最多 25 个提醒名额；该有限额度口径已被 2026-11-04 本地候选替换，生产仍以已部署版本为准。
 - `cloud1` 完成一次 ¥2 真实购买，订单为 `PAID / PAID_GRANTED`。
 - `cloud1` 完成一次“已使用权益”退款驳回，订单详情和售后详情均展示驳回原因。
 - `cloud1` 完成一次 ¥2 真实成功退款：订单 `refundStatus=REFUNDED`、`refundedAmountFen=200`，随后 `grantStatus=REVERTED`，本单权益按快照回收。实测退款到账与权益回收完成相隔约 87 秒，因此页面必须支持该中间态，不能提前显示“权益已全部回收”。

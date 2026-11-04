@@ -76,7 +76,7 @@ const CaseStatus = {
 const ERRORS = {
   UNAUTHORIZED: { code: 1000, message: '未登录' },
   BAD_PARAM: { code: 1010, message: '参数不合法' },
-  MEMBERSHIP_REQUIRED: { code: 1022, message: '请先开通会员再加购提醒名额' },
+  MEMBERSHIP_REQUIRED: { code: 1022, message: '请先开通会员' },
   PAYMENT_NOT_READY: { code: 1023, message: '支付通道准备中，请稍后再试' },
   ORDER_NOT_FOUND: { code: 1024, message: '订单不存在或已失效' },
   ORDER_AMOUNT_MISMATCH: { code: 1025, message: '订单金额校验失败' },

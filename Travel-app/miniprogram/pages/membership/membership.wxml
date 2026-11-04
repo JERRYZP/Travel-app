@@ -30,7 +30,7 @@
         <view class="quota-arrow">→</view>
         <view class="quota-item highlight">
           <text class="quota-label">{{membership.memberDurationDays}} 天会员</text>
-          <text class="quota-value">{{membership.memberTaskSlots}} 个</text>
+          <text class="quota-value">不限</text>
         </view>
       </view>
       <text class="explain-foot">{{membership.memberPackagePriceText}} 一次支付，不自动续费；已有提醒不会被删除。</text>
@@ -44,14 +44,19 @@
         </view>
         <text class="status-badge {{membership.member ? 'active' : ''}}">{{membership.member ? '会员' : '免费版'}}</text>
       </view>
-      <view class="usage-row">
+      <view wx:if="{{membership.taskLimitUnlimited}}" class="usage-row">
+        <text>已开启 {{membership.taskUsed}} 个提醒</text>
+        <text class="usage-unlimited">不限名额</text>
+      </view>
+      <view wx:else class="usage-row">
         <text>提醒名额 {{membership.taskUsed}} / {{membership.taskLimit}}</text>
         <text>剩余 {{membership.taskRemaining}}</text>
       </view>
-      <view class="usage-track">
+      <view wx:if="{{!membership.taskLimitUnlimited}}" class="usage-track">
         <view class="usage-fill" style="width: {{usagePercent}}%;"></view>
       </view>
-      <text wx:if="{{membership.protectedTaskUsed > 0}}" class="protected-note">上线前已有 {{membership.protectedTaskUsed}} 个提醒已保留，不占当前新增的 {{membership.entitlementTaskLimit}} 个名额。</text>
+      <text wx:if="{{membership.protectedTaskUsed > 0 && membership.taskLimitUnlimited}}" class="protected-note">上线前已有 {{membership.protectedTaskUsed}} 个提醒已保留，不占会员不限名额。</text>
+      <text wx:elif="{{membership.protectedTaskUsed > 0}}" class="protected-note">上线前已有 {{membership.protectedTaskUsed}} 个提醒已保留，不占当前新增的 {{membership.entitlementTaskLimit}} 个名额。</text>
     </view>
 
     <view wx:if="{{autoRefreshHint}}" class="auto-refresh-hint">
@@ -78,15 +83,8 @@
       <view class="benefit-row">
         <svg-icon name="check-gold" size="16px" />
         <view class="benefit-copy">
-          <text class="benefit-title">提醒名额从 {{membership.freeTaskSlots}} 个提升到 {{membership.memberTaskSlots}} 个</text>
-          <text class="benefit-desc">只影响可同时开启的提醒数量，不改变官方预约规则。</text>
-        </view>
-      </view>
-      <view class="benefit-row">
-        <svg-icon name="check-gold" size="16px" />
-        <view class="benefit-copy">
-          <text class="benefit-title">会员有效期内可加购提醒名额</text>
-          <text class="benefit-desc">{{membership.taskPackPriceText}} 增加 {{membership.taskPackSize}} 个名额，永久记录，续费后自动恢复。</text>
+          <text class="benefit-title">免费版 {{membership.freeTaskSlots}} 个，会员有效期内不限提醒名额</text>
+          <text class="benefit-desc">只影响可同时开启的提醒数量；微信订阅消息仍需按条授权，也不改变官方预约规则。</text>
         </view>
       </view>
     </view>
@@ -122,8 +120,6 @@
           </view>
         </view>
       </view>
-      <text wx:if="{{!membership.member}}" class="package-tip">开通会员后可加购 {{membership.taskPackSize}} 个提醒名额。</text>
-
       <view class="purchase-note">
         <text wx:if="{{isIosDevice}}">iOS 购买由 Apple 处理，支付成功后权益立即生效。退款申请和审核由 Apple 独立处理，小程序客服无法决定结果；如 Apple 确认退款，系统会按本订单自动回收对应权益。</text>
         <text wx:else>虚拟权益支付成功后生效。支付后 24 小时内且没有新增任何提醒，可申请退款，需客服核实；已使用、超时或无正当理由的申请不支持。每笔订单最多一次全额退款。</text>

@@ -117,6 +117,7 @@ function paymentViewOf(order = {}) {
     paymentProvider: order.paymentProvider || '',
     taskPackCount: Math.max(0, Number(order.taskPackCount) || 0),
     taskPackSlots: Math.max(0, Number(order.taskPackSlots) || 0),
+    unlimitedReminders: order.unlimitedReminders === true,
     isExpired: isOrderExpired(order),
   };
 }
@@ -284,6 +285,7 @@ async function fulfillOrder(db, order, payment = {}) {
         taskPackDelta: taskPackCountAdded,
         taskPackCountAdded,
         taskPackSlotsAdded,
+        unlimitedReminders: latestOrder.unlimitedReminders === true,
         specVersion: latestOrder.specVersion || '',
         appliedAt: nowTs,
         revertedAt: null,

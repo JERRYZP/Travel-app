@@ -3,12 +3,12 @@
  *
  * 这里是小程序端唯一可以消费的提醒名额口径：
  * - 免费用户最多保留 5 个未来待发送提醒任务；
- * - 3 元会员有效 30 天，会员期内任务上限变为 15 个；
- * - 会员每加购 1 个 3 元名额包，记录 10 个提醒名额，会员期内生效；
- * - 会员到期后，已购名额记录不删除但不生效，已有提醒任务继续发送。
+ * - 8 元会员有效 30 天，会员期内不限提醒名额；
+ * - 提醒加量包已停售，历史订单和退款快照继续兼容；
+ * - 会员到期后回到免费 5 个提醒名额，已有提醒任务继续发送。
  *
  * “已用提醒名额”只统计仍会发送的 WAITING 新增任务。迁移前历史任务进入
- * 独立保护池，不挤占免费/会员/加购名额；已触发、未送达和已关闭任务不占新名额。
+ * 独立保护池，不挤占免费/会员名额；已触发、未送达和已关闭任务不占新名额。
  */
 
 const crypto = require('crypto');
@@ -22,13 +22,12 @@ const membershipSales = require('./membership-sales');
 const membershipEnforcement = require('./membership-enforcement');
 
 const FREE_TASK_SLOTS = 5;
-const MEMBER_TASK_SLOTS = 15;
-const TASK_PACK_SIZE = 10;
-const TASK_PACK_PRICE_FEN = 300;
-const MEMBER_PRICE_FEN = 300;
+const MEMBER_PRICE_FEN = 800;
 const MEMBER_DURATION_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const LEGACY_TASK_PACK_SIZE = 5;
+/* 仅用于旧客户端兼容：旧版本仍读取有限数字并据此做前端预检。 */
+const LEGACY_CLIENT_UNLIMITED_TASK_LIMIT = 10000;
 const ORDER_GRANT_SCHEMA_VERSION = 2;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
 const PaymentChannel = Object.freeze({
@@ -69,29 +68,15 @@ const PACKAGES = Object.freeze([
     type: 'MEMBER',
     title: '会员 30 天',
     priceFen: MEMBER_PRICE_FEN,
-    priceText: '¥3',
-    taskSlots: MEMBER_TASK_SLOTS,
-    addedSlots: MEMBER_TASK_SLOTS - FREE_TASK_SLOTS,
+    priceText: '¥8',
+    taskSlots: 0,
+    addedSlots: 0,
+    unlimitedReminders: true,
     memberDays: MEMBER_DURATION_DAYS,
     memberFloorDays: MEMBER_DURATION_DAYS,
-    description: `30 天内最多 ${MEMBER_TASK_SLOTS} 个提醒名额`,
+    description: '会员有效期内不限提醒名额',
     badge: '推荐',
-    specVersion: 'member-30d-v2',
-  },
-  {
-    // 历史稳定 SKU 标识；套餐数量统一由 TASK_PACK_SIZE 控制。
-    id: 'task_pack_5',
-    type: 'TASK_PACK',
-    title: `${TASK_PACK_SIZE} 个提醒名额`,
-    priceFen: TASK_PACK_PRICE_FEN,
-    priceText: '¥3',
-    taskSlots: TASK_PACK_SIZE,
-    addedSlots: TASK_PACK_SIZE,
-    memberDays: 0,
-    memberFloorDays: MEMBER_DURATION_DAYS,
-    description: '名额永久记录，会员有效期内生效',
-    badge: '',
-    specVersion: 'task-pack-10-v2',
+    specVersion: 'member-unlimited-30d-v3',
   },
 ]);
 
@@ -150,10 +135,10 @@ function countActiveTasks(tasks, nowTs = time.now()) {
 }
 
 /**
- * 历史保护池与免费/会员/加购池彼此独立。
+ * 历史保护池与免费/会员新增池彼此独立。
  * 新任务是否受会员限制，以创建时该用户是否已进入 test/all 灰度为准：
  * - off，或 test 模式下不在白名单：任务进入历史保护池，不计新增额度；
- * - test 白名单 / all：任务进入新增池，占用免费、会员或加购名额。
+ * - test 白名单 / all：任务进入新增池，按免费或会员规则校验。
  * 旧任务没有 quotaPool 字段，一律按历史保护池兼容，避免审核等待期误收费。
  */
 function quotaPoolOfTask(task = {}) {
@@ -325,6 +310,7 @@ function orderViewOf(order = {}, user = {}, nowTs = time.now(), sales = null) {
     amountFen: Math.max(0, Number(order.amountFen) || 0),
     amountText: amountTextOf(order.amountFen),
     addedSlots: Math.max(0, Number(order.addedSlots) || 0),
+    unlimitedReminders: order.unlimitedReminders === true,
     memberDays: Math.max(0, Number(order.memberDays) || 0),
     status: order.status || OrderStatus.PENDING,
     statusLabel: ORDER_STATUS_LABEL[order.status] || '处理中',
@@ -340,6 +326,8 @@ function orderViewOf(order = {}, user = {}, nowTs = time.now(), sales = null) {
       afterExpiresAt: order.entitlementGrant.afterExpiresAt || null,
       memberDaysAddedMs: Math.max(0, Number(order.entitlementGrant.memberDaysAddedMs) || 0),
       taskPackDelta: Math.max(0, Number(order.entitlementGrant.taskPackDelta) || 0),
+      unlimitedReminders: order.entitlementGrant.unlimitedReminders === true
+        || order.unlimitedReminders === true,
       appliedAt: order.entitlementGrant.appliedAt || null,
       revertedAt: order.entitlementGrant.revertedAt || null,
     } : null,
@@ -372,9 +360,9 @@ function normalizeUser(user = {}, nowTs = time.now()) {
     FREE_TASK_SLOTS,
     parseInt(user.protectedTaskQuota, 10) || FREE_TASK_SLOTS
   );
-  const entitlementTaskLimit = FREE_TASK_SLOTS
-    + (isMember ? MEMBER_TASK_SLOTS - FREE_TASK_SLOTS : 0)
-    + taskPackSlots;
+  const entitlementTaskLimit = isMember
+    ? LEGACY_CLIENT_UNLIMITED_TASK_LIMIT
+    : FREE_TASK_SLOTS;
   return {
     member: isMember,
     memberLevel: isMember ? MemberLevel.MEMBER : MemberLevel.NORMAL,
@@ -383,6 +371,7 @@ function normalizeUser(user = {}, nowTs = time.now()) {
     memberDaysRemaining: isMember
       ? Math.max(1, Math.ceil((memberExpiresMs - nowMs) / DAY_MS))
       : 0,
+    taskLimitUnlimited: isMember,
     taskLimit: entitlementTaskLimit,
     entitlementTaskLimit,
     protectedTaskQuota,
@@ -392,8 +381,8 @@ function normalizeUser(user = {}, nowTs = time.now()) {
     ownedTaskPackSlots: purchasedPackSlots,
     memberDurationDays: MEMBER_DURATION_DAYS,
     freeTaskSlots: FREE_TASK_SLOTS,
-    memberTaskSlots: MEMBER_TASK_SLOTS,
-    taskPackSize: TASK_PACK_SIZE,
+    memberTaskSlots: LEGACY_CLIENT_UNLIMITED_TASK_LIMIT,
+    taskPackSize: 0,
   };
 }
 
@@ -418,19 +407,15 @@ function packageViews(snapshot, sales = null) {
   const purchaseEnabled = !sales || sales.purchaseEnabled === true;
   return PACKAGES.map(item => {
     const isMemberPackage = item.type === 'MEMBER';
-    const available = purchaseEnabled && (isMemberPackage ? true : snapshot.member);
+    const available = purchaseEnabled && isMemberPackage;
     return {
       ...item,
       available,
       actionText: !purchaseEnabled
         ? (sales && sales.message) || '会员购买暂停中'
-        : (isMemberPackage
-          ? (snapshot.member
-            ? `续费 ${item.memberDays} 天 ${item.priceText}`
-            : `开通会员 ${item.priceText}`)
-          : (snapshot.member
-            ? `加购 ${item.addedSlots} 个名额 ${item.priceText}`
-            : '先开通会员')),
+        : (snapshot.member
+          ? `续费 ${item.memberDays} 天 ${item.priceText}`
+          : `开通会员 ${item.priceText}`),
     };
   });
 }
@@ -515,6 +500,7 @@ async function capacityError(db, userId, neededTasks, nowTs = time.now(), option
 
   const res = await status(db, userId, nowTs, { enforcementState: enforcement });
   const membership = res.membership;
+  if (membership.taskLimitUnlimited) return null;
   if (needed <= membership.taskRemaining) return null;
 
   return fail(ERRORS.TASK_LIMIT_EXCEEDED, {
@@ -554,6 +540,7 @@ function orderSpecMatches(order, pkg) {
     && Number(order.amountFen) === pkg.priceFen
     && Number(order.addedSlots) === pkg.addedSlots
     && Number(order.memberDays) === pkg.memberDays
+    && order.unlimitedReminders === (pkg.unlimitedReminders === true)
     && order.specVersion === pkg.specVersion;
 }
 
@@ -574,6 +561,7 @@ function orderResponseOf(order, reused = false) {
     amountFen: order.amountFen,
     packageId: order.packageId,
     title: order.title,
+    unlimitedReminders: order.unlimitedReminders === true,
     ...(reused ? { reused: true } : {}),
   });
 }
@@ -659,6 +647,7 @@ async function createOrder(db, userId, { packageId, requestId } = {}) {
       body: `智序准点游-${pkg.title}`,
       amountFen: pkg.priceFen,
       addedSlots: pkg.addedSlots,
+      unlimitedReminders: pkg.unlimitedReminders === true,
       memberDays: pkg.memberDays,
       memberFloorDays: pkg.memberFloorDays || 0,
       status: OrderStatus.PENDING,
@@ -773,12 +762,10 @@ async function orderDetail(db, userId, orderId) {
 
 module.exports = {
   FREE_TASK_SLOTS,
-  MEMBER_TASK_SLOTS,
-  TASK_PACK_SIZE,
   LEGACY_TASK_PACK_SIZE,
+  LEGACY_CLIENT_UNLIMITED_TASK_LIMIT,
   ORDER_GRANT_SCHEMA_VERSION,
   MEMBER_PRICE_FEN,
-  TASK_PACK_PRICE_FEN,
   MEMBER_DURATION_DAYS,
   TASK_QUOTA_POOL,
   PACKAGES,

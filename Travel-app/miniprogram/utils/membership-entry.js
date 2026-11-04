@@ -23,6 +23,7 @@ function viewOf(err) {
 
   const current = err.membership || {};
   const member = current.member === true;
+  if (current.taskLimitUnlimited === true) return null;
   const limit = Math.max(0, Number(source.limit) || 0);
   const used = Math.max(0, Number(source.used) || 0);
   const rawRemaining = Number(source.remaining);
@@ -37,16 +38,11 @@ function viewOf(err) {
   const packages = Array.isArray(err.packages) ? err.packages : [];
   const sales = err.sales || {};
   const purchaseEnabled = sales.purchaseEnabled !== false;
-  const preferredType = member ? 'TASK_PACK' : 'MEMBER';
-  const pkg = packages.find(item => item && item.type === preferredType && item.available !== false)
-    || null;
-  const fallbackPkg = packages.find(item => item && item.type === preferredType)
+  const pkg = packages.find(item => item && item.type === 'MEMBER' && item.available !== false)
     || null;
   const freeSlots = Math.max(0, Number(current.freeTaskSlots) || 0);
-  const memberSlots = Math.max(freeSlots, Number(current.memberTaskSlots) || 0);
   const memberDays = Math.max(0, Number(current.memberDurationDays) || 0);
   const priceText = (pkg && pkg.priceText) || '';
-  const addedSlots = Math.max(0, Number(pkg && pkg.addedSlots) || 0);
 
   return {
     title: `还差 ${shortfall} 个提醒名额`,
@@ -57,33 +53,25 @@ function viewOf(err) {
     shortfall,
     member,
     packageId: purchaseEnabled && pkg ? pkg.id : '',
-    packageType: (pkg || fallbackPkg)
-      ? (pkg || fallbackPkg).type
-      : (member ? 'TASK_PACK' : 'MEMBER'),
-    packageTitle: (pkg || fallbackPkg) ? (pkg || fallbackPkg).title : '',
+    packageType: 'MEMBER',
+    packageTitle: pkg ? pkg.title : '',
     priceText: pkg ? pkg.priceText : '',
-    addedSlots: pkg ? Math.max(0, Number(pkg.addedSlots) || 0) : 0,
+    addedSlots: 0,
     memberDays: Math.max(0, Number(pkg && pkg.memberDays) || 0),
     memberFloorDays: Math.max(0, Number(pkg && pkg.memberFloorDays) || 0),
     memberExpiresAt: current.memberExpiresAt || null,
     purchaseEnabled,
     salesMessage: sales.message || '',
     actionText: purchaseEnabled
-      ? ((pkg && pkg.actionText) || (member ? '去加购提醒名额' : '去开通会员'))
+      ? ((pkg && pkg.actionText) || '去开通会员')
       : ((sales && sales.message) || '会员购买暂停中'),
     description: !purchaseEnabled
       ? (sales.message || '会员购买暂停中，已有会员权益和订单不受影响。')
-      : (member
-        ? (pkg && pkg.description) || '可在会员有效期内加购提醒名额。'
-        : `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额；开通会员后上限提升至 ${memberSlots} 个。`),
-    note: member
-      ? (current.memberExpiresAtText ? `会员到期：${current.memberExpiresAtText}` : '')
-      : `会员有效期 ${memberDays} 天，不自动续费`,
+      : `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额；开通会员后不限提醒名额。`,
+    note: `会员有效期 ${memberDays} 天，不自动续费`,
     payText: !purchaseEnabled
       ? '会员购买暂停中'
-      : (member
-        ? `支付 ${priceText}，购买 ${addedSlots} 个提醒名额并继续`
-        : `支付 ${priceText}，购买会员并继续`),
+      : `支付 ${priceText}，购买会员并继续`,
   };
 }
 
@@ -92,13 +80,8 @@ function payConfirmOf(limit, now = Date.now()) {
   const currentMs = new Date(limit.memberExpiresAt || 0).getTime();
   const validCurrent = Number.isFinite(currentMs) && currentMs > now ? currentMs : now;
   const memberDays = Math.max(0, Number(limit.memberDays) || 0);
-  const memberFloorDays = Math.max(0, Number(limit.memberFloorDays) || 0);
-  const expiryMs = limit.packageType === 'MEMBER'
-    ? validCurrent + memberDays * 86400000
-    : Math.max(validCurrent, now + memberFloorDays * 86400000);
-  const title = limit.packageType === 'MEMBER'
-    ? `${memberDays} 天会员`
-    : `${Math.max(0, Number(limit.addedSlots) || 0)} 个提醒名额`;
+  const expiryMs = validCurrent + memberDays * 86400000;
+  const title = `${memberDays} 天会员`;
   return {
     title,
     amount: limit.priceText,

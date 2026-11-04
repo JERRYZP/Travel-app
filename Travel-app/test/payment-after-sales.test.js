@@ -343,7 +343,7 @@ async function run() {
   const group = await afterSales.duplicateChargeTarget(db, db._dump(COLLECTIONS.ORDERS).find(item => item._id === 'older'));
   eq(group.targetOrderId, 'newer', '从较早订单回调也能定位整组中较新的重复支付订单');
 
-  // ¥3 的提醒名额包连买两份是正常操作，间隔超过 1 分钟就不该判成重复支付。
+  // 同一会员在短时间内主动续费也可能发生，间隔超过 1 分钟就不该判成重复支付。
   seedPaidOrder(db, {
     _id: 'later', outTradeNo: 'TLATER',
     createdAt: new Date(Date.now() + 120000), paidAt: new Date(Date.now() + 120000),

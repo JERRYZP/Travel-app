@@ -144,7 +144,7 @@ Page({
       membershipQuotaGap: Math.max(0, requested - taskRemaining),
     };
 
-    if (!current || requested <= taskRemaining) {
+    if (!current || current.taskLimitUnlimited === true || requested <= taskRemaining) {
       return {
         showMembershipGate: false,
         membershipGateTitle: '',
@@ -160,47 +160,21 @@ Page({
     const gap = quotaFields.membershipQuotaGap;
     const packages = Array.isArray(availablePackages) ? availablePackages : [];
     const freeSlots = Math.max(0, Number(current.freeTaskSlots) || 0);
-    const memberSlots = Math.max(freeSlots, Number(current.memberTaskSlots) || 0);
-    const taskPackSize = Math.max(0, Number(current.taskPackSize) || 0);
     const memberDays = Math.max(0, Number(current.memberDurationDays) || 0);
     const purchaseEnabled = !sales || sales.purchaseEnabled !== false;
     const salesMessage = (sales && sales.message) || '会员购买暂停中，请稍后再试。';
-    const preferredType = current.member ? 'TASK_PACK' : 'MEMBER';
     const pkg = purchaseEnabled
       ? packages.find(item =>
-        item && item.type === preferredType && item.available !== false) || null
+        item && item.type === 'MEMBER' && item.available !== false) || null
       : null;
     const priceText = (pkg && pkg.priceText) || '';
-    const displayPackSize = taskPackSize || Number(pkg && pkg.addedSlots) || 0;
     const displayMemberDays = memberDays || Number(pkg && pkg.memberDays) || 0;
-    if (current.member) {
-      return {
-        showMembershipGate: true,
-        membershipGateTitle: `还差 ${gap} 个提醒名额`,
-        membershipGateDesc: purchaseEnabled
-          ? (displayPackSize
-            ? `加购 ${displayPackSize} 个提醒名额；名额永久记录，会员有效期内生效。`
-            : '可在会员有效期内加购提醒名额。')
-          : salesMessage,
-        membershipGateNote: purchaseEnabled
-          ? `会员到期：${current.memberExpiresAtText || '—'}`
-          : `会员到期：${current.memberExpiresAtText || '—'}；已有权益不受影响`,
-        membershipActionText: purchaseEnabled
-          ? (pkg
-            ? `支付 ${priceText}，加购 ${displayPackSize} 个名额并继续`
-            : '暂无可购买的名额包')
-          : '会员购买暂停中',
-        membershipGateActionDisabled: !purchaseEnabled,
-        ...quotaFields,
-        upgradePackageId: pkg ? pkg.id : '',
-      };
-    }
 
     return {
       showMembershipGate: true,
       membershipGateTitle: `还差 ${gap} 个提醒名额`,
       membershipGateDesc: purchaseEnabled
-        ? `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额；开通会员后上限提升至 ${memberSlots} 个${displayMemberDays ? `，有效期 ${displayMemberDays} 天` : ''}。`
+        ? `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额；开通会员后不限提醒名额${displayMemberDays ? `，有效期 ${displayMemberDays} 天` : ''}。`
         : salesMessage,
       membershipGateNote: purchaseEnabled
         ? (pkg ? `${priceText} / ${displayMemberDays} 天，不自动续费` : '会员商品暂不可购买')
@@ -237,7 +211,7 @@ Page({
       else if (shortfall > 0) {
         gateText = '当前可用 ' + subscribeQuota + ' 次，还差 ' + shortfall + ' 次授权，补齐后才能开启提醒';
       } else if (membershipBlocked) {
-        gateText = '提醒名额不足，请先开通会员或加购名额';
+        gateText = '提醒名额不足，请先开通会员';
       } else if (want === 0) gateText = '当前没有需要提醒的景点';
       this.setData({
         quotaNeeded: want,
@@ -508,9 +482,8 @@ Page({
     const current = this.data.membership || {};
     const requested = Math.max(0, Number(this.data.reminderCount) || 0);
     const remaining = Math.max(0, Number(current.taskRemaining) || 0);
-    const preferredType = current.member ? 'TASK_PACK' : 'MEMBER';
     const preferredPackage = (this.data.packages || []).find(item =>
-      item && item.type === preferredType) || null;
+      item && item.type === 'MEMBER') || null;
     const packageId = this.data.upgradePackageId || (preferredPackage && preferredPackage.id) || '';
     const query = [
       'reason=task_limit',
@@ -538,20 +511,14 @@ Page({
       ? currentExpiry
       : Date.now();
     const memberDays = Math.max(0, Number(pkg.memberDays) || 0);
-    const memberFloorDays = Math.max(0, Number(pkg.memberFloorDays) || 0);
     const expiry = new Date(Math.max(
       memberDays ? validCurrent + memberDays * 86400000 : 0,
-      memberFloorDays ? Date.now() + memberFloorDays * 86400000 : 0,
       Number.isFinite(currentExpiry) ? currentExpiry : 0
     ));
     const p = new Date(expiry.getTime() + 8 * 60 * 60 * 1000);
-    const current = this.data.membership || {};
-    const taskPackSize = Math.max(0, Number(pkg.addedSlots) || Number(current.taskPackSize) || 0);
     this.setData({
       showUpgradeConfirm: true,
-      upgradeConfirmTitle: pkg.type === 'MEMBER'
-        ? `${Number(pkg.memberDays) || 0} 天会员`
-        : `${taskPackSize} 个提醒名额`,
+      upgradeConfirmTitle: `${Number(pkg.memberDays) || 0} 天会员`,
       upgradeConfirmAmount: pkg.priceText || '',
       upgradeConfirmExpiry: `会员有效期至 ${p.getUTCFullYear()}年${p.getUTCMonth() + 1}月${p.getUTCDate()}日`,
     });
@@ -627,7 +594,7 @@ Page({
   onSubmit() {
     const { channels, offsets } = this.data;
     if (this.data.showMembershipGate) {
-      wx.showToast({ title: '请先开通会员或加购提醒名额', icon: 'none' });
+      wx.showToast({ title: '请先开通会员', icon: 'none' });
       return;
     }
     if (!channels.officialAccount) {

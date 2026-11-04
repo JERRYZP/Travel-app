@@ -39,11 +39,12 @@ const free = {
   taskUsed: 2,
   taskRemaining: 3,
   taskLimit: 5,
+  taskLimitUnlimited: false,
   freeTaskSlots: 5,
-  memberTaskSlots: 15,
+  memberTaskSlots: 10000,
   memberDurationDays: 30,
   ownedTaskPackCount: 0,
-  taskPackSize: 10,
+  taskPackSize: 0,
   memberExpiresAtText: '',
 };
 
@@ -52,21 +53,11 @@ const serverPackages = [
     id: 'member',
     type: 'MEMBER',
     title: '会员 30 天',
-    priceText: '¥3',
-    taskSlots: 15,
-    addedSlots: 10,
+    priceText: '¥8',
+    taskSlots: 0,
+    addedSlots: 0,
+    unlimitedReminders: true,
     memberDays: 30,
-    memberFloorDays: 30,
-    available: true,
-  },
-  {
-    id: 'task_pack_5',
-    type: 'TASK_PACK',
-    title: '10 个提醒名额',
-    priceText: '¥3',
-    taskSlots: 10,
-    addedSlots: 10,
-    memberDays: 0,
     memberFloorDays: 30,
     available: true,
   },
@@ -92,82 +83,72 @@ async function run() {
   eq(gate.membershipQuotaRequested, 5, '公式展示本次新建 5');
   eq(gate.membershipQuotaGap, 3, '公式展示还差 3');
   eq(gate.upgradePackageId, 'member', '普通用户优先开会员');
-  eq(gate.membershipActionText, '支付 ¥3，开通 30 天会员并继续', '按钮直接说明商品、金额并继续原流程');
+  eq(gate.membershipActionText, '支付 ¥8，开通 30 天会员并继续', '按钮直接说明商品、金额并继续原流程');
 
-  console.log('\n=== 2. 会员超额时加购，不重复卖会员 ===');
+  console.log('\n=== 2. 会员不限名额，不再出现加购 ===');
   gate = membershipGateOf(1, {
     ...free,
     member: true,
-    taskUsed: 15,
-    taskRemaining: 0,
-    taskLimit: 15,
+    taskUsed: 200,
+    taskRemaining: 9800,
+    taskLimit: 10000,
+    taskLimitUnlimited: true,
     memberExpiresAtText: '2026年11月26日',
   });
-  eq(gate.showMembershipGate, true, '会员满额时显示');
-  eq(gate.upgradePackageId, 'task_pack_5', '会员显示加购包');
-  eq(gate.membershipActionText, '支付 ¥3，加购 10 个名额并继续', '加购后继续原提交');
-  gate = membershipGateOf(7, {
+  eq(gate.showMembershipGate, false, '会员即使超过旧 15 条上限也不显示付费入口');
+  gate = membershipGateOf(500, {
     ...free,
     member: true,
-    taskUsed: 12,
-    taskRemaining: 3,
-    taskLimit: 15,
+    taskUsed: 200,
+    taskRemaining: 9800,
+    taskLimit: 10000,
+    taskLimitUnlimited: true,
   });
-  eq(gate.membershipQuotaLimit, 15, '会员公式展示当前额度 15');
-  eq(gate.membershipQuotaUsed, 12, '会员公式展示已占额度 12');
-  eq(gate.membershipQuotaRemaining, 3, '会员公式展示剩余额度 3');
-  eq(gate.membershipQuotaGap, 4, '会员公式展示本次新建 7、还差 4');
-  gate = membershipGateOf(13, {
-    ...free,
-    member: true,
-    taskUsed: 3,
-    taskRemaining: 12,
-    taskLimit: 15,
-  });
-  eq(gate.membershipQuotaUsed, 3, '历史保护任务不进入公式的已占额度');
-  eq(gate.membershipQuotaRemaining, 12, '历史保护任务不压缩公式的剩余额度');
-  eq(gate.membershipQuotaGap, 1, '历史保护额度下按新增池计算本次缺口');
-  const availablePackages = [
-    { id: 'member', type: 'MEMBER', available: true },
-    { id: 'task_pack_5', type: 'TASK_PACK', available: true },
-  ];
-  eq(membershipDef.defaultPackageIdOf({ member: true }, availablePackages), 'task_pack_5',
-    '会员进入会员页默认选中加购，不默认续费会员');
-  eq(membershipDef.defaultPackageIdOf({ member: false }, availablePackages), 'member',
-    '非会员仍默认选中开通会员');
-  eq(membershipDef.defaultPackageIdOf({ member: true }, [availablePackages[0]]), 'member',
-    '加购不可用时安全回退到会员套餐');
+  eq(gate.showMembershipGate, false, '会员一次新建 500 条也不触发有限名额闸门');
+  eq(gate.upgradePackageId, '', '会员不再出现加购 SKU');
+  eq(membershipDef.defaultPackageIdOf({ member: true }, serverPackages), 'member',
+    '会员页只保留一个会员 SKU');
+  eq(membershipDef.defaultPackageIdOf({ member: false }, serverPackages), 'member',
+    '非会员同样默认选中唯一会员 SKU');
   let preferredMembershipUrl = '';
   const originalWx = global.wx;
   global.wx = { navigateTo: ({ url }) => { preferredMembershipUrl = url; } };
   setupDef.onMembership.call({
     data: {
-      membership: { member: true, taskUsed: 15, taskLimit: 15, taskRemaining: 0 },
+      membership: {
+        member: true,
+        taskUsed: 15,
+        taskLimit: 10000,
+        taskRemaining: 9985,
+        taskLimitUnlimited: true,
+      },
       reminderCount: 16,
-      upgradePackageId: 'task_pack_5',
+      packages: serverPackages,
+      upgradePackageId: '',
     },
   });
-  eq(preferredMembershipUrl.includes('packageId=task_pack_5'), true,
-    '设置提醒页打开会员页时显式携带加购意向');
+  eq(preferredMembershipUrl.includes('packageId=member'), true,
+    '设置提醒页只把唯一会员 SKU 带到会员页');
   global.wx = originalWx;
   const membershipPage = { setData: () => {} };
-  membershipDef.onLoad.call(membershipPage, { packageId: 'task_pack_5' });
-  eq(membershipPage._preferredPackageId, 'task_pack_5',
-    '会员页接收并校验设置提醒页传入的加购意向');
+  membershipDef.onLoad.call(membershipPage, { packageId: 'member' });
+  eq(membershipPage._preferredPackageId, 'member',
+    '会员页接收唯一会员 SKU');
 
-  console.log('\n=== 3. 会员过期后续费会恢复已购提醒名额 ===');
+  console.log('\n=== 3. 会员过期后回到免费门槛 ===');
   gate = membershipGateOf(1, {
     ...free,
     member: false,
     taskUsed: 15,
     taskRemaining: 0,
     taskLimit: 5,
-    memberTaskSlots: 15,
+    taskLimitUnlimited: false,
+    memberTaskSlots: 10000,
     ownedTaskPackCount: 1,
-    taskPackSize: 10,
+    taskPackSize: 0,
   });
-  eq(gate.upgradePackageId, 'member', '续费会员即可恢复原有 25 个提醒名额');
-  eq(gate.membershipGateDesc, '因服务器压力，普通用户最多有 5 个提醒名额；开通会员后上限提升至 15 个，有效期 30 天。',
+  eq(gate.upgradePackageId, 'member', '续费唯一会员 SKU 即可恢复不限权益');
+  eq(gate.membershipGateDesc, '因服务器压力，普通用户最多有 5 个提醒名额；开通会员后不限提醒名额，有效期 30 天。',
     '非会员用服务器压力说明固定免费额度，不再重复本次数量');
   eq(gate.membershipGateDesc.includes('本次需要'), false, '标题已经说明缺口，正文不再重复本次数量');
 
@@ -392,10 +373,11 @@ async function run() {
   eq(membershipWxml.includes('开通会员以增加可同时开启的提醒名额'), true,
     '顶部权益卡使用精简后的主文案');
   eq(membershipWxml.includes('{{membership.memberPackagePriceText}} 一次支付')
-    && membershipWxml.includes('{{membership.taskPackPriceText}} 增加 {{membership.taskPackSize}} 个名额'), true,
-    '会员页当前价格与加购数量读取服务端套餐口径');
+    && membershipWxml.includes('会员有效期内不限提醒名额'), true,
+    '会员页价格与不限权益读取服务端套餐口径');
   eq(membershipWxml.includes('¥2'), false, '会员页不再展示旧价格 2 元');
-  eq(membershipWxml.includes('protectedTaskUsed > 0') && membershipWxml.includes('不占当前新增的'), true,
+  eq(membershipWxml.includes('protectedTaskUsed > 0')
+    && membershipWxml.includes('不占会员不限名额'), true,
     '老用户历史提醒单独展示且明确不占当前新增名额');
   eq(/\.explain-card\s*\{[^}]*padding:\s*22rpx 24rpx/.test(membershipWxss), true,
     '顶部权益卡已压缩高度');
@@ -403,8 +385,10 @@ async function run() {
     '订单入口标题改为会员订单');
   eq(membershipWxml.includes('<text class="order-entry-desc">查看支付结果和售后信息</text>'), true,
     '订单入口副文案只保留支付结果与售后信息');
-  eq((membershipWxml.match(/<view class="benefit-row">/g) || []).length, 2,
-    '你能得到什么只保留两条核心权益');
+  eq((membershipWxml.match(/<view class="benefit-row">/g) || []).length, 1,
+    '你能得到什么只保留不限提醒名额这一条核心权益');
+  eq(/加购|提醒名额包|TASK_PACK|task_pack_5/.test(membershipAll), false,
+    '会员页彻底移除加量包入口与文案');
   eq(membershipWxml.includes('到期不删除已有提醒'), false,
     '权益列表不再重复展示到期提醒边界');
   eq(membershipWxml.includes('权益已到账'), false,
@@ -490,7 +474,7 @@ async function run() {
   payData = {
     purchasing: false,
     sales: null,
-    selectedPackage: { id: 'member', priceText: '¥3', memberDays: 30 },
+    selectedPackage: { id: 'member', priceText: '¥8', memberDays: 30 },
     payCapability: { supported: true, reason: '' },
     payUnsupportedTip: '',
     membership: {},
@@ -573,6 +557,9 @@ async function run() {
     '提醒名额增量按订单快照计算，不把当前 10 个规格写死回 5 个');
   eq(orderDetailWxml.includes('taskPackDelta * 5'), false,
     '订单详情不再残留 5 个名额的硬编码阶梯');
+  eq(orderDetailWxml.includes('{{order.unlimitedReminders}}')
+    && orderDetailWxml.includes('会员有效期内不限提醒名额'), true,
+    '新会员订单详情展示不限权益快照');
   eq(orderDetailJs.includes('latestCase && latestCase.decisionNote'), true,
     '订单详情展示客服填写的驳回原因');
   eq(orderDetailWxml.includes('wx:if="{{latestCase}}"')
@@ -628,14 +615,16 @@ async function run() {
         member: true,
         memberExpiresAtText: '2026年11月26日',
         taskUsed: 3,
-        taskLimit: 15,
+        taskLimit: 10000,
+        taskLimitUnlimited: true,
       },
     }
   );
   eq(profileData.memberTagText, '尊贵会员', '会员标签凸显身份');
   eq(profileData.memberCardTitle, '尊贵会员', '会员卡标题');
-  eq(profileData.memberCardDesc, '2026-11-26 到期｜提醒名额 3/15', '会员卡显示到期和提醒名额');
-  eq(profileData.memberCardAction, '升级', '会员卡行动为升级');
+  eq(profileData.memberCardDesc, '2026-11-26 到期｜已开启 3 个提醒｜不限名额',
+    '会员卡显示到期和不限名额');
+  eq(profileData.memberCardAction, '续费', '会员卡行动为续费');
 
   console.log('\n=== 5b. 售后入口只在有待处理单时显示数量标识 ===');
   profileData = {};
@@ -704,21 +693,21 @@ async function run() {
   eq(adminAfterSalesWxml.includes('detail.case.failureReason'), true, '售后详情保留并展示退款失败原因');
   eq(adminAfterSalesWxml.includes('approveRefundLabel'), true, '异常售后单的按钮明确为重新发起退款');
 
-  console.log('\n=== 6. 加购确认展示真实到期时间 ===');
+  console.log('\n=== 6. 会员续费确认展示真实到期时间 ===');
   const now = Date.now();
   const currentExpiry = new Date(now + 40 * 86400000);
   let upgradeData = {
     membership: { member: true, memberExpiresAt: currentExpiry },
-    upgradePackageId: 'task_pack_5',
+    upgradePackageId: 'member',
     packages: serverPackages,
   };
   setupDef.onUpgradeAndContinue.call({
     data: upgradeData,
     setData(patch) { upgradeData = { ...upgradeData, ...patch }; },
   });
-  const expectedExpiry = new Date(currentExpiry.getTime() + 8 * 60 * 60 * 1000);
+  const expectedExpiry = new Date(currentExpiry.getTime() + 30 * 86400000 + 8 * 60 * 60 * 1000);
   const expectedText = `会员有效期至 ${expectedExpiry.getUTCFullYear()}年${expectedExpiry.getUTCMonth() + 1}月${expectedExpiry.getUTCDate()}日`;
-  eq(upgradeData.upgradeConfirmExpiry, expectedText, '已有更长会员期时不被 30 天底线缩短');
+  eq(upgradeData.upgradeConfirmExpiry, expectedText, '续费在原有效期末尾增加 30 天');
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);

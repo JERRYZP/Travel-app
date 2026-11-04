@@ -26,7 +26,7 @@
 必须遵守：
 
 - 小程序需为已认证企业、事业单位或个体工商户，先在 MP 后台「虚拟支付」完成协议、资料、账户验证和签约。
-- 本功能使用固定价格道具直购，`mode=short_series_goods`；会员和名额包不需要代币系统。
+- 本功能使用固定价格道具直购，`mode=short_series_goods`；会员不需要代币系统。历史加量包商品 ID 只为旧订单查单/退款保留。
 - 客户端支付参数是 `signData`、`paySig`、`signature`。用户态 `signature` 依赖有效 `session_key`，所以客户端必须先 `wx.login`，服务端再用 `/sns/jscode2session` 换取；`session_key` 不落库、不返回客户端。
 - `paySig = HMAC-SHA256(appKey, 'requestVirtualPayment&' + signData)`；服务端 API 的 `pay_sig` 使用实际 `/xpay/...` 路径和最终 POST body 计算。
 - `wx.requestVirtualPayment.success` 可能丢失，不能据此发权益。可靠发货需要支付消息推送和主动查单，本仓库两者都已实现。
@@ -45,8 +45,8 @@
 
 | 业务 SKU | 服务端套餐 | 道具价格 | 权益 |
 |---|---|---:|---|
-| 会员 30 天 | `member` | 300 分 | 30 天会员，最多 15 个提醒名额 |
-| 加购 10 个名额 | `task_pack_5`（历史稳定 ID） | 300 分 | 会员期内增加 10 个提醒名额 |
+| 会员 30 天 | `member` | 800 分 | 30 天会员，有效期内不限提醒名额 |
+| 历史提醒名额包 | `task_pack_5`（已停售） | 按历史订单快照 | 仅兼容旧待支付订单、查单、退款和售后，不创建新订单 |
 
 4. 后台道具价格必须与 `cloudfunctions/reminder/lib/membership.js` 的订单金额一致；客户端传入的 `goodsPrice` 由服务端订单决定。
 5. iOS 还需配置小程序简称，满足 Apple 支付展示名称要求。
@@ -70,7 +70,7 @@
 | `WECHAT_VIRTUAL_PAY_PRODUCTION_APP_KEY` | 现网必填 | 现网 AppKey |
 | `WECHAT_VIRTUAL_PAY_SANDBOX_APP_KEY` | 沙箱必填 | 沙箱 AppKey |
 | `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER` | 是 | 会员 30 天道具发布后的 ProductId |
-| `WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK` | 是 | 加购 10 个名额道具发布后的 ProductId |
+| `WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK` | 是 | 历史提醒名额包道具的 ProductId；新售停用后仍需保留，供旧待支付订单查单和退款 |
 
 `WECHAT_VIRTUAL_PAY_APP_KEY` 只作为单一 AppKey 的兼容回退，不建议正式环境依赖。
 
@@ -187,7 +187,7 @@ Access Token 使用内存缓存并提前 5 分钟刷新；微信返回 `40001/40
 4. 观察 `/xpay/query_order`、access token 刷新、消息推送回包和云函数重试日志。不得在日志输出 AppSecret、AppKey、session_key、完整 signData 之外的敏感凭据。
 5. 发布现网道具，配置现网 AppKey 和 `WECHAT_VIRTUAL_PAY_ENV=0`，先在测试白名单验证。
 6. iOS 使用真实现网环境、iOS 15+ 和微信 8.0.68+ 验证 Apple 支付、Apple 退款问询和最终退款推送；Apple 无沙箱。确认问询阶段不建单，最终 `xpay_refund_notify` 查单成功后售后工作台出现一条“平台退款 / 系统自动”记录，重复推送不新增第二条。
-7. 验证 Android/iOS、首次购买、续费、加购、取消、支付成功回调丢失、重复推送、退款失败重试和权益回收；另用客户端调用伪造 `xpay_*` 事件和 HTTP 形态，确认均不会产生查单或权益变化。
+7. 验证 Android/iOS、首次购买、续费、取消、支付成功回调丢失、重复推送、退款失败重试和权益回收；旧价会员单与历史加量包待支付单另做兼容验证。另用客户端调用伪造 `xpay_*` 事件和 HTTP 形态，确认均不会产生查单或权益变化。
 8. 只有以上通过后，才删除 `PAYMENT_VIRTUAL_PAY_TEST_OPENIDS` 完成支付全量，并评估是否由会员限制 `test` 切到 `all`；有后台开关时应通过 `payment_config/membership_enforcement` 切换。
 
 ## 9. 回退

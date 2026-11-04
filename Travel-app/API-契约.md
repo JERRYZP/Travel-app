@@ -3,6 +3,7 @@
 > 面向：前端（微信小程序页面开发）
 > 2026-11-02 更新：新增 `tripShare.create/status/revoke/open` 与 PAGE-018 行程只读分享。分享令牌只从公开路径传入，普通行程接口仅返回 `shareActive`；主人接口可通过 `ownerNickname` 读取应用内昵称用于会话标题，接收方数据只含城市、日期、天数和景点名称。
 > 2026-11-03 更新：客服工作台 `adminReminderQuality.stats` 改为读取由 `payment` 两分钟定时器在北京时间 `13:00 / 21:00` 后首个 tick 持久化的质量快照；工作台打开和刷新不再扫描 `reminder_events` / `reminder_tasks`。仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用。
+> 2026-11-04 更新：会员统一为 `member` SKU，`¥8 / 30 天`，会员有效期内不限提醒名额；免费额度仍为 5。`taskLimitUnlimited` 是唯一不限权益标志，`taskLimit/taskRemaining/memberTaskSlots=10000` 仅为旧客户端兼容投影。`task_pack_5` 停止新售，仅供历史订单查询、继续支付、权益快照和退款兼容。
 > 2026-11-02 更新：客服工作台新增会员限制模式切换。运行期真身为 `payment_config/membership_enforcement`，管理员可切 `off/test/all` 并即时生效；切 `all` 前服务端强制核验两项上线迁移。
 > 2026-11-02 更新：新增客服工作台。管理员可通过 `adminOrders.list/detail` 查询全部会员订单，售后列表补全昵称、完整 OpenID 与关键词搜索；会员购买总开关保留在页面顶部。
 > 2026-11-02 更新：新增会员购买总开关 `payment_config/membership_sales`。暂停只阻止新订单和新发起支付；已支付订单继续查单与发权益，会员状态、订单、退款和售后不受影响。
@@ -1014,14 +1015,13 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 > 客户端在设置新提醒前必须按**可用额度**判断：`quota - pendingMessageCount`。`quota` 是本地台账剩余授权总数，`pendingMessageCount` 是未来 `WAITING` 任务尚未发送的消息数（每条任务每个未发送 offset 计 1）。只看 `quota` 会把已经预留给待发送提醒的次数重复承诺给新提醒。
 
-### 2.6 会员、提醒名额、支付与售后（2026-10-31）
+### 2.6 会员、提醒名额、支付与售后（2026-11-04）
 
 唯一额度口径在 `cloudfunctions/reminder/lib/membership.js`，唯一支付/退款状态机在 `cloudfunctions/payment/lib/order.js` 与 `cloudfunctions/payment/lib/after-sales.js`。客户端只消费服务端返回的额度、价格、有效期、退款资格和可执行动作。
 
-- 用户侧统一使用「提醒名额」。免费版 5 个；当前新订单为会员 `¥3 / 30 天` 提升到 15 个；有效会员可 `¥3` 加购 10 个名额，名额永久记录但只在会员有效期内生效。历史名额包永久按每包 5 个保护，新包按每包 10 个记录，允许混合累计；历史订单金额和权益均以订单快照为准。
-- 加购名额包时，会员有效期至少延长到支付成功后 30 天。不自动续费，会员到期不删除已有提醒。
-- 用户权益账本同时保存 `taskPackCount`（展示用包数）与 `taskPackSlots`（实际生效的名额总数）。旧用户没有 `taskPackSlots` 时只按历史每包 5 个兼容读取，迁移后以服务端计算值为准。
-- 老用户保护池与新增池彼此独立：任务创建时若用户尚未进入会员限制（`off`，或 `test` 模式下不在白名单），任务进入历史保护池；只有 `test` 白名单或 `all` 模式下新建的任务进入免费/会员/加购新增池。无 `quotaPool` 字段的旧任务一律兼容为保护池。`taskLimit / taskUsed / taskRemaining` 只描述新增池，`protectedTaskUsed` 单独返回保护池占用。
+- 用户侧统一使用「提醒名额」。免费版 5 个；会员统一为 `¥8 / 30 天`，有效会员不限提醒名额，但每条微信订阅消息仍需按条授权。新购买或续费在原有效期末尾增加 30 天；已过期会员从支付成功时起算 30 天；不自动续费。
+- 当前有效老会员自动获得不限权益，`memberExpiresAt` 不变，不需要批量迁移。提醒加量包已停售，新订单只接受 `member`；历史 `taskPackCount/taskPackSlots` 保留用于展示、对账和退款，不再影响会员额度。
+- 老用户保护池与新增池彼此独立：任务创建时若用户尚未进入会员限制（`off`，或 `test` 模式下不在白名单），任务进入历史保护池；只有 `test` 白名单或 `all` 模式下新建的任务进入免费/会员新增池。无 `quotaPool` 字段的旧任务一律兼容为保护池。`taskLimit / taskUsed / taskRemaining` 只描述新增池，`protectedTaskUsed` 单独返回保护池占用。
 - `reminder` 的会员限制运行期唯一真身为 `payment_config/membership_enforcement`，文档字段 `mode=off|test|all`。管理端切换后立即影响新任务；已有任务继续按原 `quotaPool` 计数。`MEMBERSHIP_ENFORCEMENT_MODE` 只在配置缺失、非法或读取失败时兜底，`MEMBERSHIP_TEST_OPENIDS` 继续控制 `test` 白名单。
 - 切 `all` 前服务端必须同时确认保护额度迁移和权益账本迁移完成标记；任一缺失返回 `1033`，不得写入新模式。
 - 会员购买开关独立于会员限制灰度。唯一真身是 `payment_config/membership_sales`；`state=OPEN|PAUSED`。暂停后 `membership.createOrder` 与待支付订单的 `payment.create` 返回 `1032`，但 `payment.query`、支付回调、权益发放、退款和售后继续执行。配置读取失败时新购买按暂停处理。
@@ -1046,6 +1046,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     memberExpiresAt: Date | null,
     memberExpiresAtText: '2026年11月26日' | '',
     memberDaysRemaining: Number,
+    taskLimitUnlimited: Boolean, // true 时客户端必须按不限展示并跳过名额拦截
     taskLimit: Number,
     taskUsed: Number,
     taskRemaining: Number,
@@ -1059,37 +1060,38 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     ownedTaskPackSlots: Number,
     memberDurationDays: Number,
     freeTaskSlots: 5,
-    memberTaskSlots: 15,
-    taskPackSize: 10
+    memberTaskSlots: 10000, // 旧客户端兼容投影，不是业务上限
+    taskPackSize: 0
   },
   packages: [{
-    id: 'member' | 'task_pack_5',
-    type: 'MEMBER' | 'TASK_PACK',
+    id: 'member',
+    type: 'MEMBER',
     title, priceFen, priceText, description,
-    memberDays, addedSlots, available, actionText
+    unlimitedReminders: true, memberDays, addedSlots: 0, available, actionText
   }]
 }
 ```
 
 - 停售期间套餐仍可展示价格和权益，但 `available=false`；客户端不得从 `sales.state` 自行推导订单或权益状态。
+- 有效会员为兼容旧客户端返回 `taskLimit/taskRemaining/memberTaskSlots=10000` 附近的有限投影，但服务端额度判断必须先读取 `taskLimitUnlimited=true` 并直接放行；新客户端不得展示或自行计算这个兼容数字。
 
 #### `membership.createOrder`
 
 ```javascript
-调用：{ action: 'membership.createOrder', packageId: 'member' | 'task_pack_5', requestId: String }
+调用：{ action: 'membership.createOrder', packageId: 'member', requestId: String }
 返回：{
   success: true,
   orderId, outTradeNo, amountFen, packageId, productType,
-  specVersion, addedSlots, memberDays, title,
+  specVersion, addedSlots, unlimitedReminders, memberDays, title,
   reused?: true
 }
 ```
 
 - 金额、商品类型和权益只从服务端套餐表读取，客户端不能传价格。
 - `requestId` 必填，8-80 位，只允许字母、数字、下划线和短横线。服务端用 `OpenID + requestId` 生成确定性订单 ID；同一请求重试返回同一订单，同一 `requestId` 改商品或规格必须拒绝。
-- `task_pack_5` 是兼容保留的稳定 SKU 标识，当前每包增加 10 个提醒名额；只允许会员有效期内购买，会员可续费。
-- 只有 `productType + specVersion + addedSlots + memberDays + amountFen` 全部一致且未过期的 `PENDING` 订单才可复用；旧规格订单只按 `status=PENDING` 条件关闭，不能覆盖并发回调已经置为 `PAID` 的订单。客户端取消或服务端关闭后再次购买必须生成新的 `requestId`、订单 ID 和 `outTradeNo`。
-- 新订单严格保存 `addedSlots=10`、`taskPackCountAdded=1`、`taskPackSlotsAdded=10`。旧订单缺少 `addedSlots` 时按 5 个兼容，缺少新增包数快照时按 1 包兼容；兼容值仅用于历史订单，不回写新订单规则。
+- 当前会员新订单固定为 800 分、30 天、`unlimitedReminders=true`、`addedSlots=0`，规格版本为 `member-unlimited-30d-v3`。`task_pack_5` 不再接受创建订单，返回参数错误；已创建的旧价会员单和旧加量包待支付订单仍可按订单快照继续支付和发放。
+- 只有 `productType + specVersion + addedSlots + unlimitedReminders + memberDays + amountFen` 全部一致且未过期的 `PENDING` 订单才可复用；旧规格订单只按 `status=PENDING` 条件关闭，不能覆盖并发回调已经置为 `PAID` 的订单。客户端取消或服务端关闭后再次购买必须生成新的 `requestId`、订单 ID 和 `outTradeNo`。
+- 新会员订单权益快照保存 `memberDaysAddedMs` 与 `unlimitedReminders=true`；历史会员订单和加量包缺少新字段时继续按原订单快照兼容，不回写历史金额或权益。
 - 提醒名额不足统一返回错误码 `1026`，携带 `taskLimit`、`membership` 和 `packages`；失败时不得创建行程、任务或清空清单。
 - 会员购买暂停时返回 `1032` 和 `sales`，不得创建订单。停售只阻止新交易，不得关闭、删除或回收既有订单和权益。
 
@@ -1103,7 +1105,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   sales: { state, purchaseEnabled, message },
   items: [{
     _id, outTradeNo, packageId, productType, title,
-    amountFen, amountText, addedSlots, memberDays,
+    amountFen, amountText, addedSlots, unlimitedReminders, memberDays,
     status: 'PENDING' | 'PAID' | 'CLOSED' | 'REFUNDED', // REFUNDED 仅兼容历史数据
     statusLabel,
     refundStatus: 'NONE' | 'REQUESTED' | 'UNDER_REVIEW' | 'PROCESSING' | 'REFUNDED' | 'REJECTED' | 'FAILED',
@@ -1113,7 +1115,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     entitlementStatus: 'PENDING' | 'PAID_GRANT_UNKNOWN' | 'PAID_GRANTED' | 'PAID_GRANT_FAILED' | 'CLOSED' | 'REFUNDED',
     entitlementGrant: {
       beforeExpiresAt, afterExpiresAt, memberDaysAddedMs,
-      taskPackDelta, taskPackCountAdded, taskPackSlotsAdded,
+      taskPackDelta, taskPackCountAdded, taskPackSlotsAdded, unlimitedReminders,
       specVersion, appliedAt, revertedAt
     } | null,
     canRequestRefund: Boolean,
@@ -1163,6 +1165,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   memberExpiresAt,
   taskPackCount,
   taskPackSlots,
+  unlimitedReminders,
   paymentProvider?: 'WECHAT_PAY_V3' | 'VIRTUAL_PAY',
   payment?: Object, // API v3：wx.requestPayment 参数
   virtualPayment?: Object, // 虚拟支付：mode/signData/paySig/signature
@@ -1183,7 +1186,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - 虚拟支付通过云开发消息推送进入 `payment`：`xpay_goods_deliver_notify`、`xpay_refund_notify`、`xpay_subscribe_ios_refund_query_notify`。发货和退款必须先调用 `/xpay/query_order` 复核订单、环境、实付金额和退款结果；商品身份以服务端订单 SKU 和固化的 `virtualProductId` 为准，不能用查单响应中不存在的商品字段假装校验。
 - `xpay_subscribe_ios_refund_query_notify` 仅是 Apple 退款问询，不是最终结果，不得据此创建退款售后记录。服务端收到 `xpay_refund_notify` 并查单确认后，若该退款单尚无售后记录，自动补建一条 `reasonCode=PLATFORM_REFUND_NOTIFY`、`systemGenerated=true` 的售后记录；记录按退款单号幂等，重复推送不新增第二条。
 - 虚拟支付成功回包为 `{ ErrCode: 0, ErrMsg: 'success' }`；iOS 退款问询额外返回 `IosRefundQueryResponse`，必须在 3 秒内完成。Apple 支付不支持沙箱，用户需 iOS 15+、微信 8.0.68+，退款由用户在 App Store 发起。
-- 金额不一致拒绝发放；重复回调幂等，不重复增加会员时长或名额包。退款完成后的重复支付回调也不得重新发放权益。
+- 金额不一致拒绝发放；重复回调幂等，不重复增加会员时长或权益。退款完成后的重复支付回调也不得重新发放权益。
 - 15 分钟未支付订单自动关闭；2 分钟定时任务主动查单、重试权益发放、自动核验售后和同步退款结果。补偿使用 `payment_reconcile_state` 中 `failedGrants / pendingPayments / refundProcessing / autoChecking` 四条独立游标，每队列最多 50 条、10 秒，单次总预算 45 秒；游标到尾部后回到队首，不能固定只处理前 100 条。
 - API v3 环境变量：`WECHAT_PAY_MCH_ID`、`WECHAT_PAY_SERIAL_NO`、`WECHAT_PAY_PRIVATE_KEY`、`WECHAT_PAY_API_V3_KEY`、`WECHAT_PAY_NOTIFY_URL`、`WECHAT_PAY_REFUND_NOTIFY_URL`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID`；`WECHAT_PAY_PLATFORM_CERT` / `WECHAT_PAY_PLATFORM_CERT_SERIAL` 只作旧平台证书兼容，不能与公钥模式隐式混用。`AFTER_SALES_ADMIN_OPENIDS` 为售后管理员白名单。
 - 虚拟支付环境变量：`PAYMENT_PROVIDER=VIRTUAL_PAY`、`WECHAT_APP_ID`、`WECHAT_APP_SECRET`、`WECHAT_VIRTUAL_PAY_ENV`、`WECHAT_VIRTUAL_PAY_OFFER_ID`、`WECHAT_VIRTUAL_PAY_PRODUCTION_APP_KEY`、`WECHAT_VIRTUAL_PAY_SANDBOX_APP_KEY`、`WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER`、`WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK`。
@@ -1288,7 +1291,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - 查看敏感信息、同步支付结果、补发权益、同意退款、驳回和同步退款均写 `admin_audit_logs`。
 - 驳回必须填写用户可见原因。退款使用确定性 `outRefundNo`，网络重试不会重复退款；退款结果只认微信回调或主动退款查询。
 - 发起退款返回余额不足时，售后单持久保存 `failureReason`、`failureCode=BASIC_ACCOUNT_INSUFFICIENT`、`fundingBlocked=true` 和 `fundingBlockedAt`。管理员补足基本账户后可在原售后单重新发起；重试开始或退款成功后清除阻断字段。不得把退款金额改成扣除手续费后的金额。
-- 退款成功后按本订单 `entitlementGrant` 快照回收本单新增会员时长和名额包，不影响其他订单，也不删除用户已有提醒。
+- 退款成功后按本订单 `entitlementGrant` 快照回收本单新增会员时长和权益，不影响其他订单，也不删除用户已有提醒；历史加量包继续按历史快照回收。
 - 权益发放失败的订单收到退款结果时只记录订单和售后退款状态，不修改用户会员期限、包数或名额总数；只有确认曾成功发放的订单才允许按快照回收。
 - `adminMigrateProtection` 按默认 `_id` 游标每批最多处理 50 位用户；最后一批完成后写入全局完成标记，之后重复调用返回 `alreadyCompleted=true` 且不再更新用户。迁移未完成前不得把会员限制切到 `all`。
 - `adminMigrateEntitlementLedger` 同样按 `users._id` 每批最多 50 人。必须先以 `dryRun=true` 分批读取差异；正式迁移把历史包最低按 5 个、新包按订单快照累计到 `taskPackCount/taskPackSlots`。可确认的历史已发放订单标记 `legacyBackfill`，无法确认发放状态的订单标记人工核查并创建高优先级售后，不得自动重复发放。
@@ -1564,7 +1567,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
                       app.globalData.currentTripId 供首页定位新行程
 ```
 
-`PAGE-008`（V0.3 硬闸门）不使用 `confirmReminderAccess()`：额度不足时主按钮禁用，只允许用户主动点击「点击补授权次数」，微信一次性订阅每次点击最多增加 1 条；仍不足时继续保留缺口，不用异步连发伪装补齐。全部满足后才走 `cart.commit`，不提供 `trip-only` 旁路。首页“约其他日”继续使用 `notify.confirmReminderAccess()`；景点卡片、景点详情和分享场景改用统一的「提醒授权与名额」浮层，同时消费 `subscribe.get` 的 `quota / pendingMessageCount / availableQuota` 与 `membership.status.enforced / membership / packages`。授权每次点击只补 1 条；`enforced=true` 且名额不足时在同一浮层展示加购卡。两闸门均满足后才提交，`trip-only` 走 `disableReminders: true`，关闭或设置引导不提交（详见 `REMINDER-RULE-009`）。
+`PAGE-008`（V0.3 硬闸门）不使用 `confirmReminderAccess()`：额度不足时主按钮禁用，只允许用户主动点击「点击补授权次数」，微信一次性订阅每次点击最多增加 1 条；仍不足时继续保留缺口，不用异步连发伪装补齐。全部满足后才走 `cart.commit`，不提供 `trip-only` 旁路。首页“约其他日”继续使用 `notify.confirmReminderAccess()`；景点卡片、景点详情和分享场景改用统一的「提醒授权与名额」浮层，同时消费 `subscribe.get` 的 `quota / pendingMessageCount / availableQuota` 与 `membership.status.enforced / membership / packages`。授权每次点击只补 1 条；`enforced=true` 且免费名额不足时在同一浮层展示唯一会员套餐；`taskLimitUnlimited=true` 时不展示名额付费卡。两闸门均满足后才提交，`trip-only` 走 `disableReminders: true`，关闭或设置引导不提交（详见 `REMINDER-RULE-009`）。
 
 ⚠️ **不再传 tripId**：纯预览化后「生成时间线」不建行程，清单也不挂在行程上。
 任何页面都不应缓存或透传 tripId —— 提交返回的那个才是唯一可信的。
