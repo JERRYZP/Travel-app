@@ -123,6 +123,7 @@ async function testProviderAndSignatures() {
     WECHAT_VIRTUAL_PAY_OFFER_ID: 'offer-test',
     WECHAT_VIRTUAL_PAY_PRODUCTION_APP_KEY: '12345',
     WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER: 'member-product',
+    WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED: 'member-unlimited-product',
     WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK: 'pack-product',
   });
   eq(virtualPay.hasPaymentConfig(config), true, '完整虚拟支付配置判定为可用');
@@ -161,6 +162,40 @@ async function testProviderAndSignatures() {
   eq(JSON.parse(client.signData).goodsPrice, 300, '道具价格由服务端订单决定');
   eq(client.paySig.length, 64, '支付签名是 64 位十六进制串');
   eq(client.signature.length, 64, '用户态签名是 64 位十六进制串');
+  const unlimitedClient = virtualPay.createClientPayment({
+    order: {
+      _id: 'order-virtual-unlimited',
+      outTradeNo: 'TVIRTUNLIMITED',
+      productType: 'MEMBER',
+      specVersion: 'member-unlimited-30d-v3',
+      unlimitedReminders: true,
+      amountFen: 800,
+    },
+    sessionKey: '9hAb/NEYUlkaMBEsmFgzig==',
+    config,
+  });
+  eq(JSON.parse(unlimitedClient.signData).productId, 'member-unlimited-product',
+    '不限会员新订单使用独立 8 元固定道具');
+  eq(JSON.parse(unlimitedClient.signData).goodsPrice, 800,
+    '不限会员道具价格与订单 800 分一致');
+  let missingUnlimitedProduct = false;
+  try {
+    virtualPay.createClientPayment({
+      order: {
+        _id: 'order-virtual-unlimited-missing',
+        outTradeNo: 'TVIRTUNLIMITEDMISSING',
+        productType: 'MEMBER',
+        specVersion: 'member-unlimited-30d-v3',
+        unlimitedReminders: true,
+        amountFen: 800,
+      },
+      sessionKey: '9hAb/NEYUlkaMBEsmFgzig==',
+      config: { ...config, memberUnlimitedProductId: '' },
+    });
+  } catch (err) {
+    missingUnlimitedProduct = /商品未配置/.test(err.message);
+  }
+  eq(missingUnlimitedProduct, true, '缺少 8 元固定道具时停止拉起支付');
 
   const officialBody = '{"openid": "xxx", "user_ip": "127.0.0.1", "env": 0}';
   eq(virtualPay.serverPaySigOf('/xpay/query_user_balance', officialBody, '12345'),
@@ -279,6 +314,7 @@ const VIRTUAL_PAY_ENV = {
   WECHAT_VIRTUAL_PAY_OFFER_ID: 'offer-test',
   WECHAT_VIRTUAL_PAY_PRODUCTION_APP_KEY: '12345',
   WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER: 'member-product',
+  WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED: 'member-unlimited-product',
   WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK: 'pack-product',
 };
 

@@ -10,6 +10,7 @@
 ## 已实现
 
 - 2026-11-04 会员升级改为白名单灰度：生产曾因旧客户端把 `taskLimit=10000` 兼容占位显示成 `11/10000` 而在 14:48 回滚；14:36–14:48 窗口内新增订单和提醒任务均为 0。随后按用户要求复用 `MEMBERSHIP_ENFORCEMENT_MODE`：环境变量设为 `test`，仅 `MEMBERSHIP_TEST_OPENIDS` 返回 `unlimited-v3`，非白名单继续 `legacy-v2` 的 `¥3 / 15 个 / task_pack_5`；数据库额度限制仍为 `all`。灰度 `payment` / `reminder` 于 14:59 / 15:02 部署，均 `Active`、Nodejs16.13、60 秒，`paymentReconcileEveryTwoMinutes` 保留。真实云白名单冒烟返回 ¥8 单套餐和不限权益；本轮只生成预览码，未上传体验版，历史 `2.3.0` 构建不得单独设为体验版。
+- 2026-11-04 安卓开发版 ¥8 支付未拉起：`membership.createOrder` 与 `payment.create` 均成功，云端返回 `mode=short_series_goods` 和新会员 800 分签名；随后 `/xpay/query_order` 返回“数据不存在”，说明微信侧未创建虚拟支付订单。订单仍固化为旧商品 `travel_member_30d`，与新的 800 分固定道具不匹配。代码已准备双商品配置：旧 300 分会员继续使用 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER`，新 800 分会员使用 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED`；尚未部署，等待 MP 后台新建并发布 ¥8 道具后填写 ProductId。
 - 2026-11-03 客服工作台售后队列与订单退款统计已部署并进入体验版：售后筛选收敛为「全部 / 审核中 / 自动核验 / 处理中 / 异常」，进入售后页签默认选中「审核中」；已取消、已驳回、已完成仍可从「全部」查看。`adminOrders.stats` 新增 `refundedOrders`，按北京时间当日创建的已支付订单统计已完成退款数量，页面统计改为四项。`payment` 于 23:43 整包部署，真实管理员接口返回 `refundedOrders=8`，两分钟补偿触发器于 23:44:01 正常写心跳。
 - 2026-11-03 反馈闭环改造：云函数 `feedback` **已部署**（16:24），小程序端未发布。新增 `feedback.adminReply`（单条回复，就地覆盖），`feedback.adminList` 改为 `count()` + `skip/limit` 真分页（`page` / `pageSize` 默认 20、上限 50，返回真实 `total` 与 `hasMore`），并按 `userId` 关联 `users` 返回提交人昵称与完整 OpenID；「建议 / Bug」页签改按 `category` 服务端筛选，纠错按 `type` 筛选。`feedback.list` 改为字段白名单，不再把 `userId` 和 `adminReplyBy` 返回给普通用户。用户侧「我的反馈」展示管理员回复与回复时间，状态词改为「处理中 / 已回复 / 已处理 / 已关闭」，并支持下拉刷新；管理页补「加载更多」、提交人复制 OpenID，并把网络失败与 `1040 无权限` 分开显示。⚠️ CLI 更新含子目录的函数会报 `EISDIR`，本次用拍平包部署，详见「当前需要部署的范围」`feedback` 条目。
 - 2026-11-04 00:05 已从发布候选 `1f9cfc4` / `v2.2.5-rc.1` 上传体验版 `2.2.5`，包体 `1,127,622` 字节。本版统一 PAGE-008、景点设提醒浮层与会员页的 `payment-confirm-sheet`：商品、金额、生效时间、有效期、iOS / Android 退款与支付窗口提示和协议勾选共用同一实现；未勾选协议不能支付。只改小程序端，本轮不部署云函数；当前仅完成体验版上传，未提交审核、未发布正式版，待整机验收。
@@ -212,6 +213,7 @@
 | 客户端正式版 `2.1.1` | **已全量发布**（2026-11-02） | 来源 `main@af05573`，对应 `v2.1.1-rc.2`；982.4 KB；体验验收通过，正式版已确认新功能可见 |
 | 会员、提醒名额、支付与售后（客户端 + `reminder` + `payment`） | **客户端全量发布，`payment` / `reminder` 已部署；权益账本迁移完成，保护额度完成标记待治理** | 累计观察到 8 笔已支付订单；数据库配置 `membership_enforcement.mode=all` 已接管；工作台显示 2026-11-02 的 36 单、23 笔已支付、净赚 ¥63 |
 | 会员升级为 ¥8/30 天不限提醒名额 | **生产白名单灰度中；仅预览码验收，未上传新体验版** | `MEMBERSHIP_ENFORCEMENT_MODE=test`、白名单 3 个 OpenID；白名单返回 `unlimited-v3` / ¥8 / 不限，非白名单保持 `legacy-v2` / ¥3 / 15 / 加量包。`payment` / `reminder` 已部署并通过白名单真实云冒烟；`2.3.0` 历史体验构建不可单独使用 |
+| 安卓 ¥8 虚拟支付商品 | **代码已准备，待后台道具与部署** | 旧 `travel_member_30d` 仍对应 ¥3；新 ¥8 会员必须创建独立固定价格道具，不能改旧商品价格。等待 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED` ProductId 后再部署 `payment` 并真机复测 |
 | 会员限制模式后台开关 | **已部署并通过云端/开发者工具冒烟** | `payment_config/membership_enforcement={mode:"all"}` 已创建；管理员返回 `source=DB`，页面显示“全部用户”；保护额度完成标记缺失，模式切回 `all` 的迁移闸门仍需治理 |
 | 客服工作台当日订单统计 | **已部署并通过云端冒烟** | 统计今日 36 单、已支付 23 单、支付 ¥69、退款 ¥6、净赚 ¥63 |
 | 客服工作台订单时间筛选与吸顶 | **已部署并通过云端冒烟** | 默认近 30 天，可切近 7 天 / 近 90 天 / 全部；`timeRange=all` 返回历史 70 单；搜索与筛选区吸顶在导航栏下方 |

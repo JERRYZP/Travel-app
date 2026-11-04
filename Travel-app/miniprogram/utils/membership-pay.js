@@ -112,6 +112,11 @@ function requestVirtualPayment(payment, orderId) {
           reject({ cancelled: true, error: '支付未完成', orderId });
           return;
         }
+        console.error('[membershipPay] requestVirtualPayment failed', {
+          orderId,
+          channelErrorCode: errorCode || 0,
+          error: message || '支付未完成',
+        });
         reject({
           errorCode: 1023,
           channelErrorCode: errorCode || 0,

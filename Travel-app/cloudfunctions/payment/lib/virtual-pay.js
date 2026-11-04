@@ -66,6 +66,7 @@ function configOf(env = process.env) {
     env: virtualEnv,
     appKey,
     memberProductId: String(env.WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER || '').trim(),
+    memberUnlimitedProductId: String(env.WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED || '').trim(),
     taskPackProductId: String(env.WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK || '').trim(),
   };
 }
@@ -102,7 +103,11 @@ function hasApiConfig(config = {}) {
 }
 
 function expectedProductIdOf(order = {}, config = {}) {
-  if (order.productType === 'MEMBER') return config.memberProductId || '';
+  if (order.productType === 'MEMBER') {
+    const unlimited = order.unlimitedReminders === true
+      || order.specVersion === 'member-unlimited-30d-v3';
+    return unlimited ? (config.memberUnlimitedProductId || '') : (config.memberProductId || '');
+  }
   if (order.productType === 'TASK_PACK') return config.taskPackProductId || '';
   return '';
 }
