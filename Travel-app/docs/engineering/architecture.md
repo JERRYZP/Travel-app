@@ -36,7 +36,7 @@
 | `pages/membership-orders` | 当前用户最近 50 笔订单，点击通过本人单笔接口进入订单详情 |
 | `pages/membership-order-detail` | 订单主状态、独立退款状态、权益快照和可执行动作 |
 | `pages/membership-after-sales` | 用户提交未到账、重复支付、未使用退款等售后申请 |
-| `pages/admin-after-sales` | 管理员客服工作台：提醒质量、会员购买开关、会员限制、会员订单查询、售后工单、审计操作与老用户保护额度迁移 |
+| `admin/after-sales/admin-after-sales` | 管理员客服工作台：提醒质量、会员购买开关、会员限制、会员订单查询、售后工单、审计操作与老用户保护额度迁移；位于 `admin` 分包，避免占用主包 |
 | `pages/help-feedback` | 帮助与反馈二级入口：在线客服、意见反馈、信息纠错、我的反馈 |
 | `pages/my-feedback` | 当前用户最近 50 条反馈/纠错记录，只读 |
 | `pages/legal` | 隐私政策与用户服务协议 |

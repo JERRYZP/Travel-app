@@ -280,7 +280,7 @@ Page({
   },
 
   onAfterSalesAdmin() {
-    wx.navigateTo({ url: '/pages/admin-after-sales/admin-after-sales' });
+    wx.navigateTo({ url: '/admin/after-sales/admin-after-sales' });
   },
 
   onGuide() {

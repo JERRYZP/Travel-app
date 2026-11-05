@@ -199,7 +199,7 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 - 设置提醒内付费入口：`miniprogram/pages/setup/`
 - 订单列表与详情：`membership-orders`（`membership.orders`）、`membership-order-detail`（`membership.orderDetail`）
 - 用户售后：`membership-after-sales`
-- 售后工作台：`admin-after-sales`
+- 售后工作台：`admin/after-sales/admin-after-sales`
 - API v3 支付运行手册（保留，不删除）：`docs/engineering/payment-v3-runbook.md`
 - 虚拟支付运行手册：`docs/engineering/payment-virtual-runbook.md`
 

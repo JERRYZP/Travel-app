@@ -346,7 +346,7 @@ async function testProfileCopyAndDismissal() {
 async function testAdminUi() {
   console.log('\n=== 5. 客服工作台提供快速下架入口 ===');
   const wxml = fs.readFileSync(
-    path.join(ROOT, 'miniprogram/pages/admin-after-sales/admin-after-sales.wxml'),
+    path.join(ROOT, 'miniprogram/admin/after-sales/admin-after-sales.wxml'),
     'utf8'
   );
   eq(wxml.includes('会员升级公告'), true, '工作台展示公告控制卡');

@@ -565,8 +565,8 @@ async function run() {
   global.wx = capabilityOriginalWx;
   const afterSalesWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-after-sales/membership-after-sales.wxml'), 'utf8');
   const afterSalesJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership-after-sales/membership-after-sales.js'), 'utf8');
-  const adminAfterSalesWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/admin-after-sales/admin-after-sales.wxml'), 'utf8');
-  const adminAfterSalesJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/admin-after-sales/admin-after-sales.js'), 'utf8');
+  const adminAfterSalesWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/admin/after-sales/admin-after-sales.wxml'), 'utf8');
+  const adminAfterSalesJs = fs.readFileSync(path.join(ROOT, 'miniprogram/admin/after-sales/admin-after-sales.js'), 'utf8');
   eq(afterSalesWxml.includes('wx:if="{{existingCase.canCancel}}"')
     && afterSalesWxml.includes('取消售后'), true,
     '用户售后页只在服务端允许时展示取消按钮');

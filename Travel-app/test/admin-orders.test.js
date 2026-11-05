@@ -374,15 +374,15 @@ async function run() {
 
   console.log('\n=== 5. 客服工作台页面结构 ===');
   const wxml = fs.readFileSync(
-    path.join(ROOT, 'miniprogram/pages/admin-after-sales/admin-after-sales.wxml'),
+    path.join(ROOT, 'miniprogram/admin/after-sales/admin-after-sales.wxml'),
     'utf8'
   );
   const js = fs.readFileSync(
-    path.join(ROOT, 'miniprogram/pages/admin-after-sales/admin-after-sales.js'),
+    path.join(ROOT, 'miniprogram/admin/after-sales/admin-after-sales.js'),
     'utf8'
   );
   const wxss = fs.readFileSync(
-    path.join(ROOT, 'miniprogram/pages/admin-after-sales/admin-after-sales.wxss'),
+    path.join(ROOT, 'miniprogram/admin/after-sales/admin-after-sales.wxss'),
     'utf8'
   );
   eq(wxml.includes('客服工作台'), true, '页面标题升级为客服工作台');

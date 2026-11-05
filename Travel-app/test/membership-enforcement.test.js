@@ -183,7 +183,7 @@ async function run() {
   console.log('\n=== 4. 工作台保留购买开关在顶部 ===');
   const root = path.join(__dirname, '..');
   const wxml = fs.readFileSync(
-    path.join(root, 'miniprogram/pages/admin-after-sales/admin-after-sales.wxml'),
+    path.join(root, 'miniprogram/admin/after-sales/admin-after-sales.wxml'),
     'utf8'
   );
   eq(
@@ -227,8 +227,8 @@ async function run() {
     showToast(options) { toastOptions = options; },
   };
   try {
-    delete require.cache[require.resolve('../miniprogram/pages/admin-after-sales/admin-after-sales.js')];
-    require('../miniprogram/pages/admin-after-sales/admin-after-sales.js');
+    delete require.cache[require.resolve('../miniprogram/admin/after-sales/admin-after-sales.js')];
+    require('../miniprogram/admin/after-sales/admin-after-sales.js');
     const previewContext = {
       data: {},
       setData(patch) { Object.assign(this.data, patch); },

@@ -71,7 +71,7 @@ global.wx = {
   removeStorageSync(key) { delete qualityStorage[key]; },
 };
 
-require('../miniprogram/pages/admin-after-sales/admin-after-sales');
+require('../miniprogram/admin/after-sales/admin-after-sales');
 
 function context() {
   const ctx = {
@@ -192,11 +192,11 @@ async function run() {
 
   console.log('\n=== 3. 顶部结构与接口镜像 ===');
   const wxml = fs.readFileSync(
-    path.join(ROOT, 'miniprogram/pages/admin-after-sales/admin-after-sales.wxml'),
+    path.join(ROOT, 'miniprogram/admin/after-sales/admin-after-sales.wxml'),
     'utf8'
   );
   const wxss = fs.readFileSync(
-    path.join(ROOT, 'miniprogram/pages/admin-after-sales/admin-after-sales.wxss'),
+    path.join(ROOT, 'miniprogram/admin/after-sales/admin-after-sales.wxss'),
     'utf8'
   );
   const apiSource = fs.readFileSync(path.join(ROOT, 'miniprogram/utils/api.js'), 'utf8');
@@ -232,7 +232,7 @@ async function run() {
   eq(wxss.includes('.quality-baseline-label { color: var(--color-muted); font-size: 20rpx;'),
     true, '前 5 日均值标签已放大');
   const pageSource = fs.readFileSync(
-    path.join(ROOT, 'miniprogram/pages/admin-after-sales/admin-after-sales.js'),
+    path.join(ROOT, 'miniprogram/admin/after-sales/admin-after-sales.js'),
     'utf8'
   );
   eq(pageSource.includes('scheduleReminderQualityRefresh'), true, '页面在 8 小时边界自动刷新');

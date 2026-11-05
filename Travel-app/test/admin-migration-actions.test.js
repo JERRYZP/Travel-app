@@ -25,7 +25,7 @@ let pageDef = null;
 global.Page = def => { pageDef = def; };
 
 const api = require('../miniprogram/utils/api.js');
-require('../miniprogram/pages/admin-after-sales/admin-after-sales.js');
+require('../miniprogram/admin/after-sales/admin-after-sales.js');
 
 function createPage() {
   const page = {
@@ -44,7 +44,7 @@ function createPage() {
 async function run() {
   console.log('=== 1. 页面提供一键迁移与单批兜底 ===');
   const wxml = fs.readFileSync(
-    path.join(ROOT, 'miniprogram/pages/admin-after-sales/admin-after-sales.wxml'),
+    path.join(ROOT, 'miniprogram/admin/after-sales/admin-after-sales.wxml'),
     'utf8'
   );
   assert.strictEqual(wxml.includes('bindtap="onMigrateAllProtection"'), true);

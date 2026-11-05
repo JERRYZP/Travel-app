@@ -9,7 +9,6 @@
     "pages/profile/profile",
     "pages/membership/membership",
     "pages/membership-orders/membership-orders",
-    "pages/admin-after-sales/admin-after-sales",
     "pages/membership-after-sales/membership-after-sales",
     "pages/membership-order-detail/membership-order-detail",
     "pages/profile-edit/profile-edit",
@@ -28,7 +27,8 @@
     {
       "root": "admin",
       "pages": [
-        "feedback/feedback"
+        "feedback/feedback",
+        "after-sales/admin-after-sales"
       ]
     }
   ],
