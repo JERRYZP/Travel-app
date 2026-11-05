@@ -25,7 +25,6 @@ Page({
   loadFeedbackEntry() {
     const cached = feedbackEntryCache.read();
     if (cached) this.applyFeedbackEntry(cached.data);
-    if (cached && cached.fresh) return Promise.resolve(cached.data);
     return api.feedback.entrySummary().then(res => {
       this.applyFeedbackEntry(res);
       feedbackEntryCache.write(res);

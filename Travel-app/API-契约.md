@@ -1420,7 +1420,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 调用：{ action: 'feedback.entrySummary' }
 ```
 
-**用途：** “我的”页渲染「反馈管理」按钮和「帮助与反馈」数字；PAGE-010-4「我的反馈」行复用同一个未读数。客户端成功结果缓存 1 分钟，不轮询。
+**用途：** “我的”页渲染「反馈管理」按钮和「帮助与反馈」数字；PAGE-010-4「我的反馈」行复用同一个未读数。客户端用旧缓存先渲染，每次 `onShow` 后台刷新一次，不轮询。
 
 **返回：**
 
@@ -1612,7 +1612,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-006** 景点视图 | 搁置中，不实现 |
 | **PAGE-007** 行程清单弹窗 | `cart.list`、`cart.remove`、`cart.clear`、`cart.updateRemindOn`、`cart.commit` |
 | **PAGE-008** 设置提醒 | V0.3 主流程：`cart.bootstrap`（清单 + 会员 + 订阅授权一次取回）、`membership.createOrder` + `payment.*`（仅提醒名额不足时）、用户主动点击「点击补授权次数」、`cart.commit`（授权、系统权限或提醒名额未满足时主按钮禁用；不提供仅加行程旁路） |
-| **PAGE-010** 我的 | `user.bootstrap`（资料 + 会员 + 订阅健康一次取回）；`feedback.entrySummary`（反馈入口身份与数字，1 分钟缓存）；能力探测按本地短缓存降频 |
+| **PAGE-010** 我的 | `user.bootstrap`（资料 + 会员 + 订阅健康一次取回）；`feedback.entrySummary`（反馈入口身份与数字，旧缓存先渲染、`onShow` 刷新）；能力探测按本地短缓存降频 |
 | **PAGE-012** 编辑资料 | `user.profile`、`user.updateProfile`（头像走 `open-type="chooseAvatar"` + `wx.cloud.uploadFile` 上传） |
 | **PAGE-014** 会员与提醒名额 | `membership.status`、`membership.createOrder`、`membership.orders`、`payment.create/query/cancel`；支付前确认、持久支付状态和订单入口；“我的”页常驻会员状态卡 |
 | **PAGE-015** 订单与退款详情 | `membership.orders`、`membership.orderDetail`；列表最多 50 笔，详情按本人单笔读取，主订单状态与退款状态分离，支持继续支付、取消、同步、申请售后和重新购买 |
@@ -1621,7 +1621,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-018** 行程只读分享 | 主人：`tripShare.create/status/revoke`；接收方：`tripShare.open` |
 | **PAGE-013** 分享场景页 | `spots.list`（today）、`spots.batch`（national-day-2026）；点击景点后 `spots.detail` |
 | **PAGE-010-1** 提醒设置 | `subscribe.get` + 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`；缺口按钮为「补授权次数+1」，点击一次最多申请 1 条（模板未配置时「去授权」置灰） |
-| **PAGE-010-4** 帮助与反馈 | 微信原生客服 `button open-type="contact"`；`feedback.entrySummary`（「我的反馈」未读数字，1 分钟缓存）；顶部展示带礼品图标的反馈奖励活动说明 |
+| **PAGE-010-4** 帮助与反馈 | 微信原生客服 `button open-type="contact"`；`feedback.entrySummary`（「我的反馈」未读数字，旧缓存先渲染、`onShow` 刷新）；顶部展示带礼品图标的反馈奖励活动说明 |
 | **PAGE-010-2** 意见反馈 | `feedback.submit`（type=feedback，category=suggestion/bug）；顶部展示同一份反馈奖励活动说明 |
 | **PAGE-010-3** 信息纠错 | `spots.search`（选景点）、`feedback.submit`（type=correction）；顶部展示同一份反馈奖励活动说明 |
 | **PAGE-010-5** 我的反馈 | `feedback.list`（本人历史最多 50 条、完整回复线程、奖励快照与独立 `rewardNotices`、`asOf`）、`feedback.markSeen`（成功后推进已读水位） |

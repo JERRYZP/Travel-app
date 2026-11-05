@@ -117,6 +117,7 @@
 .setting-row-hint.funding-blocked { color: #C0472A; font-weight: 600; }
 .setting-row-right { display: flex; align-items: center; gap: 8rpx; }
 .setting-row-hint { font-size: 24rpx; color: var(--color-muted); }
+.feedback-gift-hint { display: flex; align-items: center; gap: 6rpx; }
 .setting-row-hint-none { color: var(--color-primary); font-weight: 600; }
 .setting-row-hint-partial { color: var(--color-muted); }
 .setting-row-hint-low { color: #B8860B; font-weight: 600; }

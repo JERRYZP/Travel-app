@@ -190,13 +190,12 @@ Page({
   },
 
   /**
-   * 反馈入口统计只用 1 分钟存储缓存，奖励和撤回能更快变成用户可见数字。
-   * 统计允许稍晚到，避免每次 onShow 都读用户和 feedbacks 两张表。
+   * 缓存只用于先渲染上次数字；每次 onShow 都后台刷新一次，
+   * 避免奖励到账后因旧缓存看不到数字标识。这里不是轮询。
    */
   loadFeedbackEntry() {
     const cached = feedbackEntryCache.read();
     if (cached) this.applyFeedbackEntry(cached.data);
-    if (cached && cached.fresh) return Promise.resolve(cached.data);
 
     return api.feedback.entrySummary().then(res => {
       this.applyFeedbackEntry(res);

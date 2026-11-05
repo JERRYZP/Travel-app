@@ -18,6 +18,7 @@
 }
 .reward-notice-revoked { border-color: #E5D8D3; background: #FBF6F4; }
 .reward-notice-head { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+.reward-notice-title-row { display: flex; align-items: center; gap: 6rpx; min-width: 0; }
 .reward-notice-title { font-size: 26rpx; font-weight: 600; color: #8A5A12; }
 .reward-notice-revoked .reward-notice-title { color: #755C54; }
 .reward-notice-type { flex-shrink: 0; font-size: 19rpx; color: var(--color-muted); }
@@ -46,7 +47,7 @@
 .fb-status-open { background: #FBF5E6; color: #B8904A; }
 .fb-status-processed { background: #EDF5E8; color: #5E8C4A; }
 .fb-status-ignored { background: var(--color-page); color: var(--color-muted); }
-.fb-reward-tag-granted { background: #FFF4D8; color: #8A5A12; }
+.fb-reward-tag-granted { display: inline-flex; align-items: center; gap: 4rpx; background: #FFF4D8; color: #8A5A12; }
 .fb-reward-tag-revoked { background: #F3ECE8; color: #8A5A4F; }
 .fb-time { font-size: 22rpx; color: var(--color-muted); }
 
@@ -78,5 +79,6 @@
   border-radius: 12rpx; background: #FFF4D8;
   font-size: 22rpx; color: #8A5A12;
 }
+.fb-member-result-main { display: flex; align-items: center; gap: 6rpx; min-width: 0; }
 .fb-member-result.is-revoked { background: #F3ECE8; color: #755C54; }
 .fb-member-expiry { flex-shrink: 0; font-size: 20rpx; color: #735C35; }

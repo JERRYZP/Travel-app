@@ -13,7 +13,10 @@
   <block wx:if="{{!loading && rewardNotices.length}}">
     <view class="reward-notice reward-notice-{{notice.cls}}" wx:for="{{rewardNotices}}" wx:key="key">
       <view class="reward-notice-head">
-        <text class="reward-notice-title">{{notice.title}}</text>
+        <view class="reward-notice-title-row">
+          <svg-icon wx:if="{{notice.status === 'GRANTED'}}" name="gift" size="15px" />
+          <text class="reward-notice-title">{{notice.title}}</text>
+        </view>
         <text class="reward-notice-type">{{notice.typeLabel}}</text>
       </view>
       <text class="reward-notice-detail">{{notice.detail}}</text>
@@ -41,6 +44,7 @@
           <view class="fb-tag fb-status fb-status-{{item.statusCls}}">{{item.statusLabel}}</view>
           <view wx:if="{{item.reward.status !== 'NONE'}}"
             class="fb-tag fb-reward-tag fb-reward-tag-{{item.reward.cls}}">
+            <svg-icon wx:if="{{item.reward.status === 'GRANTED'}}" name="gift" size="12px" />
             {{item.reward.label}}{{item.reward.backfill ? ' · 补发' : ''}}
           </view>
         </view>
@@ -69,7 +73,10 @@
       </view>
 
       <view class="fb-member-result" wx:if="{{item.reward.status === 'GRANTED'}}">
-        <text>已获赠 30 天会员</text>
+        <view class="fb-member-result-main">
+          <svg-icon name="gift" size="15px" />
+          <text>已获赠 30 天会员</text>
+        </view>
         <text class="fb-member-expiry" wx:if="{{item.reward.expiresText}}">有效期至 {{item.reward.expiresText}}</text>
       </view>
       <view class="fb-member-result is-revoked" wx:elif="{{item.reward.status === 'REVOKED'}}">

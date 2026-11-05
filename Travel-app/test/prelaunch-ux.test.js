@@ -293,6 +293,8 @@ function resetWx(patch = {}) {
   const helpWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/help-feedback/help-feedback.wxml'), 'utf8');
   const helpJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/help-feedback/help-feedback.js'), 'utf8');
   const myFeedbackJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/my-feedback/my-feedback.js'), 'utf8');
+  const myFeedbackWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/my-feedback/my-feedback.wxml'), 'utf8');
+  const profileWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.wxml'), 'utf8');
   const feedbackWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/feedback/feedback.wxml'), 'utf8');
   const correctionWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-correction/spot-correction.wxml'), 'utf8');
   const helpWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/help-feedback/help-feedback.wxss'), 'utf8');
@@ -315,6 +317,8 @@ function resetWx(patch = {}) {
     '我的反馈使用下方独立卡片');
   eq(/feedbackUnreadCount > 0[\s\S]*feedbackUnreadText/.test(helpWxml), true,
     '帮助页的我的反馈行显示未读数字');
+  eq(/feedback-gift-hint[\s\S]*name="gift"[\s\S]*— 在线客服 \/ 反馈与纠错/.test(profileWxml), true,
+    '帮助与反馈入口小字带礼物图标和横杠');
   eq(/常见问题/.test(helpWxml), false, '帮助页不重复展示攻略中的常见问题');
   eq(/onFeedback\(\)[\s\S]*\/pages\/feedback\/feedback/.test(helpJs), true, '意见反馈直接进入表单页');
   eq(/onReportError\(\)[\s\S]*\/pages\/spot-correction\/spot-correction/.test(helpJs), true,
@@ -323,6 +327,8 @@ function resetWx(patch = {}) {
     '我的反馈直接进入记录页');
   eq(/open-type="contact"/.test(feedbackWxml), true, '意见反馈页保留次要在线客服入口');
   eq(/api\.feedback\.list\(\)/.test(myFeedbackJs), true, '我的反馈读取本人历史接口');
+  eq(/name="gift"[\s\S]*已获赠 30 天会员/.test(myFeedbackWxml), true,
+    '用户端获赠会员文案前显示礼物图标');
   eq(/api\.feedback\.markSeen\(\{ through: res\.asOf \}\)/.test(myFeedbackJs), true,
     '我的反馈成功加载后推进已读水位');
   eq(/util\.monthDayTime\(item\.createdAt\)/.test(myFeedbackJs), true, '反馈时间按北京时间展示');
@@ -338,7 +344,6 @@ function resetWx(patch = {}) {
 
   console.log('\n=== 4.1 开发环境新用户预览 ===');
   const appSrc = fs.readFileSync(path.join(ROOT, 'miniprogram/app.js'), 'utf8');
-  const profileWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.wxml'), 'utf8');
   const profileWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.wxss'), 'utf8');
   const homeWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxml'), 'utf8');
   eq(/开发调试|onPreviewNewUser|devMode|dev-card|dev-hint/.test(profileJs + profileWxml + profileWxss),

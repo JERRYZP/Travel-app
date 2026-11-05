@@ -92,7 +92,7 @@ async function run() {
   calls.summary = 0;
   await profile.loadFeedbackEntry.call(profile);
   await profile.loadFeedbackEntry.call(profile);
-  eq(calls.summary, 1, '一分钟内重复进入我的页不重复统计');
+  eq(calls.summary, 2, '每次进入我的页都后台刷新数字');
   eq(profile.data.showFeedbackAdminEntry, true, '管理员显示右对齐反馈管理按钮');
   eq(profile.data.feedbackAdminPendingText, '7', '管理按钮显示待处理数字');
   eq(profile.data.feedbackUnreadText, '3', '帮助与反馈行显示用户未读数字');
@@ -111,9 +111,10 @@ async function run() {
   const helpFeedback = instantiate(loadPage('miniprogram/pages/help-feedback/help-feedback.js'));
   delete storage[cache.STORAGE_KEY];
   cache.write({ isAdmin: false, handledUnreadCount: 5, adminPendingCount: 0 });
+  summaryResponse = { success: true, isAdmin: false, handledUnreadCount: 5, adminPendingCount: 0 };
   calls.summary = 0;
   await helpFeedback.loadFeedbackEntry.call(helpFeedback);
-  eq(calls.summary, 0, '帮助页复用一分钟内的入口统计缓存');
+  eq(calls.summary, 1, '帮助页先显示缓存数字并后台刷新');
   eq(helpFeedback.data.feedbackUnreadText, '5', '帮助页的我的反馈行显示未读数字');
   helpFeedback.applyFeedbackEntry.call(helpFeedback, { handledUnreadCount: 120 });
   eq(helpFeedback.data.feedbackUnreadText, '99+', '帮助页未读数过大时使用 99+');
