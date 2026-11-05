@@ -18,6 +18,7 @@ const {
 } = require('./schema');
 const time = require('./time');
 const tripItem = require('./trip-item');
+const releaseSchedule = require('./release-schedule');
 
 /** 六个展示态 → 用户可见文案（8.3 固定口径）
  *  ⚠️ 2026-09-22 按设计稿整体换词（旧值：待抢/可抢/已成/未成/开过票了）。
@@ -116,6 +117,29 @@ function canMarkResult({ item, reservationRequired, releaseAt, visitDate, nowTs 
 }
 
 /**
+ * 「未抢到」之后是否还能在首页直接更正为「已约到」。
+ *
+ * 行程墙经常被用户当成自己的行程看板：结果写反或后续补到票时，应能直接纠正。
+ * 更正入口只开放给已开票、需预约且 visitDate 未结束的项；撤销恢复修改前结果。
+ */
+function canChangeToSuccess({ item, reservationRequired, releaseAt, visitDate, nowTs = time.now() }) {
+  if (!item || item.result !== TicketResult.FAILED) return false;
+  if (reservationRequired === false) return false;
+  if (!releaseAt) return false;
+  if (nowTs.getTime() < new Date(releaseAt).getTime()) return false;
+  return !isItemEnded(visitDate, nowTs);
+}
+
+/** 「已约到」是否还能在首页直接更正为「未抢到」。与反向更正同一组时间闸门。 */
+function canChangeToFailed({ item, reservationRequired, releaseAt, visitDate, nowTs = time.now() }) {
+  if (!item || item.result !== TicketResult.SUCCESS) return false;
+  if (reservationRequired === false) return false;
+  if (!releaseAt) return false;
+  if (nowTs.getTime() < new Date(releaseAt).getTime()) return false;
+  return !isItemEnded(visitDate, nowTs);
+}
+
+/**
  * 现在还能不能开启/取消提醒。
  *
  * ⚠️ **放票时刻一过，这条项上就没有任何有意义的提醒操作了**（2026-09-23 定规）：
@@ -157,30 +181,46 @@ function undoUntilOf(item) {
  * 「已过 releaseAt 仍是 WAITING」在读取时收敛为 MISSED，与 task.effectiveStatusOf 同口径，
  * 不依赖 notifier 定时链路必须成功（2026-09-14 定规）。
  */
-function reminderStateOf(task, { remindOn = false, nowTs = time.now() } = {}) {
-  if (!remindOn || !task) {
-    return { state: ReminderDeliveryState.NOT_SET, stateLabel: REMINDER_STATE_LABEL[ReminderDeliveryState.NOT_SET], reason: null };
+function reminderStateOf(taskOrTasks, { remindOn = false, nowTs = time.now() } = {}) {
+  const tasks = (Array.isArray(taskOrTasks) ? taskOrTasks : [taskOrTasks])
+    .filter(t => t && t.backendStatus !== ReminderBackendStatus.CLOSED)
+    .map(task => {
+      let status = task.backendStatus;
+      const passed = task.releaseAt && new Date(task.releaseAt).getTime() <= nowTs.getTime();
+      if (status === ReminderBackendStatus.WAITING && passed) status = ReminderBackendStatus.MISSED;
+      return { ...task, _effectiveStatus: status };
+    });
+  if (!remindOn || tasks.length === 0) {
+    return {
+      state: ReminderDeliveryState.NOT_SET,
+      stateLabel: REMINDER_STATE_LABEL[ReminderDeliveryState.NOT_SET],
+      reason: null,
+      taskCount: 0,
+      waitingCount: 0,
+    };
   }
 
-  let status = task.backendStatus;
-  const passed = task.releaseAt && new Date(task.releaseAt).getTime() <= nowTs.getTime();
-  if (status === ReminderBackendStatus.WAITING && passed) status = ReminderBackendStatus.MISSED;
-
+  const waiting = tasks.filter(t => t._effectiveStatus === ReminderBackendStatus.WAITING);
+  const missed = tasks.filter(t => t._effectiveStatus === ReminderBackendStatus.MISSED);
+  const triggered = tasks.filter(t => t._effectiveStatus === ReminderBackendStatus.TRIGGERED);
   let state = ReminderDeliveryState.WAITING;
-  if (status === ReminderBackendStatus.TRIGGERED) state = ReminderDeliveryState.TRIGGERED;
-  else if (status === ReminderBackendStatus.MISSED) state = ReminderDeliveryState.MISSED;
-  else if (status === ReminderBackendStatus.CLOSED) state = ReminderDeliveryState.NOT_SET;
+  if (waiting.length > 0) state = ReminderDeliveryState.WAITING;
+  else if (missed.length > 0) state = ReminderDeliveryState.MISSED;
+  else if (triggered.length > 0) state = ReminderDeliveryState.TRIGGERED;
 
+  const representative = waiting[0] || missed[0] || triggered[0] || tasks[0];
   const reason = state === ReminderDeliveryState.MISSED
-    ? (task.missedReason || task.lastSendError || '超过放票时间点未触发成功')
+    ? (representative.missedReason || representative.lastSendError || '超过放票时间点未触发成功')
     : null;
 
   return {
     state,
     stateLabel: REMINDER_STATE_LABEL[state],
     reason,
-    channels: task.channels || [],
-    offsets: task.offsets || [],
+    channels: representative.channels || [],
+    offsets: representative.offsets || [],
+    taskCount: tasks.length,
+    waitingCount: waiting.length,
   };
 }
 
@@ -222,10 +262,22 @@ function backupGroupProgress(items) {
  *
  * itemId（不是 _id）是对外主键：任务、删除、提醒状态和推送落地全部按 itemId 关联。
  */
-function decorateItem({ item, spot, rule, task, nowTs = time.now() }) {
+function decorateItem({
+  item, spot, rule, task, tasks, nowTs = time.now(), supportsMultiRelease = false,
+}) {
   const reservationRequired = !spot || spot.reservationRequired !== false;
-  const releaseAt = deriveReleaseAt(spot, rule, item.visitDate);
-  const ticketState = ticketStateOf({ item, reservationRequired, releaseAt, nowTs });
+  const allTasks = Array.isArray(tasks) ? tasks : (task ? [task] : []);
+  const releaseSlots = releaseSchedule.slotsForRequest(
+    spot,
+    rule,
+    item.visitDate,
+    supportsMultiRelease === true
+  );
+  const firstReleaseAt = releaseSlots.length ? releaseSlots[0].releaseAt : null;
+  const nextSlot = releaseSlots
+    .find(slot => slot.releaseAt.getTime() > nowTs.getTime()) || null;
+  const releaseAt = nextSlot ? nextSlot.releaseAt : firstReleaseAt;
+  const ticketState = ticketStateOf({ item, reservationRequired, releaseAt: firstReleaseAt, nowTs });
 
   return {
     itemId: item._id,
@@ -242,19 +294,51 @@ function decorateItem({ item, spot, rule, task, nowTs = time.now() }) {
     reservationRequired,
     remindOn: reservationRequired && item.remindOn === true,
     releaseAt,
+    firstReleaseAt,
+    nextReleaseAt: nextSlot ? nextSlot.releaseAt : null,
+    releaseSlots,
+    reminderTaskCount: releaseSlots
+      .filter(slot => slot.releaseAt.getTime() > nowTs.getTime()).length,
     difficulty: spot ? difficultyOf(spot.difficultyScore) : null,
     ticketState,
     ticketStateLabel: ticketStateLabelOf(ticketState),
     bookingEntryEnabled: bookingEntryEnabledOf({ ticketState, reservationRequired, visitDate: item.visitDate, nowTs }),
-    canMark: canMarkResult({ item, reservationRequired, releaseAt, visitDate: item.visitDate, nowTs }),
+    canMark: canMarkResult({
+      item,
+      reservationRequired,
+      releaseAt: firstReleaseAt,
+      visitDate: item.visitDate,
+      nowTs,
+    }),
+    canChangeToSuccess: canChangeToSuccess({
+      item,
+      reservationRequired,
+      releaseAt: firstReleaseAt,
+      visitDate: item.visitDate,
+      nowTs,
+    }),
+    canChangeToFailed: canChangeToFailed({
+      item,
+      reservationRequired,
+      releaseAt: firstReleaseAt,
+      visitDate: item.visitDate,
+      nowTs,
+    }),
     /* 前端菜单据此渲染「开启提醒 / 取消提醒」，与 updateReminder 的闸门同源。
        ⚠️ 页面**不得**自己按 ticketState 推一遍——那是第二套口径，必然漂。 */
-    canSetReminder: canSetReminder({ reservationRequired, releaseAt, nowTs }),
+    canSetReminder: canSetReminder({
+      reservationRequired,
+      releaseAt: nextSlot ? nextSlot.releaseAt : null,
+      nowTs,
+    }),
     result: item.result || null,
     resultAt: item.resultAt || null,
     undoUntil: undoUntilOf(item),
     ended: isItemEnded(item.visitDate, nowTs),
-    reminder: reminderStateOf(task, { remindOn: item.remindOn === true && reservationRequired, nowTs }),
+    reminder: reminderStateOf(allTasks, {
+      remindOn: item.remindOn === true && reservationRequired,
+      nowTs,
+    }),
   };
 }
 
@@ -265,11 +349,22 @@ function decorateItem({ item, spot, rule, task, nowTs = time.now() }) {
  * 必须走同一条推算，否则首页显示的放票时间会和「添加提醒」页的时间线对不上。
  */
 function deriveReleaseAt(spot, rule, visitDate) {
-  if (!spot || spot.reservationRequired === false) return null;
-  if (!rule || !rule.advanceDays) return null;
-  const releaseTime = rule.releaseTime || (rule.releaseTimes || [])[0];
-  if (!releaseTime) return null;
-  return time.parseBeijing(time.addDays(visitDate, -rule.advanceDays), releaseTime);
+  return releaseSchedule.firstReleaseAt(spot, rule, visitDate);
+}
+
+function deriveReleaseSlots(spot, rule, visitDate) {
+  return releaseSchedule.slotsForVisitDate(spot, rule, visitDate);
+}
+
+/** 行程合并时按任务保存的 releaseKey 重算准确时段；旧任务回退到首个时段。 */
+function releaseAtForTask(spot, rule, task) {
+  const slot = releaseSchedule.slotByKey(
+    spot,
+    rule,
+    task && task.visitDate,
+    task && task.releaseKey
+  );
+  return slot ? slot.releaseAt : null;
 }
 
 /** 拜访日升序；同日按放票时刻升序，无放票时刻（免预约）排当天最后 */
@@ -392,11 +487,24 @@ function taskMapByItemId(tasks) {
   return map;
 }
 
+/** 按 itemId 归集全部任务；一个行程项可有多个放票时段。 */
+function tasksMapByItemId(tasks) {
+  const map = {};
+  for (const t of (tasks || [])) {
+    if (!t.itemId) continue;
+    if (!map[t.itemId]) map[t.itemId] = [];
+    map[t.itemId].push(t);
+  }
+  return map;
+}
+
 /**
  * 读取某用户全部行程项并装饰好（首页/自动定位/横幅的公共入口）。
  * @returns {Promise<Array>} decorateItem 结果数组
  */
-async function loadDecoratedItems(db, userId, { tripId = null, nowTs = time.now() } = {}) {
+async function loadDecoratedItems(db, userId, {
+  tripId = null, nowTs = time.now(), supportsMultiRelease = false,
+} = {}) {
   const items = tripId
     ? await listItemsByTrip(db, userId, tripId)
     : await listItemsByUser(db, userId);
@@ -406,14 +514,15 @@ async function loadDecoratedItems(db, userId, { tripId = null, nowTs = time.now(
   const taskRes = tripId
     ? await db.collection(COLLECTIONS.REMINDER_TASKS).where({ userId, tripId }).get()
     : await db.collection(COLLECTIONS.REMINDER_TASKS).where({ userId }).get();
-  const taskMap = taskMapByItemId(taskRes.data || []);
+  const taskMap = tasksMapByItemId(taskRes.data || []);
 
   return items.map(item => decorateItem({
     item,
     spot: spotMap[item.spotId],
     rule: ruleMap[item.spotId],
-    task: taskMap[item._id] || null,
+    tasks: taskMap[item._id] || [],
     nowTs,
+    supportsMultiRelease: supportsMultiRelease === true,
   }));
 }
 
@@ -425,12 +534,16 @@ module.exports = {
   bookingEntryEnabledOf,
   isItemEnded,
   canMarkResult,
+  canChangeToSuccess,
+  canChangeToFailed,
   canSetReminder,
   undoUntilOf,
   reminderStateOf,
   backupGroupProgress,
   decorateItem,
   deriveReleaseAt,
+  deriveReleaseSlots,
+  releaseAtForTask,
   sortItems,
   nextReleases,
   scrollTargetOf,
@@ -438,5 +551,6 @@ module.exports = {
   listItemsByTrip,
   loadSpotContext,
   taskMapByItemId,
+  tasksMapByItemId,
   loadDecoratedItems,
 };

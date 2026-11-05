@@ -122,6 +122,51 @@ function computeReleaseStatus(rule, now = new Date()) {
   return ReleaseStatus.BOOKABLE;
 }
 
+function releaseSlotsOf(rule) {
+  if (!rule) return [];
+  if (Array.isArray(rule.releaseSlots) && rule.releaseSlots.length > 0) {
+    return rule.releaseSlots.filter(slot => slot && slot.releaseTime && Number.isFinite(Number(slot.advanceDays)));
+  }
+  if (!rule.advanceDays) return [];
+  const times = Array.isArray(rule.releaseTimes) && rule.releaseTimes.length > 0
+    ? rule.releaseTimes
+    : [rule.releaseTime];
+  return [...new Set(times.filter(Boolean).map(String))].map((releaseTime, index) => ({
+    key: `slot-${index + 1}`,
+    label: '',
+    releaseTime,
+    advanceDays: Number(rule.advanceDays),
+  }));
+}
+
+function advanceDaysLabelOf(rule) {
+  const days = [];
+  releaseSlotsOf(rule).forEach(slot => {
+    days.push(Number(slot.advanceDays));
+    if (slot.weekendAdvanceDays !== undefined && slot.weekendAdvanceDays !== null) {
+      days.push(Number(slot.weekendAdvanceDays));
+    }
+  });
+  const valid = days.filter(Number.isFinite);
+  if (valid.length === 0) return '';
+  const min = Math.min(...valid);
+  const max = Math.max(...valid);
+  return min === max ? `提前${min}天` : `提前${min}-${max}天`;
+}
+
+function isHoliday(rule, dateStr) {
+  return (rule && Array.isArray(rule.holidayRanges) ? rule.holidayRanges : [])
+    .some(range => Array.isArray(range)
+      && range.length >= 2
+      && dateStr >= range[0]
+      && dateStr <= range[1]);
+}
+
+function isHighDemandDate(rule, dateStr) {
+  const dayName = dayNameOfStr(dateStr);
+  return dayName === 'saturday' || dayName === 'sunday' || isHoliday(rule, dateStr);
+}
+
 /**
  * 最早可约日期 = 今天 + advanceDays，该日不可约则**向前回退**到最近的可约日（isOpenOn 判定）
  *
@@ -130,12 +175,27 @@ function computeReleaseStatus(rule, now = new Date()) {
  * 回退下限是今天（窗口最早一天）；回退满 N 天仍无开放日说明规则异常，返回 null。
  */
 function computeEarliestDate(rule, now = new Date()) {
-  if (!rule || !rule.advanceDays) return null;
-  const advanceDays = Number(rule.advanceDays);
-  let target = addDaysStr(toDateStr(now), advanceDays);
-  for (let i = 0; i <= advanceDays; i += 1) {
-    if (isOpenOn(rule, dayNameOfStr(target))) return target;
-    target = addDaysStr(target, -1);
+  const slots = releaseSlotsOf(rule);
+  if (!rule || slots.length === 0) return null;
+  const today = toDateStr(now);
+  const maxAdvance = Math.max(...slots.map(slot => {
+    const weekend = Number(slot.weekendAdvanceDays);
+    return Number.isFinite(weekend)
+      ? Math.max(Number(slot.advanceDays), weekend)
+      : Number(slot.advanceDays);
+  }));
+  for (let offset = maxAdvance; offset >= 0; offset -= 1) {
+    const target = addDaysStr(today, offset);
+    const dayName = dayNameOfStr(target);
+    if (!isOpenOn(rule, dayName)) continue;
+    const weekend = isHighDemandDate(rule, target);
+    const available = slots.some(slot => {
+      const advanceDays = weekend && Number.isFinite(Number(slot.weekendAdvanceDays))
+        ? Number(slot.weekendAdvanceDays)
+        : Number(slot.advanceDays);
+      return addDaysStr(target, -advanceDays) <= today;
+    });
+    if (available) return target;
   }
   return null;
 }
@@ -158,7 +218,8 @@ function weakLine(rule) {
   if (!rule) return '票量充足，无需卡点抢票';
   const rt = rule.releaseTimes || rule.releaseTime;
   if (rt) {
-    const adv = rule.advanceDays ? `提前${rule.advanceDays}天 ` : '';
+    const advanceLabel = advanceDaysLabelOf(rule);
+    const adv = advanceLabel ? `${advanceLabel} ` : '';
     return `${adv}${Array.isArray(rt) ? rt.join('、') : rt}放票 · 票量充足，无需卡点`;
   }
   return '票量充足，无需卡点抢票';
@@ -167,7 +228,8 @@ function weakLine(rule) {
 /** TAG-RULE-001 标签构建：提前天数 + 放票时刻（支持多时段/空时刻） */
 function buildTags(rule) {
   const t = [];
-  if (rule.advanceDays) t.push(`提前${rule.advanceDays}天放票`);
+  const advanceLabel = advanceDaysLabelOf(rule);
+  if (advanceLabel) t.push(`${advanceLabel}放票`);
   const rt = rule.releaseTimes || rule.releaseTime;
   if (rt) t.push(`每日${Array.isArray(rt) ? rt.join('、') : rt}放票`);
   return t;
@@ -177,7 +239,7 @@ function buildTags(rule) {
 function buildCard(spot, rule, now) {
   const status = computeReleaseStatus(rule, now);
   // 可提醒 = 需预约 且有真实放票时刻（无放票时刻如环球影城购票型 → 只进行程、不建任务）
-  const remindable = spot.reservationRequired !== false && !!(rule && rule.advanceDays && (rule.releaseTimes || rule.releaseTime));
+  const remindable = spot.reservationRequired !== false && releaseSlotsOf(rule).length > 0;
   const weak = spot.reservationRequired !== false
     && spot.strongReminder !== true
     && (spot.difficultyScore || 0) <= 2;
@@ -208,6 +270,8 @@ function buildCard(spot, rule, now) {
     tags: rule ? buildTags(rule) : [],
     advanceDays: rule ? rule.advanceDays : null,
     releaseTime: rule ? (rule.releaseTimes || rule.releaseTime) : null,
+    releaseSlots: rule ? (rule.releaseSlots || []) : [],
+    holidayRanges: rule ? (rule.holidayRanges || []) : [],
     // B 层卡片信息区展示购票/入园信息
     ticketPrice: rule ? (rule.ticketPrice || '') : '',
     openTime: rule ? (rule.openTime || '') : '',

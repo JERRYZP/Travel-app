@@ -100,7 +100,8 @@ eq(computeReleaseStatus(rm['renmin-dahuitang'], bj(2026, 9, 15, 18, 0)), 'BOOKAB
 
 console.log('\n--- computeEarliestDate：不可约时向前回退（不顺延） ---');
 eq(computeEarliestDate(rm['peking-university'], bj(2026, 9, 11, 10, 0)), '2026-09-13', '北大：周五+7=周五(白名单外)→回退至周日 09-13');
-eq(computeEarliestDate(rm.tsinghua, bj(2026, 9, 11, 10, 0)), '2026-09-18', '清华：周五+7=周五可约，不回退');
+eq(computeEarliestDate(rm.tsinghua, bj(2026, 9, 11, 10, 0)), '2026-09-19', '清华：周五可看到周末抽签提前 8 天的 09-19');
+eq(computeEarliestDate(rm.tsinghua, bj(2026, 9, 23, 10, 0)), '2026-10-01', '清华：国庆法定节假日按周末规则，09-23 可看到 10-01');
 eq(computeEarliestDate(rm.gugong, bj(2026, 9, 12, 10, 0)), '2026-09-19', '故宫：周六+7=周六可约');
 eq(computeEarliestDate(rm.gugong, bj(2026, 9, 13, 10, 0)), '2026-09-20', '故宫：周日+7=周日可约');
 // 回归：2026-11-03 周二，纪念堂提前 6 天 → 11-09 周一闭馆，真实可约是 11-08（线上曾显示 11-10）

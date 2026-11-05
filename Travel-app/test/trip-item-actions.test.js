@@ -75,16 +75,65 @@ const FUTURE_VISIT = time.addDays(TODAY, 30); // releaseAt = TODAY + 23 → 还�
     eq(raw.result, null, '拒绝时不写库');
   }
 
-  console.log('=== 2. markResult：不可反复修改 ===');
+  console.log('=== 2. markResult：已约到可更正为未约到 ===');
   {
     const db = freshDb();
     await seedTrip(db, 'T1', ['gugong'], time.addDays(TODAY, -1), time.addDays(TODAY, 40));
     const id = await seedItem(db, { tripId: 'T1', spotId: 'gugong', visitDate: PAST_VISIT, result: 'SUCCESS' });
+    const previousResultAt = new Date(time.now().getTime() - 60000);
+    await db.collection(COLLECTIONS.TRIP_ITEMS).doc(id).update({
+      data: { resultAt: previousResultAt },
+    });
+
     const res = await actions.markResult(db, USER, { itemId: id, result: 'FAILED' });
-    eq(res.success, false, '已标记过 → 不允许改成别的结果');
-    eq(res.errorCode, 1014, '错误码 1014');
-    const raw = db._dump(COLLECTIONS.TRIP_ITEMS).find(i => i._id === id);
-    eq(raw.result, 'SUCCESS', '原结果未被覆盖');
+    eq(res.success, true, '已约到 → 未约到允许更正');
+    eq(res.item.ticketState, 'FAILED', '返回更新后的票务态');
+    eq(res.item.canChangeToFailed, false, '未约到后不再显示反向更正入口');
+    eq(res.item.canChangeToSuccess, true, '未约到后显示正向更正入口');
+    let raw = db._dump(COLLECTIONS.TRIP_ITEMS).find(i => i._id === id);
+    eq(raw.result, 'FAILED', '更正后的结果落库');
+    eq(raw.previousResult, 'SUCCESS', '保留更正前结果供撤销');
+
+    const undo = await actions.undoResult(db, USER, {
+      itemId: id,
+      expectedResultAt: res.item.resultAt,
+    });
+    eq(undo.success, true, '反向更正后 4 秒内可撤销');
+    eq(undo.item.result, 'SUCCESS', '撤销恢复为已约到');
+    eq(new Date(undo.item.resultAt).getTime(), previousResultAt.getTime(), '恢复原结果时刻');
+    raw = db._dump(COLLECTIONS.TRIP_ITEMS).find(i => i._id === id);
+    eq(raw.previousResult, null, '撤销后清掉更正暂存字段');
+  }
+
+  console.log('=== 2.1 markResult：未抢到可更正为已约到 ===');
+  {
+    const db = freshDb();
+    await seedTrip(db, 'T1', ['gugong'], time.addDays(TODAY, -1), time.addDays(TODAY, 40));
+    const id = await seedItem(db, { tripId: 'T1', spotId: 'gugong', visitDate: PAST_VISIT, result: 'FAILED' });
+    const previousResultAt = new Date(time.now().getTime() - 60000);
+    await db.collection(COLLECTIONS.TRIP_ITEMS).doc(id).update({
+      data: { resultAt: previousResultAt },
+    });
+
+    const res = await actions.markResult(db, USER, { itemId: id, result: 'SUCCESS' });
+    eq(res.success, true, '未抢到 → 已约到允许更正');
+    eq(res.item.ticketState, 'SUCCESS', '返回更新后的票务态');
+    eq(res.item.canChangeToSuccess, false, '已约到后不再显示更正入口');
+    eq(res.item.canChangeToFailed, true, '已约到后显示反向更正入口');
+    let raw = db._dump(COLLECTIONS.TRIP_ITEMS).find(i => i._id === id);
+    eq(raw.result, 'SUCCESS', '更正后的结果落库');
+    eq(raw.previousResult, 'FAILED', '保留更正前结果供撤销');
+    eq(new Date(raw.previousResultAt).getTime(), previousResultAt.getTime(), '保留更正前时刻');
+
+    const undo = await actions.undoResult(db, USER, {
+      itemId: id,
+      expectedResultAt: res.item.resultAt,
+    });
+    eq(undo.success, true, '更正后 4 秒内可撤销');
+    eq(undo.item.result, 'FAILED', '撤销恢复为未抢到，而不是清空结果');
+    eq(new Date(undo.item.resultAt).getTime(), previousResultAt.getTime(), '恢复原结果时刻');
+    raw = db._dump(COLLECTIONS.TRIP_ITEMS).find(i => i._id === id);
+    eq(raw.previousResult, null, '撤销后清掉更正暂存字段');
   }
 
   console.log('=== 3. markResult：非法 result 与不存在的 itemId ===');

@@ -54,11 +54,15 @@ function requestKey(name, data) {
 }
 
 function call(name, data, options) {
-  data = withRequestCapabilities(name, data);
-  if (USE_MOCK) return mockCall(name, data);
-  const action = data && data.action;
+  /* 新旧契约都走请求级能力门禁；未声明能力的旧客户端继续由服务端回退。 */
+  const payload = withRequestCapabilities(
+    name,
+    name === 'reminder' ? { supportsMultiRelease: true, ...(data || {}) } : data
+  );
+  if (USE_MOCK) return mockCall(name, payload);
+  const action = payload && payload.action;
   const canCoalesce = READ_ACTIONS.has(action) && !(options && options.noCoalesce);
-  const key = canCoalesce ? requestKey(name, data) : '';
+  const key = canCoalesce ? requestKey(name, payload) : '';
   if (canCoalesce && inflightReads.has(key)) return inflightReads.get(key);
   if (canCoalesce) {
     const failed = failedReads.get(key);
@@ -69,7 +73,7 @@ function call(name, data, options) {
   const request = new Promise((resolve, reject) => {
     wx.cloud.callFunction({
       name,
-      data,
+      data: payload,
       success: res => {
         if (res.result && res.result.success === false) {
           reject(res.result);

@@ -4,8 +4,6 @@ const USE_MOCK = false;
 
 const { SPOTS, RULES } = require('./mock-data.js');
 
-
-/* ===== 内存数据库（一次运行内连贯，重新编译重置） ===== */
 const db = {
   trips: {},
   carts: {},
@@ -24,11 +22,9 @@ const db = {
   },
   searchHistory: [],
 };
-/* 暂存清单的占位 tripId（镜像 schema.PENDING_CART_TRIP_ID，2026-09-20 清单改暂存区）：
-   「生成时间线」改为纯预览后，用户加入清单时还没有行程，未提交的行统一挂这个值，
-   提交时才建/合并行程并整批改挂。⚠️ 不是真实行程，不要拿去 db.trips 里查。 */
+
 const PENDING_CART_TRIP_ID = '__pending__';
-/* 人工结果撤销窗口（镜像 schema.V1.RESULT_UNDO_SECONDS，2026-09-17 由 10 秒收紧为 4 秒） */
+
 const RESULT_UNDO_SECONDS = 4;
 /* 放票后未标记转为中性态的时间（镜像 schema.V1.UNMARKED_AFTER_HOURS） */
 const UNMARKED_AFTER_HOURS = 24;
@@ -113,7 +109,7 @@ function shouldHealQuota(lastSendError) {
   return !LOCAL_FAILURE_HINTS.some(hint => lower.includes(hint.toLowerCase()));
 }
 
-/** 清零本地台账（mock 单模板世界，直接清所有模板键），返回是否真的清过 */
+
 function healSubscribeQuotas() {
   const keys = Object.keys(subscribeQuotas).filter(k => subscribeQuotas[k] > 0);
   if (!keys.length) return false;
@@ -124,7 +120,7 @@ function healSubscribeQuotas() {
   return true;
 }
 
-/* ===== GMT+8 统一时间层（镜像 cloudfunctions/reminder/lib/time.js，TIME-RULE-001） ===== */
+
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -192,7 +188,7 @@ function computeDifficultyLabel(score) {
   return { key: 'EASY', text: '容易约', color: 'green' };
 }
 const DAY_CN = { monday: '周一', tuesday: '周二', wednesday: '周三', thursday: '周四', friday: '周五', saturday: '周六', sunday: '周日' };
-/* 镜像 cloudfunctions/spots：四态 —— openDays 白名单 → closedDays 黑名单 → closedDaysNote（园中园） → 全年开放 */
+
 function closedDaysLabel(days, openDays, note) {
   const open = openDays || [];
   if (open.length > 0) return '仅' + open.map(d => DAY_CN[d] || d).join('、') + '开放';
@@ -214,6 +210,116 @@ function isOpenOn(rule, dayName) {
   if (open.length > 0) return open.includes(dayName);
   return !(rule.closedDays || []).includes(dayName);
 }
+
+function releaseSlotDefinitionsOf(rule) {
+  if (!rule) return [];
+  if (Array.isArray(rule.releaseSlots) && rule.releaseSlots.length > 0) {
+    return rule.releaseSlots
+      .filter(slot => slot && slot.releaseTime && Number.isFinite(Number(slot.advanceDays)))
+      .map((slot, index) => ({
+        key: String(slot.key || `slot-${index + 1}`),
+        label: String(slot.label || ''),
+        releaseTime: String(slot.releaseTime),
+        advanceDays: Number(slot.advanceDays),
+        weekendAdvanceDays: slot.weekendAdvanceDays !== undefined
+          && slot.weekendAdvanceDays !== null
+          && Number.isFinite(Number(slot.weekendAdvanceDays))
+          ? Number(slot.weekendAdvanceDays)
+          : null,
+      }));
+  }
+  if (!rule.advanceDays) return [];
+  const times = Array.isArray(rule.releaseTimes) && rule.releaseTimes.length > 0
+    ? rule.releaseTimes
+    : [rule.releaseTime];
+  return [...new Set(times.filter(Boolean).map(String))].map((releaseTime, index) => ({
+    key: `${releaseTime}-${index + 1}`,
+    label: '',
+    releaseTime,
+    advanceDays: Number(rule.advanceDays),
+    weekendAdvanceDays: null,
+  }));
+}
+
+function releaseSlotsForVisit(spot, rule, visitDate) {
+  if (!visitDate || (spot && spot.reservationRequired === false)) return [];
+  return releaseSlotDefinitionsOf(rule).map(slot => {
+    const weekend = isHighDemandDate(rule, visitDate);
+    const advanceDays = weekend && slot.weekendAdvanceDays !== null
+      ? slot.weekendAdvanceDays
+      : slot.advanceDays;
+    const releaseDateStr = addDays(visitDate, -advanceDays);
+    return {
+      ...slot,
+      advanceDays,
+      releaseDateStr,
+      releaseAt: parseBeijing(releaseDateStr, slot.releaseTime),
+    };
+  }).sort((a, b) => a.releaseAt.getTime() - b.releaseAt.getTime());
+}
+
+function isHolidayDate(rule, dateStr) {
+  return (rule && Array.isArray(rule.holidayRanges) ? rule.holidayRanges : [])
+    .some(range => Array.isArray(range)
+      && range.length >= 2
+      && dateStr >= range[0]
+      && dateStr <= range[1]);
+}
+
+function isHighDemandDate(rule, dateStr) {
+  const dayName = dayNameOf(dateStr);
+  return dayName === 'saturday' || dayName === 'sunday' || isHolidayDate(rule, dateStr);
+}
+
+function taskReleaseSlotsForVisit(spot, rule, visitDate, nowTs) {
+  return releaseSlotsForVisit(spot, rule, visitDate)
+    .filter(slot => slot.releaseAt.getTime() > new Date(nowTs).getTime());
+}
+
+function legacyReleaseSlotsForVisit(spot, rule, visitDate) {
+  if (!visitDate || !rule || !rule.advanceDays || !rule.releaseTime
+    || (spot && spot.reservationRequired === false)) return [];
+  const releaseDateStr = addDays(visitDate, -Number(rule.advanceDays));
+  return [{
+    key: 'legacy-release',
+    label: '',
+    releaseTime: String(rule.releaseTime),
+    advanceDays: Number(rule.advanceDays),
+    releaseDateStr,
+    releaseAt: parseBeijing(releaseDateStr, String(rule.releaseTime)),
+  }];
+}
+
+function releasePlanOf(spot, rule, visitDate, nowTs = new Date(), supportsMultiRelease = false) {
+  const slots = supportsMultiRelease
+    ? releaseSlotsForVisit(spot, rule, visitDate)
+    : legacyReleaseSlotsForVisit(spot, rule, visitDate);
+  const tasks = slots.filter(slot => slot.releaseAt.getTime() > new Date(nowTs).getTime());
+  return {
+    slots,
+    tasks,
+    releaseAt: tasks.length
+      ? tasks[0].releaseAt
+      : (slots.length ? slots[slots.length - 1].releaseAt : null),
+    taskCount: tasks.length,
+    noFixed: slots.length === 0,
+    passed: slots.length > 0 && tasks.length === 0,
+  };
+}
+
+function advanceDaysLabelOf(rule) {
+  const days = [];
+  releaseSlotDefinitionsOf(rule).forEach(slot => {
+    days.push(slot.advanceDays);
+    if (slot.weekendAdvanceDays !== null) days.push(slot.weekendAdvanceDays);
+  });
+  const valid = days.filter(Number.isFinite);
+  if (!valid.length) return '';
+  const min = Math.min(...valid);
+  const max = Math.max(...valid);
+  return min === max ? `提前${min}天` : `提前${min}-${max}天`;
+}
+
 function computeReleaseStatus(rule, now = new Date()) {
   if (!rule || !rule.releaseTime) return 'NOT_RELEASED';
   const p = beijingParts(now);
@@ -224,12 +330,25 @@ function computeReleaseStatus(rule, now = new Date()) {
 }
 /** 与云端 computeEarliestDate 同口径：不可约时向前回退，不顺延。 */
 function computeEarliestDate(rule, now = new Date()) {
-  if (!rule || !rule.advanceDays) return null;
-  const advanceDays = Number(rule.advanceDays);
-  let target = addDays(toDateStr(now), advanceDays);
-  for (let i = 0; i <= advanceDays; i += 1) {
-    if (isOpenOn(rule, dayNameOf(target))) return target;
-    target = addDays(target, -1);
+  const slots = releaseSlotDefinitionsOf(rule);
+  if (!rule || slots.length === 0) return null;
+  const today = toDateStr(now);
+  const maxAdvance = Math.max(...slots.map(slot =>
+    slot.weekendAdvanceDays !== null
+      ? Math.max(slot.advanceDays, slot.weekendAdvanceDays)
+      : slot.advanceDays));
+  for (let offset = maxAdvance; offset >= 0; offset -= 1) {
+    const target = addDays(today, offset);
+    const dayName = dayNameOf(target);
+    if (!isOpenOn(rule, dayName)) continue;
+    const weekend = isHighDemandDate(rule, target);
+    const available = slots.some(slot => {
+      const advanceDays = weekend && slot.weekendAdvanceDays !== null
+        ? slot.weekendAdvanceDays
+        : slot.advanceDays;
+      return addDays(target, -advanceDays) <= today;
+    });
+    if (available) return target;
   }
   return null;
 }
@@ -248,14 +367,16 @@ function weakLine(rule) {
   if (!rule) return '票量充足，无需卡点抢票';
   const rt = rule.releaseTimes || rule.releaseTime;
   if (rt) {
-    const adv = rule.advanceDays ? `提前${rule.advanceDays}天 ` : '';
+    const advance = advanceDaysLabelOf(rule);
+    const adv = advance ? `${advance} ` : '';
     return `${adv}${Array.isArray(rt) ? rt.join('、') : rt}放票 · 票量充足，无需卡点`;
   }
   return '票量充足，无需卡点抢票';
 }
 function buildTags(rule) {
   const t = [];
-  if (rule.advanceDays) t.push(`提前${rule.advanceDays}天放票`);
+  const advance = advanceDaysLabelOf(rule);
+  if (advance) t.push(`${advance}放票`);
   const rt = rule.releaseTimes || rule.releaseTime;
   if (rt) t.push(`每日${Array.isArray(rt) ? rt.join('、') : rt}放票`);
   return t;
@@ -264,7 +385,7 @@ function buildCard(spot) {
   const now = new Date();
   const rule = RULES.find(r => r.spotId === spot.spotId) || null;
   const status = computeReleaseStatus(rule, now);
-  const remindable = spot.reservationRequired !== false && !!(rule && rule.advanceDays && (rule.releaseTimes || rule.releaseTime));
+  const remindable = spot.reservationRequired !== false && releaseSlotDefinitionsOf(rule).length > 0;
   const weak = spot.reservationRequired !== false
     && spot.strongReminder !== true
     && (spot.difficultyScore || 0) <= 2;
@@ -290,6 +411,8 @@ function buildCard(spot) {
     tags: rule ? buildTags(rule) : [],
     advanceDays: rule ? rule.advanceDays : null,
     releaseTime: rule ? (rule.releaseTimes || rule.releaseTime) : null,
+    releaseSlots: rule ? (rule.releaseSlots || []) : [],
+    holidayRanges: rule ? (rule.holidayRanges || []) : [],
     ticketPrice: rule ? (rule.ticketPrice || '') : '',
     openTime: rule ? (rule.openTime || '') : '',
     closedDays: rule ? (rule.closedDays || []) : [],
@@ -369,7 +492,7 @@ function collapse(incoming, existing) {
   return { range, mergedIds };
 }
 
-/** 行程范围/景点变化后，清掉不再合法的清单项（按该景点自己的日期段判定） */
+
 function pruneStaleCart(tripId) {
   const trip = db.trips[tripId];
   if (!trip) return;
@@ -395,7 +518,7 @@ function dropTripIfNoItem(tripId) {
   return true;
 }
 
-/** 用户显式删掉最后一笔行程项后，清掉失去归属的暂存清单；普通新草稿不受影响。 */
+
 function clearPendingIfNoItems() {
   if (Object.values(db.items).length > 0) return 0;
   let removed = 0;
@@ -408,11 +531,9 @@ function clearPendingIfNoItems() {
   return removed;
 }
 
-/** 摘要卡「即将提醒」胶囊：接下来的 limit 场放票（镜像云端 task.buildReleasePills）。
-    ⚠️ 不限 BANNER_WINDOW_HOURS 窗口——横幅只覆盖眼下一小时，胶囊摊开的是「后面还有哪几场」。 */
+
 function releasePillsOf(decorated, nowTs, limit) {
-  /* 先按**放票时刻**分组再取前 limit 组：同一时刻的多条提醒合成一颗胶囊
-     （「今天17:00 城楼/国博放票」）。limit 数的是**时间点**，不是项数。 */
+
   const groups = new Map();
   (decorated || [])
     .filter(d => d.releaseAt && new Date(d.releaseAt).getTime() > nowTs.getTime())
@@ -454,8 +575,7 @@ function mockRecoveryCandidates(failed, nowTs, decorated) {
   const sameSpot = siblings.filter(i =>
     i.spotId === failed.spotId && (i._id || i.itemId) !== (failed._id || failed.itemId));
   const pendingBackup = sameSpot.some(i => {
-    /* `decorated` 传进来时已经是装饰结果（有 ticketState / ended / canMark），
-       只有裸库文档才需要现算一次。 */
+
     const d = ('ticketState' in i) ? i : decorateItem(i, nowTs);
     return !d.ended && !d.canMark && d.ticketState === 'PENDING';
   });
@@ -463,8 +583,7 @@ function mockRecoveryCandidates(failed, nowTs, decorated) {
 
   const startDate = trip ? trip.startDate : failed.visitDate;
   const endDate = trip ? trip.endDate : failed.visitDate;
-  /* ⚠️ 必须排除「刚失败的那一天」：把 10月2日 原样建议回去，
-     等于对用户刚说没成的事再说一次「再约这天吧」 */
+
   const taken = new Set([failed.visitDate].concat(sameSpot.map(i => i.visitDate)));
   const today = fmt(nowTs);
 
@@ -494,8 +613,7 @@ function mockRecoveryCandidates(failed, nowTs, decorated) {
           : formatMonthDayWeekCn(visitDate) + ' ' + formatHourMinute(releaseAt) + ' 放票',
       });
     });
-    /* 名额按行动类型各取一半：简单取前 N 条会被日期早的 BOOK_NOW 占满，
-       用户就看不到「等下一场放票」这条路 */
+
     const bookNow = mine.filter(c => c.action === 'BOOK_NOW');
     const setReminder = mine.filter(c => c.action === 'SET_REMINDER');
     out.push(...bookNow.slice(0, 1), ...setReminder.slice(0, 1));
@@ -523,7 +641,7 @@ function mockRecoverableIds(decorated, nowTs) {
   const ids = [];
   fails.forEach(f => {
     const siblings = decorated.filter(d => d.tripId === f.tripId);
-    /* 裸库文档形状与装饰结果不同（`_id` vs `itemId`），这里统一成装饰结果的读法 */
+
     if (mockRecoveryCandidates(
       { _id: f.itemId, itemId: f.itemId, tripId: f.tripId, spotId: f.spotId, visitDate: f.visitDate },
       nowTs,
@@ -550,9 +668,9 @@ function difficultyOf(score) {
   return { key: 'EASY', text: '容易约' };
 }
 function hasReleaseSchedule(rule) {
-  return !!(rule && rule.advanceDays && (rule.releaseTime || (rule.releaseTimes || []).length));
+  return releaseSlotDefinitionsOf(rule).length > 0;
 }
-function buildEvents(spot, rule, seg) {
+function buildEvents(spot, rule, seg, supportsMultiRelease = false) {
   const base = {
     spotId: spot.spotId,
     spotName: spot.name,
@@ -596,17 +714,28 @@ function buildEvents(spot, rule, seg) {
   const events = [];
   for (const visitDate of dateRange(seg.startDate, seg.endDate)) {
     if (!isOpenOn(rule, dayNameOf(visitDate))) continue;
-    const releaseDate = addDays(visitDate, -rule.advanceDays);
+    const releaseSlots = supportsMultiRelease
+      ? releaseSlotsForVisit(spot, rule, visitDate)
+      : legacyReleaseSlotsForVisit(spot, rule, visitDate);
+    if (!releaseSlots.length) continue;
+    const nowTs = new Date();
+    const primarySlot = releaseSlots.find(slot => slot.releaseAt.getTime() > nowTs.getTime())
+      || releaseSlots[0];
+    const reminderTaskCount = releaseSlots
+      .filter(slot => slot.releaseAt.getTime() > nowTs.getTime()).length;
     events.push({
       ...base,
       remindable: true,
       difficulty: difficultyOf(spot.difficultyScore),
       visitDate,
-      releaseAt: parseBeijing(releaseDate, rule.releaseTime),
-      releaseDateStr: releaseDate,
-      releaseTimeStr: rule.releaseTime,
+      releaseAt: primarySlot.releaseAt,
+      releaseDateStr: primarySlot.releaseDateStr,
+      releaseTimeStr: primarySlot.releaseTime,
+      releaseTimesStr: [...new Set(releaseSlots.map(slot => slot.releaseTime))].join('、'),
+      releaseSlots,
+      reminderTaskCount,
       visitDateLabel: formatMonthDayWeek(visitDate),
-      advanceDays: rule.advanceDays,
+      advanceDays: primarySlot.advanceDays,
       remindOnDefault: !base.weak,
     });
   }
@@ -631,9 +760,7 @@ function resolveStatus(event, ctx = {}) {
   if (inCart) return 'IN_CART';
   return 'SELECTABLE';
 }
-/* ⚠️ 与 `cloudfunctions/reminder/lib/timeline.js` 的 buttonOf **逐字一致**（2026-09-24 统一文案）：
-   加清单类按钮文案 = 「加入清单 / 已加清单 / 已加行程」。改一边必须改另一边，否则模拟器与
-   真机文案对不上，而两边单测各自都是绿的。 */
+
 function buttonOf(status, event = {}) {
   const tripOnly = event.reservationRequired === false || event.remindable === false;
   switch (status) {
@@ -661,7 +788,7 @@ function groupByDeparture(events, nowTs, tripStartDate = '') {
       return {
         key: visitDate,
         label: formatMonthDayWeek(visitDate),
-        /* 与云端一致：相对行程首日算，首日无事件也不能把次日误标成第1天。 */
+
         dayLabel: tripStartDate ? `【第${diffDays(tripStartDate, visitDate) + 1}天】` : '',
         events: sorted,
         count: sorted.length,
@@ -682,29 +809,24 @@ function groupBySpot(events, nowTs) {
 }
 /* 行程项展示态镜像 item.js，mock-mirror 会交叉断言。 */
 
-/** 放票时刻由规则推算（镜像 item.deriveReleaseAt / timeline.buildEvents 的口径） */
+
+
 function deriveReleaseAt(spot, rule, visitDate) {
-  if (!spot || spot.reservationRequired === false) return null;
-  if (!rule || !rule.advanceDays) return null;
-  const releaseTime = rule.releaseTime || (rule.releaseTimes || [])[0];
-  if (!releaseTime) return null;
-  return parseBeijing(addDays(visitDate, -rule.advanceDays), releaseTime);
+  const slots = releaseSlotsForVisit(spot, rule, visitDate);
+  return slots.length ? slots[0].releaseAt : null;
 }
 
 /* 展示态以云端 item.js 的 TICKET_STATE_LABEL 为准；UNMARKED 是中性态，不是失败。 */
 const TICKET_LABEL = {
   PENDING: '待抢票', BOOKABLE: '可抢票', SUCCESS: '已约到',
   FAILED: '未抢到',
-  /* UNMARKED 是中性态，不是「未抢到」——放票过了 24 小时没标记不代表没抢到 */
+
   UNMARKED: '待确认',
   NO_RESERVATION: '免预约',
 };
 const REMINDER_LABEL = { NOT_SET: '未设提醒', WAITING: '待提醒', TRIGGERED: '已提醒', MISSED: '未送达' };
 
-/**
- * ENUM-007 票务展示状态。计算顺序固定：
- * 免预约 → 人工结果 → 放票前 → 放票后 24h 内 → 待确认
- */
+
 function ticketStateLabelOf(state) { return TICKET_LABEL[state] || '待抢票'; }
 
 /* 放票时刻已过时不能开启或取消提醒；这个判据不等价于「待抢票」展示态。 */
@@ -712,6 +834,22 @@ function canSetReminderOf(reservationRequired, releaseAt, nowTs) {
   if (reservationRequired === false) return false;
   if (!releaseAt) return false;
   return new Date(releaseAt).getTime() > nowTs.getTime();
+}
+
+function canChangeToSuccessOf(item, reservationRequired, releaseAt, visitDate, nowTs) {
+  if (!item || item.result !== 'FAILED') return false;
+  if (reservationRequired === false) return false;
+  if (!releaseAt) return false;
+  if (nowTs.getTime() < new Date(releaseAt).getTime()) return false;
+  return fmt(nowTs) <= visitDate;
+}
+
+function canChangeToFailedOf(item, reservationRequired, releaseAt, visitDate, nowTs) {
+  if (!item || item.result !== 'SUCCESS') return false;
+  if (reservationRequired === false) return false;
+  if (!releaseAt) return false;
+  if (nowTs.getTime() < new Date(releaseAt).getTime()) return false;
+  return fmt(nowTs) <= visitDate;
 }
 
 function ticketStateOf(item, reservationRequired, releaseAt, nowTs) {
@@ -725,26 +863,61 @@ function ticketStateOf(item, reservationRequired, releaseAt, nowTs) {
 }
 
 /** 提醒送达态，与票务状态分离（ENUM-009） */
-function reminderStateOf(task, remindOn, nowTs) {
-  if (!remindOn || !task) return { state: 'NOT_SET', stateLabel: REMINDER_LABEL.NOT_SET, reason: null };
-  let status = task.backendStatus;
-  if (status === 'WAITING' && task.releaseAt && new Date(task.releaseAt).getTime() <= nowTs.getTime()) {
-    status = 'MISSED';
+function reminderStateOf(taskOrTasks, remindOn, nowTs) {
+  const tasks = (Array.isArray(taskOrTasks) ? taskOrTasks : [taskOrTasks])
+    .filter(t => t && t.backendStatus !== 'CLOSED')
+    .map(task => {
+      let status = task.backendStatus;
+      if (status === 'WAITING' && task.releaseAt && new Date(task.releaseAt).getTime() <= nowTs.getTime()) {
+        status = 'MISSED';
+      }
+      return { ...task, _effectiveStatus: status };
+    });
+  if (!remindOn || tasks.length === 0) {
+    return {
+      state: 'NOT_SET',
+      stateLabel: REMINDER_LABEL.NOT_SET,
+      reason: null,
+      taskCount: 0,
+      waitingCount: 0,
+    };
   }
+  const waiting = tasks.filter(t => t._effectiveStatus === 'WAITING');
+  const missed = tasks.filter(t => t._effectiveStatus === 'MISSED');
+  const triggered = tasks.filter(t => t._effectiveStatus === 'TRIGGERED');
   let state = 'WAITING';
-  if (status === 'TRIGGERED') state = 'TRIGGERED';
-  else if (status === 'MISSED') state = 'MISSED';
-  const reason = state === 'MISSED' ? (task.missedReason || task.lastSendError || '超过放票时间点未触发成功') : null;  return { state, stateLabel: REMINDER_LABEL[state], reason, channels: task.channels || [], offsets: task.offsets || [] };
+  if (waiting.length > 0) state = 'WAITING';
+  else if (missed.length > 0) state = 'MISSED';
+  else if (triggered.length > 0) state = 'TRIGGERED';
+  const representative = waiting[0] || missed[0] || triggered[0] || tasks[0];
+  const reason = state === 'MISSED'
+    ? (representative.missedReason || representative.lastSendError || '超过放票时间点未触发成功')
+    : null;
+  return {
+    state,
+    stateLabel: REMINDER_LABEL[state],
+    reason,
+    channels: representative.channels || [],
+    offsets: representative.offsets || [],
+    taskCount: tasks.length,
+    waitingCount: waiting.length,
+  };
 }
 
 /** 组装对外行程项（镜像 item.decorateItem，字段名/语义必须逐一对齐） */
-function decorateItem(item, nowTs) {
+function decorateItem(item, nowTs, supportsMultiRelease = false) {
   const spot = SPOTS.find(s => s.spotId === item.spotId);
   const rule = RULES.find(r => r.spotId === item.spotId) || null;
   const reservationRequired = !spot || spot.reservationRequired !== false;
-  const releaseAt = deriveReleaseAt(spot, rule, item.visitDate);
-  const ticketState = ticketStateOf(item, reservationRequired, releaseAt, nowTs);
-  const task = Object.values(db.tasks).find(t => t.itemId === item._id) || null;
+  const releaseSlots = supportsMultiRelease
+    ? releaseSlotsForVisit(spot, rule, item.visitDate)
+    : legacyReleaseSlotsForVisit(spot, rule, item.visitDate);
+  const firstReleaseAt = releaseSlots.length ? releaseSlots[0].releaseAt : null;
+  const nextSlot = releaseSlots
+    .find(slot => slot.releaseAt.getTime() > nowTs.getTime()) || null;
+  const releaseAt = nextSlot ? nextSlot.releaseAt : firstReleaseAt;
+  const ticketState = ticketStateOf(item, reservationRequired, firstReleaseAt, nowTs);
+  const tasks = Object.values(db.tasks).filter(t => t.itemId === item._id);
   const marked = item.result === 'SUCCESS' || item.result === 'FAILED';
   return {
     itemId: item._id,
@@ -757,26 +930,49 @@ function decorateItem(item, nowTs) {
     reservationRequired,
     remindOn: reservationRequired && item.remindOn === true,
     releaseAt,
+    firstReleaseAt,
+    nextReleaseAt: nextSlot ? nextSlot.releaseAt : null,
+    releaseSlots,
+    reminderTaskCount: releaseSlots
+      .filter(slot => slot.releaseAt.getTime() > nowTs.getTime()).length,
     difficulty: spot ? difficultyOf(spot.difficultyScore) : null,
     ticketState,
     ticketStateLabel: TICKET_LABEL[ticketState],
     /* 预约入口不因进入「待确认」或标记失败而消失，保留到出行日 23:59 */
     bookingEntryEnabled: reservationRequired && Boolean(item.visitDate) && fmt(new Date()) <= item.visitDate,
-    canMark: reservationRequired && Boolean(releaseAt)
-      && nowTs.getTime() >= new Date(releaseAt).getTime()
+    canMark: reservationRequired && Boolean(firstReleaseAt)
+      && nowTs.getTime() >= new Date(firstReleaseAt).getTime()
       && !marked && fmt(new Date()) <= item.visitDate,
+    canChangeToSuccess: canChangeToSuccessOf(
+      item,
+      reservationRequired,
+      firstReleaseAt,
+      item.visitDate,
+      nowTs
+    ),
+    canChangeToFailed: canChangeToFailedOf(
+      item,
+      reservationRequired,
+      firstReleaseAt,
+      item.visitDate,
+      nowTs
+    ),
     /* 菜单据此渲染「开启提醒 / 取消提醒」，与 updateReminder 的闸门同源 */
-    canSetReminder: canSetReminderOf(reservationRequired, releaseAt, nowTs),
+    canSetReminder: canSetReminderOf(
+      reservationRequired,
+      nextSlot ? nextSlot.releaseAt : null,
+      nowTs
+    ),
     result: item.result || null,
     resultAt: item.resultAt || null,
     undoUntil: item.resultAt
       ? new Date(new Date(item.resultAt).getTime() + RESULT_UNDO_SECONDS * 1000) : null,
     ended: fmt(new Date()) > item.visitDate,
-    reminder: reminderStateOf(task, reservationRequired && item.remindOn === true, nowTs),
+    reminder: reminderStateOf(tasks, reservationRequired && item.remindOn === true, nowTs),
   };
 }
 
-/** 门票进度：分母按 backupGroupId 去重，免预约不进分母（镜像 item.backupGroupProgress） */
+
 function backupGroupProgress(items) {
   const groups = {};
   let noReservationCount = 0;
@@ -795,10 +991,16 @@ function backupGroupProgress(items) {
 function mockCartSummaryOf(items) {
   const rows = items || [];
   const reminderCount = rows.filter(row => row.remindOn === true).length;
+  const reminderTaskCount = rows.reduce((sum, row) => {
+    if (row.remindOn !== true) return sum;
+    const count = Number(row.releaseTaskCount);
+    return sum + (Number.isFinite(count) ? Math.max(0, count) : 1);
+  }, 0);
   return {
     count: rows.length,
     spotCount: new Set(rows.map(row => row.spotId)).size,
     reminderCount,
+    reminderTaskCount,
     noReminderCount: rows.length - reminderCount,
     text: reminderCount > 0
       ? `已选 ${rows.length} 项，其中 ${reminderCount} 个将设提醒`
@@ -837,8 +1039,7 @@ function previewTimeline(input) {
   });
   const committedKeys = {};
   if (input.committedTripId) {
-    /* 按 userId 一起过滤：只读**自己**那一趟的项。云端查询天生带 userId，
-       这里漏掉就等于 mock 比云端宽松，而宽松的那一侧永远测不出越权。 */
+
     Object.values(db.items).forEach(it => {
       if (it.tripId === input.committedTripId && it.userId === mockUser.openId) {
         committedKeys[it.spotId + '|' + it.visitDate] = true;
@@ -855,7 +1056,7 @@ function previewTimeline(input) {
     const spot = SPOTS.find(s => s.spotId === seg.spotId);
     if (!spot) return;
     const rule = RULES.find(r => r.spotId === seg.spotId) || null;
-    const built = buildEvents(spot, rule, seg);
+    const built = buildEvents(spot, rule, seg, input.supportsMultiRelease === true);
     if (built.length === 0) {
       if (!hasReleaseSchedule(rule)) {
         closedSpots.push({ spotId: seg.spotId, spotName: spot.name, note: '无固定放票时刻，暂不生成提醒' });
@@ -1007,7 +1208,7 @@ function buildMockBanner(tasks, nowTs = new Date()) {
   };
 }
 
-/* ===== 授权额度健康度（镜像 reminder/lib/task.js，按未发送 offset 计数） ===== */
+
 const MOCK_QUOTA_SAFE_BUFFER = 1;
 const MOCK_QUOTA_WARNING_WINDOW_HOURS = 48;
 
@@ -1061,7 +1262,7 @@ function mockReminderQuotaWarningOf(health, nowTs = new Date()) {
   return Object.assign({}, health, { type: 'QUOTA', text });
 }
 
-/* ===== 无感登录（2026-08-24 重构：进小程序即自动建号，镜像 reminder user.profile） ===== */
+
 function genAutoProfile() {
   const chars = 'abcdefghijkmnpqrstuvwxyz23456789';
   let s = '';
@@ -1659,15 +1860,14 @@ const handlers = {
 
     const existing = Object.values(db.trips).filter(t => t.city === city && t.status === 'ACTIVE');
 
-    /* adjustTripId：「在当前内联时间线的行程上重新生成」→ 该行程景点段按本次输入替换 */
+
     const adjust = data.adjustTripId ? existing.find(t => t._id === data.adjustTripId) : null;
     const adjustMerges = Boolean(adjust && canMerge(incomingRange, adjust));
     const pool = adjustMerges ? existing.filter(t => t._id !== adjust._id) : existing;
 
     const { range, mergedIds } = collapse(incomingRange, pool);
 
-    /* 景点段：被并进来的行程各自的段 + 本次输入的段。
-       调整模式本次输入在前（替换语义）；否则既有在前、本次追加在后（想去列表顺序稳定） */
+
     const mergedTrips = pool.filter(t => mergedIds.includes(t._id));
     const otherSpots = mergedTrips.reduce((acc, t) => acc.concat(normalizeSpots(t)), []);
     const finalSpots = adjustMerges
@@ -1729,14 +1929,16 @@ const handlers = {
         if (db.items[k].tripId !== id) return;
         db.items[k].tripId = keepId;
         db.items[k].backupGroupId = keepId + ':' + db.items[k].spotId;
-        /* 行程段变了 → 放票时刻要重算（它由 visitDate 推导）。
-           itemId 保持不动：它是 tasks join items 的键。 */
+
         const spot = SPOTS.find(sp => sp.spotId === db.items[k].spotId);
         const rule = RULES.find(r => r.spotId === db.items[k].spotId) || null;
-        const releaseAt = deriveReleaseAt(spot, rule, db.items[k].visitDate);
         Object.keys(db.tasks).forEach(tk => {
           if (db.tasks[tk].itemId !== db.items[k]._id) return;
           db.tasks[tk].tripId = keepId;
+          const slots = releaseSlotsForVisit(spot, rule, db.items[k].visitDate);
+          const slot = slots.find(candidate => candidate.key === db.tasks[tk].releaseKey)
+            || slots[0];
+          const releaseAt = slot ? slot.releaseAt : null;
           if (releaseAt) db.tasks[tk].releaseAt = releaseAt;
         });
       });
@@ -1746,8 +1948,7 @@ const handlers = {
     return { success: true, tripId: keepId, merged: mergedIds.length > 0, mergedFrom: mergedIds, trip };
   },
   'trip.list': () => {
-    /* TRIP-RULE-004 读取时兜底：任务 / 行程项 / 清单全空的孤儿行程自动删除（同步云函数）。
-       行程项是 V2 判断「行程是否为空」的事实来源，三样都空才算孤儿。 */
+
     const kept = Object.values(db.trips).filter(t => {
       const hasTask = Object.values(db.tasks).some(x => x.tripId === t._id);
       const hasCart = Object.values(db.carts).some(c => c.tripId === t._id);
@@ -1765,8 +1966,7 @@ const handlers = {
   'trip.updateSpots': (data) => {
     const trip = db.trips[data.tripId];
     if (!trip) return { success: false, error: '行程不存在', errorCode: 1001 };
-    /* 已在行程里的景点保留自己的日期段（不因一次增删被拉回整段）；
-       新加入的景点用本次传入的段，缺省则用行程当前范围 */
+
     const startDate = data.startDate || trip.startDate;
     const endDate = data.endDate || trip.endDate;
     const next = [...new Set(data.spotIds || [])];
@@ -1780,8 +1980,7 @@ const handlers = {
   'trip.updateRange': (data) => {
     const trip = db.trips[data.tripId];
     if (!trip) return { success: false, error: '行程不存在', errorCode: 1001 };
-    /* 行程总范围变了 → 各景点段裁剪到新范围内（无交集时收敛到新范围），
-       保证「景点段 ⊄ 行程范围」这种非法状态不出现 */
+
     const spots = normalizeSpots(trip).map(s => {
       const seg = {
         spotId: s.spotId,
@@ -1973,20 +2172,27 @@ const handlers = {
     const dates = visitDates.map(visitDate => {
       const inCart = Object.values(db.carts).some(c => c.spotId === spot.spotId && c.visitDate === visitDate);
       const inTrip = Object.values(db.items).some(i => i.spotId === spot.spotId && i.visitDate === visitDate);
-      const releaseAt = deriveReleaseAt(spot, rule, visitDate);
-      const releaseMs = releaseAt ? new Date(releaseAt).getTime() : 0;
+      const releasePlan = releasePlanOf(
+        spot,
+        rule,
+        visitDate,
+        nowMs,
+        data.supportsMultiRelease === true
+      );
       let status = 'REMINDABLE';
       let reason = '';
       if (inTrip) { status = 'IN_TRIP'; reason = 'IN_TRIP'; }
       else if (inCart) { status = 'IN_CART'; reason = 'IN_CART'; }
       else if (spot.reservationRequired === false) { status = 'TRIP_ONLY'; reason = 'NO_RESERVATION'; }
-      else if (!releaseAt) { status = 'TRIP_ONLY'; reason = 'NO_FIXED_RELEASE'; }
-      else if (releaseMs <= nowMs) { status = 'TRIP_ONLY'; reason = 'RELEASE_PASSED'; }
+      else if (releasePlan.noFixed) { status = 'TRIP_ONLY'; reason = 'NO_FIXED_RELEASE'; }
+      else if (releasePlan.passed) { status = 'TRIP_ONLY'; reason = 'RELEASE_PASSED'; }
       return {
         visitDate,
         status,
         reason,
-        releaseAt,
+        releaseAt: releasePlan.releaseAt,
+        releaseSlots: releasePlan.slots,
+        reminderTaskCount: releasePlan.taskCount,
         addable: status === 'REMINDABLE' || status === 'TRIP_ONLY',
         reminderAllowed: status === 'REMINDABLE',
       };
@@ -2000,6 +2206,10 @@ const handlers = {
       releasePassed: dates.filter(d => d.reason === 'RELEASE_PASSED').length,
       noFixedRelease: dates.filter(d => d.reason === 'NO_FIXED_RELEASE').length,
       noReservation: dates.filter(d => d.reason === 'NO_RESERVATION').length,
+      reminderTaskCount: dates.reduce(
+        (sum, d) => sum + (d.reminderAllowed ? (Number(d.reminderTaskCount) || 0) : 0),
+        0
+      ),
     };
     return { success: true, spotId: spot.spotId, spotName: spot.name, dates, summary };
   },
@@ -2017,18 +2227,25 @@ const handlers = {
         && c.visitDate === row.visitDate);
       if (!pendingCart && row.status === 'IN_CART') return row;
 
-      const releaseAt = deriveReleaseAt(spot, rule, row.visitDate);
-      const releaseMs = releaseAt ? new Date(releaseAt).getTime() : 0;
+      const releasePlan = releasePlanOf(
+        spot,
+        rule,
+        row.visitDate,
+        nowMs,
+        data.supportsMultiRelease === true
+      );
       let status = 'REMINDABLE';
       let reason = '';
       if (spot.reservationRequired === false) { status = 'TRIP_ONLY'; reason = 'NO_RESERVATION'; }
-      else if (!releaseAt) { status = 'TRIP_ONLY'; reason = 'NO_FIXED_RELEASE'; }
-      else if (releaseMs <= nowMs) { status = 'TRIP_ONLY'; reason = 'RELEASE_PASSED'; }
+      else if (releasePlan.noFixed) { status = 'TRIP_ONLY'; reason = 'NO_FIXED_RELEASE'; }
+      else if (releasePlan.passed) { status = 'TRIP_ONLY'; reason = 'RELEASE_PASSED'; }
       return {
         ...row,
         status,
         reason,
-        releaseAt,
+        releaseAt: releasePlan.releaseAt,
+        releaseSlots: releasePlan.slots,
+        reminderTaskCount: releasePlan.taskCount,
         addable: status === 'REMINDABLE' || status === 'TRIP_ONLY',
         reminderAllowed: status === 'REMINDABLE',
         resumeCartId: pendingCart ? pendingCart._id : '',
@@ -2044,6 +2261,10 @@ const handlers = {
       releasePassed: dates.filter(d => d.reason === 'RELEASE_PASSED').length,
       noFixedRelease: dates.filter(d => d.reason === 'NO_FIXED_RELEASE').length,
       noReservation: dates.filter(d => d.reason === 'NO_RESERVATION').length,
+      reminderTaskCount: dates.reduce(
+        (sum, d) => sum + (d.reminderAllowed ? (Number(d.reminderTaskCount) || 0) : 0),
+        0
+      ),
     };
     return {
       ...plan,
@@ -2068,6 +2289,7 @@ const handlers = {
           cartId: r.cartId,
           visitDate: d.visitDate,
           releaseAt: d.releaseAt,
+          releaseTaskCount: r.releaseTaskCount,
           reservationRequired: r.reservationRequired,
           remindOn: r.remindOn,
           status: d.status,
@@ -2106,23 +2328,20 @@ const handlers = {
     const rule = RULES.find(r => r.spotId === data.spotId) || null;
     const reservationRequired = spot.reservationRequired !== false;
     const remindable = reservationRequired && hasReleaseSchedule(rule);
-    /* ⚠️ 放票时刻与云端一样**由服务端推**，不信任调用方传的（2026-09-24）：
-       「约其他日」只拿得到用户选的 visitDate，压根没有 releaseAt 可传
-       （见 lib/cart.js 里同一条注释）。 */
-    const derivedReleaseAt = reservationRequired ? deriveReleaseAt(spot, rule, data.visitDate) : null;
-    if (reservationRequired && remindable && !derivedReleaseAt) return { success: false, error: '参数不合法', errorCode: 1010 };
+
+    const releasePlan = reservationRequired
+      ? releasePlanOf(spot, rule, data.visitDate, new Date(), data.supportsMultiRelease === true)
+      : { slots: [], tasks: [], releaseAt: null, taskCount: 0, noFixed: true, passed: false };
     /* 不传 tripId = 操作「当前暂存清单」（纯预览化后的常规路径） */
     const targetTripId = cartTripIdOf(data.tripId);
     const exists = Object.values(db.carts).some(c => c.tripId === targetTripId && c.spotId === data.spotId && c.visitDate === data.visitDate);
-    /* 已落为行程项的不再进清单：按 (spotId, visitDate) 跨行程查。
-       纯预览态下预览本身看不到「已在行程」，这道去重必须在这里拦住。 */
+
     const itemExists = Object.values(db.items).some(i => i.spotId === data.spotId && i.visitDate === data.visitDate);
     if (exists || itemExists) return { success: false, error: '这条已经在清单里啦', errorCode: 1002 };
     const weak = reservationRequired
       && spot.strongReminder !== true
       && (spot.difficultyScore || 0) <= 2;
-    const releasePassed = !!derivedReleaseAt && new Date(derivedReleaseAt).getTime() <= Date.now();
-    const remindOn = reservationRequired && remindable && !!derivedReleaseAt && !releasePassed
+    const remindOn = reservationRequired && remindable && releasePlan.taskCount > 0
       ? (typeof data.remindOn === 'boolean' ? data.remindOn : !weak)
       : false;
     const cartId = 'mock-cart-' + (++cartSeq);
@@ -2131,20 +2350,22 @@ const handlers = {
       tripId: targetTripId,
       spotId: data.spotId,
       visitDate: data.visitDate,
-      releaseAt: derivedReleaseAt,
+      releaseAt: releasePlan.releaseAt,
       remindOn,
+      releaseTaskCount: remindOn ? releasePlan.taskCount : 0,
       reservationRequired,
     };
     let remindBlockedReason = '';
     if (spot.reservationRequired === false) remindBlockedReason = 'NO_RESERVATION';
-    else if (!derivedReleaseAt) remindBlockedReason = 'NO_FIXED_RELEASE';
-    else if (releasePassed) remindBlockedReason = 'RELEASE_PASSED';
+    else if (releasePlan.noFixed) remindBlockedReason = 'NO_FIXED_RELEASE';
+    else if (releasePlan.passed) remindBlockedReason = 'RELEASE_PASSED';
     return {
       success: true,
       cartId,
       spotId: data.spotId,
       visitDate: data.visitDate,
-      releaseAt: derivedReleaseAt,
+      releaseAt: releasePlan.releaseAt,
+      releaseTaskCount: remindOn ? releasePlan.taskCount : 0,
       reservationRequired,
       remindOn,
       remindBlockedReason,
@@ -2200,19 +2421,26 @@ const handlers = {
   },
   'cart.updateRemindOn': (data) => {
     const item = db.carts[data.cartId];
-    const canRemind = item && item.reservationRequired !== false && !!item.releaseAt;
-    if (!item || (data.remindOn && !canRemind)) {
+    const spot = item && SPOTS.find(s => s.spotId === item.spotId);
+    const rule = item && (RULES.find(r => r.spotId === item.spotId) || null);
+    const releasePlan = item && item.reservationRequired !== false
+      ? releasePlanOf(spot, rule, item.visitDate, new Date(), data.supportsMultiRelease === true)
+      : { slots: [], tasks: [], taskCount: 0, passed: false };
+    if (!item || (data.remindOn && item.reservationRequired === false) || (data.remindOn && releasePlan.noFixed)) {
       return { success: false, error: '参数不合法', errorCode: 1010 };
     }
-    const releasePassed = item.reservationRequired !== false
-      && item.releaseAt
-      && new Date(item.releaseAt).getTime() <= Date.now();
-    if (releasePassed) return { success: false, error: '已过放票时间，提醒无法开启或取消', errorCode: 1017 };
+    if (item.reservationRequired !== false && releasePlan.passed) {
+      return { success: false, error: '已过放票时间，提醒无法开启或取消', errorCode: 1017 };
+    }
     item.remindOn = data.remindOn === true;
+    item.releaseTaskCount = item.remindOn ? releasePlan.taskCount : 0;
+    if (releasePlan.tasks.length) item.releaseAt = releasePlan.tasks[0].releaseAt;
     return {
       success: true,
       cartId: data.cartId,
       remindOn: item.remindOn,
+      releaseAt: item.releaseAt,
+      releaseTaskCount: item.releaseTaskCount,
       cartSummary: mockCartSummaryOf(pendingCartRows()),
       cartVersion: mockCartVersionOf(pendingCartRows()),
     };
@@ -2263,7 +2491,7 @@ const handlers = {
       })),
     };
   },
-  /* CART-RULE-007：只保留本次日期段 × 景点集合内的暂存项（镜像 cart.pruneScope） */
+
   'cart.pruneScope': (data) => {
     const { startDate, endDate, spotIds } = data || {};
     if (!startDate || !endDate || startDate > endDate) {
@@ -2297,7 +2525,20 @@ const handlers = {
     const now = new Date();
     const enriched = items.map(c => {
       const spot = SPOTS.find(s => s.spotId === c.spotId);
+      const rule = RULES.find(r => r.spotId === c.spotId) || null;
       const reservationRequired = c.reservationRequired !== false && (!spot || spot.reservationRequired !== false);
+      const releasePlan = reservationRequired
+        ? releasePlanOf(
+          spot,
+          rule,
+          c.visitDate,
+          now,
+          data && data.supportsMultiRelease === true
+        )
+        : { slots: [], tasks: [], releaseAt: null, taskCount: 0, noFixed: true, passed: false };
+      const noFixedRelease = reservationRequired && releasePlan.noFixed;
+      const releasePassed = reservationRequired && releasePlan.passed;
+      const releaseAt = releasePlan.releaseAt;
       if (!reservationRequired) {
         return {
           ...c,
@@ -2309,13 +2550,15 @@ const handlers = {
           difficulty: null,
           weak: false,
           releaseAt: null,
+          releaseTaskCount: 0,
+          releaseSlots: [],
           releaseDateLabel: '',
           releaseTimeLabel: '无需预约',
           visitDateLabel: formatMonthDayWeek(c.visitDate) + ' · 随到随玩',
           countdown: null,
         };
       }
-      if (!c.releaseAt) {
+      if (noFixedRelease) {
         return {
           ...c,
           reservationRequired: true,
@@ -2327,6 +2570,8 @@ const handlers = {
           difficulty: spot ? difficultyOf(spot.difficultyScore) : null,
           weak: !!spot && spot.strongReminder !== true && (spot.difficultyScore || 0) <= 2,
           releaseAt: null,
+          releaseTaskCount: 0,
+          releaseSlots: [],
           releaseDateLabel: '',
           releaseLabel: '',
           releaseTimeLabel: '随买随用',
@@ -2334,9 +2579,8 @@ const handlers = {
           countdown: null,
         };
       }
-      const releaseAt = new Date(c.releaseAt);
       const msLeft = releaseAt.getTime() - now.getTime();
-      const expired = msLeft <= 0;
+      const expired = releasePassed;
       const h = Math.max(0, Math.floor(msLeft / 3600000));
       const m = Math.max(0, Math.floor((msLeft % 3600000) / 60000));
       const releaseDateParts = fmt(releaseAt).split('-');
@@ -2344,9 +2588,11 @@ const handlers = {
         ...c,
         reservationRequired: true,
         remindOn: !expired && c.remindOn === true,
+        releaseTaskCount: !expired && c.remindOn === true ? releasePlan.taskCount : 0,
+        releaseSlots: releasePlan.slots,
         remindLocked: expired,
         spotName: spot ? spot.name : '未知景点',
-    spotShort: spot ? (spot.shortName || spot.name) : '未知景点',
+        spotShort: spot ? (spot.shortName || spot.name) : '未知景点',
         difficulty: spot ? difficultyOf(spot.difficultyScore) : null,
         weak: reservationRequired && !!spot
           && spot.strongReminder !== true
@@ -2380,10 +2626,15 @@ const handlers = {
     }));
     const spotCount = new Set(items.map(c => c.spotId)).size;
     const reminderCount = enriched.filter(c => c.remindOn).length;
+    const reminderTaskCount = enriched.reduce(
+      (sum, c) => sum + Math.max(0, Number(c.releaseTaskCount) || 0),
+      0
+    );
     const summary = {
       count: items.length,
       spotCount,
       reminderCount,
+      reminderTaskCount,
       noReminderCount: items.length - reminderCount,
       text: reminderCount > 0 ? `已选 ${items.length} 项，其中 ${reminderCount} 个将设提醒` : `已选 ${items.length} 项，均无需提醒`,
     };
@@ -2444,10 +2695,13 @@ const handlers = {
         temporaryIds.push(added.cartId);
       }
       pending.releaseAt = dateRow.releaseAt;
+      pending.releaseTaskCount = disableReminders
+        ? 0
+        : Math.max(0, Number(dateRow.reminderTaskCount) || 0);
       pending.reservationRequired = plan.reservationRequired;
       pending.remindOn = !disableReminders
         && plan.reservationRequired !== false
-        && !!dateRow.releaseAt;
+        && pending.releaseTaskCount > 0;
       cartIds.push(pending._id);
     }
 
@@ -2458,8 +2712,7 @@ const handlers = {
     return result;
   },
   'task.submit': (data) => {
-    /* 2026-09-20 起这是**唯一**创建行程的地方（「生成时间线」已改为纯预览）：
-       读暂存清单 → 建/合并行程 → 落行程项 → 为勾了提醒的项建任务 → 清空清单 */
+
     const disableReminders = data.disableReminders === true;
     const want = cartTripIdOf(data.tripId);
     const cartIds = Array.isArray(data.cartIds)
@@ -2478,18 +2731,33 @@ const handlers = {
       && (!cartIdSet || cartIdSet.has(c._id)));
     if (cartItems.length === 0) return { success: false, error: '先添加至少一条提醒', errorCode: 1009 };
     const nowTs = new Date();
-    const pastReleaseOf = c => !!c.releaseAt && new Date(c.releaseAt).getTime() <= nowTs.getTime();
-    const reminderItems = disableReminders ? [] : cartItems.filter(c =>
-      c.reservationRequired !== false && !!c.releaseAt && c.remindOn === true && !pastReleaseOf(c));
+    const planByCartId = new Map();
+    const plans = cartItems.map(c => {
+      const spot = SPOTS.find(s => s.spotId === c.spotId);
+      const rule = RULES.find(r => r.spotId === c.spotId) || null;
+      const releasePlan = releasePlanOf(
+        spot,
+        rule,
+        c.visitDate,
+        nowTs,
+        data.supportsMultiRelease === true
+      );
+      const plan = { cart: c, releaseSlots: releasePlan.slots, taskSlots: releasePlan.tasks };
+      planByCartId.set(c._id, plan);
+      return plan;
+    });
+    const wantedItems = disableReminders ? [] : plans.filter(({ cart, releaseSlots }) =>
+      cart.reservationRequired !== false && releaseSlots.length > 0 && cart.remindOn === true);
+    const reminderItems = wantedItems.filter(plan => plan.taskSlots.length > 0);
+    const reminderTaskCount = reminderItems.reduce((sum, plan) => sum + plan.taskSlots.length, 0);
     const channels = data.channels || [];
     const offsets = data.offsets || [];
-    if (reminderItems.length > 0 && (channels.length === 0 || offsets.length === 0 || reminderItems.some(c => !c.releaseAt))) {
+    if (reminderItems.length > 0 && (channels.length === 0 || offsets.length === 0)) {
       return { success: false, error: '参数不合法', errorCode: 1010 };
     }
-    const limitError = mockTaskLimitError(reminderItems.length, data);
+    const limitError = mockTaskLimitError(reminderTaskCount, data);
     if (limitError) return limitError;
-    /* 各景点保留自己的日期段（提交时由 visitDate 集合推导），
-       这样合并后「故宫 10.2-10.3 + 国博 10.4」不会互相膨胀成 10.2-10.4 */
+
     const segMap = {};
     cartItems.forEach(c => {
       const cur = segMap[c.spotId];
@@ -2516,12 +2784,14 @@ const handlers = {
     let createdItems = 0;
     let expiredReminder = 0;
     cartItems.forEach(c => {
-      /* ⚠️ 放票已过的项**落 false**（镜像 task.submit，2026-09-23）：
-         任务一生出来就会被收敛成 MISSED，用户提交一次就凭空收获一条失败提醒。 */
-      const wanted = !disableReminders && c.reservationRequired !== false && !!c.releaseAt && c.remindOn === true;
-      const pastRelease = pastReleaseOf(c);
-      const remindOn = wanted && !pastRelease;
-      if (wanted && pastRelease) expiredReminder += 1;
+      const plan = planByCartId.get(c._id) || { releaseSlots: [], taskSlots: [] };
+
+      const wanted = !disableReminders
+        && c.reservationRequired !== false
+        && plan.releaseSlots.length > 0
+        && c.remindOn === true;
+      const remindOn = wanted && plan.taskSlots.length > 0;
+      if (wanted && plan.taskSlots.length === 0) expiredReminder += 1;
       let item = Object.values(db.items).find(i => i.tripId === targetTripId && i.spotId === c.spotId && i.visitDate === c.visitDate);
       if (!item) {
         const itemId = 'mock-item-' + (++itemSeq);
@@ -2544,23 +2814,28 @@ const handlers = {
         item.remindOn = remindOn;
       }
       if (remindOn) {
-        const taskId = 'mock-task-' + (++taskSeq);
-        db.tasks[taskId] = {
-          _id: taskId,
-          templateId: 'mock-template',
-          itemId: item._id,
-          tripId: targetTripId,
-          spotId: c.spotId,
-          visitDate: c.visitDate,
-          releaseAt: c.releaseAt,
-          offsets,
-          channels,
-          backendStatus: 'WAITING',
-          quotaPool: 'ENTITLEMENT',
-          sentOffsets: [],
-          createdAt: new Date(),
-        };
-        created += 1;
+        plan.taskSlots.forEach(slot => {
+          const taskId = 'mock-task-' + (++taskSeq);
+          db.tasks[taskId] = {
+            _id: taskId,
+            templateId: 'mock-template',
+            itemId: item._id,
+            tripId: targetTripId,
+            spotId: c.spotId,
+            visitDate: c.visitDate,
+            releaseAt: slot.releaseAt,
+            releaseKey: slot.key,
+            releaseLabel: slot.label,
+            releaseTime: slot.releaseTime,
+            offsets,
+            channels,
+            backendStatus: 'WAITING',
+            quotaPool: 'ENTITLEMENT',
+            sentOffsets: [],
+            createdAt: new Date(),
+          };
+          created += 1;
+        });
       }
       delete db.carts[c._id];
     });
@@ -2590,7 +2865,7 @@ const handlers = {
     let all = Object.values(db.tasks);
     if (data.tripId) all = all.filter(t => t.tripId === data.tripId);
     const now = new Date();
-    /* 镜像 lib/task.js 的 effectiveStatusOf：已过 releaseAt 仍是 WAITING = 未送达（REMINDER-RULE-004） */
+
     const LABELS = { WAITING: '待提醒', TRIGGERED: '已提醒', MISSED: '未送达' };
     const enriched = all.map(t => {
       const spot = SPOTS.find(s => s.spotId === t.spotId);
@@ -2610,8 +2885,7 @@ const handlers = {
     });
     const active = enriched.filter(t => !t.expired);
     const past = enriched.filter(t => t.expired);
-    /* 台账自愈（镜像 lib/task.js 的 sweepOverdue + quota.js 的 shouldHealQuota）：
-       任务已过期未送达、且本地台账仍记有额度 → 清零，避免页面显示假额度让用户以为覆盖到了 */
+
     if (all.some(t =>
       t.backendStatus === 'WAITING' &&
       new Date(t.releaseAt).getTime() <= now.getTime() &&
@@ -2624,7 +2898,7 @@ const handlers = {
     const groups = Object.keys(map).sort((a, b) => data.filter === 'expired' ? b.localeCompare(a) : a.localeCompare(b)).map(k => ({ key: k, label: formatMonthDay(k), items: map[k].sort((a, b) => new Date(a.releaseAt) - new Date(b.releaseAt)) }));
     return { success: true, groups, counts: { active: active.length, expired: past.length }, banner: buildMockBanner(enriched, now), homeMode: enriched.length === 0 ? 1 : 2 };
   },
-  /* REMINDER-RULE-005（2026-09-14 放宽）：WAITING / MISSED 可单删，TRIGGERED 只能走「清空任务」 */
+
   'task.remove': (data) => {
     const t = db.tasks[data.taskId];
     if (!t) return { success: false, error: '参数不合法', errorCode: 1010 };
@@ -2632,7 +2906,7 @@ const handlers = {
       return { success: false, error: '已提醒的任务不可单条删除，可在「清空任务」中批量清理', errorCode: 1012 };
     }
     delete db.tasks[data.taskId];
-    /* TRIP-RULE-004（主动删除口径）：行程内已无任务 → 行程与提醒清单一并删除 */
+
     const tripRemoved = purgeTripIfNoTask(t.tripId);
     return { success: true, taskId: data.taskId, tripId: t.tripId, tripRemoved };
   },
@@ -2650,12 +2924,12 @@ const handlers = {
     }
     const affectedTripIds = [...new Set(targets.map(t => t.tripId).filter(Boolean))];
     targets.forEach(t => { delete db.tasks[t._id]; });
-    /* TRIP-RULE-004（主动删除口径）：清空后行程内已无任务 → 行程与提醒清单一并删除（同步云函数） */
+
     const removedTripIds = affectedTripIds.filter(tid => purgeTripIfNoTask(tid));
     return { success: true, cleared: targets.length, affectedTripIds, removedTripIds };
   },
 
-  /* ----- 行程项（镜像 cloudfunctions/reminder/lib/trip-item-actions.js，API-契约 8.4）----- */
+
   'tripItem.markResult': (data) => {
     const item = db.items[data.itemId];
     if (!item) return { success: false, error: '行程项不存在', errorCode: 1013 };
@@ -2663,15 +2937,21 @@ const handlers = {
       return { success: false, error: '当前行程项不可标记结果', errorCode: 1014 };
     }
     const nowTs = new Date();
-    const decorated = decorateItem(item, nowTs);
-    if (!decorated.canMark) {
-      /* 已标记过 → 用「不可标记」而不是「撤销窗口」的语义；
-         日期已结束用 1016，其余（还没开票 / 免预约）用 1014 */
+    const decorated = decorateItem(item, nowTs, data.supportsMultiRelease === true);
+    const canChangeToSuccess = data.result === 'SUCCESS' && decorated.canChangeToSuccess;
+    const canChangeToFailed = data.result === 'FAILED' && decorated.canChangeToFailed;
+    const canChangeResult = canChangeToSuccess || canChangeToFailed;
+    if (!decorated.canMark && !canChangeResult) {
+
       if (decorated.ended) return { success: false, error: '行程项所在日期已结束', errorCode: 1016 };
       return { success: false, error: '当前行程项不可标记结果', errorCode: 1014 };
     }
+    const previousResult = canChangeResult ? item.result : null;
+    const previousResultAt = canChangeResult ? item.resultAt : null;
     item.result = data.result;
     item.resultAt = nowTs;
+    item.previousResult = previousResult;
+    item.previousResultAt = previousResultAt;
     item.updatedAt = nowTs;
 
     /* 备选收束提示（只在「抢到了」时给）：同一备选组里还没处理的日期 */
@@ -2680,7 +2960,7 @@ const handlers = {
       const groupId = item.backupGroupId || (item.tripId + ':' + item.spotId);
       const pending = Object.values(db.items)
         .filter(i => i.backupGroupId === groupId && i._id !== item._id && !i.result && fmt(new Date()) <= i.visitDate)
-        .map(i => decorateItem(i, nowTs));
+        .map(i => decorateItem(i, nowTs, data.supportsMultiRelease === true));
       if (pending.length > 0) {
         const spot = SPOTS.find(sp => sp.spotId === item.spotId);
         const spotName = spot ? spot.name : '该景点';
@@ -2696,7 +2976,11 @@ const handlers = {
         };
       }
     }
-    return { success: true, item: decorateItem(item, nowTs), backupPrompt };
+    return {
+      success: true,
+      item: decorateItem(item, nowTs, data.supportsMultiRelease === true),
+      backupPrompt,
+    };
   },
   'tripItem.undoResult': (data) => {
     const item = db.items[data.itemId];
@@ -2708,9 +2992,15 @@ const handlers = {
     }
     const deadline = new Date(item.resultAt).getTime() + RESULT_UNDO_SECONDS * 1000;
     if (Date.now() > deadline) return { success: false, error: '撤销时间已过', errorCode: 1015 };
-    item.result = null;
-    item.resultAt = null;
-    return { success: true, item: decorateItem(item, new Date()) };
+    item.result = item.previousResult === 'SUCCESS' || item.previousResult === 'FAILED'
+      ? item.previousResult : null;
+    item.resultAt = item.result ? (item.previousResultAt || item.resultAt) : null;
+    item.previousResult = null;
+    item.previousResultAt = null;
+    return {
+      success: true,
+      item: decorateItem(item, new Date(), data.supportsMultiRelease === true),
+    };
   },
   'tripItem.updateReminder': (data) => {
     const item = db.items[data.itemId];
@@ -2718,12 +3008,23 @@ const handlers = {
     const spot = SPOTS.find(s => s.spotId === item.spotId);
     const rule = RULES.find(r => r.spotId === item.spotId) || null;
     const reservationRequired = !spot || spot.reservationRequired !== false;
-    const releaseAt = deriveReleaseAt(spot, rule, item.visitDate);
-    /* 免预约项没有提醒可言：明确拒绝，不静默忽略——否则前端会以为设上了 */
+    const releasePlan = releasePlanOf(
+      spot,
+      rule,
+      item.visitDate,
+      new Date(),
+      data.supportsMultiRelease === true
+    );
+    const targetSlots = releasePlan.tasks;
+
     if (data.remindOn === true && !reservationRequired) return { success: false, error: '参数不合法', errorCode: 1010 };
-    if (data.remindOn === true && !releaseAt) return { success: false, error: '参数不合法', errorCode: 1010 };
-    /* 放票时刻已过 → 开启与取消都没有意义（镜像 trip-item-actions，2026-09-23） */
-    if (!canSetReminderOf(reservationRequired, releaseAt, new Date())) {
+    if (data.remindOn === true && releasePlan.noFixed) return { success: false, error: '参数不合法', errorCode: 1010 };
+
+    if (!canSetReminderOf(
+      reservationRequired,
+      targetSlots.length ? targetSlots[0].releaseAt : null,
+      new Date()
+    )) {
       return { success: false, error: '已过放票时间，提醒无法开启或取消', errorCode: 1017 };
     }
 
@@ -2731,13 +3032,12 @@ const handlers = {
     const tasks = taskKeys.map(k => db.tasks[k]);
     const activeKeys = taskKeys.filter(k => db.tasks[k].backendStatus === 'WAITING');
     const next = data.remindOn === true;
-    if (next && activeKeys.length === 0) {
-      const limitError = mockTaskLimitError(1, data);
+    if (next) {
+      const additional = Math.max(0, targetSlots.length - activeKeys.length);
+      const limitError = mockTaskLimitError(additional, data);
       if (limitError) return limitError;
     }
-    /* ⚠️ 关闭时若还留着终态任务（已触发/已失败），**保留 remindOn** ——
-       否则 chip 会从「未送达」变成「未设提醒」，把静默失败的信号抹掉
-       （镜像 trip-item-actions 的 keepEndedRecord，2026-09-23） */
+
     const turningOff = !next && item.remindOn === true;
     const keepEndedRecord = !next && tasks.some(t => t.backendStatus !== 'WAITING');
     item.remindOn = next ? true : (turningOff ? keepEndedRecord : item.remindOn === true);
@@ -2747,31 +3047,38 @@ const handlers = {
       /* ⚠️ 只删未触发的。已触发的是历史记录，且微信额度不退。 */
       activeKeys.forEach(k => { delete db.tasks[k]; });
     } else {
-      const cur = tasks[0];
+      const cur = activeKeys.length ? db.tasks[activeKeys[0]] : tasks[0];
       const channels = (data.channels || []).length ? data.channels : ((cur || {}).channels || []);
       const offsets = (data.offsets || []).length ? data.offsets : ((cur || {}).offsets || []);
       if (!channels.length || !offsets.length) return { success: false, error: '参数不合法', errorCode: 1010 };
-      /* 「当前任务可用吗」= 它还得是待发的。终态残留不能当成「已有提醒」。 */
+
       const curActive = !!cur && cur.backendStatus === 'WAITING';
+      const activeSlotKeys = activeKeys.map(k => db.tasks[k].releaseKey || `releaseAt:${new Date(db.tasks[k].releaseAt).getTime()}`).sort();
+      const targetSlotKeys = targetSlots.map(slot => slot.key).sort();
       const changed = !curActive
+        || String(activeSlotKeys) !== String(targetSlotKeys)
         || String(cur.offsets || []) !== String(offsets)
         || String(cur.channels || []) !== String(channels);
       if (changed) {
         /* 只删未触发的，终态留着当历史（同 trip-item-actions） */
         const quotaPool = curActive ? (cur.quotaPool || 'ENTITLEMENT') : 'ENTITLEMENT';
         activeKeys.forEach(k => { delete db.tasks[k]; });
-        const taskId = 'mock-task-' + (++taskSeq);
-        db.tasks[taskId] = {
-          _id: taskId, templateId: 'mock-template', itemId: item._id, tripId: item.tripId, spotId: item.spotId,
-          visitDate: item.visitDate, releaseAt, offsets, channels,
-          backendStatus: 'WAITING', quotaPool, sentOffsets: [], createdAt: new Date(),
-        };
+        targetSlots.forEach(slot => {
+          const taskId = 'mock-task-' + (++taskSeq);
+          db.tasks[taskId] = {
+            _id: taskId, templateId: 'mock-template', itemId: item._id,
+            tripId: item.tripId, spotId: item.spotId, visitDate: item.visitDate,
+            releaseAt: slot.releaseAt, releaseKey: slot.key, releaseLabel: slot.label,
+            releaseTime: slot.releaseTime, offsets, channels,
+            backendStatus: 'WAITING', quotaPool, sentOffsets: [], createdAt: new Date(),
+          };
+        });
         mockUser.lastReminderCreatedAt = new Date();
       }
     }
     return {
       success: true,
-      item: decorateItem(item, new Date()),
+      item: decorateItem(item, new Date(), data.supportsMultiRelease === true),
       quotaRefunded: false,
       missedKept: !!(item.remindOn && tasks.some(t => t.backendStatus === 'MISSED')),
     };
@@ -2794,8 +3101,7 @@ const handlers = {
       if (i.tripId !== data.tripId || i.visitDate !== data.visitDate) return;
       if (wantedIds.size === 0 || wantedIds.has(i._id)) targetMap.set(i._id, i);
     });
-    /* ID 查询在真实云端与日期查询取并集；mock 同样把日期组作为基线，
-       避免只拿到前端传来的部分 ID 时漏删。 */
+
     Object.values(db.items).forEach(i => {
       if (i.tripId === data.tripId && i.visitDate === data.visitDate) targetMap.set(i._id, i);
     });
@@ -3567,7 +3873,7 @@ const handlers = {
     };
   },
 
-  /* ----- feedback（意见反馈 / 信息纠错，与 cloudfunctions/feedback/lib/schema.js 对齐） ----- */
+
   'feedback.submit': (data) => {
     const type = data.type;
     if (type !== 'feedback' && type !== 'correction') return { success: false, error: '类型不合法', errorCode: 1010 };
@@ -3641,21 +3947,20 @@ const handlers = {
     feedbackSeenAt = Math.max(feedbackSeenAt, Math.min(through, Date.now()));
     return { success: true, feedbackSeenAt: new Date(feedbackSeenAt), updated: 1 };
   },
-  /* mock 用户按普通用户处理；管理员入口必须走真实 feedback 云函数白名单。 */
+
   'feedback.adminStatus': () => ({ success: true, isAdmin: false }),
   'feedbackReward.adminStatus': () => ({ success: true, isAdmin: false }),
   'feedbackReward.adminGrant': () => ({ success: false, error: '无权限', errorCode: 1040 }),
   'feedbackReward.adminRevoke': () => ({ success: false, error: '无权限', errorCode: 1040 }),
 
-  /* 首页聚合（镜像云端 reminder homeBootstrap）：复用各域 handler 组合返回，供 USE_MOCK=true 时首页使用 */
+
   /* 首页行程状态墙 V2（镜像 reminder/index.js 的 homeBootstrap，API-契约 8.2）*/
   'home.bootstrap': (data) => {
     const includeSpots = !data || data.includeSpots !== false;
     const nowTs = new Date();
     const today = fmt(new Date());
 
-    /* 读取时兜底收敛（REMINDER-RULE-004）：首页不再调 task.list，
-       少了这一步，过期任务会静默显示成「待提醒」且毫无提示 */
+
     const allTasks = Object.values(db.tasks);
     let healed = false;
     allTasks.forEach(t => {
@@ -3670,7 +3975,8 @@ const handlers = {
     });
     if (healed) healSubscribeQuotas();
 
-    const decorated = Object.values(db.items).map(i => decorateItem(i, nowTs));
+    const decorated = Object.values(db.items)
+      .map(i => decorateItem(i, nowTs, data.supportsMultiRelease === true));
 
     const activeTrips = [];
     const historyTrips = [];
@@ -3728,15 +4034,14 @@ const handlers = {
       const dayWord = fmt(rel) === today ? '今天' : (fmt(rel) === addDays(today, 1) ? '明天' : formatMonthDay(fmt(rel)));
       stickyBanner = {
         type: 'UPCOMING',
-        /* ⚠️ 不带「还有N分钟」：提醒是在开票**前**发的，横幅讲的是开票时刻本身，
-           两者混用会让用户以为「是不是已经提醒过我了」。与云端 task.buildReleaseBanner 逐字一致。 */
+
         text: `${dayWord}${formatHourMinute(rel)}开抢${soon.spotName}${formatMonthDay(soon.visitDate)}的门票`,
         itemId: soon.itemId, spotId: soon.spotId, visitDate: soon.visitDate,
         releaseAt: soon.releaseAt, minutesLeft,
       };
     }
 
-    /* 自动定位：24 小时内刚开抢、还没标记的一条（优先可抢 —— 还来得及救） */
+
     const markable = decorated.filter(d => d.canMark)
       .sort((a, b) => {
         const pa = a.ticketState === 'BOOKABLE' ? 0 : 1;
@@ -3788,7 +4093,7 @@ function mockCall(name, data) {
   if (!h) return Promise.reject({ success: false, error: 'mock 未实现: ' + name + '.' + action, errorCode: 1099 });
   try {
     return Promise.resolve(h(data || {})).then(res => {
-      /* 错误约定统一：mock 与云函数一致，校验失败一律 reject（页面只写 catch → toastError 一套错误处理） */
+
       if (res && res.success === false) return Promise.reject(res);
       return res;
     });
@@ -3802,11 +4107,10 @@ function spotsListCards() { return SPOTS.map(buildCard); }
 
 module.exports = {
   mockCall, USE_MOCK, SPOTS, spotsListCards,
-  /* 仅供 test/mock-mirror.test.js 做「云端 vs mock 同一组输入同一结果」的交叉断言。
-     页面不要直接用这些内部函数——状态推导请走 home.bootstrap 返回的 ticketState。 */
+
   __internals: {
     ticketStateOf, ticketStateLabelOf, reminderStateOf, backupGroupProgress,
-    canSetReminderOf,
+    canSetReminderOf, canChangeToSuccessOf, canChangeToFailedOf,
     deriveReleaseAt, releaseStateOf, previewTimeline, mockRecoveryCandidates,
     mockReminderHealthOf, mockReminderQuotaWarningOf,
     mockRules: () => RULES,

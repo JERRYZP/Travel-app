@@ -601,12 +601,15 @@ Page({
       }
       const freeRailDateLabel = String(ev.visitDateLabel || '')
         .replace(/\s*[（(]周[一二三四五六日][）)]\s*$/, '');
+      const releaseSlotCount = Array.isArray(ev.releaseSlots) ? ev.releaseSlots.length : 0;
       return Object.assign({}, ev, {
         releaseDateLabel,
         railDateLabel: tripOnly ? freeRailDateLabel : releaseDateLabel,
         railTimeLabel: ev.reservationRequired === false
           ? '无需预约'
-          : (ev.remindable === false ? '随买随用' : ev.releaseTimeStr),
+          : (ev.remindable === false
+            ? '随买随用'
+            : (releaseSlotCount > 1 ? ev.releaseTimeStr + '等' + releaseSlotCount + '场' : ev.releaseTimeStr)),
         btnSub,
         /* wx:key 用复合键：同一景点可以有多个备选日期 */
         eventKey: ev.spotId + '|' + ev.visitDate,

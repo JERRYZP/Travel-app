@@ -3,6 +3,7 @@
 > 面向：前端（微信小程序页面开发）
 > 2026-11-05 更新：反馈支持管理员追加多条单向回复、逐条修改，用户端展示完整回复线程和「已修改」标记；新增反馈采纳奖励 `payment.feedbackReward.adminStatus/adminGrant/adminRevoke`，每次奖励 30 天会员，可按反馈叠加。新反馈与历史反馈均可奖励，历史反馈标记为「补发」。用户端通过 `feedback.list.rewardNotices` 查看补发和撤回通知；通知按 `rewardUpdatedAt` 独立分页读取，不受最近 50 条反馈限制。
 > 2026-11-03 更新：新增 `trip.updateWindow`。`trips.startDate/endDate` 保持实际提醒覆盖范围；可选 `windowStartDate/windowEndDate/windowUpdatedAt` 表示用户可编辑的展示与分享边界。首页新增 `windowProgress/windowReleasePills/windowPosition` 兼容字段；PAGE-018 只投影窗口内项目，并按窗口结束日计算失效日。
+> 2026-11-05 更新：规则新增 `releaseSlots`，一个行程项可在同一出行日展开多个放票时段并创建多条 `reminder_tasks`。新客户端在 `reminder` 请求中统一携带 `supportsMultiRelease: true`；服务端只有收到该能力声明才启用多任务，旧客户端继续使用单任务旧契约。清华按出行日落在工作日或周末/法定节假日分别使用即时预约与抽签预约的提前天数；法定节假日日期由规则级 `holidayRanges` 提供。军博每日 `08:00 / 17:00 / 20:00` 三个时段均创建任务。`cart.list` 与 `cart.planDates` 新增 `reminderTaskCount`，新客户端按任务数而非日期数计算授权与提醒名额。
 > 2026-11-02 更新：新增 `tripShare.create/status/revoke/open` 与 PAGE-018 行程只读分享。分享令牌只从公开路径传入，普通行程接口仅返回 `shareActive`；主人接口可通过 `ownerNickname` 读取应用内昵称用于会话标题，接收方数据只含城市、日期、天数和景点名称。
 > 2026-11-03 更新：客服工作台 `adminReminderQuality.stats` 改为读取由 `payment` 两分钟定时器在北京时间 `13:00 / 21:00` 后首个 tick 持久化的质量快照；工作台打开和刷新不再扫描 `reminder_events` / `reminder_tasks`。仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用。
 > 2026-11-05 更新：会员新契约增加客户端能力门禁。新客户端在 `reminder` 请求中显式传 `membershipCapabilities: ['unlimited-v3']`；只有同时声明能力且命中 `MEMBERSHIP_ENFORCEMENT_MODE` 灰度时才返回 `¥6 / 30 天 / 不限`。未声明能力的旧客户端永久继续 `legacy-v2` 的 `¥3 / 15 个 / task_pack_5`，即使方案开关已切 `all`。
@@ -148,6 +149,15 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     tags: ["提前7天放票", "20:00放票"],
     advanceDays: 7,
     releaseTime: "20:00",
+    releaseTimes: ["08:00", "17:00", "20:00"], // 可选；同日多个放票时刻
+    releaseSlots: [{                    // 可选；多时段/工作日周末不同提前天数的权威结构
+      key: "junbo-0800",
+      label: "第1场",
+      releaseTime: "08:00",
+      advanceDays: 7,
+      weekendAdvanceDays: null          // 可选；周末及法定节假日覆盖 advanceDays
+    }],
+    holidayRanges: [["2026-10-01", "2026-10-07"]], // 已确认/官方公布的法定节假日范围
     closedDays: ["monday"],
     releaseStatus: "NOT_RELEASED" | "BOOKABLE" | "FULL",
     earliestDate: "2026-08-12",       // 最早可约日期 = 今天 + advanceDays；该日闭馆则向前回退到最近可约日，不向后顺延
@@ -591,6 +601,16 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     releaseAt: "2026-05-25T12:00:00.000Z", // 放票时刻（Date）；免预约/无固定放票时刻为 null
     releaseDateStr: "2026-05-25",
     releaseTimeStr: "20:00",           // 无固定放票时刻为「随买随用」
+    releaseTimesStr: "08:00、17:00、20:00", // 同日全部时段，供多时段景点展示
+    releaseSlots: [{                   // 一个事件对应多个待建任务时返回完整时段
+      key: "junbo-0800",
+      label: "第1场",
+      releaseTime: "08:00",
+      advanceDays: 7,
+      releaseDateStr: "2026-05-25",
+      releaseAt: "2026-05-24T16:00:00.000Z"
+    }],
+    reminderTaskCount: 3,              // 当前时刻起仍可创建的提醒任务数
     visitDateLabel: "6月1日 (周一)",    // 已格式化
     advanceDays: 7,
     releaseState: "RELEASED",          // NOT_RELEASED / RELEASED / NO_RESERVATION / NO_FIXED_RELEASE
@@ -733,6 +753,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     weak: false,                       // 需预约、difficultyScore≤2 且 strongReminder!==true
     visitDate: "2026-06-01",
     releaseAt: "2026-05-25T12:00:00.000Z",
+    releaseSlots: [{ key, label, releaseTime, advanceDays, releaseDateStr, releaseAt }],
+    releaseTaskCount: 3,                // 该日期实际会创建的提醒任务数
     releaseDateLabel: "05月25日",
     releaseTimeLabel: "20:00",
     remindOn: true,                     // 已开票项恒为 false
@@ -763,6 +785,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     count: 3,                          // CART-RULE-002
     spotCount: 2,
     reminderCount: 2,                  // V0.3：将设提醒条数
+    reminderTaskCount: 4,              // 按放票时段展开后的真实任务数；授权/名额按此计算
     noReminderCount: 1,
     text: "已选 3 项，其中 2 个将设提醒"
   },
@@ -790,13 +813,16 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```javascript
 {
   success: true,
-  created: 6,                          // 创建任务数（清单项数 × offsets 数）
+  created: 6,                          // 创建任务数（每个清单项按 releaseSlots 展开后求和）
   tasks: [{                            // 创建的任务列表
     _id: "...",
     tripId: "abc123",
     spotId: "gugong",
     visitDate: "2026-06-01",
     releaseAt: "...",
+    releaseKey: "junbo-0800",          // 对应规则时段；旧任务可缺省
+    releaseLabel: "第1场",
+    releaseTime: "08:00",
     offsets: [5, 2],
     channels: ["OFFICIAL_ACCOUNT"],
     backendStatus: "WAITING",
@@ -1788,6 +1814,8 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   remindOn: Boolean,             // 免预约景点恒 false
   result: 'SUCCESS' | 'FAILED' | null,
   resultAt: Date | null,
+  previousResult: 'SUCCESS' | 'FAILED' | null, // 仅双向更正时暂存，供 4 秒撤销
+  previousResultAt: Date | null,
   createdAt,
   updatedAt
 }
@@ -1797,7 +1825,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 
 - 逻辑唯一键：`(userId, tripId, spotId, visitDate)`，云函数查重，不做老数据合成迁移。
 - `releaseAt / reservationRequired / ticketState / reminderState` 均为读取时派生，不持久化到行程项。
-- `result` 只能从 `null` 写成 `SUCCESS/FAILED`；写入后仅允许 `resultAt + 4s` 内调用 `tripItem.undoResult`。（变更：2026-09-17 由 10 秒收紧为 4 秒，常量 `V1.RESULT_UNDO_SECONDS`）
+- `result` 首次只能从 `null` 写成 `SUCCESS/FAILED`；写入后仅允许 `resultAt + 4s` 内调用 `tripItem.undoResult`。出行日结束前允许 `FAILED ↔ SUCCESS` 双向更正，撤销时恢复修改前结果。（变更：2026-09-17 由 10 秒收紧为 4 秒，常量 `V1.RESULT_UNDO_SECONDS`）
 - `backupGroupId` 由服务端按“同一行程 + 同一景点”生成，用于备选收束、进度分组和挽回建议。
 - 六个展示态的计算顺序：免预约 → 人工结果 → 放票时间前 → 放票后 24 小时内 → 待确认。
 - 放票后官方预约入口持续可点，直到 `visitDate` 北京时间 23:59；不因进入 `UNMARKED` 或写成 `FAILED` 而消失。
@@ -1894,6 +1922,8 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   releaseAt: '2026-09-25T12:00:00.000Z',
   ticketState: 'BOOKABLE',
   ticketStateLabel: '可抢票',
+  canChangeToSuccess: false,       // 仅 FAILED 且出行日未结束时为 true
+  canChangeToFailed: false,        // 仅 SUCCESS 且出行日未结束时为 true
   canSetReminder: false,           // 放票时刻已过 → 卡片不再提供提醒开关（2026-09-23）
   bookingEntryEnabled: true,       // 免预约或其他不可预约景点为 false
   result: null,
@@ -1912,6 +1942,10 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 状态文案固定为：`待抢票 / 可抢票 / 已约到 / 未抢到 / 待确认 / 免预约`。`UNMARKED` 的 `ticketStateLabel` 为“待确认”，**语义为中性态，不叫“未抢到”**。（变更：2026-09-28 用户可见文案由“未标记”改为“待确认”，枚举与判定不变；2026-09-22 按设计稿整体换词，旧值为 `待抢 / 可抢 / 已成 / 未成 / 开过票了`。真身在 `cloudfunctions/reminder/lib/item.js` 的 `TICKET_STATE_LABEL`，含未知态兜底值 `待抢票`）
 
 `reminder.state` 为 `ENUM-009` 四态，文案固定为 `未设提醒 / 待提醒 / 已提醒 / 未送达`（`lib/item.js` 的 `REMINDER_STATE_LABEL` 为唯一口径）。
+
+`canChangeToSuccess` = **现在能否把“未抢到”更正为“已约到”**（真身 `lib/item.js` 的 `canChangeToSuccess`）。只有 `result === FAILED`、需预约、已开票且 `visitDate` 未结束时为 true；首页据此在右侧三点菜单显示「已抢到」。页面必须读该字段，不得自行按 `ticketState` 推导。
+
+`canChangeToFailed` = **现在能否把“已约到”反向更正为“未抢到”**（真身 `lib/item.js` 的 `canChangeToFailed`）。只有 `result === SUCCESS`、需预约、已开票且 `visitDate` 未结束时为 true；首页据此在右侧三点菜单显示「未约到」。页面同样不得自行推导。
 
 `canSetReminder` = **现在还能不能开启/取消提醒**（需预约 && 有放票时刻 && 放票时刻还没到，真身 `lib/item.js` 的 `canSetReminder`）。⚠️ 它**与 `ticketState === 'PENDING'` 不等价**：清单先加、放票之后才提交的项是可抢票态，但同样没有提醒入口。页面一律读这个字段，**不得自行按 `ticketState` 或时间重推**。放票一过两个动作都没有意义（开启会即刻 `MISSED`、取消是空转），所以它们由同一条判据同生共死。
 
@@ -1934,7 +1968,8 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 
 规则：
 
-- 只能标记出票后且尚未人工标记、日期未结束的行程项。
+- 首次只能标记出票后且尚未人工标记、日期未结束的行程项。
+- 已有人工结果的行程项可在出行日结束前再次调用并改传另一终态：`FAILED → SUCCESS` 的入口为「已抢到」，`SUCCESS → FAILED` 的入口为「未约到」。服务端暂存修改前结果与时刻，供 4 秒撤销恢复。
 - 标记成功返回 `backupPrompt`，前端用内联提示询问删除或保留备选；没有备选时为 `null`。
 - 保留备选后继续按原提醒配置抢票。
 - 提醒失败/未送达不影响 `tripItem.markResult`。
@@ -1947,6 +1982,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 ```
 
 - 仅 `resultAt + 4s` 内允许，且 `expectedResultAt` 必须匹配，防止覆盖后续操作。
+- 首次标记撤销回 `null`；双向更正撤销回修改前结果，并恢复修改前的结果时刻。
 - 前端用页面底部 Snackbar `已标记为抢到了 [撤销]`，不使用系统 Toast。
 
 #### `tripItem.updateReminder`
@@ -2021,13 +2057,12 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   tripId,                       // 可省 = 当前暂存清单（8.7）
   spotId,
   visitDate,
-  releaseAt: Date | null,       // ⚠️ 2026-09-24 起**服务端忽略并自行推导**，免预约/无固定放票时刻为 null
+  releaseAt: Date | null,       // ⚠️ 服务端忽略并自行推导；多时段时返回当前最近的未来时段
   remindOn: Boolean             // 免预约或无固定放票时刻必须 false
 }
 ```
 
-- ⚠️ **`releaseAt` 由服务端按 `visitDate − advanceDays` 推导**（`lib/item.deriveReleaseAt`，与
-  行程项、时间线同一真身），调用方传什么都会被覆盖；**不传也合法**。
+- ⚠️ **`releaseAt` 由服务端按 `releaseSlots` / `visitDate` 推导**（与行程项、时间线同一真身），调用方传什么都会被覆盖；**不传也合法**。没有 `releaseSlots` 的旧规则继续按 `visitDate − advanceDays + releaseTime/releaseTimes` 兼容。
   「约其他日」这条动线只有用户选的 `visitDate`（`date-picker-sheet` 只回 visitDate），
   原先强制要求 `releaseAt` 会让它稳定回 1010 —— 挽回线点得开、走不通。
   推不出放票时刻（无固定放票规则的景点，如环球影城）仍可加入清单，服务端固定 `remindOn=false`；
@@ -2035,6 +2070,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 
 - 返回补充 `remindBlockedReason`：仅当 `remindOn=false` 且确实由服务端降级时返回
   `RELEASE_PASSED / NO_FIXED_RELEASE / NO_RESERVATION`；用户主动选择不提醒时为空。
+- 返回 `releaseTaskCount`：本次日期实际会创建的未来任务数（军博为 3，普通单时段景点为 1）。
 
 #### `cart.planDates`
 
@@ -2053,11 +2089,13 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
     status: 'REMINDABLE' | 'TRIP_ONLY' | 'IN_CART' | 'IN_TRIP',
     reason: '' | 'RELEASE_PASSED' | 'NO_FIXED_RELEASE' | 'NO_RESERVATION' | 'IN_CART' | 'IN_TRIP',
     releaseAt: Date | null,
+    releaseSlots: [{ key, label, releaseTime, advanceDays, releaseDateStr, releaseAt }],
+    reminderTaskCount: Number,       // 该日期当前会创建的提醒任务数
     addable: Boolean,
     reminderAllowed: Boolean
   }],
   summary: {
-    requested, addable, reminder, tripOnly, existing,
+    requested, addable, reminder, reminderTaskCount, tripOnly, existing,
     releasePassed, noFixedRelease, noReservation
   }
 }
@@ -2085,13 +2123,15 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
     status: 'REMINDABLE' | 'TRIP_ONLY' | 'IN_CART' | 'IN_TRIP',
     reason: '' | 'RELEASE_PASSED' | 'NO_FIXED_RELEASE' | 'NO_RESERVATION' | 'IN_CART' | 'IN_TRIP',
     releaseAt: Date | null,
+    releaseSlots: [{ key, label, releaseTime, advanceDays, releaseDateStr, releaseAt }],
+    reminderTaskCount: Number,
     addable: Boolean,
     reminderAllowed: Boolean,
     resumeCart: Boolean,      // 仅旧版 pending 草稿可续用时为 true
     resumeCartId: String      // 可选；服务端内部续用标识
   }],
   summary: {
-    requested, addable, reminder, tripOnly, existing,
+    requested, addable, reminder, reminderTaskCount, tripOnly, existing,
     releasePassed, noFixedRelease, noReservation
   },
   resumeCartCount: Number
@@ -2111,6 +2151,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   visitDates,
   channels: ['OFFICIAL_ACCOUNT'],   // 存在可提醒日期时必填
   offsets: [5],                     // 存在可提醒日期时必填
+  supportsMultiRelease: true,       // 新客户端能力声明
   disableReminders: false           // true = 本次仅创建行程项
 }
 返回：与 `cart.commit` 相同
@@ -2177,6 +2218,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   cartIds,                          // 可选；景点页多日期补录，只提交本次选中的多条
   channels: ['OFFICIAL_ACCOUNT'],   // 有 remindOn=true 项时必填
   offsets: [5],                     // 有 remindOn=true 项时必填
+  supportsMultiRelease: true,       // 新客户端能力声明；缺省按旧单任务契约
   disableReminders: false           // 可选；true = 仅把暂存清单落成行程项，不创建提醒
 }
 返回：{
@@ -2198,11 +2240,11 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 - `cartIds` 必须在一次提交中消费：服务端按本次集合校验提醒名额，在同一个事务中创建/合并行程、写行程项和提醒任务；不得由客户端循环提交出多趟行程。
 - 设置提醒页保持不传 `cartId` / `cartIds`，代表整单提交。
 - `disableReminders=true` 是“仅加行程不提醒”的降级提交：忽略 `channels/offsets`，本次提交的清单项均以 `remindOn=false` 落成行程项，不创建 `reminder_tasks`，且不返回公众号关注引导。该模式只允许提交暂存清单，不允许同时传真实 `tripId`。
-- 服务端在一次提交中创建全部 `trip_items`；仅为 `remindOn=true` 且可提醒的项创建 `reminder_tasks`。
+- 服务端在一次提交中创建全部 `trip_items`；仅为 `remindOn=true` 且可提醒的项创建 `reminder_tasks`。`supportsMultiRelease=true` 时，一个行程项按 `releaseSlots` 展开为多条任务（军博 3 条，清华按即时/抽签 2 条），任务均挂同一个 `itemId`；缺省时按顶层 `advanceDays + releaseTime` 只创建旧的单条任务。
 - 提交前必须校验提醒名额。本次会创建的未来 `WAITING` 任务数超过当前可用额度时，返回 `1026`，请求整体失败；不得先创建行程、消费部分清单，也不能只提示前端而绕过服务端。
 - `cart.commit` 在任务落库前还必须按当前模板重新校验订阅授权：
   `可用授权 = 台账授权 − 未来待发送消息数`。本次新增消息数为
-  `将建提醒任务数 × offsets.length`；不足时返回 `1008` 和
+  `Σ(每个可提醒清单项的 releaseSlots 未来时段数) × offsets.length`；不足时返回 `1008` 和
   `subscription: { required, quota, pendingMessageCount, availableQuota, shortfall }`，
   清单、行程项和任务均不得部分写入。
 - 旧 `task.submit` 在 V2 实现完成后只作为内部兼容代码，不再由首页/设置页调用。
@@ -2212,7 +2254,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 1. 状态在读取时推导，`UNMARKED` 不落库，不依赖定时任务。
 2. 票务结果与提醒送达状态必须分字段、分 UI 展示。
 3. 进度分母按 `backupGroupId` 去重，免预约项不计入分母。
-4. 一行程项一个 `itemId`；任务、删除、提醒状态和推送落地全部按 `itemId` 关联。
+4. 一行程项一个 `itemId`，但可按 `releaseSlots` 对应多条提醒任务；任务、删除、提醒状态和推送落地全部按 `itemId` 关联，`releaseKey` 只用于稳定识别同一行程项内的不同放票时段。
 5. 首页不出现提醒任务一级 Tab；旧任务列表仅保留代码兼容期，不进入新 UI。
 
 ### 8.7 2026-09-20 口径变更
@@ -2250,7 +2292,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 
 5. **撤销窗口 10 秒 → 4 秒**（见 8.1）。
 
-6. **行程合并时同步任务的 `releaseAt` 与 `tripId`**：放票时刻由 `visitDate` 推导，
+6. **行程合并时同步任务的 `releaseAt` 与 `tripId`**：放票时刻由 `visitDate + releaseKey` 推导，
    合并后行程段变了就会过期；`itemId` 保持不动，它是 tasks join items 的键。
 
 ### 8.8 2026-11-02 调用量结构性优化

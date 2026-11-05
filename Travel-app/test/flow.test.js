@@ -211,9 +211,10 @@ function freshDb() {
     offsets: [5, 2],
   });
   eq(sub.success, true, '提交成功');
-  eq(sub.created, beforeCart, '清单项全部转为任务');
+  eq(sub.createdItems, beforeCart, '清单项全部转为行程项');
+  eq(sub.createdTasks, beforeCart, '旧请求默认每个清单项创建一条提醒任务');
   eq(db._size(COLLECTIONS.REMINDER_CART), 0, '清单已清空（CART-RULE-003）');
-  eq(db._size(COLLECTIONS.REMINDER_TASKS), beforeCart, '任务数 = 原清单数');
+  eq(db._size(COLLECTIONS.REMINDER_TASKS), sub.createdTasks, '任务数 = 本次实际创建的提醒数');
   eq(sub.tasks[0].offsets.join(','), '5,2', 'offsets 降序存储（5 先于 2 触发）');
   eq(sub.tasks[0].backendStatus, ReminderBackendStatus.WAITING, '初始 WAITING');
   eq(sub.needsOaAuth, true, '需引导关注公众号');
@@ -230,7 +231,7 @@ function freshDb() {
   console.log('\n=== 5. 提交后状态回填（TIMELINE-RULE-002）===');
   const tl3 = await timeline.generate(db, USER, tr.tripId);
   const committedCount = tl3.events.filter(e => e.status === EventSelectStatus.COMMITTED).length;
-  eq(committedCount, sub.created, '已提交事件显示「已加行程」');
+  eq(committedCount, sub.createdItems, '已提交事件显示「已加行程」');
   eq(tl3.events.filter(e => e.status === EventSelectStatus.COMMITTED).every(e => !e.button.enabled), true, '已加行程不可再选');
 
   /* ============ 6. 任务列表与角标 ============ */
@@ -238,7 +239,7 @@ function freshDb() {
   const tks = await task.list(db, USER, { tripId: tr.tripId });
   eq(tks.success, true, '列表成功');
   eq(tks.homeMode, 2, '有任务 → 首页形态2（HOME-RULE-001）');
-  eq(tks.counts.active + tks.counts.expired, sub.created, '进行中+已过期 = 总任务');
+  eq(tks.counts.active + tks.counts.expired, sub.createdTasks, '进行中+已过期 = 总任务');
   const firstItem = tks.groups[0].items[0];
   eq(firstItem.statusLabel, '待提醒', 'STATE-002 状态标签');
   eq(/^开抢\d+月\d+日（周.）门票$/.test(firstItem.grabLabel), true, `文案格式: ${firstItem.grabLabel}`);
@@ -280,7 +281,7 @@ function freshDb() {
   eq(db._size(COLLECTIONS.TRIPS), 1, '行程保留');
   const cleanupTrip = await trip.remove(db, USER, tr.tripId);
   eq(cleanupTrip.success, true, '显式删除行程成功');
-  eq(cleanupTrip.removedItems, sub.created, '显式删除连带清掉行程项');
+  eq(cleanupTrip.removedItems, sub.createdItems, '显式删除连带清掉行程项');
   eq(db._size(COLLECTIONS.TRIPS), 0, '显式删除后行程消失');
 
   const tksEmpty = await task.list(db, USER, {});

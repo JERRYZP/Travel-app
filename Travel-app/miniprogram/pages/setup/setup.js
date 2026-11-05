@@ -103,7 +103,9 @@ Page({
       ? api.reminder.cart.bootstrap().catch(() => api.reminder.cart.list(null, { includeMembership: true }))
       : api.reminder.cart.list(null, { includeMembership: true });
     return bootstrap.then(res => {
-      const reminderCount = (res && res.summary && res.summary.reminderCount) || 0;
+      const reminderCount = (res && res.summary && Number.isFinite(res.summary.reminderTaskCount))
+        ? res.summary.reminderTaskCount
+        : ((res && res.summary && res.summary.reminderCount) || 0);
       const quotaNeeded = reminderCount * this.data.offsets.length;
       const packages = (res && Array.isArray(res.packages) ? res.packages : []).map(item => ({ ...item }));
       const membershipSales = (res && res.sales) || null;

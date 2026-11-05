@@ -123,9 +123,19 @@ Component({
      * （`onMenuToggleClick` 是拆分时留下的死方法，模板从未绑定，2026-09-22 删除。）
      */
 
-    /* 三点菜单里的动作：标记结果 / 设置·修改提醒 / 约其他日 / 删除这一个行程项。
-       ⚠️ 四个都要带 `itemId`：页面拿到才能直接定位，不依赖「当前展开的是哪张卡」
+    /* 三点菜单里的动作：已抢到 / 未约到 / 标记结果 / 提醒开关 / 约其他日 / 删除这一个行程项。
+       ⚠️ 都要带 `itemId`：页面拿到才能直接定位，不依赖「当前展开的是哪张卡」
        这种隐式状态（菜单收起后那个状态就没了）。 */
+    onMarkSuccess() {
+      this.triggerEvent('menuclose');
+      this.triggerEvent('result', { itemId: this.data.item.itemId, result: 'SUCCESS' });
+    },
+
+    onMarkFailed() {
+      this.triggerEvent('menuclose');
+      this.triggerEvent('result', { itemId: this.data.item.itemId, result: 'FAILED' });
+    },
+
     onMark() {
       this.triggerEvent('menuclose');
       this.triggerEvent('mark', { itemId: this.data.item.itemId });

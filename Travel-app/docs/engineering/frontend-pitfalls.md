@@ -14,6 +14,7 @@
 - 时间线生成成功后必须把暂存清单收敛到本次日期段 × 景点集合（`cart.pruneScope`）。只清预览、不清清单会把上一批草稿继续展示并一起提交；反过来也不能把同范围草稿误清。
 - 轻量提醒入口不得先写主流程 `reminder_cart`，也不得用 `cart.addDates + cart.commit` 模拟提交：先走 `cart.planQuickDates` 预检，授权与名额通过后由 `cart.quickCommit` 一次事务直接创建行程项和任务。旧版遗留的同景点 pending 行由 quickCommit 消费，其他主流程草稿不得受影响；取消授权不产生清单残留。
 - 首页行程项提醒开关必须先授权、再写接口；写操作未完成前保持锁。拒绝授权时不得调用 `tripItem.updateReminder`，关闭已有提醒不需要新增授权。
+- 首页人工结果双向更正只放在右侧三点菜单：`FAILED → SUCCESS` 文案「已抢到」，读 `canChangeToSuccess`；`SUCCESS → FAILED` 文案「未约到」，读 `canChangeToFailed`。页面不得用 `result` 自行推导；点击复用 `markResult` 与 4 秒撤销，撤销必须恢复修改前结果，不得增加卡片底部操作条。
 - 景点选择状态只以 `spotId` 为键：云端 `spots.batch` 不保证按传入 ID 顺序返回，禁止用 `selectedSpotIds` 的下标去删 `selectedSpots`，否则会误删其他卡片并留下删不掉的项。
 - PAGE-003 的搜索框与景点列表在同一页：关键词只过滤同一份 `allSpots`，不能另起一套 `searchResults` 或隐藏已选模块；选择后必须同时刷新 `selectedSpots`、`allSpots`、`visibleSpots` 三处，否则会出现数据已选但按钮或已选卡片没更新。
 
@@ -41,6 +42,8 @@
 - 首页新用户空态的提醒区域只提供真实样式入口，不伪造微信通知内容。
 - 微信一次性订阅的原子约束是“一次用户点击 → 一次 `wx.requestSubscribeMessage` → 同模板最多 +1 条”。“总是保持以上选择”只免去后续弹窗，禁止在第一个授权回调后的异步链里连续申请，第二次调用会脱离用户手势上下文，真机失败。
 - 设置提醒前的额度判断必须用**可用授权** = `quota - pendingMessageCount`，且待发送数只能按任务实际模板统计。不同模板的余额不能互相填缺口；漏减或混算都会让新提醒静默抢占同一笔额度，发送时变成「未送达」。
+- 一个清单日期项可以展开多条提醒任务：授权与会员名额一律读 `summary.reminderTaskCount` / `plan.summary.reminderTaskCount`，不能用 `reminderCount` 或“可提醒日期数”代替。军博一天会有 3 条任务，清华即时/抽签 2 条；清华周末提前规则同时覆盖 `holidayRanges` 中的法定节假日。
+- 新客户端对 `reminder` 的调用统一在 `utils/api.js` 携带 `supportsMultiRelease=true`；不要只在某个页面单独传，否则首页、清单、时间线和重新开启提醒会出现一半多任务、一半单任务的混用状态。
 - 授权结果不能只看 `requestSubscribeBurst` 的 `ok`：用户拒绝时额度不会增加，授权到账也可能立刻被待发送提醒占用。页面要对比刷新前后的台账与可用额度，把「当前可用」「待发送占用」「本次未授权」写进授权卡，不能只靠 Toast；否则会出现“已补齐 1 次”但页面数字不变。
 
 ## 会员与支付

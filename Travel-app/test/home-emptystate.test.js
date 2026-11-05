@@ -516,6 +516,20 @@ console.log('=== 8. 行程项卡的提醒状态（四态上卡）与菜单显示
   /* ④ 菜单各项**各带显示条件**，不是固定几项。
         平铺会让开票前出现「标记结果」这种点不动的死按钮（服务端 canMark=false 直接拒）。 */
   eq(/item\.canMark/.test(CARD_WXML), true, '标记结果按 canMark 显示');
+  eq(/item\.canChangeToSuccess/.test(CARD_WXML), true,
+    '「已抢到」菜单项按服务端 canChangeToSuccess 显示');
+  eq(/item\.canChangeToFailed/.test(CARD_WXML), true,
+    '「未约到」菜单项按服务端 canChangeToFailed 显示');
+  eq(/catchtap="onMarkSuccess"[^>]*>[\s\S]*?<text>已抢到<\/text>/.test(CARD_WXML), true,
+    '未抢到的三点菜单直接给出「已抢到」动作');
+  eq(/catchtap="onMarkFailed"[^>]*>[\s\S]*?<svg-icon name="minus-circle-muted"[^>]*\/>[\s\S]*?<text>未约到<\/text>/.test(CARD_WXML), true,
+    '已约到的三点菜单用圆圈减号图标给出「未约到」动作，避免像删除');
+  eq(/onMarkSuccess\(\) \{[\s\S]*?triggerEvent\('menuclose'\)[\s\S]*?triggerEvent\('result', \{ itemId: this\.data\.item\.itemId, result: 'SUCCESS' \}\)/.test(CARD_JS), true,
+    '已抢到先收菜单，再复用 result → markResult 写入链路');
+  eq(/onMarkFailed\(\) \{[\s\S]*?triggerEvent\('menuclose'\)[\s\S]*?triggerEvent\('result', \{ itemId: this\.data\.item\.itemId, result: 'FAILED' \}\)/.test(CARD_JS), true,
+    '未约到先收菜单，再复用 result → markResult 写入链路');
+  eq(/后来约到了\?|改为已约到/.test(CARD_WXML.replace(/<!--[\s\S]*?-->/g, '')), false,
+    '不再在卡片底部增加整条更正操作');
   /* ⚠️ 2026-09-23 改口径：原先两项互斥的「设置提醒 / 修改提醒」合并成**一项按态直出**
      （「开启提醒 / 取消提醒」）。「修改」这个名字从没兑现过——点开只有一个开关，
      改不了提前量、更改不了出行日期（改日期走「约其他日」）。 */

@@ -87,6 +87,14 @@
              ⚠️ 面板自己**不带任何关闭手势**：条目各管各的动作，条目之间的留白
                 （`padding: 8rpx 0`）什么也不做。点空白处关闭由上面的捕获层负责。 -->
         <view wx:if="{{menuOpen}}" class="tc-menu-pop">
+          <!-- 人工结果可在两个终态间互改：未抢到 → 已抢到 / 已约到 → 未约到。
+               两个入口各自读取服务端闸门，页面不自行判断。 -->
+          <view wx:if="{{item.canChangeToSuccess}}" class="tc-menu-item" catchtap="onMarkSuccess">
+            <svg-icon name="check-muted" size="14px" /><text>已抢到</text>
+          </view>
+          <view wx:if="{{item.canChangeToFailed}}" class="tc-menu-item" catchtap="onMarkFailed">
+            <svg-icon name="minus-circle-muted" size="14px" /><text>未约到</text>
+          </view>
           <view wx:if="{{item.canMark}}" class="tc-menu-item" catchtap="onMark" data-item-id="{{item.itemId}}">
             <svg-icon name="check-muted" size="14px" /><text>标记结果</text>
           </view>
@@ -149,4 +157,5 @@
       <view class="tc-bubble-skip" catchtap="onDismissRecover">忽略</view>
     </view>
   </view>
+
 </view>

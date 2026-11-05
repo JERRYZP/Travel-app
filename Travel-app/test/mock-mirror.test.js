@@ -329,17 +329,24 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     eq(mk.item.ticketState, 'SUCCESS', '标记「抢到了」');
     eq(mk.backupPrompt, null, '无备选 → 不追问');
     eq(mk.item.undoUntil !== null, true, '给出撤销截止时刻');
-    /* ⚠️ 这条锁的是「已约到只剩删除这条」（2026-09-23 用户口径）：
+    /* ⚠️ 这条锁的是「已约到仍没有提醒入口」：
        markResult 的前置是 nowTs >= releaseAt，所以 SUCCESS ⟹ canSetReminder === false
        —— 构造上成立，不是特判。想要别的日期走「约其他日」，不是回来改提醒。 */
-    eq(mk.item.canSetReminder, false, '已约到 → 菜单里只剩「删除这条」');
+    eq(mk.item.canSetReminder, false, '已约到 → 不再提供提醒开关');
     eq(mk.item.ticketState, 'SUCCESS', '票务结果不受提醒状态影响');
     eq(mk.item.ticketState, 'SUCCESS', '票务结果不受提醒失败影响');
 
     bs = await c('home.bootstrap', {});
     eq(bs.trips[0].progress.done, 1, '进度计入搞定数');
 
-    eq((await errOf(c('tripItem.markResult', { itemId: it.itemId, result: 'FAILED' }))).errorCode, 1014, '不可反复修改');
+    const changedBack = await c('tripItem.markResult', { itemId: it.itemId, result: 'FAILED' });
+    eq(changedBack.item.ticketState, 'FAILED', '已约到 → 未约到允许更正');
+    eq(changedBack.item.canChangeToFailed, false, '未约到后不显示「未约到」');
+    eq(changedBack.item.canChangeToSuccess, true, '未约到后显示「已抢到」');
+    const undoBack = await c('tripItem.undoResult', {
+      itemId: it.itemId, expectedResultAt: changedBack.item.resultAt,
+    });
+    eq(undoBack.item.result, 'SUCCESS', '反向更正撤销恢复原来的已约到');
 
     const un = await c('tripItem.undoResult', { itemId: it.itemId, expectedResultAt: mk.item.resultAt });
     eq(un.success, true, '4 秒内可撤销');
@@ -364,6 +371,17 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     bs = await c('home.bootstrap', {});
     eq(bs.recoverableIds.indexOf(it.itemId) > -1, true,
       '有可行动日期 → 候选与行程项同一次响应到达');
+    const failedItem = bs.trips[0].items.find(x => x.itemId === it.itemId);
+    eq(failedItem.canChangeToSuccess, true, '未抢到 → 首页可直接改为已约到');
+
+    const fixed = await c('tripItem.markResult', { itemId: it.itemId, result: 'SUCCESS' });
+    eq(fixed.item.ticketState, 'SUCCESS', '未抢到 → 已约到允许更正');
+    eq(fixed.item.canChangeToSuccess, false, '已约到后不显示「已抢到」');
+    eq(fixed.item.canChangeToFailed, true, '已约到后显示「未约到」');
+    const undoFixed = await c('tripItem.undoResult', {
+      itemId: it.itemId, expectedResultAt: fixed.item.resultAt,
+    });
+    eq(undoFixed.item.result, 'FAILED', '更正撤销恢复原来的未抢到');
 
     /* 免预约项拒绝开启提醒。
        ⚠️ 必须**异城**（2026-09-24）：同城即合并之后，这个「2026-12-20 的北京行程」
@@ -522,6 +540,28 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
       eq(mock, cloud, `提醒开关判据一致：${c.name}`);
     });
 
+    /* 双向更正闸门同样由云端真身与 mock 镜像逐输入对齐。 */
+    const CHANGE_CASES = [
+      { name: '未抢到可更正', item: { result: 'FAILED' }, reservationRequired: true, releaseAt: new Date(NOW.getTime() - HOUR), visitDate: '2026-10-05' },
+      { name: '已约到由反向闸门处理', item: { result: 'SUCCESS' }, reservationRequired: true, releaseAt: new Date(NOW.getTime() - HOUR), visitDate: '2026-10-05' },
+      { name: '未标记无更正入口', item: null, reservationRequired: true, releaseAt: new Date(NOW.getTime() - HOUR), visitDate: '2026-10-05' },
+      { name: '出行日已过', item: { result: 'FAILED' }, reservationRequired: true, releaseAt: new Date(NOW.getTime() - HOUR), visitDate: '2026-09-30' },
+    ];
+    CHANGE_CASES.forEach(c => {
+      const cloud = cloudItem.canChangeToSuccess({ ...c, nowTs: NOW });
+      const mock = m2.__internals.canChangeToSuccessOf(
+        c.item, c.reservationRequired, c.releaseAt, c.visitDate, NOW
+      );
+      eq(mock, cloud, `改成已约到判据一致：${c.name}`);
+    });
+    CHANGE_CASES.forEach(c => {
+      const cloud = cloudItem.canChangeToFailed({ ...c, nowTs: NOW });
+      const mock = m2.__internals.canChangeToFailedOf(
+        c.item, c.reservationRequired, c.releaseAt, c.visitDate, NOW
+      );
+      eq(mock, cloud, `改成未约到判据一致：${c.name}`);
+    });
+
     /* 撤销窗口常量 */
     const schema = require('../cloudfunctions/reminder/lib/schema');
     eq(m2.__internals.RESULT_UNDO_SECONDS, schema.V1.RESULT_UNDO_SECONDS, '撤销窗口常量一致');
@@ -562,7 +602,10 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     const spotsSeed = require('../data/spots.json').spots;
     const rulesSeed = require('../data/rules.json').rules;
     const SPOT_FIELDS = ['name', 'shortName', 'reservationRequired', 'difficultyScore', 'popularityScore', 'strongReminder'];
-    const RULE_FIELDS = ['advanceDays', 'releaseTime', 'closedDays', 'openDays', 'closedDaysNote', 'specialNotice', 'specialNoticeUntil'];
+    const RULE_FIELDS = [
+      'advanceDays', 'releaseTime', 'releaseTimes', 'releaseSlots', 'holidayRanges',
+      'closedDays', 'openDays', 'closedDaysNote', 'specialNotice', 'specialNoticeUntil',
+    ];
 
     const spotMap = {};
     m.SPOTS.forEach(x => { spotMap[x.spotId] = x; });

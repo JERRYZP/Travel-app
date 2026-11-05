@@ -306,12 +306,18 @@ async function create(db, userId, {
         .where({ userId, itemId: moved._id }).get();
       if ((itemTasks.data || []).length > 0) {
         const { spotMap, ruleMap } = await item.loadSpotContext(db, [moved.spotId]);
-        const releaseAt = item.deriveReleaseAt(spotMap[moved.spotId], ruleMap[moved.spotId], moved.visitDate);
-        const patch = { tripId: keepId };
-        if (releaseAt) patch.releaseAt = releaseAt;
-        await db.collection(COLLECTIONS.REMINDER_TASKS)
-          .where({ userId, itemId: moved._id })
-          .update({ data: patch });
+        for (const task of (itemTasks.data || [])) {
+          const patch = { tripId: keepId };
+          const releaseAt = item.releaseAtForTask(
+            spotMap[moved.spotId],
+            ruleMap[moved.spotId],
+            { ...task, visitDate: moved.visitDate }
+          );
+          if (releaseAt) patch.releaseAt = releaseAt;
+          await db.collection(COLLECTIONS.REMINDER_TASKS)
+            .doc(task._id)
+            .update({ data: patch });
+        }
       }
     }
     await db.collection(COLLECTIONS.TRIPS).doc(id).remove();

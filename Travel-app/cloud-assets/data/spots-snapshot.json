@@ -1,6 +1,6 @@
 {
   "schemaVersion": "spots-snapshot/v1",
-  "contentVersion": "899000005fa28004f31b",
+  "contentVersion": "4b610383b89f76a9114a",
   "generatedAt": "2026-09-22T00:00:00+08:00",
   "sourceMaxDate": "2026-09-22",
   "cards": [
@@ -33,6 +33,8 @@
       "advanceDays": 7,
       "releaseTime": "20:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -115,6 +117,8 @@
       "advanceDays": 7,
       "releaseTime": "17:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -189,6 +193,8 @@
       "advanceDays": 7,
       "releaseTime": "17:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -272,6 +278,8 @@
       "advanceDays": 7,
       "releaseTime": "21:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "旺季门票30元，联票60元",
       "offPrice": "淡季门票20元，联票50元",
@@ -352,6 +360,8 @@
       "advanceDays": 10,
       "releaseTime": "00:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "旺季门票40元",
       "offPrice": "淡季门票35元",
@@ -436,6 +446,8 @@
       "advanceDays": 7,
       "releaseTime": "12:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -521,6 +533,27 @@
         "17:00",
         "20:00"
       ],
+      "releaseSlots": [
+        {
+          "key": "junbo-0800",
+          "label": "第1场",
+          "releaseTime": "08:00",
+          "advanceDays": 7
+        },
+        {
+          "key": "junbo-1700",
+          "label": "第2场",
+          "releaseTime": "17:00",
+          "advanceDays": 7
+        },
+        {
+          "key": "junbo-2000",
+          "label": "第3场",
+          "releaseTime": "20:00",
+          "advanceDays": 7
+        }
+      ],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -599,12 +632,12 @@
       "addable": true,
       "weak": true,
       "cardDesc": "无固定放票时刻，随买随用",
-      "tags": [
-        "提前7天放票"
-      ],
+      "tags": [],
       "advanceDays": 7,
       "releaseTime": "",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -613,7 +646,7 @@
       "closedDays": [],
       "openDays": [],
       "releaseStatus": "NOT_RELEASED",
-      "earliestDate": "2026-09-29",
+      "earliestDate": null,
       "lastCheckedDate": "2026-08-24",
       "officialAppid": "wx3ba512d53df66a75",
       "officialPath": "",
@@ -686,6 +719,8 @@
       "advanceDays": 7,
       "releaseTime": "21:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "旺季门票15元，联票34元",
       "offPrice": "淡季门票10元，联票28元",
@@ -759,6 +794,8 @@
       "advanceDays": 7,
       "releaseTime": "00:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "大门10元，联票25元",
       "peakPrice": "",
       "offPrice": "",
@@ -839,6 +876,8 @@
       "advanceDays": 7,
       "releaseTime": "00:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "旺季门票15元，联票（含熊猫馆）19元",
       "offPrice": "淡季门票10元，联票（含熊猫馆）14元",
@@ -921,6 +960,8 @@
       "advanceDays": 6,
       "releaseTime": "12:30",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -998,6 +1039,8 @@
       "advanceDays": 3,
       "releaseTime": "17:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -1070,6 +1113,8 @@
       "advanceDays": 3,
       "releaseTime": "11:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -1155,6 +1200,8 @@
       "advanceDays": 3,
       "releaseTime": "09:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -1235,12 +1282,64 @@
       "weak": false,
       "cardDesc": "随到随买，免费",
       "tags": [
-        "提前7天放票",
-        "每日08:00放票"
+        "提前1-8天放票",
+        "每日08:00、17:00放票"
       ],
       "advanceDays": 7,
-      "releaseTime": "08:00",
-      "releaseTimes": null,
+      "releaseTime": [
+        "08:00",
+        "17:00"
+      ],
+      "releaseTimes": [
+        "08:00",
+        "17:00"
+      ],
+      "releaseSlots": [
+        {
+          "key": "tsinghua-instant",
+          "label": "即时预约",
+          "releaseTime": "08:00",
+          "advanceDays": 1,
+          "weekendAdvanceDays": 7
+        },
+        {
+          "key": "tsinghua-lottery",
+          "label": "抽签预约",
+          "releaseTime": "17:00",
+          "advanceDays": 2,
+          "weekendAdvanceDays": 8
+        }
+      ],
+      "holidayRanges": [
+        [
+          "2026-01-01",
+          "2026-01-03"
+        ],
+        [
+          "2026-02-15",
+          "2026-02-23"
+        ],
+        [
+          "2026-04-04",
+          "2026-04-06"
+        ],
+        [
+          "2026-05-01",
+          "2026-05-05"
+        ],
+        [
+          "2026-06-19",
+          "2026-06-21"
+        ],
+        [
+          "2026-09-25",
+          "2026-09-27"
+        ],
+        [
+          "2026-10-01",
+          "2026-10-07"
+        ]
+      ],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -1251,7 +1350,7 @@
       ],
       "openDays": [],
       "releaseStatus": "NOT_RELEASED",
-      "earliestDate": "2026-09-29",
+      "earliestDate": "2026-09-27",
       "lastCheckedDate": "2026-09-11",
       "officialAppid": "wxef227a5869ad5e4a",
       "officialPath": "",
@@ -1285,7 +1384,7 @@
           "hint": "点击直接进入官网预约"
         }
       ],
-      "bookingTips": "通过「参观清华」小程序实名预约，双轨制：即时预约每日8:00-17:00（工作日最多提前1天，周末及节假日最多提前7天）；抽签预约每日17:00-21:45（工作日最多提前2天，周末及节假日最多提前8天，22:00公布中签）；每人每180天仅可成功预约1次",
+      "bookingTips": "通过「参观清华」小程序实名预约，双轨制：即时预约每日8:00-17:00（工作日最多提前1天，周末及法定节假日最多提前7天）；抽签预约每日17:00-21:45（工作日最多提前2天，周末及法定节假日最多提前8天，22:00公布中签）；每人每180天仅可成功预约1次",
       "specialNotice": "",
       "specialNoticeUntil": "",
       "idRequirement": "实名认证，入校时人证核验",
@@ -1326,6 +1425,8 @@
       "advanceDays": 7,
       "releaseTime": "08:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -1412,6 +1513,8 @@
       "advanceDays": 7,
       "releaseTime": "18:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -1496,6 +1599,8 @@
       "advanceDays": 7,
       "releaseTime": "16:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -1580,6 +1685,8 @@
       "advanceDays": 30,
       "releaseTime": "00:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -1660,6 +1767,8 @@
       "advanceDays": 10,
       "releaseTime": "20:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "40元/人",
       "peakPrice": "",
       "offPrice": "",
@@ -1743,6 +1852,8 @@
       "advanceDays": 7,
       "releaseTime": "00:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "旺季门票10元，联票20元",
       "offPrice": "淡季门票5元，联票15元",
@@ -1828,6 +1939,8 @@
       "advanceDays": 7,
       "releaseTime": "00:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -1902,6 +2015,8 @@
       "advanceDays": null,
       "releaseTime": "",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -1988,6 +2103,8 @@
       "advanceDays": 3,
       "releaseTime": "19:00",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",
@@ -2064,6 +2181,8 @@
       "advanceDays": 3,
       "releaseTime": "18:30",
       "releaseTimes": null,
+      "releaseSlots": [],
+      "holidayRanges": [],
       "cardPrice": "",
       "peakPrice": "",
       "offPrice": "",

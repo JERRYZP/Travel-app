@@ -21,6 +21,7 @@ paths:
 - `taskLimit=10000` 只能作为新方案内部兼容投影，禁止让未声明能力的旧客户端消费或展示。
 - 部署前先确认环境变量为 `test` 且白名单包含验收账号；部署后分别验证新能力白名单命中、新能力普通账号未命中、旧客户端无能力声明三种响应。
 - 任何 API 契约、价格权益、默认值或字段语义变更，先按 `docs/engineering/client-version-compatibility.md` 写出旧契约、新契约、能力门禁和发布矩阵；不得依赖等待旧客户端覆盖率归零。
+多放票时段功能必须保留 `supportsMultiRelease` 请求级能力门禁：旧客户端不传时，`reminder` 继续使用顶层 `advanceDays + releaseTime` 创建单任务；新客户端传 `true` 后才读取 `releaseSlots` 创建多任务。上线顺序固定为先部署带门禁的 `reminder` / `spots`、更新规则与快照，再发布新客户端；不得先删除旧契约。
 
 ## 配置一致性
 

@@ -95,14 +95,74 @@ function computeReleaseStatus(rule, now) {
     : ReleaseStatus.BOOKABLE;
 }
 
+function releaseSlotsOf(rule) {
+  if (!rule) return [];
+  if (Array.isArray(rule.releaseSlots) && rule.releaseSlots.length > 0) {
+    return rule.releaseSlots.filter(slot => slot && slot.releaseTime && Number.isFinite(Number(slot.advanceDays)));
+  }
+  if (!rule.advanceDays) return [];
+  const times = Array.isArray(rule.releaseTimes) && rule.releaseTimes.length > 0
+    ? rule.releaseTimes
+    : [rule.releaseTime];
+  return [...new Set(times.filter(Boolean).map(String))].map((releaseTime, index) => ({
+    key: `slot-${index + 1}`,
+    label: '',
+    releaseTime,
+    advanceDays: Number(rule.advanceDays),
+  }));
+}
+
+function advanceDaysLabelOf(rule) {
+  const days = [];
+  releaseSlotsOf(rule).forEach(slot => {
+    days.push(Number(slot.advanceDays));
+    if (slot.weekendAdvanceDays !== undefined && slot.weekendAdvanceDays !== null) {
+      days.push(Number(slot.weekendAdvanceDays));
+    }
+  });
+  const valid = days.filter(Number.isFinite);
+  if (valid.length === 0) return '';
+  const min = Math.min(...valid);
+  const max = Math.max(...valid);
+  return min === max ? `提前${min}天` : `提前${min}-${max}天`;
+}
+
+function isHoliday(rule, dateStr) {
+  return (rule && Array.isArray(rule.holidayRanges) ? rule.holidayRanges : [])
+    .some(range => Array.isArray(range)
+      && range.length >= 2
+      && dateStr >= range[0]
+      && dateStr <= range[1]);
+}
+
+function isHighDemandDate(rule, dateStr) {
+  const dayName = dayNameOfStr(dateStr);
+  return dayName === 'saturday' || dayName === 'sunday' || isHoliday(rule, dateStr);
+}
+
 /** 与云端 computeEarliestDate 同口径：不可约时向前回退，不顺延。 */
 function computeEarliestDate(rule, now) {
-  if (!rule || !rule.advanceDays) return null;
-  const advanceDays = Number(rule.advanceDays);
-  let target = addDaysStr(toDateStr(now), advanceDays);
-  for (let i = 0; i <= advanceDays; i += 1) {
-    if (isOpenOn(rule, dayNameOfStr(target))) return target;
-    target = addDaysStr(target, -1);
+  const slots = releaseSlotsOf(rule);
+  if (!rule || slots.length === 0) return null;
+  const today = toDateStr(now);
+  const maxAdvance = Math.max(...slots.map(slot => {
+    const weekend = Number(slot.weekendAdvanceDays);
+    return Number.isFinite(weekend)
+      ? Math.max(Number(slot.advanceDays), weekend)
+      : Number(slot.advanceDays);
+  }));
+  for (let offset = maxAdvance; offset >= 0; offset -= 1) {
+    const target = addDaysStr(today, offset);
+    const dayName = dayNameOfStr(target);
+    if (!isOpenOn(rule, dayName)) continue;
+    const weekend = isHighDemandDate(rule, target);
+    const available = slots.some(slot => {
+      const advanceDays = weekend && Number.isFinite(Number(slot.weekendAdvanceDays))
+        ? Number(slot.weekendAdvanceDays)
+        : Number(slot.advanceDays);
+      return addDaysStr(target, -advanceDays) <= today;
+    });
+    if (available) return target;
   }
   return null;
 }
@@ -123,13 +183,15 @@ function weakLine(rule) {
   if (!rule) return '票量充足，无需卡点抢票';
   const releaseTime = rule.releaseTimes || rule.releaseTime;
   if (!releaseTime) return '票量充足，无需卡点抢票';
-  const advance = rule.advanceDays ? `提前${rule.advanceDays}天 ` : '';
+  const advanceLabel = advanceDaysLabelOf(rule);
+  const advance = advanceLabel ? `${advanceLabel} ` : '';
   return `${advance}${Array.isArray(releaseTime) ? releaseTime.join('、') : releaseTime}放票 · 票量充足，无需卡点`;
 }
 
 function buildTags(rule) {
   const tags = [];
-  if (rule.advanceDays) tags.push(`提前${rule.advanceDays}天放票`);
+  const advanceLabel = advanceDaysLabelOf(rule);
+  if (advanceLabel) tags.push(`${advanceLabel}放票`);
   const releaseTime = rule.releaseTimes || rule.releaseTime;
   if (releaseTime) tags.push(`每日${Array.isArray(releaseTime) ? releaseTime.join('、') : releaseTime}放票`);
   return tags;
@@ -176,7 +238,7 @@ function buildEntries(spot) {
 
 function buildCard(spot, rule, now) {
   const remindable = spot.reservationRequired !== false
-    && !!(rule && rule.advanceDays && (rule.releaseTimes || rule.releaseTime));
+    && releaseSlotsOf(rule).length > 0;
   const weak = spot.reservationRequired !== false
     && spot.strongReminder !== true
     && (spot.difficultyScore || 0) <= 2;
@@ -204,6 +266,8 @@ function buildCard(spot, rule, now) {
     advanceDays: rule ? rule.advanceDays : null,
     releaseTime: rule ? (rule.releaseTimes || rule.releaseTime) : null,
     releaseTimes: rule ? (rule.releaseTimes || null) : null,
+    releaseSlots: rule ? (rule.releaseSlots || []) : [],
+    holidayRanges: rule ? (rule.holidayRanges || []) : [],
     cardPrice: rule ? (rule.cardPrice || '') : '',
     peakPrice: rule ? (rule.peakPrice || '') : '',
     offPrice: rule ? (rule.offPrice || '') : '',

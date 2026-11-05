@@ -15,6 +15,7 @@ const {
 const time = require('./time');
 const events = require('./events');
 const item = require('./item');
+const releaseSchedule = require('./release-schedule');
 const tripItem = require('./trip-item');
 const cart = require('./cart');
 const membership = require('./membership');
@@ -103,7 +104,7 @@ async function dropTripIfEmpty(db, userId, tripId) {
  * - **永不静默自动删除备选**。用户点「保留」或不操作 → 备选照常抢票、照常发提醒。
  * - 提醒失败/未送达**不影响**标记结果——票是票、提醒是提醒。
  */
-async function markResult(db, userId, { itemId, result }) {
+async function markResult(db, userId, { itemId, result, supportsMultiRelease = false }) {
   if (!itemId) return fail(ERRORS.BAD_PARAM);
   if (result !== 'SUCCESS' && result !== 'FAILED') return fail(ERRORS.ITEM_RESULT_INVALID);
 
@@ -115,22 +116,47 @@ async function markResult(db, userId, { itemId, result }) {
   const reservationRequired = !ctx.spot || ctx.spot.reservationRequired !== false;
   const releaseAt = item.deriveReleaseAt(ctx.spot, ctx.rule, it.visitDate);
 
-  if (!item.canMarkResult({
+  const canMark = item.canMarkResult({
     item: it, reservationRequired, releaseAt, visitDate: it.visitDate, nowTs,
-  })) {
+  });
+  const canChangeToSuccess = result === 'SUCCESS' && item.canChangeToSuccess({
+    item: it, reservationRequired, releaseAt, visitDate: it.visitDate, nowTs,
+  });
+  const canChangeToFailed = result === 'FAILED' && item.canChangeToFailed({
+    item: it, reservationRequired, releaseAt, visitDate: it.visitDate, nowTs,
+  });
+  const canChangeResult = canChangeToSuccess || canChangeToFailed;
+  if (!canMark && !canChangeResult) {
     // 已标记过 → 用「撤销窗口」的语义提示，而不是笼统的不可标记
     if (it.result) return fail(ERRORS.ITEM_RESULT_INVALID);
     if (item.isItemEnded(it.visitDate, nowTs)) return fail(ERRORS.ITEM_ENDED);
     return fail(ERRORS.ITEM_RESULT_INVALID);
   }
 
+  /* 人工结果互改是更正，不是重新标记。保留上一次结果和时刻，
+     4 秒内撤销时恢复；普通首次标记这两项为空。 */
+  const previousResult = canChangeResult ? it.result : null;
+  const previousResultAt = canChangeResult ? it.resultAt : null;
   await db.collection(COLLECTIONS.TRIP_ITEMS).doc(itemId).update({
-    data: { result, resultAt: nowTs, updatedAt: nowTs },
+    data: {
+      result,
+      resultAt: nowTs,
+      previousResult,
+      previousResultAt,
+      updatedAt: nowTs,
+    },
   });
 
-  const updated = { ...it, result, resultAt: nowTs };
+  const updated = {
+    ...it,
+    result,
+    resultAt: nowTs,
+    previousResult,
+    previousResultAt,
+  };
   const decorated = item.decorateItem({
     item: updated, spot: ctx.spot, rule: ctx.rule, task: ctx.task, nowTs,
+    supportsMultiRelease: supportsMultiRelease === true,
   });
 
   return ok({
@@ -188,7 +214,7 @@ async function backupPromptOf(db, userId, target, nowTs) {
  * （同一设备上快速连点两次标记 / 两个页面同时开着）。
  * 窗口常量在 schema.V1.RESULT_UNDO_SECONDS（2026-09-17 由 10 秒收紧为 4 秒）。
  */
-async function undoResult(db, userId, { itemId, expectedResultAt }) {
+async function undoResult(db, userId, { itemId, expectedResultAt, supportsMultiRelease = false }) {
   if (!itemId) return fail(ERRORS.BAD_PARAM);
   const it = await findItem(db, userId, itemId);
   if (!it) return fail(ERRORS.ITEM_NOT_FOUND);
@@ -203,15 +229,32 @@ async function undoResult(db, userId, { itemId, expectedResultAt }) {
   const deadline = new Date(it.resultAt).getTime() + V1.RESULT_UNDO_SECONDS * 1000;
   if (nowTs.getTime() > deadline) return fail(ERRORS.ITEM_UNDO_EXPIRED);
 
+  /* 首次标记撤销回 null；双向更正的撤销恢复修改前结果。 */
+  const restoredResult = it.previousResult === 'SUCCESS' || it.previousResult === 'FAILED'
+    ? it.previousResult : null;
+  const restoredResultAt = restoredResult ? (it.previousResultAt || it.resultAt) : null;
   await db.collection(COLLECTIONS.TRIP_ITEMS).doc(itemId).update({
-    data: { result: null, resultAt: null, updatedAt: nowTs },
+    data: {
+      result: restoredResult,
+      resultAt: restoredResultAt,
+      previousResult: null,
+      previousResultAt: null,
+      updatedAt: nowTs,
+    },
   });
 
   const ctx = await contextOf(db, userId, it);
   return ok({
     item: item.decorateItem({
-      item: { ...it, result: null, resultAt: null },
+      item: {
+        ...it,
+        result: restoredResult,
+        resultAt: restoredResultAt,
+        previousResult: null,
+        previousResultAt: null,
+      },
       spot: ctx.spot, rule: ctx.rule, task: ctx.task, nowTs,
+      supportsMultiRelease: supportsMultiRelease === true,
     }),
   });
 }
@@ -225,7 +268,8 @@ async function undoResult(db, userId, { itemId, expectedResultAt }) {
  * - 改提前量 → 重建未触发任务（每条任务按 offsets 发多条消息，offset 变了必须重建）。
  */
 async function updateReminder(db, userId, {
-  itemId, remindOn, channels, offsets, requireSubscription = false, membershipCapabilities = null,
+  itemId, remindOn, channels, offsets, requireSubscription = false,
+  membershipCapabilities = null, supportsMultiRelease = false,
 }) {
   if (!itemId) return fail(ERRORS.BAD_PARAM);
 
@@ -235,24 +279,36 @@ async function updateReminder(db, userId, {
   const nowTs = time.now();
   const ctx = await contextOf(db, userId, it);
   const reservationRequired = !ctx.spot || ctx.spot.reservationRequired !== false;
-  const releaseAt = item.deriveReleaseAt(ctx.spot, ctx.rule, it.visitDate);
+  const releaseSlots = releaseSchedule.slotsForRequest(
+    ctx.spot,
+    ctx.rule,
+    it.visitDate,
+    supportsMultiRelease === true
+  );
+  const nextSlot = releaseSlots.find(slot => slot.releaseAt.getTime() > nowTs.getTime()) || null;
 
   // 免预约项没有提醒可言：明确拒绝，不静默忽略——否则前端会以为设上了
   if (remindOn === true && !reservationRequired) return fail(ERRORS.BAD_PARAM);
   // 无放票时刻（需预约但无固定规则，如环球影城）也设不了提醒
-  if (remindOn === true && !releaseAt) return fail(ERRORS.BAD_PARAM);
+  if (remindOn === true && releaseSlots.length === 0) return fail(ERRORS.BAD_PARAM);
   /* ⚠️ **放票时刻已过 → 开启与取消都没有意义**（2026-09-23 定规）。
      开启会即刻被判 MISSED：用户刚亲手点完「开启提醒」，界面马上回一个
      「未送达」，因果正好反了（2026-09-23 实测：对「已约到」的八达岭设提醒 →
      立刻未送达）。取消则没有待发任务可取消，是空转入口。
      判据与 decorateItem 下发的 canSetReminder 同源——菜单此时也不渲染这两个入口，
      本闸门只挡旧版本小程序与直接调接口。 */
-  if (!item.canSetReminder({ reservationRequired, releaseAt, nowTs })) {
+  if (!item.canSetReminder({
+    reservationRequired,
+    releaseAt: nextSlot ? nextSlot.releaseAt : null,
+    nowTs,
+  })) {
     return fail(ERRORS.REMINDER_WINDOW_CLOSED);
   }
 
   const nextRemindOn = remindOn === true;
-  if (!nextRemindOn) return turnReminderOff(db, userId, itemId, it, ctx, nowTs);
+  if (!nextRemindOn) {
+    return turnReminderOff(db, userId, itemId, it, ctx, nowTs, supportsMultiRelease === true);
+  }
 
   /* 先完整校验，再进入写路径。历史实现把 remindOn 写在参数校验之前，
      非法通道/提前量会留下“开关已开、任务没建”的半成品。 */
@@ -268,11 +324,18 @@ async function updateReminder(db, userId, {
     if (!freshItem) return fail(ERRORS.ITEM_NOT_FOUND);
     const freshCtx = await contextOf(db, userId, freshItem);
     const freshReservationRequired = !freshCtx.spot || freshCtx.spot.reservationRequired !== false;
-    const freshReleaseAt = item.deriveReleaseAt(freshCtx.spot, freshCtx.rule, freshItem.visitDate);
     const lockNowTs = time.now();
+    const targetSlots = releaseSchedule.taskSlotsForRequest(
+      freshCtx.spot,
+      freshCtx.rule,
+      freshItem.visitDate,
+      lockNowTs,
+      supportsMultiRelease === true
+    );
+    const freshNextSlot = targetSlots[0] || null;
     if (!item.canSetReminder({
       reservationRequired: freshReservationRequired,
-      releaseAt: freshReleaseAt,
+      releaseAt: freshNextSlot ? freshNextSlot.releaseAt : null,
       nowTs: lockNowTs,
     })) return fail(ERRORS.REMINDER_WINDOW_CLOSED);
 
@@ -282,22 +345,29 @@ async function updateReminder(db, userId, {
       .slice()
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
 
-    let enforcementState = null;
-    if (!currentTask) {
-      if (requireSubscription === true) {
-        const subscriptionError = await taskDomain.subscriptionAccessError(
-          db,
-          userId,
-          nextOffsets.length,
-          DEFAULT_SUBSCRIBE_TEMPLATE_ID
-        );
-        if (subscriptionError) return subscriptionError;
-      }
-      enforcementState = await membership.enforcementState(db);
+    const existingMessageCount = activeTasks.reduce(
+      (sum, task) => sum + (task.offsets || []).length,
+      0
+    );
+    const targetMessageCount = targetSlots.length * nextOffsets.length;
+    const additionalMessages = Math.max(0, targetMessageCount - existingMessageCount);
+    if (requireSubscription === true && additionalMessages > 0) {
+      const subscriptionError = await taskDomain.subscriptionAccessError(
+        db,
+        userId,
+        additionalMessages,
+        DEFAULT_SUBSCRIBE_TEMPLATE_ID
+      );
+      if (subscriptionError) return subscriptionError;
+    }
+
+    const enforcementState = await membership.enforcementState(db);
+    const additionalTasks = Math.max(0, targetSlots.length - activeTasks.length);
+    if (additionalTasks > 0) {
       const capacityError = await membership.capacityError(
         db,
         userId,
-        1,
+        additionalTasks,
         lockNowTs,
         {
           enforcementState,
@@ -307,18 +377,31 @@ async function updateReminder(db, userId, {
       if (capacityError) return capacityError;
     }
 
+    const activeSlotKeys = activeTasks.map(task =>
+      task.releaseKey || `releaseAt:${new Date(task.releaseAt).getTime()}`).sort();
+    const targetSlotKeys = targetSlots.map(slot => slot.key).sort();
     const changed = !currentTask
+      || String(activeSlotKeys) !== String(targetSlotKeys)
       || String(currentTask.offsets || []) !== String(nextOffsets)
       || String(currentTask.channels || []) !== String(nextChannels);
     if (!changed && freshItem.remindOn === true) {
-      return reminderUpdateResult(db, userId, freshItem, freshCtx, true, tasks, lockNowTs);
+      return reminderUpdateResult(
+        db,
+        userId,
+        freshItem,
+        freshCtx,
+        true,
+        tasks,
+        lockNowTs,
+        supportsMultiRelease === true
+      );
     }
 
     const quotaPool = currentTask
       ? membership.quotaPoolOfExistingTask(currentTask)
       : membership.newTaskQuotaPoolOf(userId, enforcementState);
     const transaction = await db.startTransaction();
-    let rebuiltTaskId = null;
+    const rebuiltTasks = [];
     try {
       if (freshItem.remindOn !== true) {
         await transaction.collection(COLLECTIONS.TRIP_ITEMS).doc(itemId).update({
@@ -328,15 +411,18 @@ async function updateReminder(db, userId, {
       for (const task of activeTasks) {
         await transaction.collection(COLLECTIONS.REMINDER_TASKS).doc(task._id).remove();
       }
-      const rebuilt = await transaction.collection(COLLECTIONS.REMINDER_TASKS).add({
-        data: {
+      for (const slot of targetSlots) {
+        const taskData = {
           userId,
           templateId: DEFAULT_SUBSCRIBE_TEMPLATE_ID,
           itemId,
           tripId: freshItem.tripId,
           spotId: freshItem.spotId,
           visitDate: freshItem.visitDate,
-          releaseAt: freshReleaseAt,
+          releaseAt: slot.releaseAt,
+          releaseKey: slot.key,
+          releaseLabel: slot.label,
+          releaseTime: slot.releaseTime,
           offsets: [...nextOffsets].sort((a, b) => b - a),
           channels: [...nextChannels],
           backendStatus: ReminderBackendStatus.WAITING,
@@ -346,9 +432,10 @@ async function updateReminder(db, userId, {
           cleanAt: null,
           sentOffsets: [],
           createdAt: lockNowTs,
-        },
-      });
-      rebuiltTaskId = rebuilt && rebuilt._id;
+        };
+        const rebuilt = await transaction.collection(COLLECTIONS.REMINDER_TASKS).add({ data: taskData });
+        rebuiltTasks.push({ _id: rebuilt && rebuilt._id, ...taskData });
+      }
       await membership.markReminderCreated(db, userId, lockNowTs, {
         transaction,
         user: lock && lock.user,
@@ -360,29 +447,31 @@ async function updateReminder(db, userId, {
       return fail({ code: 1011, message: `提醒更新失败：${err.message}` });
     }
 
-    if (rebuiltTaskId) {
-      await events.recordEvent(db, events.taskEvent(
-        events.EVENT_TYPES.TASK_REBUILT,
-        {
-          _id: rebuiltTaskId,
-          userId,
-          itemId,
-          tripId: freshItem.tripId,
-          spotId: freshItem.spotId,
-          visitDate: freshItem.visitDate,
-          releaseAt: freshReleaseAt,
-          channels: nextChannels,
-        },
-        lockNowTs,
-        { source: 'reminder.tripItem.updateReminder.rebuild' }
+    if (rebuiltTasks.length > 0) {
+      await events.recordEvents(db, rebuiltTasks.map(task =>
+        events.taskEvent(
+          events.EVENT_TYPES.TASK_REBUILT,
+          task,
+          lockNowTs,
+          { source: 'reminder.tripItem.updateReminder.rebuild' }
+        )
       ));
     }
 
-    return reminderUpdateResult(db, userId, freshItem, freshCtx, true, tasks, lockNowTs);
+    return reminderUpdateResult(
+      db,
+      userId,
+      freshItem,
+      freshCtx,
+      true,
+      tasks,
+      lockNowTs,
+      supportsMultiRelease === true
+    );
   });
 }
 
-async function turnReminderOff(db, userId, itemId, it, ctx, nowTs) {
+async function turnReminderOff(db, userId, itemId, it, ctx, nowTs, supportsMultiRelease) {
   const tasks = ctx.tasks || [];
   const activeTasks = tasks.filter(t => t.backendStatus === ReminderBackendStatus.WAITING);
   const turningOff = it.remindOn === true;
@@ -414,19 +503,36 @@ async function turnReminderOff(db, userId, itemId, it, ctx, nowTs) {
   }
 
   return reminderUpdateResult(
-    db, userId, { ...it, remindOn: nextStoredRemindOn }, ctx, nextStoredRemindOn, tasks, nowTs
+    db,
+    userId,
+    { ...it, remindOn: nextStoredRemindOn },
+    ctx,
+    nextStoredRemindOn,
+    tasks,
+    nowTs,
+    supportsMultiRelease
   );
 }
 
-async function reminderUpdateResult(db, userId, it, ctx, nextStoredRemindOn, tasks, nowTs) {
+async function reminderUpdateResult(
+  db,
+  userId,
+  it,
+  ctx,
+  nextStoredRemindOn,
+  tasks,
+  nowTs,
+  supportsMultiRelease
+) {
   const after = await contextOf(db, userId, it);
   return ok({
     item: item.decorateItem({
       item: { ...it, remindOn: nextStoredRemindOn },
       spot: ctx.spot,
       rule: ctx.rule,
-      task: after.task,
+      tasks: after.tasks || [],
       nowTs,
+      supportsMultiRelease: supportsMultiRelease === true,
     }),
     quotaRefunded: false,
     missedKept: !!(nextStoredRemindOn

@@ -78,14 +78,16 @@
 ```text
 trips
   └── trip_items
-        └── reminder_tasks
+        └── reminder_tasks (1..N，按 releaseSlots 时段展开)
 
 reminder_cart 只承载主流程“生成时间线 → 确认行程清单”的提交前暂存区，不属于正式行程。
 景点页/详情/分享/首页“约其他日”的快捷入口先由 `cart.planQuickDates` 只读预检，授权与提醒名额通过后由 `cart.quickCommit` 一次性创建行程项与任务，全程不写 reminder_cart。旧版遗留的 pending 同景点日期行由 quickCommit 续用并消费。
 ```
 
 - `trip_items`：行程 + 景点 + 出行日的最小执行单元。
-- `reminder_tasks`：由明确开启提醒且存在 `releaseAt` 的行程项派生，挂 `itemId`；新任务写入 `templateId`，旧任务缺字段时发送侧回退旧订阅模板。无固定放票时刻的行程项只落 `trip_items`，不创建任务。
+- `reminder_tasks`：由明确开启提醒且存在未来 `releaseAt` 的行程项派生，挂 `itemId`；一个行程项按该出行日的 `releaseSlots` 可创建多条任务，`releaseKey` 区分时段。新任务写入 `templateId`，旧任务缺字段时发送侧回退旧订阅模板。无固定放票时刻的行程项只落 `trip_items`，不创建任务。
+- 多任务读取受 `supportsMultiRelease` 请求级能力门禁控制：新客户端由 `utils/api.js` 统一附带，旧客户端缺省时 `reminder` / `spots` 继续输出并使用旧的单任务口径。
+- 规则的 `holidayRanges` 只保存官方已公布且需要按周末口径处理的法定节假日范围；云端、快照与 mock 必须共用同一范围，不按年份常识推断。
 - `reminder_cart`：主流程提交前清单；提交成功后才创建/合并正式行程并清空。快捷设提醒不进入此暂存区。
 
 ## 会员、支付与售后

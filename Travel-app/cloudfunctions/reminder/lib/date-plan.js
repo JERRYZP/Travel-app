@@ -5,7 +5,7 @@
  * `cart.addDates`。客户端不得根据 advanceDays / releaseTime 自行重算资格。
  */
 
-const item = require('./item');
+const releaseSchedule = require('./release-schedule');
 
 const DATE_PLAN_STATUS = Object.freeze({
   REMINDABLE: 'REMINDABLE',
@@ -27,11 +27,20 @@ function normalizeVisitDates(values) {
   return [...new Set(source.filter(Boolean).map(String))].sort();
 }
 
-function planOne({ spot, rule, visitDate, nowTs, cartDates, tripDates }) {
+function planOne({ spot, rule, visitDate, nowTs, cartDates, tripDates, supportsMultiRelease }) {
   const existingCart = !!(cartDates && cartDates.has(visitDate));
   const existingTrip = !!(tripDates && tripDates.has(visitDate));
-  const releaseAt = item.deriveReleaseAt(spot, rule, visitDate);
-  const releaseMs = releaseAt ? new Date(releaseAt).getTime() : 0;
+  const releaseSlots = releaseSchedule.slotsForRequest(spot, rule, visitDate, supportsMultiRelease);
+  const taskSlots = releaseSchedule.taskSlotsForRequest(
+    spot,
+    rule,
+    visitDate,
+    nowTs,
+    supportsMultiRelease
+  );
+  const nextSlot = taskSlots[0] || null;
+  const releaseAt = nextSlot ? nextSlot.releaseAt
+    : (releaseSlots.length ? releaseSlots[releaseSlots.length - 1].releaseAt : null);
 
   let status;
   let reason = '';
@@ -44,10 +53,10 @@ function planOne({ spot, rule, visitDate, nowTs, cartDates, tripDates }) {
   } else if (!spot || spot.reservationRequired === false) {
     status = DATE_PLAN_STATUS.TRIP_ONLY;
     reason = DATE_PLAN_REASON.NO_RESERVATION;
-  } else if (!releaseAt) {
+  } else if (releaseSlots.length === 0) {
     status = DATE_PLAN_STATUS.TRIP_ONLY;
     reason = DATE_PLAN_REASON.NO_FIXED_RELEASE;
-  } else if (releaseMs <= new Date(nowTs).getTime()) {
+  } else if (taskSlots.length === 0) {
     status = DATE_PLAN_STATUS.TRIP_ONLY;
     reason = DATE_PLAN_REASON.RELEASE_PASSED;
   } else {
@@ -59,6 +68,8 @@ function planOne({ spot, rule, visitDate, nowTs, cartDates, tripDates }) {
     status,
     reason,
     releaseAt,
+    releaseSlots,
+    reminderTaskCount: taskSlots.length,
     addable: status === DATE_PLAN_STATUS.REMINDABLE || status === DATE_PLAN_STATUS.TRIP_ONLY,
     reminderAllowed: status === DATE_PLAN_STATUS.REMINDABLE,
   };
@@ -74,6 +85,7 @@ function summarize(dates) {
     releasePassed: 0,
     noFixedRelease: 0,
     noReservation: 0,
+    reminderTaskCount: 0,
   };
   dates.forEach(row => {
     if (row.addable) summary.addable += 1;
@@ -83,11 +95,14 @@ function summarize(dates) {
     if (row.reason === DATE_PLAN_REASON.RELEASE_PASSED) summary.releasePassed += 1;
     if (row.reason === DATE_PLAN_REASON.NO_FIXED_RELEASE) summary.noFixedRelease += 1;
     if (row.reason === DATE_PLAN_REASON.NO_RESERVATION) summary.noReservation += 1;
+    if (row.reminderAllowed) {
+      summary.reminderTaskCount += Math.max(0, Number(row.reminderTaskCount) || 0);
+    }
   });
   return summary;
 }
 
-function build({ spot, rule, visitDates, nowTs, cartDates, tripDates }) {
+function build({ spot, rule, visitDates, nowTs, cartDates, tripDates, supportsMultiRelease }) {
   const dates = normalizeVisitDates(visitDates).map(visitDate => planOne({
     spot,
     rule,
@@ -95,6 +110,7 @@ function build({ spot, rule, visitDates, nowTs, cartDates, tripDates }) {
     nowTs,
     cartDates,
     tripDates,
+    supportsMultiRelease,
   }));
   return { dates, summary: summarize(dates) };
 }

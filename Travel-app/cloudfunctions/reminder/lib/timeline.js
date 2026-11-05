@@ -9,6 +9,7 @@ const {
   COLLECTIONS, EventSelectStatus, ERRORS, difficultyOf, ok, fail,
 } = require('./schema');
 const time = require('./time');
+const releaseSchedule = require('./release-schedule');
 const trip = require('./trip');
 const cart = require('./cart');
 const { normalizeSpots } = trip;
@@ -35,7 +36,7 @@ function closedSpotNoteOf(rule) {
 
 /** 规则里是否有可推算的固定放票时刻 */
 function hasReleaseSchedule(rule) {
-  return !!(rule && rule.advanceDays && (rule.releaseTime || (rule.releaseTimes || []).length));
+  return releaseSchedule.hasSchedule(rule);
 }
 
 /**
@@ -53,7 +54,7 @@ function hasReleaseSchedule(rule) {
  * @param {{startDate:string,endDate:string}} seg 该景点的日期段
  * @returns {Array} 空数组表示该景点在段内每天都不可约（TIMELINE-RULE-005）
  */
-function buildEvents(spot, rule, seg) {
+function buildEvents(spot, rule, seg, options = {}) {
   const base = {
     spotId: spot.spotId,
     spotName: spot.name,
@@ -104,18 +105,32 @@ function buildEvents(spot, rule, seg) {
     // 判定统一走 time.isOpenOn —— openDays 白名单优先，用于北大/清华「仅周末可约」
     if (!time.isOpenOn(rule, time.dayNameOf(visitDate))) continue;
 
-    const releaseDate = time.addDays(visitDate, -rule.advanceDays);
+    const releaseSlots = releaseSchedule.slotsForRequest(
+      spot,
+      rule,
+      visitDate,
+      options.supportsMultiRelease === true
+    );
+    if (releaseSlots.length === 0) continue;
+    const nowTs = time.now();
+    const primarySlot = releaseSlots.find(slot => slot.releaseAt.getTime() > nowTs.getTime())
+      || releaseSlots[0];
+    const reminderTaskCount = releaseSlots
+      .filter(slot => slot.releaseAt.getTime() > nowTs.getTime()).length;
     events.push({
       ...base,
       remindable: true,
       difficulty: difficultyOf(spot.difficultyScore),
       visitDate,
-      releaseAt: time.parseBeijing(releaseDate, rule.releaseTime),
+      releaseAt: primarySlot.releaseAt,
       // 展示用（PAGE-005 事件卡左轴与文案）
-      releaseDateStr: releaseDate,
-      releaseTimeStr: rule.releaseTime,
+      releaseDateStr: primarySlot.releaseDateStr,
+      releaseTimeStr: primarySlot.releaseTime,
+      releaseTimesStr: [...new Set(releaseSlots.map(slot => slot.releaseTime))].join('、'),
+      releaseSlots,
+      reminderTaskCount,
       visitDateLabel: time.formatMonthDayWeek(visitDate),
-      advanceDays: rule.advanceDays,
+      advanceDays: primarySlot.advanceDays,
       remindOnDefault: tripItem.defaultRemindOn(spot),
     });
   }
@@ -217,7 +232,9 @@ function buttonOf(status, event = {}) {
  * @param {Array<{spotId,startDate,endDate}>} segments 每个景点自己的日期段
  * @param {string} committedTripId 仅当「从某趟行程进来接着补」时传，用于标出已在行程的项
  */
-async function preview(db, userId, { startDate, endDate, spotIds = [], segments = null, committedTripId = '' }) {
+async function preview(db, userId, {
+  startDate, endDate, spotIds = [], segments = null, committedTripId = '', supportsMultiRelease = false,
+}) {
   if (!trip.validateRange(startDate, endDate)) return fail(ERRORS.TRIP_DATE_INVALID);
 
   const segs = (Array.isArray(segments) && segments.length > 0)
@@ -277,7 +294,7 @@ async function preview(db, userId, { startDate, endDate, spotIds = [], segments 
     const seg = segMap[spot.spotId];
     if (!seg) continue;
     const rule = ruleMap[spot.spotId];
-    const built = buildEvents(spot, rule, seg);
+    const built = buildEvents(spot, rule, seg, { supportsMultiRelease });
     if (built.length === 0) {
       if (!hasReleaseSchedule(rule)) {
         closedSpots.push({ spotId: spot.spotId, spotName: spot.name, note: '无固定放票时刻，暂不生成提醒' });

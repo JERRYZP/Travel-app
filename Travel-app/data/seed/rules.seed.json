@@ -241,6 +241,26 @@
       "08:00",
       "17:00",
       "20:00"
+    ],
+    "releaseSlots": [
+      {
+        "key": "junbo-0800",
+        "label": "第1场",
+        "releaseTime": "08:00",
+        "advanceDays": 7
+      },
+      {
+        "key": "junbo-1700",
+        "label": "第2场",
+        "releaseTime": "17:00",
+        "advanceDays": 7
+      },
+      {
+        "key": "junbo-2000",
+        "label": "第3场",
+        "releaseTime": "20:00",
+        "advanceDays": 7
+      }
     ]
   },
   {
@@ -286,14 +306,64 @@
       "monday"
     ],
     "isRolling": false,
-    "bookingTips": "通过「参观清华」小程序实名预约，双轨制：即时预约每日8:00-17:00（工作日最多提前1天，周末及节假日最多提前7天）；抽签预约每日17:00-21:45（工作日最多提前2天，周末及节假日最多提前8天，22:00公布中签）；每人每180天仅可成功预约1次",
+    "bookingTips": "通过「参观清华」小程序实名预约，双轨制：即时预约每日8:00-17:00（工作日最多提前1天，周末及法定节假日最多提前7天）；抽签预约每日17:00-21:45（工作日最多提前2天，周末及法定节假日最多提前8天，22:00公布中签）；每人每180天仅可成功预约1次",
     "openTime": "开放日入校时段：上午8:00-11:00、下午13:00-16:00（11:00/16:00停止入校），以「参观清华」小程序当期公告为准",
     "ticketPrice": "免费",
     "idRequirement": "实名认证，入校时人证核验",
     "ageLimit": "以官方公示为准",
     "lastCheckedDate": "2026-09-11",
     "specialNotice": "",
-    "spotId": "tsinghua"
+    "spotId": "tsinghua",
+    "releaseTimes": [
+      "08:00",
+      "17:00"
+    ],
+    "releaseSlots": [
+      {
+        "key": "tsinghua-instant",
+        "label": "即时预约",
+        "releaseTime": "08:00",
+        "advanceDays": 1,
+        "weekendAdvanceDays": 7
+      },
+      {
+        "key": "tsinghua-lottery",
+        "label": "抽签预约",
+        "releaseTime": "17:00",
+        "advanceDays": 2,
+        "weekendAdvanceDays": 8
+      }
+    ],
+    "holidayRanges": [
+      [
+        "2026-01-01",
+        "2026-01-03"
+      ],
+      [
+        "2026-02-15",
+        "2026-02-23"
+      ],
+      [
+        "2026-04-04",
+        "2026-04-06"
+      ],
+      [
+        "2026-05-01",
+        "2026-05-05"
+      ],
+      [
+        "2026-06-19",
+        "2026-06-21"
+      ],
+      [
+        "2026-09-25",
+        "2026-09-27"
+      ],
+      [
+        "2026-10-01",
+        "2026-10-07"
+      ]
+    ]
   },
   {
     "advanceDays": 7,

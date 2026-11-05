@@ -27,7 +27,7 @@ function removeCartItems(cartIds) {
   ));
 }
 
-function commitQuickWithContext(payload, dateCount) {
+function commitQuickWithContext(payload, dateCount, taskCount) {
   return api.reminder.cart.quickCommit(payload).catch(err => {
     if (err && typeof err === 'object') {
       err._taskLimitCartIds = [];
@@ -35,6 +35,7 @@ function commitQuickWithContext(payload, dateCount) {
         operation: 'quickCommit',
         payload: Object.assign({}, payload),
         dateCount,
+        taskCount,
       };
     }
     throw err;
@@ -613,7 +614,11 @@ function onDateConfirm(page, e) {
       });
     }
 
-    return openReminderAuth(page, plan.summary.reminder, {
+    const reminderTaskCount = Math.max(
+      0,
+      Number(plan.summary.reminderTaskCount) || Number(plan.summary.reminder) || 0
+    );
+    return openReminderAuth(page, reminderTaskCount, {
       forceSheet: !!planView,
       datePlan: planView,
       continueText: planView ? planView.continueText : '开启行程放票提醒',
@@ -624,7 +629,7 @@ function onDateConfirm(page, e) {
           visitDates: commitVisitDates,
           channels: ['OFFICIAL_ACCOUNT'],
           offsets: [5],
-        }, commitVisitDates.length).then(res => ({
+        }, commitVisitDates.length, reminderTaskCount).then(res => ({
           res,
           mode: 'reminder',
           dateCount: commitVisitDates.length,
@@ -678,7 +683,8 @@ function onDateConfirm(page, e) {
       page._taskLimitPendingOrderId = '';
       page._taskLimitPayMode = 'purchase';
       page._taskLimitPaidReady = false;
-      const needed = page._taskLimitResume && page._taskLimitResume.dateCount;
+      const needed = page._taskLimitResume
+        && (page._taskLimitResume.taskCount || page._taskLimitResume.dateCount);
       page.setData({
         taskLimitPayConfirm: null,
         taskLimitPayButtonText: '',

@@ -13,6 +13,10 @@
 - 摘要卡展示的行程（`summaryTrip`）与「新增提醒预填」用的行程（`primaryTrip`）是**两个字段**：前者可以退化成已结束行程，后者只允许未结束行程——混用会把过去的时间范围预填进 PAGE-005。
 - 进行中行程内，已结束日期组默认折叠，入口置于该趟内容顶部、今天/未来日期之前；折叠不得按 `releaseAt` 判定，未来出行日即使已放票也必须保持展开。
 - 同一时间刻度的多个提醒在摘要卡中合并为一颗胶囊；`limit` 数的是时间点，不是行程项数。
+- 一个行程项可以对应多条提醒任务：先按 `releaseSlots` 展开该出行日的全部未来放票时段，再为每个时段创建一条任务；`itemId` 相同，`releaseKey` 区分时段。军博同一天 3 条，清华即时/抽签 2 条。
+- 多任务必须受 `supportsMultiRelease` 请求级能力门禁保护：旧客户端不传时按顶层 `advanceDays + releaseTime` 只创建一条，新客户端显式传 `true` 才读取 `releaseSlots`。时间线、首页投影、清单计数和重新开启提醒也必须使用同一门禁，避免旧客户端提前看到新契约。
+- 清华的周末口径同时包含法定节假日：`weekendAdvanceDays` 在周六、周日及 `holidayRanges` 命中的日期生效。未公布年份不得按常识推断，必须等待官方安排。
+- 提醒授权与会员名额按**任务数**校验，不按日期数或行程项数校验。清单的 `reminderCount` 仍表示“几个日期项会提醒”，`reminderTaskCount` 才表示真实任务数。
 - 门票进度分母按 `backupGroupId` 去重；免预约项不进分母；需预约但未设提醒的项仍进分母。
 
 ## 行程只读分享
@@ -48,7 +52,7 @@ PENDING / BOOKABLE / SUCCESS / FAILED / UNMARKED / NO_RESERVATION
 
 「人工结果」必须早于时间条件，否则已标记结果会被时间重新翻回待抢。页面不得自行重推状态。
 
-人工结果只允许 `SUCCESS | FAILED`，4 秒内可通过页面底部 Snackbar 撤销。
+人工结果只允许 `SUCCESS | FAILED`，4 秒内可通过页面底部 Snackbar 撤销。首页允许双向更正：`FAILED → SUCCESS` 读取 `canChangeToSuccess`，菜单文案「已抢到」；`SUCCESS → FAILED` 读取 `canChangeToFailed`，菜单文案「未约到」。两条都只在出行日结束前开放，撤销恢复修改前结果。
 
 ## 提醒送达状态
 
@@ -57,7 +61,7 @@ PENDING / BOOKABLE / SUCCESS / FAILED / UNMARKED / NO_RESERVATION
 - `NOT_SET` 是开启提醒的入口，`MISSED` 是必须暴露的异常信号，不允许从卡片上删除该状态。
 - `MISSED` 优先级高于一切票务展示态，不能被“现在预约”等动作文案盖住。
 - 取消提醒不能洗掉已经存在的 `MISSED` 记录。
-- 三项菜单按条件展示：删除这条恒有；标记结果读取 `canMark`；提醒开关读取 `canSetReminder`，且只显示当前可执行的开启或取消。
+- 菜单按条件展示：删除这条恒有；标记结果读取 `canMark`；已抢到读取 `canChangeToSuccess`；未约到读取 `canChangeToFailed`；提醒开关读取 `canSetReminder`，且只显示当前可执行的开启或取消。两个结果更正入口都只在右侧菜单，不新增卡片底部操作条。
 - `canSetReminder` 不是 `ticketState`；它由“需预约、有放票时刻、放票时刻未到”共同决定。
 
 ## 时间线与清单
@@ -82,6 +86,7 @@ PENDING / BOOKABLE / SUCCESS / FAILED / UNMARKED / NO_RESERVATION
 - `confirmReminderAccess()` 的 `trip-only` 分支只用于景点详情直设提醒等未迁移的轻量入口；首页「约其他日」必须复用 `reminderFlow`。
 - 景点卡片、景点详情、分享场景和首页「约其他日」使用一个标题为「设置提醒」的统一浮层，同时检查订阅授权和提醒名额；授权卡、三条说明与样式入口复用 PAGE-008。授权区固定显示「点击补授权次数」，每次只发起一次微信订阅，补足后由用户点击底部「开启行程放票提醒」继续；`membership.status.enforced=true` 且名额不足时，同一浮层展示名额公式和「支付并继续」入口，底部按钮置灰。名额支付到账后自动完成原提醒；若授权仍有缺口，则保留浮层，补齐后自动完成。不得逐次重新弹系统 ActionSheet，不得自动连发授权，也不得跳「提醒设置」页让用户重做。只有系统通知、订阅总开关或历史拒收需要设置时才打开设置引导。真身见 `REMINDER-RULE-009`。
 - 设置提醒前判断的是**可用授权**：`subscribe.get.quota − pendingMessageCount`。未来 `WAITING` 任务尚未发送，但已经占用微信一次性订阅次数；只看 `quota` 会让新增提醒重复承诺同一笔授权，最终出现「未送达」。
+- 订阅授权缺口、提醒名额缺口、`cart.commit` 二次校验与轻量设提醒浮层都必须使用 `reminderTaskCount × offsets.length`；不能拿“可提醒日期数”代替任务数。
 - 授权页面展示同样必须区分「台账已授权」与「当前可用」；待发送提醒占用额度时写明占用数。授权拒绝、到账被占用或云端未同步时，页面内必须保留可见反馈，不能只弹 Toast，也不能仅凭微信回调成功宣称已补齐。
 - 任一入口都不得静默提交，也不得在提醒未真正创建时提示“提醒已设置”。
 - `cart.commit` 必须在建任务前按服务端台账二次校验订阅额度；余额不足返回 `1008`，不得先建行程或部分消费清单。页面刷新授权卡并保留日期、清单、提前量供重试。

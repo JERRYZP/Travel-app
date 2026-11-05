@@ -9,6 +9,8 @@ const {
   COLLECTIONS, ReminderBackendStatus, ChannelType, V1, ERRORS, PENDING_CART_TRIP_ID, ok, fail,
 } = require('./schema');
 const time = require('./time');
+const item = require('./item');
+const releaseSchedule = require('./release-schedule');
 const events = require('./events');
 const tripItem = require('./trip-item');
 const cart = require('./cart');
@@ -622,19 +624,58 @@ async function commitCartItems(db, userId, event, cartItems, options = {}) {
   const channels = event.channels || [];
   const offsets = event.offsets || [];
   const disableReminders = event.disableReminders === true;
+  const supportsMultiRelease = event.supportsMultiRelease === true;
   const nowTs = time.now();
-  const pastRelease = i => !!i.releaseAt && new Date(i.releaseAt).getTime() <= nowTs.getTime();
-  const wantedReminderItems = cartItems.filter(i =>
-    i.reservationRequired !== false && i.remindOn === true && !!i.releaseAt);
+  const { spotMap, ruleMap } = await item.loadSpotContext(db, cartItems.map(i => i.spotId));
+  const planByCartKey = new Map();
+  const plans = cartItems.map(cartItem => {
+    const spot = spotMap[cartItem.spotId];
+    const rule = ruleMap[cartItem.spotId] || null;
+    let releaseSlots = releaseSchedule.slotsForRequest(
+      spot,
+      rule,
+      cartItem.visitDate,
+      supportsMultiRelease
+    );
+    /* 兼容旧链路/迁移期清单行：规则上下文缺失时，仍尊重提交前已落库的 releaseAt。 */
+    if (releaseSlots.length === 0 && cartItem.releaseAt) {
+      const releaseAt = new Date(cartItem.releaseAt);
+      releaseSlots = [{
+        key: 'legacy-release',
+        label: '',
+        releaseTime: time.formatHourMinute(releaseAt),
+        advanceDays: null,
+        releaseDateStr: time.toDateStr(releaseAt),
+        releaseAt,
+      }];
+    }
+    const taskSlots = releaseSchedule.taskSlotsForRequest(
+      spot,
+      rule,
+      cartItem.visitDate,
+      nowTs,
+      supportsMultiRelease
+    );
+    const futureSlots = releaseSlots.filter(slot => new Date(slot.releaseAt).getTime() > nowTs.getTime());
+    const taskSlotsFinal = taskSlots.length > 0 ? taskSlots : futureSlots;
+    const plan = { cartItem, spot, rule, releaseSlots, taskSlots: taskSlotsFinal };
+    planByCartKey.set(`${cartItem.spotId}|${cartItem.visitDate}`, plan);
+    return plan;
+  });
+  const wantedReminderItems = disableReminders ? [] : plans.filter(({ cartItem, releaseSlots }) =>
+    cartItem.reservationRequired !== false
+      && cartItem.remindOn === true
+      && releaseSlots.length > 0);
   /* 放票已过的项不参与提醒配置校验：用户可能在开票前加了清单、开票后才提交。
      这一步必须与 cart.list 的 remindLocked 同源，否则界面说“无需提醒”，提交却要通道。 */
-  const remindable = wantedReminderItems.filter(i => !pastRelease(i));
+  const remindable = wantedReminderItems.filter(plan => plan.taskSlots.length > 0);
+  const reminderTaskCount = remindable.reduce((sum, plan) => sum + plan.taskSlots.length, 0);
   if (!disableReminders && remindable.length > 0 && !validateSubmit(channels, offsets)) return fail(ERRORS.BAD_PARAM);
   if (!disableReminders && remindable.length > 0 && event.requireSubscription === true) {
     const subscriptionError = await subscriptionAccessError(
       db,
       userId,
-      remindable.length * offsets.length,
+      reminderTaskCount * offsets.length,
       DEFAULT_SUBSCRIBE_TEMPLATE_ID
     );
     if (subscriptionError) return subscriptionError;
@@ -646,15 +687,13 @@ async function commitCartItems(db, userId, event, cartItems, options = {}) {
      12:05 才提交 —— 那一刻 releaseAt 已经过去。
      这类项**照常落行程项**（票照样要抢，只是提醒已无意义），提醒开关落 false，
      卡片此后也不再提供提醒入口 —— `canSetReminder` 用的正是同一条判据。 */
-  const reminderItems = disableReminders ? [] : remindable;
-
   /* 提醒名额是创建提醒任务的硬闸门。必须在建行程之前校验：
      超限时不能留下“行程建了、提醒没建”的半成品，也不能清空用户的清单。 */
   const enforcementState = await membership.enforcementState(db);
   const capacityError = await membership.capacityError(
     db,
     userId,
-    reminderItems.length,
+    reminderTaskCount,
     nowTs,
     {
       enforcementState,
@@ -674,14 +713,19 @@ async function commitCartItems(db, userId, event, cartItems, options = {}) {
 
   try {
     for (const cartItem of cartItems) {
+      const plan = planByCartKey.get(`${cartItem.spotId}|${cartItem.visitDate}`) || {
+        cartItem,
+        releaseSlots: [],
+        taskSlots: [],
+      };
       const wantedRemindOn = !disableReminders
         && cartItem.reservationRequired !== false
-        && !!cartItem.releaseAt
+        && plan.releaseSlots.length > 0
         && cartItem.remindOn === true;
       /* ⚠️ 放票已过的项**落 false**：它不是「用户没勾提醒」，而是「此刻提醒已无意义」。
          两者在卡片上都显示「未设提醒」，但前者可再开启，后者不可（canSetReminder 为 false）——
          不需要额外的字段区分，时间自己会说话。 */
-      const remindOn = wantedRemindOn && !pastRelease(cartItem);
+      const remindOn = wantedRemindOn && plan.taskSlots.length > 0;
       const key = `${targetTripId}|${cartItem.spotId}|${cartItem.visitDate}`;
       const existing = itemMap[key];
       let itemId = existing && existing._id;
@@ -708,26 +752,31 @@ async function commitCartItems(db, userId, event, cartItems, options = {}) {
 
       // 免预约项、无固定放票时刻的项都只落行程项；仅可提醒且勾选提醒的项生成任务。
       if (remindOn) {
-        const taskData = {
-          userId,
-          templateId: DEFAULT_SUBSCRIBE_TEMPLATE_ID,
-          itemId,
-          tripId: targetTripId,
-          spotId: cartItem.spotId,
-          visitDate: cartItem.visitDate,
-          releaseAt: new Date(cartItem.releaseAt),
-          offsets: [...offsets].sort((a, b) => b - a),
-          channels,
-          backendStatus: ReminderBackendStatus.WAITING,
-          quotaPool: membership.newTaskQuotaPoolOf(userId, enforcementState),
-          triggeredAt: null,
-          missedReason: null,
-          cleanAt: null,
-          sentOffsets: [],
-          createdAt: nowTs,
-        };
-        const taskRes = await transaction.collection(COLLECTIONS.REMINDER_TASKS).add({ data: taskData });
-        createdTasks.push({ _id: taskRes._id, ...taskData });
+        for (const slot of plan.taskSlots) {
+          const taskData = {
+            userId,
+            templateId: DEFAULT_SUBSCRIBE_TEMPLATE_ID,
+            itemId,
+            tripId: targetTripId,
+            spotId: cartItem.spotId,
+            visitDate: cartItem.visitDate,
+            releaseAt: slot.releaseAt,
+            releaseKey: slot.key,
+            releaseLabel: slot.label,
+            releaseTime: slot.releaseTime,
+            offsets: [...offsets].sort((a, b) => b - a),
+            channels,
+            backendStatus: ReminderBackendStatus.WAITING,
+            quotaPool: membership.newTaskQuotaPoolOf(userId, enforcementState),
+            triggeredAt: null,
+            missedReason: null,
+            cleanAt: null,
+            sentOffsets: [],
+            createdAt: nowTs,
+          };
+          const taskRes = await transaction.collection(COLLECTIONS.REMINDER_TASKS).add({ data: taskData });
+          createdTasks.push({ _id: taskRes._id, ...taskData });
+        }
       }
 
       if (cartItem._id) {
@@ -753,10 +802,10 @@ async function commitCartItems(db, userId, event, cartItems, options = {}) {
     })
   ));
 
-  const noReminder = disableReminders ? cartItems.length : cartItems.length - reminderItems.length;
+  const noReminder = disableReminders ? cartItems.length : cartItems.length - remindable.length;
   /* 勾了提醒、但因为放票时刻已过而没建任务的那些（见上）。前端据此换一句文案——
      否则用户勾着提醒提交，回来看见「已加入行程 · N 项」却读不出提醒为什么没设上。 */
-  const expiredReminder = disableReminders ? 0 : wantedReminderItems.length - reminderItems.length;
+  const expiredReminder = disableReminders ? 0 : wantedReminderItems.length - remindable.length;
   return ok({
     created: createdTasks.length,
     createdItems: createdItems.length,

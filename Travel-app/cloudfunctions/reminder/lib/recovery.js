@@ -23,6 +23,7 @@
 const { COLLECTIONS, TicketResult, ok, fail, ERRORS } = require('./schema');
 const time = require('./time');
 const item = require('./item');
+const releaseSchedule = require('./release-schedule');
 
 /** 候选日的行动类型 */
 const RecoveryAction = {
@@ -42,7 +43,7 @@ const MAX_TOTAL = 6;
  * 不可行动的情况（决策文档 4.3 第 4 点）：已过、闭馆、无放票规则。
  * @returns {{ok:boolean, releaseAt:Date|null, action:string|null, label:string}}
  */
-function candidateOf(spot, rule, visitDate, nowTs) {
+function candidateOf(spot, rule, visitDate, nowTs, supportsMultiRelease = false) {
   // ⚠️ 必须传 nowTs：不传就会读真实时钟，导致「已过」判定既不可测
   // 又和同一个 nowTs 下的放票时刻比较口径不一致
   const today = time.todayStr(nowTs);
@@ -59,7 +60,8 @@ function candidateOf(spot, rule, visitDate, nowTs) {
   if (!spot || spot.reservationRequired === false) return { ok: false };
 
   // 无放票规则（如环球影城）：不可行动，不返回
-  const releaseAt = item.deriveReleaseAt(spot, rule, visitDate);
+  const slots = releaseSchedule.slotsForRequest(spot, rule, visitDate, supportsMultiRelease === true);
+  const releaseAt = slots.length ? slots[0].releaseAt : null;
   if (!releaseAt) return { ok: false };
 
   if (releaseAt.getTime() <= nowTs.getTime()) {
@@ -96,7 +98,9 @@ function candidateOf(spot, rule, visitDate, nowTs) {
  * @param {Date}   [p.nowTs]
  * @returns {Array} 候选数组，可能为空
  */
-function buildCandidates({ failed, siblings, trip, spotMap = {}, ruleMap = {}, nowTs = time.now() }) {
+function buildCandidates({
+  failed, siblings, trip, spotMap = {}, ruleMap = {}, nowTs = time.now(), supportsMultiRelease = false,
+}) {
   const sameSpot = (siblings || []).filter(s =>
     s.spotId === failed.spotId && s.itemId !== failed.itemId);
 
@@ -132,7 +136,7 @@ function buildCandidates({ failed, siblings, trip, spotMap = {}, ruleMap = {}, n
       if (spotId === failed.spotId && takenDates.has(visitDate)) continue;
       const key = `${spotId}|${visitDate}`;
       if (seen.has(key)) continue;
-      const c = candidateOf(spot, rule, visitDate, nowTs);
+      const c = candidateOf(spot, rule, visitDate, nowTs, supportsMultiRelease === true);
       if (!c.ok) continue;
       seen.add(key);
       mine.push({
@@ -206,7 +210,9 @@ function buildCandidates({ failed, siblings, trip, spotMap = {}, ruleMap = {}, n
  * @returns {Object} itemId → 候选数组。**只含非空**，所以 `Object.keys` 就是
  *                   「哪些行程项可以挽回」，调用方直接拿去回填 `recoverable`。
  */
-function recoverableMapOf({ decorated, trips, spotMap, ruleMap, nowTs }) {
+function recoverableMapOf({
+  decorated, trips, spotMap, ruleMap, nowTs, supportsMultiRelease = false,
+}) {
   const byItemId = {};
   const tripById = {};
   for (const t of (trips || [])) tripById[t._id] = t;
@@ -225,7 +231,9 @@ function recoverableMapOf({ decorated, trips, spotMap, ruleMap, nowTs }) {
     const siblings = (decorated || []).filter(d => d.tripId === tripId);
     const trip = tripById[tripId] || null;
     for (const failed of list) {
-      const found = buildCandidates({ failed, siblings, trip, spotMap, ruleMap, nowTs });
+      const found = buildCandidates({
+        failed, siblings, trip, spotMap, ruleMap, nowTs, supportsMultiRelease: supportsMultiRelease === true,
+      });
       /* 空候选 = 不打扰，**不写进 map**：调用方据此只发有挽回空间的 itemId，
          而不是让前端再筛一遍「长度 > 0」。 */
       if (found.length) byItemId[failed.itemId] = found;
@@ -244,7 +252,8 @@ function recoverableMapOf({ decorated, trips, spotMap, ruleMap, nowTs }) {
  * ⚠️ 首页已改为在 `home.bootstrap` 里内联回填（见上方 `recoverableMapOf`），
  * 不再调这个 action；它留着给「重新打开挽回浮层」这类按需入口用，不要删。
  */
-async function candidates(db, userId, itemId) {
+async function candidates(db, userId, payload = {}) {
+  const itemId = typeof payload === 'string' ? payload : payload.itemId;
   if (!itemId) return fail(ERRORS.BAD_PARAM);
 
   const res = await db.collection(COLLECTIONS.TRIP_ITEMS)
@@ -276,6 +285,7 @@ async function candidates(db, userId, itemId) {
     spotMap,
     ruleMap,
     nowTs,
+    supportsMultiRelease: payload && payload.supportsMultiRelease === true,
   });
 
   return ok({ candidates: list });

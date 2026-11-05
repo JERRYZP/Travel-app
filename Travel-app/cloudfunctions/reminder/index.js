@@ -123,7 +123,7 @@ async function main(event) {
       case 'tripItem.removeVisitDate':
         return await itemActions.removeVisitDate(db, userId, event);
       case 'tripItem.recoveryCandidates':
-        return await recovery.candidates(db, userId, event.itemId);
+        return await recovery.candidates(db, userId, event);
 
       /* ======== 首页聚合（一次调用返回全部，减少冷启动） ======== */
       case 'home.bootstrap':
@@ -176,7 +176,8 @@ async function main(event) {
         const tl = await timeline.preview(db, userId, event);
         if (!tl.success) return tl;
         const result = await cart.addBatch(
-          db, userId, event.tripId, tl.events, event.scope, event.scopeKey
+          db, userId, event.tripId, tl.events, event.scope, event.scopeKey,
+          { supportsMultiRelease: event.supportsMultiRelease === true }
         );
         if (!result.success) return result;
         const eventMap = new Map((tl.events || []).map(ev => [
@@ -232,11 +233,18 @@ async function main(event) {
         return await cart.list(db, userId, event.tripId || null, {
           includeMembership: event.includeMembership === true,
           membershipCapabilities: event.membershipCapabilities,
+          supportsMultiRelease: event.supportsMultiRelease === true,
         });
       case 'cart.bootstrap':
         return await cartBootstrap(userId, event);
       case 'cart.updateRemindOn':
-        return await cart.updateRemindOn(db, userId, event.cartId, event.remindOn === true);
+        return await cart.updateRemindOn(
+          db,
+          userId,
+          event.cartId,
+          event.remindOn === true,
+          { supportsMultiRelease: event.supportsMultiRelease === true }
+        );
       case 'cart.commit': {
         const res = await task.submit(db, userId, { ...event, requireSubscription: true });
         if (!res.success) return res;
@@ -510,7 +518,9 @@ async function composeHomeBootstrap(db, userId, sources, event, t0, timing, opti
   const swept = event.__shadow ? 0 : await task.sweepOverdue(
     db, allTasks, nowTs, userId, taskRow => {
       const spot = spotMap[taskRow.spotId];
-      return spot ? item.deriveReleaseAt(spot, ruleMap[taskRow.spotId], taskRow.visitDate) : null;
+      return spot
+        ? item.releaseAtForTask(spot, ruleMap[taskRow.spotId], taskRow)
+        : null;
     }
   );
   timing.sweepMs = Date.now() - tSweep;
@@ -528,16 +538,22 @@ async function composeHomeBootstrap(db, userId, sources, event, t0, timing, opti
     templateId => subscribeQuotaOf(user, templateId),
     nowTs
   );
-  const taskMap = item.taskMapByItemId(allTasks);
+  const taskMap = item.tasksMapByItemId(allTasks);
   const decorated = items.map(row => item.decorateItem({
     item: row,
     spot: spotMap[row.spotId],
     rule: ruleMap[row.spotId],
-    task: taskMap[row._id] || null,
+    tasks: taskMap[row._id] || [],
     nowTs,
+    supportsMultiRelease: event.supportsMultiRelease === true,
   }));
   const recoverableIds = Object.keys(recovery.recoverableMapOf({
-    decorated, trips, spotMap, ruleMap, nowTs,
+    decorated,
+    trips,
+    spotMap,
+    ruleMap,
+    nowTs,
+    supportsMultiRelease: event.supportsMultiRelease === true,
   }));
 
   const activeTrips = [];
@@ -692,6 +708,7 @@ async function cartBootstrap(userId, event = {}) {
     cart.list(db, userId, null, {
       includeMembership: true,
       membershipCapabilities: event.membershipCapabilities,
+      supportsMultiRelease: event.supportsMultiRelease === true,
     }),
     task.subscriptionStatus(db, userId, DEFAULT_SUBSCRIBE_TEMPLATE_ID),
   ]);

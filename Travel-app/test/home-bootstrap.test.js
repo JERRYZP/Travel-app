@@ -217,6 +217,25 @@ const seedSpot = async () => {
     });
     res = await reminder.main({ action: 'home.bootstrap' });
     eq(JSON.stringify(res.recoverableIds), '[]', '没有候选 → 空数组（什么都不建议是合法的）');
+    eq(res.trips[0].items[0].canChangeToSuccess, true,
+      '未抢到且日期未结束 → 首页可直接改为已约到');
+    eq(res.trips[0].items[0].canChangeToFailed, false,
+      '未抢到状态不显示反向“未约到”菜单');
+
+    const corrected = await reminder.main({
+      action: 'tripItem.markResult', itemId: 'ITEM1', result: 'SUCCESS',
+    });
+    eq(corrected.success, true, '未抢到 → 已约到允许更正');
+    eq(corrected.item.ticketState, 'SUCCESS', '更正后首页投影为已约到');
+    eq(corrected.item.canChangeToFailed, true, '已约到后可反向更正为未约到');
+
+    const undone = await reminder.main({
+      action: 'tripItem.undoResult',
+      itemId: 'ITEM1',
+      expectedResultAt: corrected.item.resultAt,
+    });
+    eq(undone.success, true, '更正后 4 秒内可撤销');
+    eq(undone.item.ticketState, 'FAILED', '撤销恢复原来的未抢到');
   }
 
   /* ===== 场景 7：「约其他日」真的走得通（2026-09-24） =====

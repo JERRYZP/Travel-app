@@ -23,6 +23,7 @@
 const { COLLECTIONS, ERRORS, PENDING_CART_TRIP_ID, ok, fail, difficultyOf } = require('./schema');
 const time = require('./time');
 const item = require('./item');
+const releaseSchedule = require('./release-schedule');
 const tripItem = require('./trip-item');
 const membership = require('./membership');
 const datePlan = require('./date-plan');
@@ -39,6 +40,10 @@ function cartTripIdOf(tripId) {
   return tripId || PENDING_CART_TRIP_ID;
 }
 
+function supportsMultiReleaseOf(payload) {
+  return !!(payload && payload.supportsMultiRelease === true);
+}
+
 /** 清单是否属于暂存区（未提交） */
 function isPending(tripId) {
   return !tripId || tripId === PENDING_CART_TRIP_ID;
@@ -48,10 +53,16 @@ function isPending(tripId) {
 function summarize(items) {
   const spotCount = new Set(items.map(i => i.spotId)).size;
   const reminderCount = items.filter(i => i.remindOn === true).length;
+  const reminderTaskCount = items.reduce((sum, row) => {
+    if (row.remindOn !== true) return sum;
+    const count = Number(row.releaseTaskCount);
+    return sum + (Number.isFinite(count) ? Math.max(0, count) : 1);
+  }, 0);
   return {
     count: items.length,
     spotCount,
     reminderCount,
+    reminderTaskCount,
     noReminderCount: items.length - reminderCount,
     text: reminderCount > 0
       ? `已选 ${items.length} 项，其中 ${reminderCount} 个将设提醒`
@@ -115,7 +126,7 @@ function validVisitDates(values) {
   return dates.every(d => /^\d{4}-\d{2}-\d{2}$/.test(d)) ? dates : [];
 }
 
-async function loadDatePlanContext(db, userId, { spotId, visitDates }) {
+async function loadDatePlanContext(db, userId, { spotId, visitDates, supportsMultiRelease }) {
   const dates = validVisitDates(visitDates);
   if (!spotId || !dates.length) return fail(ERRORS.BAD_PARAM);
 
@@ -148,6 +159,7 @@ async function loadDatePlanContext(db, userId, { spotId, visitDates }) {
     nowTs: time.now(),
     cartDates,
     tripDates,
+    supportsMultiRelease: supportsMultiRelease === true,
   });
   return {
     spot,
@@ -189,6 +201,7 @@ async function planQuickDates(db, userId, payload) {
     nowTs: time.now(),
     cartDates: new Set(),
     tripDates: new Set(),
+    supportsMultiRelease: supportsMultiReleaseOf(payload),
   });
   const tripDates = new Set((context.tripRows || []).map(row => row.visitDate));
   const cartByDate = new Map();
@@ -260,6 +273,9 @@ async function addDates(db, userId, payload) {
           visitDate: row.visitDate,
           releaseAt: row.releaseAt,
           remindOn: row.reminderAllowed,
+          releaseTaskCount: row.reminderAllowed
+            ? Math.max(0, Number(row.reminderTaskCount) || 0)
+            : 0,
           reservationRequired: spot.reservationRequired !== false,
           createdAt: time.now(),
         },
@@ -268,6 +284,9 @@ async function addDates(db, userId, payload) {
         cartId: res._id,
         visitDate: row.visitDate,
         releaseAt: row.releaseAt,
+        releaseTaskCount: row.reminderAllowed
+          ? Math.max(0, Number(row.reminderTaskCount) || 0)
+          : 0,
         reservationRequired: spot.reservationRequired !== false,
         remindOn: row.reminderAllowed,
         status: row.status,
@@ -299,7 +318,9 @@ async function addDates(db, userId, payload) {
 }
 
 /** CART-RULE-001 加入清单（单条） */
-async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn }) {
+async function add(db, userId, {
+  tripId, spotId, visitDate, releaseAt, remindOn, supportsMultiRelease,
+}) {
   if (!spotId || !visitDate) return fail(ERRORS.BAD_PARAM);
   const targetTripId = cartTripIdOf(tripId);
   const nowTs = time.now();
@@ -315,6 +336,7 @@ async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn 
 
   let resolvedReleaseAt = null;
   let resolvedRemindOn = false;
+  let taskSlots = [];
   let remindBlockedReason = '';
   if (reservationRequired) {
     /* ⚠️ **放票时刻服务端自己推**，不信任调用方传的那个（2026-09-24）：
@@ -326,12 +348,26 @@ async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn 
        以前这里直接 `!releaseAt → BAD_PARAM`，用户点「确定」只会看到
        「请检查输入」——挽回线点得开、走不通。别把这道校验改回去：
        用户要的是「换一天再抢」，页面不该为了凑一个参数去重算放票时刻。 */
-    const derived = item.deriveReleaseAt(spot, rule, visitDate);
-    if (derived) {
-      resolvedReleaseAt = derived;
+    const releaseSlots = releaseSchedule.slotsForRequest(
+      spot,
+      rule,
+      visitDate,
+      supportsMultiRelease === true
+    );
+    taskSlots = releaseSchedule.taskSlotsForRequest(
+      spot,
+      rule,
+      visitDate,
+      nowTs,
+      supportsMultiRelease === true
+    );
+    if (releaseSlots.length > 0) {
+      resolvedReleaseAt = taskSlots.length > 0
+        ? taskSlots[0].releaseAt
+        : releaseSlots[releaseSlots.length - 1].releaseAt;
       /* 已过放票时刻的项只能“仅加行程”：此时提醒已经不可能送达，
          不能再让用户在清单里切换成一个最终必然失败的开关。 */
-      const releasePassed = new Date(resolvedReleaseAt).getTime() <= nowTs.getTime();
+      const releasePassed = taskSlots.length === 0;
       resolvedRemindOn = releasePassed
         ? false
         : (typeof remindOn === 'boolean' ? remindOn : tripItem.defaultRemindOn(spot));
@@ -366,6 +402,7 @@ async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn 
     visitDate,
     releaseAt: resolvedReleaseAt,
     remindOn: resolvedRemindOn,
+    releaseTaskCount: resolvedRemindOn ? taskSlots.length : 0,
     reservationRequired,
     createdAt: nowTs,
   };
@@ -376,6 +413,7 @@ async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn 
     spotId,
     visitDate,
     releaseAt: resolvedReleaseAt,
+    releaseTaskCount: resolvedRemindOn ? taskSlots.length : 0,
     reservationRequired,
     remindOn: resolvedRemindOn,
     remindBlockedReason,
@@ -385,7 +423,7 @@ async function add(db, userId, { tripId, spotId, visitDate, releaseAt, remindOn 
 }
 
 /** CART-RULE-004 批量加入：仅作用于当前选中的 Tab */
-async function addBatch(db, userId, tripId, events, scope, scopeKey) {
+async function addBatch(db, userId, tripId, events, scope, scopeKey, options = {}) {
   const { EventSelectStatus } = require('./schema');
   if (!scope || !scopeKey) return fail(ERRORS.BAD_PARAM);
   const inScope = scope === 'departure'
@@ -454,11 +492,28 @@ async function addBatch(db, userId, tripId, events, scope, scopeKey) {
     const rule = ruleMap[event.spotId] || null;
     const reservationRequired = spot.reservationRequired !== false;
     let releaseAt = null;
+    let releaseTaskCount = 0;
     let remindOn = false;
     if (reservationRequired) {
-      releaseAt = item.deriveReleaseAt(spot, rule, event.visitDate);
-      const releasePassed = !!releaseAt && new Date(releaseAt).getTime() <= nowTs.getTime();
-      remindOn = !!releaseAt
+      const releaseSlots = releaseSchedule.slotsForRequest(
+        spot,
+        rule,
+        event.visitDate,
+        options.supportsMultiRelease === true
+      );
+      const taskSlots = releaseSchedule.taskSlotsForRequest(
+        spot,
+        rule,
+        event.visitDate,
+        nowTs,
+        options.supportsMultiRelease === true
+      );
+      releaseAt = taskSlots.length > 0
+        ? taskSlots[0].releaseAt
+        : (releaseSlots.length ? releaseSlots[releaseSlots.length - 1].releaseAt : null);
+      const releasePassed = releaseSlots.length > 0 && taskSlots.length === 0;
+      releaseTaskCount = taskSlots.length;
+      remindOn = taskSlots.length > 0
         && !releasePassed
         && (typeof event.remindOnDefault === 'boolean'
           ? event.remindOnDefault
@@ -471,6 +526,7 @@ async function addBatch(db, userId, tripId, events, scope, scopeKey) {
       visitDate: event.visitDate,
       releaseAt,
       remindOn,
+      releaseTaskCount: remindOn ? releaseTaskCount : 0,
       reservationRequired,
       createdAt: nowTs,
     });
@@ -513,27 +569,51 @@ async function addBatch(db, userId, tripId, events, scope, scopeKey) {
 }
 
 /** 修改某项是否设置提醒 */
-async function updateRemindOn(db, userId, cartId, remindOn) {
+async function updateRemindOn(db, userId, cartId, remindOn, options = {}) {
   const res = await db.collection(COLLECTIONS.REMINDER_CART)
     .where({ _id: cartId, userId }).get();
-  const item = (res.data || [])[0];
-  if (!item) return fail(ERRORS.BAD_PARAM);
-  const canRemind = item.reservationRequired !== false && !!item.releaseAt;
-  if (remindOn && !canRemind) return fail(ERRORS.BAD_PARAM);
-  const releasePassed = item.reservationRequired !== false
-    && item.releaseAt
-    && new Date(item.releaseAt).getTime() <= time.now().getTime();
+  const row = (res.data || [])[0];
+  if (!row) return fail(ERRORS.BAD_PARAM);
+  const { spotMap, ruleMap } = await item.loadSpotContext(db, [row.spotId]);
+  const spot = spotMap[row.spotId];
+  const rule = ruleMap[row.spotId] || null;
+  const nowTs = time.now();
+  const allSlots = releaseSchedule.slotsForRequest(
+    spot,
+    rule,
+    row.visitDate,
+    options.supportsMultiRelease === true
+  );
+  const taskSlots = releaseSchedule.taskSlotsForRequest(
+    spot,
+    rule,
+    row.visitDate,
+    nowTs,
+    options.supportsMultiRelease === true
+  );
+  if (remindOn && row.reservationRequired === false) return fail(ERRORS.BAD_PARAM);
+  if (remindOn && allSlots.length === 0) return fail(ERRORS.BAD_PARAM);
+  const releasePassed = row.reservationRequired !== false
+    && allSlots.length > 0
+    && taskSlots.length === 0;
   if (releasePassed) return fail(ERRORS.REMINDER_WINDOW_CLOSED);
+  const patch = {
+    remindOn: remindOn === true,
+    releaseAt: taskSlots.length ? taskSlots[0].releaseAt : row.releaseAt,
+    releaseTaskCount: remindOn === true ? taskSlots.length : 0,
+  };
   await db.collection(COLLECTIONS.REMINDER_CART).doc(cartId).update({
-    data: { remindOn: remindOn === true },
+    data: patch,
   });
   const all = await db.collection(COLLECTIONS.REMINDER_CART)
-    .where({ userId, tripId: item.tripId }).get();
-  const items = (all.data || []).map(row =>
-    row._id === cartId ? { ...row, remindOn: remindOn === true } : row);
+    .where({ userId, tripId: row.tripId }).get();
+  const items = (all.data || []).map(current =>
+    current._id === cartId ? { ...current, ...patch } : current);
   return ok({
     cartId,
-    remindOn: remindOn === true,
+    remindOn: patch.remindOn,
+    releaseAt: patch.releaseAt,
+    releaseTaskCount: patch.releaseTaskCount,
     cartSummary: summarize(items),
     cartVersion: cartVersionOf(items),
   });
@@ -642,6 +722,7 @@ async function clearPendingIfNoItems(db, userId) {
 async function list(db, userId, tripId = null, {
   includeMembership = false,
   membershipCapabilities = null,
+  supportsMultiRelease = false,
 } = {}) {
   const where = { userId, tripId: cartTripIdOf(tripId) };
   const nowTs = time.now();
@@ -655,28 +736,41 @@ async function list(db, userId, tripId = null, {
   const [res, membershipRes] = await Promise.all([cartPromise, membershipPromise]);
   const items = res.data || [];
 
-  const spotIds = [...new Set(items.map(i => i.spotId))];
-  let spotMap = {};
-  if (spotIds.length) {
-    const spotsRes = await db.collection(COLLECTIONS.SPOTS)
-      .where({ spotId: db.command.in(spotIds) }).get();
-    (spotsRes.data || []).forEach(s => { spotMap[s.spotId] = s; });
-  }
+  const { spotMap, ruleMap } = await item.loadSpotContext(db, items.map(i => i.spotId));
 
   const enriched = items.map(i => {
     const spot = spotMap[i.spotId];
+    const rule = ruleMap[i.spotId] || null;
     const reservationRequired = i.reservationRequired !== false && (!spot || spot.reservationRequired !== false);
-    const noFixedRelease = reservationRequired && !i.releaseAt;
-    const releasePassed = reservationRequired
-      && i.releaseAt
-      && new Date(i.releaseAt).getTime() <= nowTs.getTime();
-    const releaseAt = reservationRequired && i.releaseAt ? new Date(i.releaseAt) : null;
+    const releaseSlots = releaseSchedule.slotsForRequest(
+      spot,
+      rule,
+      i.visitDate,
+      supportsMultiRelease === true
+    );
+    const taskSlots = releaseSchedule.taskSlotsForRequest(
+      spot,
+      rule,
+      i.visitDate,
+      nowTs,
+      supportsMultiRelease === true
+    );
+    const noFixedRelease = reservationRequired && releaseSlots.length === 0;
+    const releasePassed = reservationRequired && releaseSlots.length > 0 && taskSlots.length === 0;
+    const releaseAt = reservationRequired
+      ? (taskSlots.length ? taskSlots[0].releaseAt
+        : (releaseSlots.length ? releaseSlots[releaseSlots.length - 1].releaseAt : null))
+      : null;
     const msLeft = releaseAt ? releaseAt.getTime() - nowTs.getTime() : 0;
     const totalMin = Math.max(0, Math.floor(msLeft / 60000));
     return {
       ...i,
       reservationRequired,
       remindOn: reservationRequired && !noFixedRelease && !releasePassed && i.remindOn === true,
+      releaseTaskCount: reservationRequired && !noFixedRelease && !releasePassed && i.remindOn === true
+        ? taskSlots.length
+        : 0,
+      releaseSlots,
       remindLocked: !!(noFixedRelease || releasePassed),
       noFixedRelease,
       spotName: spot ? spot.name : '未知景点',

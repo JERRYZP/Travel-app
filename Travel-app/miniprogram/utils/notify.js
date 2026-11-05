@@ -274,7 +274,10 @@ function getReminderQuotaNeeded(perTask) {
   const taskCount = Math.max(1, Number(perTask) || 1);
   return api.reminder.cart.list()
     .then(res => {
-      const count = (res && res.summary && res.summary.reminderCount) || 0;
+      const summary = (res && res.summary) || {};
+      const count = Number.isFinite(summary.reminderTaskCount)
+        ? summary.reminderTaskCount
+        : (summary.reminderCount || 0);
       return count * taskCount;
     })
     .catch(() => taskCount);

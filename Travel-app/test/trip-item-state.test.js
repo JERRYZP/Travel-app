@@ -93,6 +93,31 @@ eq(item.canMarkResult({ item: null, reservationRequired: false, releaseAt: null,
 eq(item.canMarkResult({ item: null, reservationRequired: true, releaseAt: releaseBefore(1), visitDate: '2026-09-30', nowTs: NOW }),
   false, '出行日已过 → 结束标记入口');
 
+console.log('=== 7.1 人工结果双向更正闸门 ===');
+eq(item.canChangeToSuccess({ item: { result: 'FAILED' }, reservationRequired: true, releaseAt: releaseBefore(1), visitDate: '2026-10-05', nowTs: NOW }),
+  true, '未抢到且出行日未结束 → 可改为已约到');
+eq(item.canChangeToSuccess({ item: { result: 'SUCCESS' }, reservationRequired: true, releaseAt: releaseBefore(1), visitDate: '2026-10-05', nowTs: NOW }),
+  false, '已约到由反向闸门处理，不显示“已抢到”');
+eq(item.canChangeToSuccess({ item: null, reservationRequired: true, releaseAt: releaseBefore(1), visitDate: '2026-10-05', nowTs: NOW }),
+  false, '尚未标记时不显示更正入口');
+eq(item.canChangeToSuccess({ item: { result: 'FAILED' }, reservationRequired: false, releaseAt: null, visitDate: '2026-10-05', nowTs: NOW }),
+  false, '免预约项没有票务结果');
+eq(item.canChangeToSuccess({ item: { result: 'FAILED' }, reservationRequired: true, releaseAt: releaseAfter(1), visitDate: '2026-10-05', nowTs: NOW }),
+  false, '未到放票时间不可更正');
+eq(item.canChangeToSuccess({ item: { result: 'FAILED' }, reservationRequired: true, releaseAt: releaseBefore(1), visitDate: '2026-09-30', nowTs: NOW }),
+  false, '出行日已过 → 结束更正入口');
+
+eq(item.canChangeToFailed({ item: { result: 'SUCCESS' }, reservationRequired: true, releaseAt: releaseBefore(1), visitDate: '2026-10-05', nowTs: NOW }),
+  true, '已约到且出行日未结束 → 可改为未约到');
+eq(item.canChangeToFailed({ item: { result: 'FAILED' }, reservationRequired: true, releaseAt: releaseBefore(1), visitDate: '2026-10-05', nowTs: NOW }),
+  false, '未抢到由正向闸门处理，不显示“未约到”');
+eq(item.canChangeToFailed({ item: { result: 'SUCCESS' }, reservationRequired: false, releaseAt: null, visitDate: '2026-10-05', nowTs: NOW }),
+  false, '免预约项没有票务结果');
+eq(item.canChangeToFailed({ item: { result: 'SUCCESS' }, reservationRequired: true, releaseAt: releaseAfter(1), visitDate: '2026-10-05', nowTs: NOW }),
+  false, '未到放票时间不可更正');
+eq(item.canChangeToFailed({ item: { result: 'SUCCESS' }, reservationRequired: true, releaseAt: releaseBefore(1), visitDate: '2026-09-30', nowTs: NOW }),
+  false, '出行日已过 → 结束更正入口');
+
 console.log('=== 8. 提醒送达态与票务态分离 ===');
 const missTask = { backendStatus: 'WAITING', releaseAt: releaseBefore(1), lastSendError: 'errCode=43101', channels: ['OFFICIAL_ACCOUNT'], offsets: [5] };
 const r = item.reminderStateOf(missTask, { remindOn: true, nowTs: NOW });

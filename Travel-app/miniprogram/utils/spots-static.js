@@ -56,24 +56,85 @@ function isOpenOn(card, dayName) {
 }
 
 function releaseStatusOf(card, now) {
-  const releaseTime = Array.isArray(card.releaseTime) ? card.releaseTime[0] : card.releaseTime;
-  if (!releaseTime) return 'NOT_RELEASED';
+  const releaseTimes = Array.isArray(card.releaseTime)
+    ? card.releaseTime
+    : (card.releaseTime ? [card.releaseTime] : []);
+  if (!releaseTimes.length) return 'NOT_RELEASED';
   const p = beijingParts(now);
   if (!isOpenOn(card, p.dayName)) return 'NOT_RELEASED';
-  const [hour, minute] = String(releaseTime).split(':').map(Number);
-  return p.hour * 60 + p.minute < hour * 60 + minute ? 'NOT_RELEASED' : 'BOOKABLE';
+  const nowMinutes = p.hour * 60 + p.minute;
+  const released = releaseTimes.some(releaseTime => {
+    const [hour, minute] = String(releaseTime).split(':').map(Number);
+    return nowMinutes >= hour * 60 + minute;
+  });
+  return released ? 'BOOKABLE' : 'NOT_RELEASED';
+}
+
+function releaseSlotsOf(card) {
+  if (Array.isArray(card.releaseSlots) && card.releaseSlots.length) return card.releaseSlots;
+  const times = Array.isArray(card.releaseTime)
+    ? card.releaseTime
+    : (card.releaseTime ? [card.releaseTime] : []);
+  return times.map((releaseTime, index) => ({
+    key: `slot-${index + 1}`,
+    releaseTime,
+    advanceDays: Number(card.advanceDays),
+  })).filter(slot => Number.isFinite(slot.advanceDays));
+}
+
+function isHoliday(card, dateStr) {
+  return (card && Array.isArray(card.holidayRanges) ? card.holidayRanges : [])
+    .some(range => Array.isArray(range)
+      && range.length >= 2
+      && dateStr >= range[0]
+      && dateStr <= range[1]);
+}
+
+function isHighDemandDate(card, dateStr) {
+  const dayName = dayNameOfStr(dateStr);
+  return dayName === 'saturday' || dayName === 'sunday' || isHoliday(card, dateStr);
 }
 
 /** 与云端 computeEarliestDate 同口径：不可约时向前回退，不顺延。 */
 function earliestDateOf(card, now) {
-  if (!card.advanceDays) return null;
-  const advanceDays = Number(card.advanceDays);
-  let target = addDaysStr(toDateStr(now), advanceDays);
-  for (let i = 0; i <= advanceDays; i += 1) {
-    if (isOpenOn(card, dayNameOfStr(target))) return target;
-    target = addDaysStr(target, -1);
+  const slots = releaseSlotsOf(card);
+  if (!slots.length) return null;
+  const today = toDateStr(now);
+  const maxAdvance = Math.max(...slots.map(slot => {
+    const weekend = Number(slot.weekendAdvanceDays);
+    return Number.isFinite(weekend)
+      ? Math.max(Number(slot.advanceDays), weekend)
+      : Number(slot.advanceDays);
+  }));
+  for (let offset = maxAdvance; offset >= 0; offset -= 1) {
+    const target = addDaysStr(today, offset);
+    const dayName = dayNameOfStr(target);
+    if (!isOpenOn(card, dayName)) continue;
+    const weekend = isHighDemandDate(card, target);
+    const available = slots.some(slot => {
+      const advanceDays = weekend && Number.isFinite(Number(slot.weekendAdvanceDays))
+        ? Number(slot.weekendAdvanceDays)
+        : Number(slot.advanceDays);
+      return addDaysStr(target, -advanceDays) <= today;
+    });
+    if (available) return target;
   }
   return null;
+}
+
+function advanceLabelOf(card) {
+  const days = [];
+  releaseSlotsOf(card).forEach(slot => {
+    days.push(Number(slot.advanceDays));
+    if (slot.weekendAdvanceDays !== undefined && slot.weekendAdvanceDays !== null) {
+      days.push(Number(slot.weekendAdvanceDays));
+    }
+  });
+  const valid = days.filter(Number.isFinite);
+  if (!valid.length) return '';
+  const min = Math.min(...valid);
+  const max = Math.max(...valid);
+  return min === max ? `提前${min}天` : `提前${min}-${max}天`;
 }
 
 function cardDescOf(card, now) {
@@ -96,7 +157,8 @@ function hydrateCard(source, now) {
     const release = Array.isArray(card.releaseTime)
       ? card.releaseTime.join('、')
       : card.releaseTime;
-    cardDesc = `${card.advanceDays ? `提前${card.advanceDays}天 ` : ''}${release || ''}放票 · 票量充足，无需卡点`;
+    const advance = advanceLabelOf(card);
+    cardDesc = `${advance ? `${advance} ` : ''}${release || ''}放票 · 票量充足，无需卡点`;
   }
   else if (!remindable && card.reservationRequired !== false) cardDesc = '无固定放票时刻，随买随用';
   card.releaseStatus = status;

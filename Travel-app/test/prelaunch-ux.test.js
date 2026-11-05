@@ -232,7 +232,7 @@ function resetWx(patch = {}) {
   const homeSrc = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.js'), 'utf8');
   const hubSrc = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-hub/spot-hub.js'), 'utf8');
   const reminderFlowSrc = fs.readFileSync(path.join(ROOT, 'miniprogram/utils/reminder-flow.js'), 'utf8');
-  eq(/reminderCount \* this\.data\.offsets\.length/.test(setupSrc), true, 'setup 按提醒条数和提前量计算额度');
+  eq(/reminderTaskCount/.test(setupSrc), true, 'setup 按提醒任务数和提前量计算额度');
   eq(/getReminderHealth/.test(setupSrc), true, 'setup 使用统一授权健康状态');
   eq(/requestSubscribeBurst\(1(?:,\s*this\.data\.templateId)?\)/.test(setupSrc), true,
     'setup 每次用户点击只申请 1 条授权');
@@ -247,7 +247,7 @@ function resetWx(patch = {}) {
   eq(/membershipEntry\.openTaskLimit/.test(homeRecoverSrc), false,
     '首页挽回不再因提醒名额错误直接跳会员页');
   eq(/reminderFlow\.onDateConfirm/.test(hubSrc), true, '景点页使用共享提醒流程');
-  eq(/openReminderAuth\(page, plan\.summary\.reminder/.test(reminderFlowSrc), true,
+  eq(/openReminderAuth\(page, reminderTaskCount/.test(reminderFlowSrc), true,
     '共享提醒流程按本次实际待建提醒数打开固定授权浮层');
   eq(/api\.reminder\.cart\.planQuickDates\(/.test(reminderFlowSrc)
     && /api\.reminder\.cart\.quickCommit\(/.test(reminderFlowSrc), true,

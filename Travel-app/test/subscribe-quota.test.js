@@ -227,17 +227,17 @@ async function cloudConsumption() {
     offsets: OFFSETS,
   });
   eq(committed.success, true, '提交成功');
-  eq(committed.createdTasks, listed.summary.reminderCount, '任务数 = 将设提醒项数（不是 offsets 条数）');
+  eq(committed.createdTasks, listed.summary.reminderTaskCount, '任务数 = 将设提醒任务数（不是 offsets 条数）');
 
   const tasks = db._dump(COLLECTIONS.REMINDER_TASKS);
   eq(tasks.length, 2, '库中 2 条任务');
   await Promise.all(tasks.map(x =>
     db.collection(COLLECTIONS.REMINDER_TASKS).doc(x._id).update({ data: { releaseAt } })));
   const due = _internal.collectDue(db._dump(COLLECTIONS.REMINDER_TASKS), Date.now());
-  eq(due.length, listed.summary.reminderCount * OFFSETS.length, '待发消息数 = 项数 × 提前量数 = 2 × 2 = 4');
+  eq(due.length, listed.summary.reminderTaskCount * OFFSETS.length, '待发消息数 = 任务数 × 提前量数 = 2 × 2 = 4');
   eq(new Set(due.map(d => d.task._id)).size, 2, '每条任务各发 2 条（5 分钟档 + 2 分钟档）');
 
-  console.log('   → 结论：本次提交必须备足', listed.summary.reminderCount * OFFSETS.length, '条订阅额度');
+  console.log('   → 结论：本次提交必须备足', listed.summary.reminderTaskCount * OFFSETS.length, '条订阅额度');
 }
 
 async function serverCommitGate() {
@@ -489,8 +489,8 @@ function crossCheck() {
     path.join(__dirname, '..', 'miniprogram', 'pages', 'setup', 'setup.js'), 'utf8');
   const notifySrc = require('fs').readFileSync(
     path.join(__dirname, '..', 'miniprogram', 'utils', 'notify.js'), 'utf8');
-  eq(/reminderCount \* this\.data\.offsets\.length/.test(setupSrc), true, 'setup 按清单提醒数与提前量数算需求量');
-  eq(/count \* taskCount/.test(notifySrc), true, '需求量 = 项数 × 提前量数');
+  eq(/reminderTaskCount/.test(setupSrc), true, 'setup 按清单任务数而非日期数算需求量');
+  eq(/summary\.reminderTaskCount/.test(notifySrc), true, 'notify 需求量读取任务数');
   eq(/requestSubscribeBurst\(1(?:,\s*this\.data\.templateId)?\)/.test(setupSrc), true,
     'setup 每次用户点击只申请 1 条授权');
   eq(/_fillingQuota/.test(setupSrc), true, 'setup 补授权有防连点锁');
@@ -498,7 +498,7 @@ function crossCheck() {
 
   const mockSrc = require('fs').readFileSync(
     path.join(__dirname, '..', 'miniprogram', 'utils', 'mock.js'), 'utf8');
-  eq(/reminderCount/.test(mockSrc), true, 'mock.js 镜像返回 summary.reminderCount');
+  eq(/reminderTaskCount/.test(mockSrc), true, 'mock.js 镜像返回 summary.reminderTaskCount');
 
   /* 方案 3：文案是「已授权」不是「可提醒」——「可提醒 N 次」是对送达的承诺，
      而本地台账只是推测值，写「可提醒」会在发不出去时让用户以为已覆盖。
