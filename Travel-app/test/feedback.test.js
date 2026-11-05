@@ -233,7 +233,7 @@ const USER = 'openid_test_001';
   eq(noUser.user.openId, 'openid_corr_user', '无文档时 openId 用 userId 兜底');
   eq(userDirectory.USER_QUERY_CHUNK, 20, '查表分块 20 条（与 payment 侧一致）');
 
-  console.log('\n=== 10. 管理员回复（adminReply） ===');
+  console.log('\n=== 10. 管理员回复（adminReply 兼容入口） ===');
   const deniedReply = await feedback.adminReply(db2, USER, { id: 'fb1', reply: 'hi' });
   eq(deniedReply.success, false, '非管理员回复拒绝');
   eq(deniedReply.errorCode, 1040, '回复拒绝错误码 1040');
@@ -254,10 +254,10 @@ const USER = 'openid_test_001';
   eq(doc1.status, 'PROCESSED', '状态已置 PROCESSED');
 
   const r2 = await feedback.adminReply(db2, ADMIN, { id: 'fb1', reply: '更新：已上线' });
-  eq(r2.adminReply, '更新：已上线', '二次回复覆盖');
+  eq(r2.adminReply, '更新：已上线', '旧接口二次调用修改最新回复');
   const doc1b = db2._dump(COLLECTIONS.FEEDBACKS).find(d => d._id === 'fb1');
-  eq(doc1b.adminReply, '更新：已上线', '库里仍是单条回复（字符串，不是数组）');
-  eq(Array.isArray(doc1b.adminReply), false, '回复字段不是数组');
+  eq(doc1b.adminReply, '更新：已上线', '最新回复继续同步到旧镜像字段');
+  eq(doc1b.adminReplies.length, 1, '旧接口不额外追加回复线程');
 
   await feedback.adminUpdateStatus(db2, ADMIN, { id: 'fb2', status: 'IGNORED' });
   const r3 = await feedback.adminReply(db2, ADMIN, { id: 'fb2', reply: '这条不改，规则是对的' });

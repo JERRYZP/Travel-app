@@ -50,6 +50,7 @@ const membershipSales = require('./lib/membership-sales');
 const membershipEnforcement = require('./lib/membership-enforcement');
 const adminOrders = require('./lib/admin-orders');
 const adminReminderQuality = require('./lib/admin-reminder-quality');
+const feedbackReward = require('./lib/feedback-reward');
 const {
   migrateProtectionBatch,
   protectionMigrationCompleted,
@@ -2475,6 +2476,18 @@ async function main(event = {}) {
         return await adminOrderStats(context);
       case 'adminReminderQuality.stats':
         return await adminReminderQualityStats(context);
+      case 'feedbackReward.adminStatus':
+        return ok({ isAdmin: afterSales.isAfterSalesAdmin(context.OPENID) });
+      case 'feedbackReward.adminGrant': {
+        const denied = adminRequired(context);
+        if (denied) return denied;
+        return feedbackReward.grantFeedbackReward(db, context.OPENID, event.feedbackId);
+      }
+      case 'feedbackReward.adminRevoke': {
+        const denied = adminRequired(context);
+        if (denied) return denied;
+        return feedbackReward.revokeFeedbackReward(db, context.OPENID, event.feedbackId);
+      }
       case 'adminOrders.detail':
         return await adminOrderDetail(context, event);
       case 'afterSales.adminList':

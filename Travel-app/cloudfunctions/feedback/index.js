@@ -7,7 +7,8 @@
  * action：feedback.submit（公开提交）/ feedback.list（本人历史）
  *        / feedback.entrySummary / feedback.markSeen（“我的”入口统计与已读）
  *        / feedback.adminStatus（管理员入口校验）
- *        / feedback.adminList / feedback.adminReply / feedback.adminUpdateStatus
+ *        / feedback.adminList / feedback.adminAddReply / feedback.adminUpdateReply
+ *        / feedback.adminReply（旧客户端兼容）/ feedback.adminUpdateStatus
  *          （管理员，反馈管理页）
  * 完整契约见 Travel-app/API-契约.md。
  */
@@ -39,6 +40,10 @@ exports.main = async (event) => {
         return feedback.adminStatus(userId);
       case 'feedback.adminList':
         return await feedback.adminList(db, userId, event);
+      case 'feedback.adminAddReply':
+        return await feedback.adminAddReply(db, userId, event);
+      case 'feedback.adminUpdateReply':
+        return await feedback.adminUpdateReply(db, userId, event);
       case 'feedback.adminReply':
         return await feedback.adminReply(db, userId, event);
       case 'feedback.adminUpdateStatus':

@@ -57,6 +57,9 @@ function isAdmin(userId) {
 /** 管理员单条回复的字数上限（trim 后） */
 const REPLY_MAX_LEN = 300;
 
+/** 单条反馈最多保留的管理员回复条数，防止文档无限增长。 */
+const MAX_ADMIN_REPLIES = 100;
+
 /** 错误码（沿用 3.9 风格，1000/1010/1099 与 reminder 一致） */
 const ERRORS = {
   UNAUTHORIZED: { code: 1000, message: '未登录' },
@@ -65,6 +68,8 @@ const ERRORS = {
   FORBIDDEN: { code: 1040, message: '无权限' },
   FEEDBACK_NOT_FOUND: { code: 1043, message: '反馈不存在' },
   REPLY_EMPTY: { code: 1044, message: '回复内容不能为空' },
+  REPLY_LIMIT: { code: 1045, message: '回复条数已达上限' },
+  REPLY_NOT_FOUND: { code: 1046, message: '回复不存在' },
   UNKNOWN_ACTION: { code: 1099, message: 'unknown action' },
   SERVER_ERROR: { code: 1500, message: '服务异常，请稍后重试' },
 };
@@ -85,6 +90,7 @@ module.exports = {
   FeedbackCategory,
   CORRECTION_ERROR_TYPES,
   REPLY_MAX_LEN,
+  MAX_ADMIN_REPLIES,
   ADMIN_OPENIDS,
   isAdmin,
   ERRORS,

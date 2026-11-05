@@ -293,6 +293,9 @@ async function fulfillOrder(db, order, payment = {}) {
         memberSince: latestUser.memberSince || nowTs,
         memberOrderId: order._id,
         memberExpiresAt: new Date(nextExpiryMs),
+        lastMembershipGrantAt: nowTs,
+        lastMembershipGrantId: order._id,
+        lastMembershipGrantType: 'ORDER',
       };
       if (taskPackCountAdded > 0) {
         const currentPackCount = Math.max(0, parseInt(latestUser.taskPackCount, 10) || 0);

@@ -299,14 +299,14 @@ function resetWx(patch = {}) {
   eq(/"pages\/my-feedback\/my-feedback"/.test(appJson), true, '我的反馈页已注册路由');
   eq(/onHelpFeedback/.test(profileJs) && /\/pages\/help-feedback\/help-feedback/.test(profileJs), true,
     '我的页统一进入帮助与反馈');
-  eq(/api\.feedback\.entrySummary\(\)[\s\S]*showFeedbackAdminEntry[\s\S]*\/pages\/admin-feedback\/admin-feedback/.test(profileJs), true,
+  eq(/api\.feedback\.entrySummary\(\)[\s\S]*showFeedbackAdminEntry[\s\S]*\/admin\/feedback\/feedback/.test(profileJs), true,
     '反馈管理按钮仅在服务端确认管理员后显示并可进入');
   eq(/bindlongpress|onAdminEntry/.test(fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.wxml'), 'utf8') + profileJs), false,
     '反馈管理不再占用头像长按');
   eq(/<button class="setting-row service-row" open-type="contact"/.test(helpWxml), true,
     '帮助与反馈页提供微信原生在线客服');
-  eq(helpWxml.indexOf('在线客服') < helpWxml.indexOf('意见反馈')
-    && helpWxml.indexOf('意见反馈') < helpWxml.indexOf('信息纠错'), true,
+  eq(helpWxml.indexOf('service-row') < helpWxml.indexOf('bindtap="onFeedback"')
+    && helpWxml.indexOf('bindtap="onFeedback"') < helpWxml.indexOf('bindtap="onReportError"'), true,
   '上方依次展示在线客服、意见反馈、信息纠错');
   eq(/setting-card my-feedback-card[\s\S]*我的反馈/.test(helpWxml), true,
     '我的反馈使用下方独立卡片');

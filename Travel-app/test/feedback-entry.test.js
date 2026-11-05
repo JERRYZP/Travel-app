@@ -17,13 +17,14 @@ const eq = (actual, expected, message) => {
 };
 
 const storage = {};
+const appState = { globalData: { statusBarHeight: 20, navBarHeight: 44, membershipDataVersion: 0 } };
 global.wx = {
   getStorageSync(key) { return storage[key]; },
   setStorageSync(key, value) { storage[key] = value; },
   navigateTo() {},
   stopPullDownRefresh() {},
 };
-global.getApp = () => ({ globalData: { statusBarHeight: 20, navBarHeight: 44 } });
+global.getApp = () => appState;
 
 let pageDefinition = null;
 global.Page = definition => { pageDefinition = definition; };
@@ -130,6 +131,69 @@ async function run() {
   listResponse = { success: true, items: [] };
   await myFeedback.load.call(myFeedback);
   eq(calls.markSeen.length, 0, '旧接口未返回 asOf 时不误清未读');
+
+  console.log('\n=== 我的反馈：多条回复与奖励通知 ===');
+  listResponse = {
+    success: true,
+    asOf: new Date('2026-11-05T08:00:00.000Z'),
+    items: [{
+      _id: 'fb_rewarded',
+      type: 'feedback',
+      category: 'suggestion',
+      status: 'PROCESSED',
+      content: '建议增加景点筛选',
+      replies: [{
+        replyId: 'reply_1', content: '已记录', createdAt: new Date('2026-11-04T02:00:00.000Z'),
+        updatedAt: new Date('2026-11-04T03:00:00.000Z'), editCount: 1,
+      }, {
+        replyId: 'reply_2', content: '该建议已上线', createdAt: new Date('2026-11-05T02:00:00.000Z'),
+        updatedAt: new Date('2026-11-05T02:00:00.000Z'), editCount: 0,
+      }],
+      reward: {
+        status: 'GRANTED', days: 30, backfill: true,
+        grantedAt: new Date('2026-11-05T03:00:00.000Z'),
+        memberExpiresAt: new Date('2026-12-05T03:00:00.000Z'),
+        updatedAt: new Date('2026-11-05T03:00:00.000Z'),
+      },
+      createdAt: new Date('2026-11-01T02:00:00.000Z'),
+    }],
+    rewardNotices: [{
+      feedbackId: 'legacy_feedback',
+      type: 'correction',
+      category: null,
+      content: '补发的历史反馈',
+      reward: {
+        status: 'GRANTED', days: 30, backfill: true,
+        grantedAt: new Date('2026-11-05T03:00:00.000Z'),
+        memberExpiresAt: new Date('2026-12-05T03:00:00.000Z'),
+        updatedAt: new Date('2026-11-05T03:00:00.000Z'),
+      },
+    }],
+  };
+  calls.markSeen = [];
+  const rewardedPage = instantiate(loadPage('miniprogram/pages/my-feedback/my-feedback.js'));
+  const versionBefore = appState.globalData.membershipDataVersion;
+  await rewardedPage.load.call(rewardedPage);
+  eq(rewardedPage.data.items[0].replies.length, 2, '用户端展示完整回复线程');
+  eq(rewardedPage.data.items[0].replies[0].edited, true, '用户端展示已修改标记');
+  eq(rewardedPage.data.items[0].reward.backfill, true, '用户端展示补发标记');
+  eq(rewardedPage.data.rewardNotices.length, 1, '独立奖励通知可见');
+  eq(/补发奖励已到账/.test(rewardedPage.data.rewardNotices[0].title), true, '补发通知标题明确');
+  eq(/2026年12月5日/.test(rewardedPage.data.rewardNotices[0].detail), true, '通知展示会员到期日');
+  eq(calls.markSeen.length, 1, '看到奖励通知后按列表快照推进已读');
+  eq(appState.globalData.membershipDataVersion, versionBefore + 1,
+    '新奖励到账后递增会员缓存版本');
+
+  await rewardedPage.load.call(rewardedPage);
+  eq(appState.globalData.membershipDataVersion, versionBefore + 1,
+    '同一通知重复加载不重复递增版本');
+
+  listResponse.rewardNotices[0].reward.status = 'REVOKED';
+  listResponse.rewardNotices[0].reward.updatedAt = new Date('2026-11-06T03:00:00.000Z');
+  await rewardedPage.load.call(rewardedPage);
+  eq(rewardedPage.data.rewardNotices[0].title, '反馈奖励已撤回', '撤回通知对用户可见');
+  eq(appState.globalData.membershipDataVersion, versionBefore + 2,
+    '奖励撤回也触发会员缓存刷新');
 
   Module._load = originalLoad;
   if (fail) {

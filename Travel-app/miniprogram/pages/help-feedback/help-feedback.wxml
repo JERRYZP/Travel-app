@@ -10,6 +10,14 @@
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
 
 <view class="page-body">
+  <view class="feedback-reward-banner">
+    <view class="feedback-reward-head">
+      <text class="feedback-reward-title">反馈建议有礼</text>
+      <text class="feedback-reward-tag">长期活动</text>
+    </view>
+    <text class="feedback-reward-copy">收到意见反馈和功能建议，我们会尽快核实。若对产品功能体验或景点规则有提升，免费赠送会员 30 天！</text>
+  </view>
+
   <view class="setting-card">
     <button class="setting-row service-row" open-type="contact" hover-class="setting-row-hover">
       <text class="setting-row-label">在线客服</text>

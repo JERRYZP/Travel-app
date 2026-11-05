@@ -262,7 +262,7 @@ Page({
 
   onFeedbackAdmin() {
     if (!this.data.showFeedbackAdminEntry) return;
-    wx.navigateTo({ url: '/pages/admin-feedback/admin-feedback' });
+    wx.navigateTo({ url: '/admin/feedback/feedback' });
   },
 
   onLegal(e) {

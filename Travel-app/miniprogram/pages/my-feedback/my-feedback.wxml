@@ -10,6 +10,17 @@
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
 
 <view class="page-body">
+  <block wx:if="{{!loading && rewardNotices.length}}">
+    <view class="reward-notice reward-notice-{{notice.cls}}" wx:for="{{rewardNotices}}" wx:key="key">
+      <view class="reward-notice-head">
+        <text class="reward-notice-title">{{notice.title}}</text>
+        <text class="reward-notice-type">{{notice.typeLabel}}</text>
+      </view>
+      <text class="reward-notice-detail">{{notice.detail}}</text>
+      <text class="reward-notice-content" wx:if="{{notice.content}}">{{notice.content}}</text>
+    </view>
+  </block>
+
   <view class="state-block" wx:if="{{loading}}">
     <text class="state-text">加载中...</text>
   </view>
@@ -28,6 +39,10 @@
         <view class="fb-tags">
           <view class="fb-tag fb-tag-{{item.typeKey}}">{{item.typeLabel}}</view>
           <view class="fb-tag fb-status fb-status-{{item.statusCls}}">{{item.statusLabel}}</view>
+          <view wx:if="{{item.reward.status !== 'NONE'}}"
+            class="fb-tag fb-reward-tag fb-reward-tag-{{item.reward.cls}}">
+            {{item.reward.label}}{{item.reward.backfill ? ' · 补发' : ''}}
+          </view>
         </view>
         <text class="fb-time">{{item.time}}</text>
       </view>
@@ -40,12 +55,25 @@
 
       <text class="fb-content">{{item.content}}</text>
 
-      <view class="fb-reply" wx:if="{{item.hasReply}}">
-        <view class="fb-reply-head">
-          <text class="fb-reply-label">回复</text>
-          <text class="fb-reply-time">{{item.replyTime}}</text>
+      <view class="fb-reply-list" wx:if="{{item.hasReply}}">
+        <view class="fb-reply" wx:for="{{item.replies}}" wx:for-item="reply" wx:key="id">
+          <view class="fb-reply-head">
+            <view class="fb-reply-labels">
+              <text class="fb-reply-label">回复</text>
+              <text class="fb-reply-edited" wx:if="{{reply.edited}}">已修改</text>
+            </view>
+            <text class="fb-reply-time">{{reply.time}}</text>
+          </view>
+          <text class="fb-reply-text">{{reply.content}}</text>
         </view>
-        <text class="fb-reply-text">{{item.adminReply}}</text>
+      </view>
+
+      <view class="fb-member-result" wx:if="{{item.reward.status === 'GRANTED'}}">
+        <text>已获赠 30 天会员</text>
+        <text class="fb-member-expiry" wx:if="{{item.reward.expiresText}}">有效期至 {{item.reward.expiresText}}</text>
+      </view>
+      <view class="fb-member-result is-revoked" wx:elif="{{item.reward.status === 'REVOKED'}}">
+        <text>该反馈对应的会员奖励已撤回</text>
       </view>
     </view>
   </block>

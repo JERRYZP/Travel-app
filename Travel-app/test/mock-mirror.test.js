@@ -674,14 +674,51 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     eq(doc.adminReply, '', 'mock 提交时 adminReply 为空串');
     eq(doc.adminReplyAt, null, 'mock 提交时 adminReplyAt 为 null');
     eq(doc.adminReplyBy, null, 'mock 提交时 adminReplyBy 为 null');
+    eq(Array.isArray(doc.adminReplies), true, 'mock 提交时 adminReplies 为空数组结构');
+    eq(doc.rewardStatus, 'NONE', 'mock 提交时奖励状态为 NONE');
+    eq(doc.rewardProgramVersion, 'feedback-member-30d-v1', 'mock 记录奖励活动版本');
     eq(Object.prototype.hasOwnProperty.call(res.items[0], 'adminReply'), true, 'mock list 返回 adminReply 字段');
     eq(res.items[0].adminReply, '', '未回复时 mock list 的 adminReply 是空串');
+    eq(Array.isArray(res.items[0].replies), true, 'mock list 返回回复线程数组');
+    eq(res.items[0].replies.length, 0, '未回复时 mock 回复线程为空');
+    eq(res.items[0].reward.status, 'NONE', 'mock list 返回奖励快照');
+    eq(Array.isArray(res.rewardNotices), true, 'mock list 返回独立奖励通知数组');
+
+    const rewardedDoc = Object.values(m.__internals.db.feedbacks)[0];
+    rewardedDoc.adminReplies = [{
+      replyId: 'mock_reply_1',
+      content: '已收到建议',
+      createdAt: new Date(Date.now() - 1000),
+      createdBy: 'mock-admin',
+      updatedAt: new Date(Date.now() - 500),
+      updatedBy: 'mock-admin',
+      editCount: 1,
+      legacy: false,
+    }];
+    rewardedDoc.adminReply = '已收到建议';
+    rewardedDoc.adminReplyAt = rewardedDoc.adminReplies[0].createdAt;
+    rewardedDoc.rewardStatus = 'GRANTED';
+    rewardedDoc.rewardDays = 30;
+    rewardedDoc.rewardBackfill = true;
+    rewardedDoc.rewardGrantedAt = new Date();
+    rewardedDoc.rewardMemberExpiresAt = new Date(Date.now() + 30 * 86400000);
+    rewardedDoc.rewardUpdatedAt = new Date(Date.now() + 1000);
+    const rewardedRes = await c('feedback.list', {});
+    const rewardedItem = rewardedRes.items.find(item => item._id === rewardedDoc._id);
+    eq(rewardedRes.rewardNotices.length, 1, 'mock 补发奖励产生用户通知');
+    eq(rewardedRes.rewardNotices[0].reward.backfill, true, 'mock 通知包含补发标记');
+    eq(rewardedItem.replies[0].edited, true, 'mock 用户视图包含已修改标记');
+    eq(Object.prototype.hasOwnProperty.call(rewardedItem.replies[0], 'createdBy'), false,
+      'mock 用户视图不泄露回复人');
+    eq(rewardedItem.reward.status, 'GRANTED', 'mock 用户视图包含奖励状态');
 
     // 管理端接口刻意不进 mock：真实环境依赖 OpenID 白名单，mock 里伪造就等于假能力
     const adminListErr = await errOf(c('feedback.adminList', { page: 1, pageSize: 20 }));
     eq(adminListErr.errorCode, 1099, 'mock 不实现 feedback.adminList');
     const adminReplyErr = await errOf(c('feedback.adminReply', { id: 'x', reply: 'y' }));
     eq(adminReplyErr.errorCode, 1099, 'mock 不实现 feedback.adminReply');
+    const rewardStatus = await c('payment', { action: 'feedbackReward.adminStatus' });
+    eq(rewardStatus.isAdmin, false, 'mock 不伪造反馈奖励管理员权限');
   }
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');

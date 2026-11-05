@@ -45,7 +45,11 @@
         <view class="fb-tags">
           <view class="fb-tag fb-tag-{{item.typeKey}}">{{item.typeLabel}}</view>
           <view class="fb-tag fb-status fb-status-{{item.statusCls}}">{{item.statusLabel}}</view>
-          <view class="fb-tag fb-tag-reply" wx:if="{{item.hasReply}}">已回复</view>
+          <view class="fb-tag fb-tag-reply" wx:if="{{item.hasReply}}">已回复 {{item.replies.length}}</view>
+          <view class="fb-tag fb-tag-reward fb-tag-reward-{{item.reward.status}}" wx:if="{{item.reward.status !== 'NONE'}}">
+            {{item.reward.label}}{{item.reward.backfill ? ' · 补发' : ''}}
+          </view>
+          <view class="fb-tag fb-tag-reward fb-tag-reward-granted" wx:elif="{{item.reward.backfillable}}">可补发</view>
         </view>
         <text class="fb-time">{{item.time}}</text>
       </view>
@@ -65,18 +69,43 @@
 
       <text class="fb-content">{{item.content}}</text>
 
-      <view class="fb-reply" wx:if="{{item.hasReply}}">
-        <view class="fb-reply-head">
-          <text class="fb-reply-label">管理员回复</text>
-          <text class="fb-reply-time">{{item.replyTime}}</text>
+      <view class="fb-reward-panel" wx:if="{{item.reward.status !== 'NONE'}}">
+        <view class="fb-reward-head">
+          <text class="fb-reward-label">{{item.reward.label}}</text>
+          <text class="fb-reward-time" wx:if="{{item.reward.grantedTime}}">{{item.reward.grantedTime}}</text>
         </view>
-        <text class="fb-reply-text">{{item.adminReply}}</text>
+        <text class="fb-reward-expiry" wx:if="{{item.reward.status === 'GRANTED' && item.reward.expiresText}}">
+          会员有效期至 {{item.reward.expiresText}}
+        </text>
+        <text class="fb-reward-expiry" wx:elif="{{item.reward.status === 'REVOKED'}}">
+          该反馈对应的会员奖励已撤回，会员状态已按服务端结果更新
+        </text>
+      </view>
+
+      <view class="fb-reply-list" wx:if="{{item.hasReply}}">
+        <view class="fb-reply" wx:for="{{item.replies}}" wx:for-item="reply" wx:key="id">
+          <view class="fb-reply-head">
+            <view class="fb-reply-labels">
+              <text class="fb-reply-label">管理员回复</text>
+              <text class="fb-reply-edited" wx:if="{{reply.edited}}">已修改</text>
+            </view>
+            <text class="fb-reply-time">{{reply.time}}</text>
+          </view>
+          <text class="fb-reply-text">{{reply.content}}</text>
+          <view class="fb-reply-actions">
+            <view class="fb-reply-edit" bindtap="onReplyEdit" data-id="{{item.id}}" data-reply-id="{{reply.id}}">修改</view>
+          </view>
+        </view>
       </view>
 
       <view class="fb-card-foot">
         <text class="fb-contact" wx:if="{{item.contact}}">联系方式：{{item.contact}}</text>
         <view class="fb-actions">
-          <view class="fb-btn" bindtap="onReplyStart" data-id="{{item.id}}">{{item.hasReply ? '修改回复' : '回复'}}</view>
+          <view class="fb-btn" bindtap="onReplyStart" data-id="{{item.id}}">添加回复</view>
+          <view class="fb-btn fb-btn-primary" wx:if="{{canReward && item.reward.status === 'NONE'}}"
+            bindtap="onGrantReward" data-id="{{item.id}}">{{item.reward.backfillable ? '补发 30 天' : '赠送 30 天'}}</view>
+          <view class="fb-btn fb-btn-danger" wx:if="{{canReward && item.reward.status === 'GRANTED'}}"
+            bindtap="onRevokeReward" data-id="{{item.id}}">撤回奖励</view>
           <block wx:if="{{item.status === 'OPEN'}}">
             <view class="fb-btn fb-btn-primary" bindtap="onMark" data-id="{{item.id}}" data-status="PROCESSED">已处理</view>
             <view class="fb-btn" bindtap="onMark" data-id="{{item.id}}" data-status="IGNORED">忽略</view>
@@ -87,15 +116,16 @@
 
       <!-- 卡片内回复编辑器：同一时间只挂一个 -->
       <view class="reply-editor" wx:if="{{replyId === item.id}}">
+        <text class="reply-editor-title">{{replyMode === 'edit' ? '修改这条回复' : '添加一条回复'}}</text>
         <textarea class="reply-textarea" value="{{replyDraft}}" bindinput="onReplyInput"
           maxlength="{{replyMax}}" cursor-spacing="24" focus="{{true}}"
-          placeholder="回复会显示在用户的「我的反馈」里" placeholder-class="reply-placeholder" />
+          placeholder="回复会显示在用户的「我的反馈」里，用户不能回复" placeholder-class="reply-placeholder" />
         <view class="reply-foot">
           <text class="reply-count">{{replyDraft.length}}/{{replyMax}}</text>
           <view class="reply-actions">
             <view class="fb-btn" bindtap="onReplyCancel">取消</view>
             <view class="fb-btn {{replyCanSend && !replySaving ? 'fb-btn-primary' : 'disabled'}}"
-              bindtap="onReplySubmit">{{replySaving ? '发送中...' : '发送'}}</view>
+              bindtap="onReplySubmit">{{replySaving ? '保存中...' : (replyMode === 'edit' ? '保存修改' : '添加回复')}}</view>
           </view>
         </view>
       </view>

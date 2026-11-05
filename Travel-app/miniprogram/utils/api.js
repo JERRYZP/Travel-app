@@ -26,6 +26,7 @@ const READ_ACTIONS = new Set([
   'payment.adminOrders.list',
   'payment.adminOrders.stats',
   'payment.adminOrders.detail',
+  'payment.feedbackReward.adminStatus',
 ]);
 
 const inflightReads = new Map();
@@ -211,6 +212,8 @@ const feedback = {
   /* 管理端（反馈管理页，后端 openid 白名单鉴权） */
   adminStatus: () => call('feedback', { action: 'feedback.adminStatus' }),
   adminList: (p) => call('feedback', { action: 'feedback.adminList', ...p }),
+  adminAddReply: (p) => call('feedback', { action: 'feedback.adminAddReply', ...p }),
+  adminUpdateReply: (p) => call('feedback', { action: 'feedback.adminUpdateReply', ...p }),
   adminReply: (p) => call('feedback', { action: 'feedback.adminReply', ...p }),
   adminUpdateStatus: (p) => call('feedback', { action: 'feedback.adminUpdateStatus', ...p }),
 };
@@ -227,6 +230,11 @@ const payment = {
   },
   adminReminderQuality: {
     stats: () => call('payment', { action: 'adminReminderQuality.stats' }),
+  },
+  feedbackReward: {
+    adminStatus: () => call('payment', { action: 'feedbackReward.adminStatus' }),
+    adminGrant: (feedbackId) => call('payment', { action: 'feedbackReward.adminGrant', feedbackId }),
+    adminRevoke: (feedbackId) => call('payment', { action: 'feedbackReward.adminRevoke', feedbackId }),
   },
   afterSales: {
     submit: (p) => call('payment', { action: 'afterSales.submit', ...(p || {}) }),
@@ -293,6 +301,10 @@ function toastError(result) {
     1042: '这份行程暂时无法查看',
     1043: '反馈不存在',
     1044: '回复内容不能为空',
+    1045: '回复条数已达上限',
+    1046: '回复不存在或已被更新',
+    1047: '该反馈奖励已撤回，不能重复发放',
+    1048: '奖励后已有新的会员权益，不能自动撤回',
     1500: '服务异常，请稍后重试',
   };
   if (result && map[result.errorCode]) {

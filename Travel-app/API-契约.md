@@ -1,6 +1,7 @@
-# Travel-app 前端接口契约 V1.3
+# Travel-app 前端接口契约 V1.4
 
 > 面向：前端（微信小程序页面开发）
+> 2026-11-05 更新：反馈支持管理员追加多条单向回复、逐条修改，用户端展示完整回复线程和「已修改」标记；新增反馈采纳奖励 `payment.feedbackReward.adminStatus/adminGrant/adminRevoke`，每次奖励 30 天会员，可按反馈叠加。新反馈与历史反馈均可奖励，历史反馈标记为「补发」。用户端通过 `feedback.list.rewardNotices` 查看补发和撤回通知；通知按 `rewardUpdatedAt` 独立分页读取，不受最近 50 条反馈限制。
 > 2026-11-02 更新：新增 `tripShare.create/status/revoke/open` 与 PAGE-018 行程只读分享。分享令牌只从公开路径传入，普通行程接口仅返回 `shareActive`；主人接口可通过 `ownerNickname` 读取应用内昵称用于会话标题，接收方数据只含城市、日期、天数和景点名称。
 > 2026-11-03 更新：客服工作台 `adminReminderQuality.stats` 改为读取由 `payment` 两分钟定时器在北京时间 `13:00 / 21:00` 后首个 tick 持久化的质量快照；工作台打开和刷新不再扫描 `reminder_events` / `reminder_tasks`。仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用。
 > 2026-11-02 更新：客服工作台新增会员限制模式切换。运行期真身为 `payment_config/membership_enforcement`，管理员可切 `off/test/all` 并即时生效；切 `all` 前服务端强制核验两项上线迁移。
@@ -59,6 +60,12 @@
 | 1033 | 上线迁移未完成，不能切全量 | 保持原会员限制模式；先完成对应迁移 |
 | 1041 | 当前行程暂不可分享 | 分享浮层保留可见错误，不创建令牌 |
 | 1042 | 分享行程不可查看 | 只读页统一显示失效态，不区分停止、过期、删除或非法令牌 |
+| 1043 | 反馈不存在 | Toast「反馈不存在」并刷新列表 |
+| 1044 | 回复内容为空 | 保持编辑框，提示填写回复 |
+| 1045 | 回复条数已达上限 | 保留已有回复，关闭新增入口 |
+| 1046 | 回复不存在 | 提示回复已被更新，刷新列表 |
+| 1047 | 反馈奖励已撤回 | 不允许同一反馈再次赠送 |
+| 1048 | 奖励后已有新的会员权益 | 不自动撤回，保留当前权益并提示人工核验 |
 | 1099 | 未知 action | Toast |
 | 1500 | 服务端异常 | Toast「服务异常，请稍后重试」 |
 
@@ -1381,12 +1388,29 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```javascript
 {
   success: true,
-  items: [{ _id, type, category, spotId, spotName, errorType, content, contact, status, adminReply, adminReplyAt, createdAt }],
+  items: [{
+    _id, type, category, spotId, spotName, errorType, content, contact, status,
+    replies: [{
+      replyId, content, createdAt, updatedAt, edited
+    }],
+    adminReply, adminReplyAt,
+    reward: {
+      status: 'NONE' | 'GRANTED' | 'REVOKED',
+      days, backfill, grantedAt, revokedAt, memberExpiresAt, updatedAt
+    },
+    createdAt
+  }],
+  rewardNotices: [{
+    feedbackId, type, category, spotName, content,
+    reward: { status, days, backfill, grantedAt, revokedAt, memberExpiresAt, updatedAt }
+  }],
   asOf: Date
   // 按 createdAt 倒序，最多 50 条；status = OPEN 待处理 | PROCESSED 已处理 | IGNORED 已忽略
-  // adminReply 为空串表示尚未回复；adminReplyAt 为回复时间
+  // replies 是完整的管理员单向回复线程；edited=true 表示该条回复被修改过
+  // adminReply / adminReplyAt 继续返回最新一条，供旧客户端兼容
+  // rewardNotices 独立读取 users.feedbackSeenAt 之后的所有奖励、补发和撤回通知，不占最近 50 条反馈名额
   // asOf 是本次列表查询的已读水位快照；客户端用它调用 feedback.markSeen
-  // 不返回 userId 和 adminReplyBy（回复者 OpenID 属管理端信息）
+  // 不返回 userId、createdBy、updatedBy 或 adminReplyBy（管理员 OpenID 属管理端信息）
 }
 ```
 
@@ -1411,7 +1435,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 **口径：**
 
-- `adminReply` / `adminUpdateStatus` 会写内部字段 `handledAt`；用户端未读数按 `userId + handledAt > users.feedbackSeenAt` 统计。`asOf` 在列表查询前生成，查询开始后的新操作会留在水位之后。
+- `adminAddReply` / `adminUpdateReply` / `adminUpdateStatus` 以及奖励发放或撤回都会写内部字段 `handledAt`；用户端未读数按 `userId + handledAt > users.feedbackSeenAt` 统计。`asOf` 在列表查询前生成，查询开始后的新操作会留在水位之后。
 - 用户成功打开「我的反馈」后调用 `feedback.markSeen`；未成功加载列表时不清未读。
 - 同一反馈被多次回复或改状态，仍只计 1 条。
 
@@ -1467,7 +1491,13 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   success: true,
   items: [{
     _id, userId, type, category, spotId, spotName, errorType, content, contact,
-    status, adminReply, adminReplyAt, adminReplyBy, createdAt,
+    status, adminReply, adminReplyAt, adminReplyBy,
+    replies: [{ replyId, content, createdAt, createdBy, updatedAt, updatedBy, editCount, legacy }],
+    reward: {
+      status, days, backfill, grantedAt, revokedAt, memberExpiresAt, updatedAt,
+      grantedBy, revokedBy, memberExpiresBefore, memberExpiresAfter, backfillable
+    },
+    createdAt,
     user: { openId, nickname, avatarUrl }  // users 集合按 userId 关联；无文档时 nickname 为空串
   }],
   count: 20,        // 本页条数
@@ -1476,13 +1506,15 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   pageSize: 20,
   hasMore: true
   // 不按 userId 过滤；按 createdAt 倒序
+  // replies 保留完整管理线程；adminReply 仍是其中最新一条的兼容镜像
+  // reward.backfillable=true 表示该反馈创建于奖励活动上线前且尚未发放，管理页显示「可补发」
 }
 ```
 
-### `feedback.adminReply` — 管理员回复单条反馈
+### `feedback.adminAddReply` — 管理员追加一条回复
 
 ```
-调用：{ action: 'feedback.adminReply', id, reply }
+调用：{ action: 'feedback.adminAddReply', id, reply }
 ```
 
 | 参数 | 类型 | 说明 |
@@ -1492,16 +1524,38 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 **鉴权：** 同 adminList，白名单外返回 `1040 无权限`。
 
-单条回复：已有回复时**就地覆盖**，不保留历史，不做多轮对话。写入时状态一律置为 `PROCESSED`。
-同时写入内部 `handledAt`，供用户端未读标识统计。
+每条反馈最多保留 100 条管理员回复。追加不会覆盖已有回复；用户端只能阅读，不能回复。写入时状态一律置为 `PROCESSED`，并写入内部 `handledAt` 供用户端未读标识统计。
 
 **返回：**
 
 ```javascript
-{ success: true, updated: 1, adminReply: "...", adminReplyAt: Date, status: "PROCESSED" }
+{
+  success: true, updated: 1,
+  reply: { replyId, content, createdAt, createdBy, updatedAt, updatedBy, editCount, legacy },
+  replies: [...],
+  adminReply: "...", adminReplyAt: Date, status: "PROCESSED"
+}
 ```
 
-**错误码：** `1010` 缺 id / reply 非字符串 / 超 300 字；`1043` 反馈不存在；`1044` 回复内容为空。
+**错误码：** `1010` 缺 id / reply 非字符串 / 超 300 字；`1043` 反馈不存在；`1044` 回复内容为空；`1045` 回复条数已达上限。
+
+### `feedback.adminUpdateReply` — 管理员修改指定回复
+
+```
+调用：{ action: 'feedback.adminUpdateReply', id, replyId, reply }
+```
+
+管理员可在任意日期修改任一已有回复。修改保留原 `createdAt`，更新 `updatedAt / updatedBy` 并递增 `editCount`；用户端据此显示「已修改」。写入时状态置为 `PROCESSED`，同时推进 `handledAt`。
+
+返回结构同 `adminAddReply`，其中 `reply` 为本次修改后的回复。错误码在追加接口基础上增加 `1046`（指定回复不存在）。
+
+### `feedback.adminReply` — 旧客户端兼容入口
+
+```
+调用：{ action: 'feedback.adminReply', id, reply }
+```
+
+旧客户端兼容：没有回复时创建第一条，已有回复时修改最新一条。新客户端必须使用 `adminAddReply` / `adminUpdateReply` 明确区分追加和修改，不得再把该接口作为多回复实现。
 
 ### `feedback.adminUpdateStatus` — 管理员更新处理状态
 
@@ -1518,6 +1572,24 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 **返回：** `{ success: true, updated: 1 }`；非法 status / 缺 id 返回 `1010 参数不合法`。
 写入状态时同时写入内部 `handledAt`，供用户端未读标识统计。
+
+### `payment.feedbackReward.*` — 反馈采纳奖励（2026-11-05）
+
+**云函数名：`payment`**
+
+反馈正文与回复仍由 `feedback` 云函数管理；会员权益只能通过 `payment` 的事务账本发放和撤回，避免页面直接修改 `users.memberExpiresAt`。
+
+| action | 调用 | 成功返回 |
+|---|---|---|
+| `feedbackReward.adminStatus` | `{}` | `{ success: true, isAdmin }` |
+| `feedbackReward.adminGrant` | `{ feedbackId }` | `{ success: true, feedbackId, alreadyGranted, reward, memberExpiresAt }` |
+| `feedbackReward.adminRevoke` | `{ feedbackId }` | `{ success: true, feedbackId, alreadyRevoked, reward, memberExpiresAt }` |
+
+- 奖励接口由 `payment` 云函数按 `AFTER_SALES_ADMIN_OPENIDS` 二次鉴权；PAGE-017-2 还需通过 `feedback.adminList` 的反馈管理员鉴权。页面仅在两个权限都满足时展示奖励操作。
+- `adminGrant` 每次增加 30 天会员，从当前有效到期日继续顺延；同一反馈只发放一次，不同反馈可以叠加。重复提交同一反馈按幂等成功返回，不重复增加时长。
+- 新反馈写入 `rewardProgramVersion=feedback-member-30d-v1`；没有该版本的历史反馈首次奖励时返回 `reward.backfill=true`，管理页显示「补发」。
+- `adminRevoke` 只允许在该奖励仍是用户最后一次会员权益发放时执行。撤回按 30 天扣回，最低保留到当前时间，不产生负时长；成功后恢复上一笔权益发放指针，并通知用户。
+- 奖励和撤回都在同一事务内更新 `users`、`feedbacks` 与 `admin_audit_logs`。错误码：`1040` 无权限、`1043` 反馈不存在、`1047` 已撤回不能再发放、`1048` 奖励后已有新的会员权益不能自动撤回、`1031` 名额账本忙碌。
 
 ---
 
@@ -1543,11 +1615,11 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-018** 行程只读分享 | 主人：`tripShare.create/status/revoke`；接收方：`tripShare.open` |
 | **PAGE-013** 分享场景页 | `spots.list`（today）、`spots.batch`（national-day-2026）；点击景点后 `spots.detail` |
 | **PAGE-010-1** 提醒设置 | `subscribe.get` + 微信授权 API：`wx.getAppAuthorizeSetting` / `wx.openAppAuthorizeSetting` / `wx.getSetting` / `wx.requestSubscribeMessage` / `wx.openSetting`；缺口按钮为「补授权次数+1」，点击一次最多申请 1 条（模板未配置时「去授权」置灰） |
-| **PAGE-010-4** 帮助与反馈 | 微信原生客服 `button open-type="contact"`；`feedback.entrySummary`（「我的反馈」未读数字，5 分钟缓存） |
-| **PAGE-010-2** 意见反馈 | `feedback.submit`（type=feedback，category=suggestion/bug） |
-| **PAGE-010-3** 信息纠错 | `spots.search`（选景点）、`feedback.submit`（type=correction） |
-| **PAGE-010-5** 我的反馈 | `feedback.list`（本人历史，最多 50 条，倒序；含管理员回复 `adminReply` / `adminReplyAt` 与 `asOf`）、`feedback.markSeen`（成功后推进已读水位） |
-| **PAGE-017-2** 反馈管理（隐藏管理页） | `feedback.entrySummary`、`feedback.adminList`（分页 + 类型/分类筛选 + 提交人昵称与 OpenID）、`feedback.adminReply`（单条回复）、`feedback.adminUpdateStatus`；入口 = 我的页头像右侧管理员 Button；后端 openid 白名单鉴权 |
+| **PAGE-010-4** 帮助与反馈 | 微信原生客服 `button open-type="contact"`；`feedback.entrySummary`（「我的反馈」未读数字，5 分钟缓存）；顶部展示反馈奖励活动说明 |
+| **PAGE-010-2** 意见反馈 | `feedback.submit`（type=feedback，category=suggestion/bug）；顶部展示同一份反馈奖励活动说明 |
+| **PAGE-010-3** 信息纠错 | `spots.search`（选景点）、`feedback.submit`（type=correction）；顶部展示同一份反馈奖励活动说明 |
+| **PAGE-010-5** 我的反馈 | `feedback.list`（本人历史最多 50 条、完整回复线程、奖励快照与独立 `rewardNotices`、`asOf`）、`feedback.markSeen`（成功后推进已读水位） |
+| **PAGE-017-2** 反馈管理（隐藏管理页，`/admin/feedback/feedback`） | `feedback.entrySummary`、`feedback.adminList`（分页 + 类型/分类筛选 + 提交人昵称与 OpenID + 回复线程 + 奖励快照）、`feedback.adminAddReply`、`feedback.adminUpdateReply`、`feedback.adminUpdateStatus`、`payment.feedbackReward.adminStatus/adminGrant/adminRevoke`；反馈入口按 `ADMIN_OPENIDS` 鉴权，奖励操作另按 `AFTER_SALES_ADMIN_OPENIDS` 鉴权 |
 
 ---
 
