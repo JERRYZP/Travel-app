@@ -81,7 +81,7 @@
       <view class="setting-row-right">
         <view class="setting-row-hint feedback-gift-hint">
           <svg-icon name="gift" size="13px" />
-          <text>— 在线客服 / 反馈与纠错</text>
+          <text>/ 在线客服 / 反馈与纠错</text>
         </view>
         <svg-icon name="chevron-down" size="14px" rotate="270" />
       </view>

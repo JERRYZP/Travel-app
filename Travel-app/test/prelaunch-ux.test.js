@@ -317,8 +317,8 @@ function resetWx(patch = {}) {
     '我的反馈使用下方独立卡片');
   eq(/feedbackUnreadCount > 0[\s\S]*feedbackUnreadText/.test(helpWxml), true,
     '帮助页的我的反馈行显示未读数字');
-  eq(/feedback-gift-hint[\s\S]*name="gift"[\s\S]*— 在线客服 \/ 反馈与纠错/.test(profileWxml), true,
-    '帮助与反馈入口小字带礼物图标和横杠');
+  eq(/feedback-gift-hint[\s\S]*name="gift"[\s\S]*\/ 在线客服 \/ 反馈与纠错/.test(profileWxml), true,
+    '帮助与反馈入口小字带礼物图标和斜杠');
   eq(/常见问题/.test(helpWxml), false, '帮助页不重复展示攻略中的常见问题');
   eq(/onFeedback\(\)[\s\S]*\/pages\/feedback\/feedback/.test(helpJs), true, '意见反馈直接进入表单页');
   eq(/onReportError\(\)[\s\S]*\/pages\/spot-correction\/spot-correction/.test(helpJs), true,
