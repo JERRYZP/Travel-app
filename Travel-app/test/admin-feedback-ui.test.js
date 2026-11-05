@@ -71,7 +71,14 @@ function rawItem(overrides = {}) {
     },
     createdAt: new Date('2026-11-01T02:00:00.000Z'),
     userId: 'openid_a',
-    user: { openId: 'openid_a', nickname: '小赵', avatarUrl: '' },
+    user: {
+      openId: 'openid_a',
+      nickname: '小赵',
+      avatarUrl: '',
+      member: true,
+      memberExpiresAt: '2099-12-31T00:00:00.000Z',
+      memberExpiresAtText: '2099-12-31',
+    },
     ...overrides,
   };
 }
@@ -125,10 +132,17 @@ async function run() {
   eq(ctx.data.hasMore, true, 'hasMore 取自服务端');
   eq(ctx.data.items[0].nickname, '小赵', '展示昵称');
   eq(ctx.data.items[0].openId, 'openid_a', '展示完整 OpenID');
+  eq(ctx.data.items[0].member, true, '透传服务端会员状态');
+  eq(ctx.data.items[0].memberExpiryText, '至 2099-12-31', '会员标签后展示到期时间');
   eq(ctx.data.items[1].hasReply, true, '有回复时打「已回复」标记');
   eq(ctx.data.items[1].adminReply, '收到，下版本处理', '回复正文透传');
   eq(ctx.data.items[1].replyTime !== '', true, '回复时间已格式化为北京时间');
   eq(ctx.data.items[0].time, '11月1日 10:00', '提交时间按北京时间展示，不用设备时区');
+  const normal = pageDefinition.decorate(rawItem({
+    user: { openId: 'openid_a', nickname: '小赵', member: false, memberExpiresAtText: '' },
+  }));
+  eq(normal.member, false, '非会员不显示会员标签');
+  eq(normal.memberExpiryText, '', '非会员不生成到期文案');
 
   console.log('\n=== 2. 筛选 Tab 的参数映射 ===');
   const tabCases = [

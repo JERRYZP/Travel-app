@@ -1498,7 +1498,12 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
       grantedBy, revokedBy, memberExpiresBefore, memberExpiresAfter, backfillable
     },
     createdAt,
-    user: { openId, nickname, avatarUrl }  // users 集合按 userId 关联；无文档时 nickname 为空串
+    user: {
+      openId, nickname, avatarUrl,
+      member,                 // users.memberExpiresAt > 当前时间
+      memberExpiresAt,        // 原始到期时间；无记录为 null
+      memberExpiresAtText     // 北京时间的 YYYY-MM-DD；无到期时间为空串
+    }  // users 集合按 userId 关联；无文档时 nickname 为空串、member=false
   }],
   count: 20,        // 本页条数
   total: 137,       // 符合条件的总条数（真实 count，不是本页条数）

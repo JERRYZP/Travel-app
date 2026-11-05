@@ -3,7 +3,7 @@
  *
  * 云函数按目录独立打包，不能 require 其它函数目录的文件，所以这里刻意复制了
  * payment/lib/admin-directory.js 的查表写法。复制的是「按 OpenID 批量查表」这个
- * 工具，不是会员 / 订单 / 售后那些业务规则 —— 反馈只关心昵称，不关心权益。
+ * 工具；会员状态只是 users.memberExpiresAt 的管理端展示投影，不参与权益判断。
  * 分块大小和 openId 字段名由 test/feedback.test.js 钉住，两边不会悄悄漂移。
  */
 
@@ -33,16 +33,32 @@ async function userMapByOpenIds(db, openIds) {
   }, {});
 }
 
+/** 北京时间日期文本；仅用于管理端展示，不参与会员资格判断。 */
+function dateText(value) {
+  const ms = new Date(value || 0).getTime();
+  if (!Number.isFinite(ms) || ms <= 0) return '';
+  const d = new Date(ms + 8 * 60 * 60 * 1000);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
- * 管理端展示用的用户摘要。只有这三项，不要加会员字段。
+ * 管理端展示用的用户摘要。
+ * member 只按 users.memberExpiresAt 判断，和 reminder 的会员口径一致；
+ * 这里不查订单，也不推导或发放权益。
  * 用户没有 users 文档时，nickname / avatarUrl 为空串，openId 用反馈上的 userId 兜底，
  * 保证管理员至少能拿到可检索的 OpenID。
  */
-function userBriefOf(user = {}, fallbackOpenId = '') {
+function userBriefOf(user = {}, fallbackOpenId = '', nowTs = Date.now()) {
+  const memberExpiresAt = user.memberExpiresAt || null;
+  const memberExpiresMs = new Date(memberExpiresAt || 0).getTime();
+  const member = Number.isFinite(memberExpiresMs) && memberExpiresMs > nowTs;
   return {
     openId: String(user.openId || fallbackOpenId || ''),
     nickname: String(user.nickname || ''),
     avatarUrl: String(user.avatarUrl || ''),
+    member,
+    memberExpiresAt,
+    memberExpiresAtText: dateText(memberExpiresAt),
   };
 }
 

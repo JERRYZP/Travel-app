@@ -236,6 +236,8 @@ Page({
     const replies = displayRepliesOf(item);
     const adminReply = replies.length > 0 ? replies[replies.length - 1].content : '';
     const user = item.user || {};
+    const member = user.member === true;
+    const memberExpiresAtText = String(user.memberExpiresAtText || '');
     return {
       id: item._id,
       type: item.type,
@@ -252,6 +254,8 @@ Page({
       statusCls: status.cls,
       nickname: String(user.nickname || ''),
       openId: String(user.openId || item.userId || ''),
+      member,
+      memberExpiryText: member && memberExpiresAtText ? `至 ${memberExpiresAtText}` : '',
       adminReply,
       hasReply: replies.length > 0,
       replies,

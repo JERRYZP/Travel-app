@@ -151,6 +151,7 @@ reminder.membership.createOrder
 - 昵称和头像只能来自用户主动选择或系统生成占位，不能读取真实微信资料冒充。
 - 反馈分建议/Bug；信息纠错必须附景点、纠错类型和描述。
 - 反馈管理页只对白名单管理员开放。管理员可对一条反馈追加多条单向回复，也可在任意日期修改任一已有回复；用户端只读。新回复写入 `adminReplies[]`，`adminReply / adminReplyAt / adminReplyBy` 同步为最新一条，供旧客户端兼容。回复正文、回复时间和「已修改」标记对提交者可见，回复人 OpenID 只在管理端返回。
+- 反馈管理页的提交人摘要由 `feedback.adminList` 关联 `users` 返回昵称、完整 OpenID、会员状态与有效期。会员状态只按 `users.memberExpiresAt` 做展示投影，不查订单、不发权益，也不作为第二套会员规则。
 - “我的”页管理员入口位于用户信息卡右侧，不依赖长按。`feedback.entrySummary` 汇总管理员待处理数和当前用户未查看的处理数，客户端缓存 5 分钟。
 - 管理员回复或改状态时写 `feedbacks.handledAt`；用户成功打开「我的反馈」后，用 `feedback.list.asOf` 调用 `feedback.markSeen` 推进 `users.feedbackSeenAt`。未读按反馈条数去重，不按操作次数累加。
 - 反馈采纳奖励的唯一账本入口是 `cloudfunctions/payment/lib/feedback-reward.js`。发放和撤回都在事务内同时更新 `users`、`feedbacks` 和 `admin_audit_logs`，并与订单发放共用 `taskQuotaLock`，避免会员到期日并发覆盖。

@@ -56,8 +56,16 @@
 
       <!-- 提交人：昵称 + 完整 OpenID，OpenID 可复制去后台检索 -->
       <view class="fb-user-row">
-        <text class="fb-nickname">{{item.nickname || '未设置昵称'}}</text>
-        <text class="fb-openid">{{item.openId}}</text>
+        <view class="fb-user-main">
+          <view class="fb-user-name-line">
+            <text class="fb-nickname">{{item.nickname || '未设置昵称'}}</text>
+            <block wx:if="{{item.member}}">
+              <text class="fb-member-badge">会员</text>
+              <text class="fb-member-expiry" wx:if="{{item.memberExpiryText}}">{{item.memberExpiryText}}</text>
+            </block>
+          </view>
+          <text class="fb-openid">{{item.openId}}</text>
+        </view>
         <view class="copy-link" catchtap="onCopyText" data-value="{{item.openId}}">复制</view>
       </view>
 
