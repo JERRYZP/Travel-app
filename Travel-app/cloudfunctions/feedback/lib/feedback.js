@@ -294,8 +294,11 @@ async function entrySummary(db, userId) {
 
   const userUnreadQuery = db.collection(COLLECTIONS.FEEDBACKS)
     .where({ userId, handledAt: db.command.gt(seenAt) });
-  const [userUnreadRes, adminPendingRes] = await Promise.all([
+  const rewardUnreadQuery = db.collection(COLLECTIONS.FEEDBACKS)
+    .where({ userId, rewardUpdatedAt: db.command.gt(seenAt) });
+  const [userUnreadRes, rewardUnreadRes, adminPendingRes] = await Promise.all([
     userUnreadQuery.count(),
+    rewardUnreadQuery.count(),
     admin
       ? db.collection(COLLECTIONS.FEEDBACKS)
         .where({ status: FeedbackStatus.OPEN })
@@ -303,9 +306,14 @@ async function entrySummary(db, userId) {
       : Promise.resolve({ total: 0 }),
   ]);
 
+  const userUnreadCount = Math.max(0, Number(userUnreadRes.total) || 0);
+  const rewardUnreadCount = Math.max(0, Number(rewardUnreadRes.total) || 0);
+
   return ok({
     isAdmin: admin,
-    handledUnreadCount: Math.max(0, Number(userUnreadRes.total) || 0),
+    // 回复、状态和奖励事件都进入同一个入口数字；同一反馈被多次处理只算一条。
+    handledUnreadCount: Math.max(userUnreadCount, rewardUnreadCount),
+    rewardUnreadCount,
     adminPendingCount: admin ? Math.max(0, Number(adminPendingRes.total) || 0) : 0,
   });
 }

@@ -237,7 +237,9 @@ async function testBackfillNotice() {
   eq(list.rewardNotices.length, 1, '补发通知独立返回');
   eq(list.rewardNotices[0].feedbackId, oldestId, '通知指向被补发的历史反馈');
   eq(list.rewardNotices[0].reward.backfill, true, '通知明确是补发奖励');
-  eq((await feedback.entrySummary(db, USER)).handledUnreadCount, 1, '补发计入用户未读');
+  const rewardUnread = await feedback.entrySummary(db, USER);
+  eq(rewardUnread.handledUnreadCount, 1, '补发计入用户数字标识');
+  eq(rewardUnread.rewardUnreadCount, 1, '补发单独计入奖励未读');
 
   await feedback.markSeen(db, USER, { through: list.asOf });
   eq((await feedback.list(db, USER)).rewardNotices.length, 0, '查看后通知水位清零');
@@ -247,6 +249,7 @@ async function testBackfillNotice() {
   const revokedList = await feedback.list(db, USER);
   eq(revokedList.rewardNotices.length, 1, '撤回产生新的用户通知');
   eq(revokedList.rewardNotices[0].reward.status, 'REVOKED', '用户能识别奖励已撤回');
+  eq((await feedback.entrySummary(db, USER)).rewardUnreadCount, 1, '撤回同样计入用户数字标识');
 }
 
 async function testRewardNoticePagination() {

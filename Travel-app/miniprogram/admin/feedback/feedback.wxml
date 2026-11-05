@@ -78,16 +78,11 @@
       <text class="fb-content">{{item.content}}</text>
 
       <view class="fb-reward-panel" wx:if="{{item.reward.status !== 'NONE'}}">
-        <view class="fb-reward-head">
-          <text class="fb-reward-label">{{item.reward.label}}</text>
-          <text class="fb-reward-time" wx:if="{{item.reward.grantedTime}}">{{item.reward.grantedTime}}</text>
+        <view class="fb-reward-line">
+          <text class="fb-reward-label">{{item.reward.label}}{{item.reward.backfill ? ' · 补发' : ''}}</text>
+          <text class="fb-reward-expiry" wx:if="{{item.reward.status === 'GRANTED' && item.reward.expiresText}}">有效期至 {{item.reward.expiresText}}</text>
+          <text class="fb-reward-expiry is-revoked" wx:elif="{{item.reward.status === 'REVOKED'}}">会员状态已更新</text>
         </view>
-        <text class="fb-reward-expiry" wx:if="{{item.reward.status === 'GRANTED' && item.reward.expiresText}}">
-          会员有效期至 {{item.reward.expiresText}}
-        </text>
-        <text class="fb-reward-expiry" wx:elif="{{item.reward.status === 'REVOKED'}}">
-          该反馈对应的会员奖励已撤回，会员状态已按服务端结果更新
-        </text>
       </view>
 
       <view class="fb-reply-list" wx:if="{{item.hasReply}}">
@@ -96,13 +91,11 @@
             <view class="fb-reply-labels">
               <text class="fb-reply-label">管理员回复</text>
               <text class="fb-reply-edited" wx:if="{{reply.edited}}">已修改</text>
+              <view class="fb-reply-edit" bindtap="onReplyEdit" data-id="{{item.id}}" data-reply-id="{{reply.id}}">修改</view>
             </view>
             <text class="fb-reply-time">{{reply.time}}</text>
           </view>
           <text class="fb-reply-text">{{reply.content}}</text>
-          <view class="fb-reply-actions">
-            <view class="fb-reply-edit" bindtap="onReplyEdit" data-id="{{item.id}}" data-reply-id="{{reply.id}}">修改</view>
-          </view>
         </view>
       </view>
 

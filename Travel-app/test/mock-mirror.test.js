@@ -665,6 +665,7 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     const entry = await c('feedback.entrySummary', {});
     eq(entry.isAdmin, false, 'mock 普通用户反馈入口不是管理员');
     eq(entry.handledUnreadCount, 0, 'mock 无管理员操作时用户未读为 0');
+    eq(entry.rewardUnreadCount, 0, 'mock 无奖励操作时奖励未读为 0');
     eq(entry.adminPendingCount, 0, 'mock 不伪造管理端待处理数');
     const seen = await c('feedback.markSeen', { through: res.asOf });
     eq(seen.success, true, 'mock 支持推进反馈已读水位');

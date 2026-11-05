@@ -107,8 +107,8 @@ page {
   background: #FFF9EA;
 }
 .feedback-reward-head { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+.feedback-reward-title-row { display: flex; align-items: center; gap: 8rpx; }
 .feedback-reward-title { font-size: 26rpx; font-weight: 600; color: #8A5A12; }
-.feedback-reward-tag { flex-shrink: 0; font-size: 19rpx; color: #8A5A12; }
 .feedback-reward-copy { display: block; margin-top: 8rpx; font-size: 23rpx; line-height: 1.6; color: var(--color-text); }
 
 .text-primary { color: var(--color-primary); }

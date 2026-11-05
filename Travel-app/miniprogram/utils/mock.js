@@ -3522,10 +3522,16 @@ const handlers = {
       && item.handledAt
       && new Date(item.handledAt).getTime() > feedbackSeenAt
     )).length;
+    const rewardUnreadCount = Object.values(db.feedbacks).filter(item => (
+      item.userId === 'mock-user'
+      && item.rewardUpdatedAt
+      && new Date(item.rewardUpdatedAt).getTime() > feedbackSeenAt
+    )).length;
     return {
       success: true,
       isAdmin: false,
-      handledUnreadCount,
+      handledUnreadCount: Math.max(handledUnreadCount, rewardUnreadCount),
+      rewardUnreadCount,
       adminPendingCount: 0,
     };
   },

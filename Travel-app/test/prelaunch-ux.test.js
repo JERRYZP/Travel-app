@@ -294,6 +294,7 @@ function resetWx(patch = {}) {
   const helpJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/help-feedback/help-feedback.js'), 'utf8');
   const myFeedbackJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/my-feedback/my-feedback.js'), 'utf8');
   const feedbackWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/feedback/feedback.wxml'), 'utf8');
+  const correctionWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-correction/spot-correction.wxml'), 'utf8');
   const helpWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/help-feedback/help-feedback.wxss'), 'utf8');
   eq(/"pages\/help-feedback\/help-feedback"/.test(appJson), true, '帮助与反馈页已注册路由');
   eq(/"pages\/my-feedback\/my-feedback"/.test(appJson), true, '我的反馈页已注册路由');
@@ -305,6 +306,8 @@ function resetWx(patch = {}) {
     '反馈管理不再占用头像长按');
   eq(/<button class="setting-row service-row" open-type="contact"/.test(helpWxml), true,
     '帮助与反馈页提供微信原生在线客服');
+  eq(/<svg-icon name="gift"[\s\S]*反馈建议有礼/.test(helpWxml), true, '反馈活动标题前显示礼品图标');
+  eq(/长期活动/.test(helpWxml + feedbackWxml + correctionWxml), false, '反馈活动不再显示长期活动标签');
   eq(helpWxml.indexOf('service-row') < helpWxml.indexOf('bindtap="onFeedback"')
     && helpWxml.indexOf('bindtap="onFeedback"') < helpWxml.indexOf('bindtap="onReportError"'), true,
   '上方依次展示在线客服、意见反馈、信息纠错');

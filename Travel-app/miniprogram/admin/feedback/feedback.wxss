@@ -83,7 +83,7 @@
 }
 .fb-member-badge {
   flex-shrink: 0; padding: 3rpx 10rpx; border-radius: 999rpx;
-  background: #FBF5E6; color: #8A5A12;
+  background: #8A5A12; color: #FFFFFF;
   font-size: 18rpx; line-height: 1.4; font-weight: 600;
 }
 .fb-member-expiry { flex-shrink: 0; font-size: 18rpx; line-height: 1.4; color: #8A5A12; }
@@ -101,18 +101,18 @@
 .fb-tag-reward-granted { background: #FFF4D8; color: #8A5A12; }
 .fb-tag-reward-revoked { background: #F3ECE8; color: #8A5A4F; }
 .fb-reward-panel {
-  margin-top: 16rpx; padding: 16rpx 18rpx;
+  margin-top: 14rpx; padding: 12rpx 16rpx;
   background: #FFF9EA;
   border: 1rpx solid #E9D7A9;
   border-radius: 12rpx;
 }
-.fb-reward-head { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+.fb-reward-line { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; min-width: 0; }
 .fb-reward-label { font-size: 23rpx; font-weight: 600; color: #8A5A12; }
-.fb-reward-time { font-size: 19rpx; color: var(--color-muted); }
-.fb-reward-expiry { display: block; margin-top: 8rpx; font-size: 21rpx; line-height: 1.5; color: #735C35; }
-.fb-reply-list { display: flex; flex-direction: column; gap: 12rpx; margin-top: 16rpx; }
+.fb-reward-expiry { flex-shrink: 0; font-size: 20rpx; line-height: 1.4; color: #735C35; }
+.fb-reward-expiry.is-revoked { color: var(--color-muted); }
+.fb-reply-list { display: flex; flex-direction: column; gap: 10rpx; margin-top: 14rpx; }
 .fb-reply {
-  padding: 16rpx 18rpx;
+  padding: 12rpx 14rpx;
   background: #FBF5E6;
   border-left: 4rpx solid #B8904A;
   border-radius: 12rpx;
@@ -123,12 +123,11 @@
 .fb-reply-edited { padding: 2rpx 8rpx; border-radius: 6rpx; background: #E8F0F8; color: #4A7BA8; font-size: 18rpx; }
 .fb-reply-time { font-size: 19rpx; color: var(--color-muted); }
 .fb-reply-text {
-  display: block; margin-top: 8rpx;
-  font-size: 25rpx; line-height: 1.6; color: var(--color-ink);
+  display: block; margin-top: 4rpx;
+  font-size: 24rpx; line-height: 1.55; color: var(--color-ink);
   white-space: pre-wrap;
 }
-.fb-reply-actions { display: flex; justify-content: flex-end; margin-top: 8rpx; }
-.fb-reply-edit { padding: 6rpx 0 6rpx 16rpx; color: #8A5A12; font-size: 20rpx; font-weight: 600; }
+.fb-reply-edit { padding: 2rpx 0 2rpx 8rpx; color: #8A5A12; font-size: 19rpx; font-weight: 600; }
 
 /* 卡片内回复编辑器 */
 .reply-editor { margin-top: 20rpx; padding-top: 20rpx; border-top: 1rpx solid var(--color-border); }
