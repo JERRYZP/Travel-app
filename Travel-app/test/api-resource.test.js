@@ -22,6 +22,11 @@ async function run() {
   const second = api.reminder.home.bootstrap({});
   assert.strictEqual(first, second, '相同只读请求共用同一个 Promise');
   assert.strictEqual(cloudCalls, 1, '并发相同只读请求只调用一次云函数');
+  assert.deepStrictEqual(
+    pending.data.membershipCapabilities,
+    ['unlimited-v3'],
+    '新客户端对 reminder 请求显式声明会员契约能力'
+  );
   pending.success({ result: { success: true, runtimeVersion: 'test' } });
   const [a, b] = await Promise.all([first, second]);
   assert.strictEqual(a.runtimeVersion, 'test');
@@ -39,6 +44,11 @@ async function run() {
   const beforeFailure = cloudCalls;
   const failed = api.reminder.membership.status();
   assert.strictEqual(cloudCalls, beforeFailure + 1);
+  assert.deepStrictEqual(
+    pending.data.membershipCapabilities,
+    ['unlimited-v3'],
+    '会员状态入口同样携带能力声明'
+  );
   pending.fail(new Error('network down'));
   await assert.rejects(failed);
   await assert.rejects(api.reminder.membership.status());

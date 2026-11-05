@@ -639,12 +639,18 @@ async function clearPendingIfNoItems(db, userId) {
  * 不传 tripId = 读**暂存区**（这正是「添加提醒」页要的：用户挑完日期先放这里，
  * 提交时才建行程）。传真实 tripId 则读那个行程的清单（老链路兼容）。
  */
-async function list(db, userId, tripId = null, { includeMembership = false } = {}) {
+async function list(db, userId, tripId = null, {
+  includeMembership = false,
+  membershipCapabilities = null,
+} = {}) {
   const where = { userId, tripId: cartTripIdOf(tripId) };
   const nowTs = time.now();
   const cartPromise = db.collection(COLLECTIONS.REMINDER_CART).where(where).get();
   const membershipPromise = includeMembership
-    ? membership.status(db, userId, nowTs, { configCache: true }).catch(() => null)
+    ? membership.status(db, userId, nowTs, {
+      configCache: true,
+      membershipCapabilities,
+    }).catch(() => null)
     : Promise.resolve(null);
   const [res, membershipRes] = await Promise.all([cartPromise, membershipPromise]);
   const items = res.data || [];

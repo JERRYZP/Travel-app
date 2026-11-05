@@ -224,9 +224,10 @@ async function main(event) {
       case 'cart.list':
         return await cart.list(db, userId, event.tripId || null, {
           includeMembership: event.includeMembership === true,
+          membershipCapabilities: event.membershipCapabilities,
         });
       case 'cart.bootstrap':
-        return await cartBootstrap(userId);
+        return await cartBootstrap(userId, event);
       case 'cart.updateRemindOn':
         return await cart.updateRemindOn(db, userId, event.cartId, event.remindOn === true);
       case 'cart.commit': {
@@ -282,6 +283,7 @@ async function main(event) {
         const profile = await getOrCreateUser(userId);
         const current = await membership.status(db, userId, undefined, {
           includeUpgradeNotice: true,
+          membershipCapabilities: event.membershipCapabilities,
         });
         return ok({
           user: {
@@ -295,7 +297,7 @@ async function main(event) {
         });
       }
       case 'user.bootstrap':
-        return await userBootstrap(userId);
+        return await userBootstrap(userId, event);
       case 'user.updateProfile':
         return await updateUserProfile(userId, event);
       case 'user.updateNotifyPrefs':
@@ -303,7 +305,9 @@ async function main(event) {
 
       /* ======== 会员 / 提醒名额 ======== */
       case 'membership.status':
-        return await membership.status(db, userId);
+        return await membership.status(db, userId, undefined, {
+          membershipCapabilities: event.membershipCapabilities,
+        });
       case 'membership.createOrder':
         return await membership.createOrder(db, userId, event);
       case 'membership.orders':
@@ -565,7 +569,9 @@ async function composeHomeBootstrap(db, userId, sources, event, t0, timing, opti
     stickyBanner: task.buildReleaseBanner(decorated, nowTs),
     releasePills: task.buildReleasePills(decorated, nowTs, 2),
     reminderQuotaWarning: task.buildReminderQuotaWarning(quotaHealth, nowTs),
-    membership: membership.snapshotFromTasks(user, allTasks, nowTs),
+    membership: membership.snapshotFromTasks(user, allTasks, nowTs, {
+      newPlan: membership.isNewPlanEnabledFor(userId, event),
+    }),
     recoverableIds,
     homeMode: decorated.length === 0 ? 1 : 2,
     hotSpots: spotsCall && spotsCall.result && Array.isArray(spotsCall.result.data)
@@ -582,7 +588,7 @@ async function composeHomeBootstrap(db, userId, sources, event, t0, timing, opti
 /**
  * 用户页一次初始化：资料、会员、名额和订阅健康共享同一批用户 / 任务读取。
  */
-async function userBootstrap(userId) {
+async function userBootstrap(userId, event = {}) {
   const nowTs = time.now();
   const profile = await getOrCreateUser(userId);
   if (profile.success === false) return profile;
@@ -610,6 +616,7 @@ async function userBootstrap(userId) {
       latestTask,
       configCache: true,
       includeUpgradeNotice: true,
+      membershipCapabilities: event.membershipCapabilities,
     }),
     task.subscriptionStatus(db, userId, DEFAULT_SUBSCRIBE_TEMPLATE_ID, {
       user: rawUser,
@@ -641,9 +648,12 @@ async function userBootstrap(userId) {
 /**
  * 设置提醒页一次初始化：清单、会员与订阅授权合并在同一个云函数调用内。
  */
-async function cartBootstrap(userId) {
+async function cartBootstrap(userId, event = {}) {
   const [cartResult, subscription] = await Promise.all([
-    cart.list(db, userId, null, { includeMembership: true }),
+    cart.list(db, userId, null, {
+      includeMembership: true,
+      membershipCapabilities: event.membershipCapabilities,
+    }),
     task.subscriptionStatus(db, userId, DEFAULT_SUBSCRIBE_TEMPLATE_ID),
   ]);
   if (cartResult.success === false) return cartResult;

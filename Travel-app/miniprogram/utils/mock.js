@@ -85,12 +85,8 @@ function mockShareToken() {
   return out;
 }
 
-/**
- * 台账自愈判定（镜像 cloudfunctions/reminder/lib/quota.js 的 shouldHealQuota，
- * 以及 cloudfunctions/notifier/index.js 的同名副本）。
- * ⚠️ 必须带 lastSendError 前置条件：为空 = 从未尝试发送 = 链路故障，额度在微信侧依然有效，
- * 清零等于白丢用户已授权的额度；失败原因是本地配置/网络时同理。
- */
+/* 台账自愈镜像 quota.js：只有明确远端失败才清零；空错误和本地配置/网络错误都保留。
+   lastSendError 为空表示从未发送，额度仍可能在微信侧有效。 */
 const LOCAL_FAILURE_HINTS = ['未配置', '未设置', 'access_token', 'accesstoken', '网络', 'timeout', '超时', 'empty response'];
 
 function shouldHealQuota(lastSendError) {
@@ -299,16 +295,7 @@ function buildMockTripName(city, startDate, endDate) {
 
 /* ---------- 合并判定与景点段（镜像 lib/trip.js 纯函数区） ---------- */
 
-/**
- * TRIP-RULE-002 合并判定（2026-09-23 收敛：同城即合并，不再按日期间隔拆分）
- *
- * ⚠️ **必须与云端 `cloudfunctions/reminder/lib/trip.js` 逐字同口径**。
- * 这里一度还留着旧的「交集或首尾相接」，云端早已改成同城即合并——
- * 模拟器里两个北京行程分段显示，真机上并成一段，而两边的单测都是绿的
- * （各自测自己的分支）。镜像漂移就是这么发生的：改一边必须改另一边。
- *
- * 旧逻辑（若将来要恢复间隔拆分）：同城市 &&（日期有交集 或 一方 endDate+1 === 另一方 startDate）。
- */
+/* TRIP-RULE-002：同城即合并，必须与云端 trip.js 同口径，改一边必须改另一边。 */
 function canMerge(a, b) {
   return (a.city || '') === (b.city || '');
 }
@@ -380,15 +367,7 @@ function pruneStaleCart(tripId) {
   });
 }
 
-/**
- * TRIP-RULE-004（2026-09-14 补充口径）显式清理，镜像 lib/trip.js 的 purgeIfNoTask：
- * 用户主动删除任务后，行程若已无任何任务 → 行程连同其提醒清单一并删除。
- * 与 trip.list 读取时兜底（清单非空即保留，保护草稿行程）不同，这里不看清单。
- */
-/**
- * 行程判空只看行程项（镜像 lib/trip.js 的 dropTripIfEmpty / purgeIfNoItem）：
- * 只有免预约景点、没设提醒的行程**不能**被当成空壳删掉。
- */
+/* TRIP-RULE-004：主动删除后无任务即删行程；判空只看行程项，没设提醒不等于空壳。 */
 function dropTripIfNoItem(tripId) {
   if (!tripId || tripId === PENDING_CART_TRIP_ID) return false;
   if (Object.values(db.tasks).some(t => t.tripId === tripId)) return false;
@@ -447,18 +426,8 @@ function releasePillsOf(decorated, nowTs, limit) {
 /** 清单归属的 tripId：不传 = 暂存区（镜像 cart.cartTripIdOf） */
 function cartTripIdOf(tripId) { return tripId || PENDING_CART_TRIP_ID; }
 
-/**
- * 挽回建议（镜像 lib/recovery.js 的三层）：
- *   ① 已设备选且备选未开票 → 静默（备选本身就是挽回方案）
- *   ② 没设备选、行程内还有可行动日期 → 给候选
- *   ③ 都没有 → 静默。**什么都不建议是合法的。**
- * 候选池 = 行程本身的日期范围（不含刚失败的那一天）。
- * 数据红线：不做同日回流票，不出现任何余票字段。
- *
- * ⚠️ `nowTs` / `decorated` 可传：`home.bootstrap` 要把候选与行程项算在**同一份
- * 响应、同一个时刻**上（镜像 repo 的 `recoverableMapOf` 为什么必须内联的那段）。
- * 不传时退回「读真实时钟 + 自己装饰兄弟项」的旧口径，供单测与 standalone 入口用。
- */
+/* 挽回建议镜像 recovery.js：已有备选或无可行动日期时静默，不输出余票。home.bootstrap
+   传入同一时刻的 decorated，避免两次响应拼出「失败但不可挽回」。 */
 function mockRecoveryCandidates(failed, nowTs, decorated) {
   nowTs = nowTs || new Date();
   const trip = db.trips[failed.tripId] || null;
@@ -530,14 +499,7 @@ function mockRecoveryCandidates(failed, nowTs, decorated) {
   }).slice(0, 6);
 }
 
-/**
- * 「哪些行程项还能挽回」一次算清（镜像云端 `recovery.recoverableMapOf`，
- * 供 `home.bootstrap` 内联回填）。
- *
- * ⚠️ 2026-09-24：首页原先在 bootstrap 之后**另起一次请求**逐条算候选，
- *    两次响应之间没有顺序保证——卡片先按「FAILED 但不可挽回」渲染，
- *    挽回线就永远不出现（只在真机上偶发，本地看不出）。所以它必须内联。
- */
+/* 挽回 ID 必须在 home.bootstrap 内联计算，避免两次响应乱序导致挽回线不出现。 */
 function mockRecoverableIds(decorated, nowTs) {
   const fails = decorated.filter(d => d.result === 'FAILED' && !d.ended);
   if (!fails.length) return [];
@@ -714,11 +676,7 @@ function deriveReleaseAt(spot, rule, visitDate) {
   return parseBeijing(addDays(visitDate, -rule.advanceDays), releaseTime);
 }
 
-/* ⚠️ 云端 `cloudfunctions/reminder/lib/item.js` 的 TICKET_STATE_LABEL 是唯一真身，
-   这里是镜像，`test/mock-mirror.test.js` 交叉比对。
-   2026-09-22 六个展示态**整体换词**（待抢→待抢票、可抢→可抢票、已成→已约到、
-   未成→未抢到、开过票了→未标记；2026-09-28「未标记」→「待确认」），换的是**文案不是语义**：
-   `UNMARKED` 仍是中性态，别因为「待确认」字面需要用户确认就把它改判成失败。 */
+/* 展示态以云端 item.js 的 TICKET_STATE_LABEL 为准；UNMARKED 是中性态，不是失败。 */
 const TICKET_LABEL = {
   PENDING: '待抢票', BOOKABLE: '可抢票', SUCCESS: '已约到',
   FAILED: '未抢到',
@@ -734,12 +692,7 @@ const REMINDER_LABEL = { NOT_SET: '未设提醒', WAITING: '待提醒', TRIGGERE
  */
 function ticketStateLabelOf(state) { return TICKET_LABEL[state] || '待抢票'; }
 
-/**
- * 现在还能不能开启/取消提醒（镜像 item.canSetReminder，2026-09-23）。
- * 判据 = 需预约 && 有放票时刻 && **放票时刻还没到**。放票一过，开启会即刻被判
- * MISSED（刚点完就看到「未送达」），取消则无任务可取消 —— 两个动作都没有意义。
- * ⚠️ 与「待抢票」不等价：清单先加、放票后才提交的项是可抢票态，但也没有入口。
- */
+/* 放票时刻已过时不能开启或取消提醒；这个判据不等价于「待抢票」展示态。 */
 function canSetReminderOf(reservationRequired, releaseAt, nowTs) {
   if (reservationRequired === false) return false;
   if (!releaseAt) return false;
@@ -847,13 +800,7 @@ function pendingCartRows() {
   return Object.values(db.carts).filter(row => row.tripId === PENDING_CART_TRIP_ID);
 }
 
-/**
- * 纯预览（镜像 cloudfunctions/reminder/lib/timeline.preview，2026-09-20）
- *
- * 按当前所选日期段与景点独立计算，**不创建/改写任何行程，也不读任何已落库状态**。
- * 所以这里刻意不查 db.carts / db.items / db.tasks —— 查了就会把历史状态带进预览，
- * 用户换一批日期重新生成时会看到属于上一趟行程的「已在行程」。
- */
+/* 纯预览只读当前暂存清单和 committedTripId 的行程项，不创建或改写行程。 */
 function previewTimeline(input) {
   const segs = (Array.isArray(input.segments) && input.segments.length > 0)
     ? input.segments.filter(sg => sg && sg.spotId && sg.startDate && sg.endDate)
@@ -867,12 +814,7 @@ function previewTimeline(input) {
     return { success: true, events: [], byDeparture: [], bySpot: [], closedSpots: [], closedDaySkips: [], empty: true, emptyReason: '先选择想去的景点' };
   }
 
-  /* ⚠️ 预览只读两样，界线各不相同（与云端 lib/timeline.js 的 preview 逐条对齐）：
-     ① 当前暂存清单：用户正在这一页做的工作，不反映它按钮就像坏的（点了没变化、
-        再点提示「已经在清单里啦」）；
-     ② committedTripId 那一趟行程的行程项：用户此刻正在编辑的那趟已经有的项，
-        要标成「已加入行程」禁选，否则他看不见已有项、不知道还该补哪个。
-        只读这一趟，绝不读别趟——读别趟会把属于另一趟行程的状态带进预览。 */
+  /* 只读当前暂存清单和 committedTripId 这一趟的行程项；不能把别趟状态带进预览。 */
   const want = cartTripIdOf(null);
   const cartKeys = {};
   Object.values(db.carts).forEach(c => {
@@ -1145,28 +1087,44 @@ function mockPriceText(amountFen) {
   return `¥${(Number(amountFen) / 100).toFixed(2).replace(/\.00$/, '')}`;
 }
 
-const MOCK_MEMBERSHIP_PACKAGES = Object.freeze([
+const MOCK_MEMBER_BASE = {
+  type: 'MEMBER', title: '会员 30 天', memberDays: MEMBER_DURATION_DAYS,
+  memberFloorDays: MEMBER_DURATION_DAYS, badge: '推荐',
+};
+const MOCK_MEMBERSHIP_PACKAGES = Object.freeze([{
+  ...MOCK_MEMBER_BASE, id: 'member', priceFen: MEMBER_PRICE_FEN, taskSlots: 0,
+  addedSlots: 0, unlimitedReminders: true, description: '会员有效期内不限提醒名额',
+  specVersion: 'member-unlimited-30d-v4',
+}]);
+const MOCK_LEGACY_MEMBERSHIP_PACKAGES = Object.freeze([
   {
-    id: 'member',
-    type: 'MEMBER',
-    title: '会员 30 天',
-    priceFen: MEMBER_PRICE_FEN,
-    taskSlots: 0,
-    addedSlots: 0,
-    unlimitedReminders: true,
-    memberDays: MEMBER_DURATION_DAYS,
-    memberFloorDays: MEMBER_DURATION_DAYS,
-    description: '会员有效期内不限提醒名额',
-    badge: '推荐',
-    specVersion: 'member-unlimited-30d-v4',
+    ...MOCK_MEMBER_BASE, id: 'member', priceFen: 300, taskSlots: 15, addedSlots: 10,
+    unlimitedReminders: false, description: '30 天内最多 15 个提醒名额',
+    specVersion: 'member-30d-v2',
+  },
+  {
+    id: 'task_pack_5', type: 'TASK_PACK', title: '10 个提醒名额', priceFen: 300,
+    taskSlots: 10, addedSlots: 10, unlimitedReminders: false, memberDays: 0,
+    memberFloorDays: MEMBER_DURATION_DAYS, description: '名额永久记录，会员有效期内生效',
+    badge: '', specVersion: 'task-pack-10-v2',
   },
 ]);
 
-function mockPackageOf(packageId) {
-  return MOCK_MEMBERSHIP_PACKAGES.find(item => item.id === packageId) || null;
+function mockHasUnlimitedV3(data) {
+  return !!(data && Array.isArray(data.membershipCapabilities)
+    && data.membershipCapabilities.includes('unlimited-v3'));
 }
 
-function mockMembershipSnapshot(nowTs = new Date()) {
+function mockPackagesForPlan(data) {
+  return mockHasUnlimitedV3(data) ? MOCK_MEMBERSHIP_PACKAGES : MOCK_LEGACY_MEMBERSHIP_PACKAGES;
+}
+
+function mockPackageOf(packageId, data = {}) {
+  return mockPackagesForPlan(data).find(item => item.id === packageId) || null;
+}
+
+function mockMembershipSnapshot(nowTs = new Date(), data = {}) {
+  const newPlan = mockHasUnlimitedV3(data);
   const memberExpiresMs = new Date(mockUser.memberExpiresAt || 0).getTime();
   const member = Number.isFinite(memberExpiresMs) && memberExpiresMs > nowTs.getTime();
   const taskPackCount = member ? Math.max(0, Number(mockUser.taskPackCount) || 0) : 0;
@@ -1176,7 +1134,9 @@ function mockMembershipSnapshot(nowTs = new Date()) {
       : taskPackCount * LEGACY_TASK_PACK_SIZE)
     : 0;
   const protectedTaskQuota = Math.max(FREE_TASK_SLOTS, Number(mockUser.protectedTaskQuota) || FREE_TASK_SLOTS);
-  const entitlementTaskLimit = member ? LEGACY_CLIENT_UNLIMITED_TASK_LIMIT : FREE_TASK_SLOTS;
+  const entitlementTaskLimit = newPlan
+    ? (member ? LEGACY_CLIENT_UNLIMITED_TASK_LIMIT : FREE_TASK_SLOTS)
+    : FREE_TASK_SLOTS + (member ? 10 : 0) + taskPackSlots;
   const activeTasks = Object.values(db.tasks).filter(t =>
     t.backendStatus === 'WAITING'
     && Number.isFinite(new Date(t.releaseAt).getTime())
@@ -1197,8 +1157,8 @@ function mockMembershipSnapshot(nowTs = new Date()) {
     memberDaysRemaining: member
       ? Math.max(1, Math.ceil((memberExpiresMs - nowTs.getTime()) / DAY_MS))
       : 0,
-    planVersion: 'unlimited-v3',
-    taskLimitUnlimited: member,
+    planVersion: newPlan ? 'unlimited-v3' : 'legacy-v2',
+    taskLimitUnlimited: newPlan && member,
     taskLimit: entitlementTaskLimit,
     entitlementTaskLimit,
     protectedTaskQuota: Math.max(protectedTaskQuota, protectedTaskUsed),
@@ -1211,8 +1171,8 @@ function mockMembershipSnapshot(nowTs = new Date()) {
     ownedTaskPackCount: Math.max(0, Number(mockUser.taskPackCount) || 0),
     memberDurationDays: MEMBER_DURATION_DAYS,
     freeTaskSlots: FREE_TASK_SLOTS,
-    memberTaskSlots: LEGACY_CLIENT_UNLIMITED_TASK_LIMIT,
-    taskPackSize: 0,
+    memberTaskSlots: newPlan ? LEGACY_CLIENT_UNLIMITED_TASK_LIMIT : 15,
+    taskPackSize: newPlan ? 0 : 10,
   };
 }
 
@@ -1308,18 +1268,21 @@ function mockAdminMembershipUpgradeNoticeView(nowTs = new Date()) {
   };
 }
 
-function mockMembershipPackages(snapshot) {
+function mockMembershipPackages(snapshot, data = {}) {
   const sales = mockMembershipSalesView();
-  return MOCK_MEMBERSHIP_PACKAGES.map(item => {
+  const newPlan = mockHasUnlimitedV3(data);
+  return mockPackagesForPlan(data).map(item => {
     const priceText = mockPriceText(item.priceFen);
-    const available = sales.purchaseEnabled && item.type === 'MEMBER';
+    const available = sales.purchaseEnabled && (newPlan || item.type === 'MEMBER' || snapshot.member);
     return {
       ...item,
       priceText,
       available,
       actionText: !sales.purchaseEnabled
         ? sales.message
-        : `${snapshot.member ? '续费' : '开通会员'} ${priceText}`,
+        : (item.type === 'MEMBER'
+          ? `${snapshot.member ? '续费' : '开通会员'} ${priceText}`
+          : (snapshot.member ? `加购 ${item.addedSlots} 个名额 ${priceText}` : '先开通会员')),
     };
   });
 }
@@ -1557,8 +1520,8 @@ function mockCaseView(item) {
   };
 }
 
-function mockTaskLimitError(needed) {
-  const current = mockMembershipSnapshot();
+function mockTaskLimitError(needed, data = {}) {
+  const current = mockMembershipSnapshot(new Date(), data);
   if (current.taskLimitUnlimited) return null;
   const want = Math.max(0, Number(needed) || 0);
   if (want <= current.taskRemaining) return null;
@@ -1575,7 +1538,7 @@ function mockTaskLimitError(needed) {
     errorCode: 1026,
     membership: current,
     taskLimit,
-    packages: mockMembershipPackages(current),
+    packages: mockMembershipPackages(current, data),
   };
 }
 
@@ -2299,6 +2262,9 @@ const handlers = {
       noReminderCount: items.length - reminderCount,
       text: reminderCount > 0 ? `已选 ${items.length} 项，其中 ${reminderCount} 个将设提醒` : `已选 ${items.length} 项，均无需提醒`,
     };
+    const membershipSnapshot = data && data.includeMembership
+      ? mockMembershipSnapshot(now, data)
+      : null;
     return {
       success: true,
       items: enriched,
@@ -2306,11 +2272,13 @@ const handlers = {
       summary,
       cartSummary: summary,
       cartVersion: mockCartVersionOf(items),
-      membership: data && data.includeMembership ? mockMembershipSnapshot(now) : null,
+      membership: membershipSnapshot,
+      packages: membershipSnapshot ? mockMembershipPackages(membershipSnapshot, data) : [],
+      sales: membershipSnapshot ? mockMembershipSalesView() : null,
     };
   },
-  'cart.bootstrap': () => {
-    const cartResult = handlers['cart.list']({ includeMembership: true });
+  'cart.bootstrap': (data) => {
+    const cartResult = handlers['cart.list']({ ...data, includeMembership: true });
     const subscription = handlers['subscribe.get']({});
     return {
       ...cartResult,
@@ -2393,7 +2361,7 @@ const handlers = {
     if (reminderItems.length > 0 && (channels.length === 0 || offsets.length === 0 || reminderItems.some(c => !c.releaseAt))) {
       return { success: false, error: '参数不合法', errorCode: 1010 };
     }
-    const limitError = mockTaskLimitError(reminderItems.length);
+    const limitError = mockTaskLimitError(reminderItems.length, data);
     if (limitError) return limitError;
     /* 各景点保留自己的日期段（提交时由 visitDate 集合推导），
        这样合并后「故宫 10.2-10.3 + 国博 10.4」不会互相膨胀成 10.2-10.4 */
@@ -2639,7 +2607,7 @@ const handlers = {
     const activeKeys = taskKeys.filter(k => db.tasks[k].backendStatus === 'WAITING');
     const next = data.remindOn === true;
     if (next && activeKeys.length === 0) {
-      const limitError = mockTaskLimitError(1);
+      const limitError = mockTaskLimitError(1, data);
       if (limitError) return limitError;
     }
     /* ⚠️ 关闭时若还留着终态任务（已触发/已失败），**保留 remindOn** ——
@@ -2725,8 +2693,8 @@ const handlers = {
   },
 
   /* ----- user ----- */
-  'user.profile': () => {
-    const membershipSnapshot = mockMembershipSnapshot();
+  'user.profile': (data) => {
+    const membershipSnapshot = mockMembershipSnapshot(new Date(), data);
     const notice = mockUpgradeNoticeView(membershipSnapshot);
     return {
       success: true,
@@ -2739,9 +2707,9 @@ const handlers = {
       ...(notice ? { membershipUpgradeNotice: notice } : {}),
     };
   },
-  'user.bootstrap': () => {
-    const profile = handlers['user.profile']();
-    const membership = handlers['membership.status']();
+  'user.bootstrap': (data) => {
+    const profile = handlers['user.profile'](data);
+    const membership = handlers['membership.status'](data);
     return {
       success: true,
       user: profile.user,
@@ -2771,7 +2739,7 @@ const handlers = {
       user: {
         ...mockUser,
         subscribeQuota: subscribeSeq,
-        membership: mockMembershipSnapshot(),
+        membership: mockMembershipSnapshot(new Date(), data),
         membershipSales: mockMembershipSalesView(),
       },
     };
@@ -2782,14 +2750,14 @@ const handlers = {
   },
 
   /* ----- 会员 / 提醒名额与售后（镜像 reminder + payment） ----- */
-  'membership.status': () => {
-    const current = mockMembershipSnapshot();
+  'membership.status': (data) => {
+    const current = mockMembershipSnapshot(new Date(), data);
     const sales = mockMembershipSalesView();
     const enforcement = mockMembershipEnforcementView();
     return {
       success: true,
       membership: current,
-      packages: mockMembershipPackages(current),
+      packages: mockMembershipPackages(current, data),
       sales,
       enforced: enforcement.mode === 'all',
     };
@@ -2804,7 +2772,7 @@ const handlers = {
         sales,
       };
     }
-    const pkg = mockPackageOf(data.packageId);
+    const pkg = mockPackageOf(data.packageId, data);
     const requestId = String(data.requestId || '');
     if (!pkg || !MOCK_REQUEST_ID_PATTERN.test(requestId)) {
       return { success: false, error: '参数不合法', errorCode: 1010 };
@@ -3625,7 +3593,7 @@ const handlers = {
         mockReminderHealthOf(Object.values(db.tasks), subscribeSeq, nowTs),
         nowTs
       ),
-      membership: mockMembershipSnapshot(nowTs),
+      membership: mockMembershipSnapshot(nowTs, data),
       /* 摘要卡底部的「即将提醒」胶囊：与 stickyBanner 平级、独立，不限 1h 窗口 */
       releasePills: releasePillsOf(decorated, nowTs, 2),
       /* 「没抢到」之后还能换哪些日期（决策文档 4.3）。与云端 homeBootstrap 同口径：

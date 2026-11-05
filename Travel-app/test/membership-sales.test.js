@@ -19,6 +19,7 @@ const reminderFlow = require('../miniprogram/utils/reminder-flow');
 
 const USER = 'openid_sales_user';
 const ADMIN = 'openid_sales_admin';
+const NEW_PLAN = Object.freeze({ membershipCapabilities: Object.freeze(['unlimited-v3']) });
 let fail = 0;
 const eq = (actual, expected, message) => {
   const ok = String(actual) === String(expected);
@@ -66,7 +67,7 @@ async function run() {
     memberLevel: 'NORMAL',
     taskPackCount: 0,
   }]);
-  const initial = await membership.status(db, USER);
+  const initial = await membership.status(db, USER, undefined, NEW_PLAN);
   eq(initial.sales.state, MembershipSalesState.OPEN, '缺少配置文档时默认开放');
   eq(initial.sales.purchaseEnabled, true, '默认允许购买');
   eq(initial.packages.find(item => item.id === 'member').available, true, '会员套餐默认可购买');
@@ -79,6 +80,7 @@ async function run() {
   const created = await membership.createOrder(db, USER, {
     packageId: 'member',
     requestId: 'req_sales_open_001',
+    membershipCapabilities: ['unlimited-v3'],
   });
   eq(created.success, true, '开放时允许创建订单');
   await paymentSales.write(db, {
@@ -86,12 +88,13 @@ async function run() {
     reason: '支付渠道异常',
     updatedBy: ADMIN,
   });
-  const pausedStatus = await membership.status(db, USER);
+  const pausedStatus = await membership.status(db, USER, undefined, NEW_PLAN);
   eq(pausedStatus.sales.purchaseEnabled, false, '暂停后状态返回不可购买');
   eq(pausedStatus.packages.every(item => item.available === false), true, '暂停后所有套餐不可购买');
   const blockedOrder = await membership.createOrder(db, USER, {
     packageId: 'member',
     requestId: 'req_sales_paused_002',
+    membershipCapabilities: ['unlimited-v3'],
   });
   eq(blockedOrder.success, false, '暂停后不能创建新订单');
   eq(blockedOrder.errorCode, 1032, '创建订单返回停售错误码');

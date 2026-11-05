@@ -656,7 +656,10 @@ async function commitCartItems(db, userId, event, cartItems, options = {}) {
     userId,
     reminderItems.length,
     nowTs,
-    { enforcementState }
+    {
+      enforcementState,
+      membershipCapabilities: event.membershipCapabilities,
+    }
   );
   if (capacityError) return capacityError;
 

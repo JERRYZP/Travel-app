@@ -18,6 +18,9 @@ const FREE_USER = 'openid_upgrade_notice_free';
 const NEW_MEMBER = 'openid_upgrade_notice_new_member';
 const LEGACY_USER = 'openid_upgrade_notice_legacy';
 const ADMIN = 'openid_upgrade_notice_admin';
+const NEW_PLAN_OPTIONS = Object.freeze({
+  membershipCapabilities: Object.freeze(['unlimited-v3']),
+});
 const ROOT = path.join(__dirname, '..');
 const DAY_MS = 24 * 60 * 60 * 1000;
 let fail = 0;
@@ -162,22 +165,41 @@ async function testStatusIsolation() {
   seedNotice(db);
   const now = new Date();
 
-  const current = await membership.status(db, USER, now, { includeUpgradeNotice: true });
+  const current = await membership.status(db, USER, now, {
+    ...NEW_PLAN_OPTIONS,
+    includeUpgradeNotice: true,
+  });
   eq(current.membership.planVersion, 'unlimited-v3', '白名单用户进入新方案');
   eq(current.upgradeNotice && current.upgradeNotice.id,
     'membership-unlimited-upgrade', '白名单有效会员收到公告');
+  const oldClient = await membership.status(db, USER, now, {
+    includeUpgradeNotice: true,
+  });
+  eq(oldClient.membership.planVersion, 'legacy-v2',
+    '未声明能力的旧客户端继续收到 legacy 方案');
+  eq(Object.prototype.hasOwnProperty.call(oldClient, 'upgradeNotice'), false,
+    '旧客户端不收到新会员升级公告');
 
-  const free = await membership.status(db, FREE_USER, now, { includeUpgradeNotice: true });
+  const free = await membership.status(db, FREE_USER, now, {
+    ...NEW_PLAN_OPTIONS,
+    includeUpgradeNotice: true,
+  });
   eq(free.membership.member, false, '白名单免费用户仍为免费状态');
   eq(Object.prototype.hasOwnProperty.call(free, 'upgradeNotice'), false,
     '白名单免费用户不收到公告');
 
-  const newMember = await membership.status(db, NEW_MEMBER, now, { includeUpgradeNotice: true });
+  const newMember = await membership.status(db, NEW_MEMBER, now, {
+    ...NEW_PLAN_OPTIONS,
+    includeUpgradeNotice: true,
+  });
   eq(newMember.membership.member, true, '公告后开通的新会员仍为有效会员');
   eq(Object.prototype.hasOwnProperty.call(newMember, 'upgradeNotice'), false,
     '公告后新开通会员不收到公告');
 
-  const legacy = await membership.status(db, LEGACY_USER, now, { includeUpgradeNotice: true });
+  const legacy = await membership.status(db, LEGACY_USER, now, {
+    ...NEW_PLAN_OPTIONS,
+    includeUpgradeNotice: true,
+  });
   eq(legacy.membership.planVersion, 'legacy-v2', '非白名单继续旧方案');
   eq(Object.prototype.hasOwnProperty.call(legacy, 'upgradeNotice'), false,
     '非白名单响应不增加公告字段');
@@ -186,7 +208,10 @@ async function testStatusIsolation() {
     .doc(reminderNotice.CONFIG_ID)
     .update({ data: { enabled: false } });
   reminderNotice.invalidate(db);
-  const disabled = await membership.status(db, USER, now, { includeUpgradeNotice: true });
+  const disabled = await membership.status(db, USER, now, {
+    ...NEW_PLAN_OPTIONS,
+    includeUpgradeNotice: true,
+  });
   eq(Object.prototype.hasOwnProperty.call(disabled, 'upgradeNotice'), false,
     '后台下架后服务端立即停止返回公告');
 

@@ -225,7 +225,7 @@ async function undoResult(db, userId, { itemId, expectedResultAt }) {
  * - 改提前量 → 重建未触发任务（每条任务按 offsets 发多条消息，offset 变了必须重建）。
  */
 async function updateReminder(db, userId, {
-  itemId, remindOn, channels, offsets, requireSubscription = false,
+  itemId, remindOn, channels, offsets, requireSubscription = false, membershipCapabilities = null,
 }) {
   if (!itemId) return fail(ERRORS.BAD_PARAM);
 
@@ -299,7 +299,10 @@ async function updateReminder(db, userId, {
         userId,
         1,
         lockNowTs,
-        { enforcementState }
+        {
+          enforcementState,
+          membershipCapabilities,
+        }
       );
       if (capacityError) return capacityError;
     }

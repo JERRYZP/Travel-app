@@ -17,6 +17,7 @@ const DAY_MS = 86400000;
 const TEST_OPENID_A = 'oZ6IFxvYK1mKzBaehMcOPIl_CgN0';
 const TEST_OPENID_B = 'oZ6IFxmYI3grd17Aa2rEem2SMqNo';
 const TEST_OPENID_ANDROID = 'oZ6IFxi1K98ihzn5DH6KP5Jx9_bs';
+const NEW_PLAN = Object.freeze({ membershipCapabilities: Object.freeze(['unlimited-v3']) });
 
 let fail = 0;
 const eq = (a, b, m) => {
@@ -123,13 +124,14 @@ async function run() {
   /* 后续业务用例统一在 all 模式下验证完整闸门。 */
   process.env.MEMBERSHIP_ENFORCEMENT_MODE = 'all';
   delete process.env.MEMBERSHIP_TEST_OPENIDS;
-  const afterCutoverStatus = await membership.status(preCutoverDb, USER);
+  const afterCutoverStatus = await membership.status(preCutoverDb, USER, undefined, NEW_PLAN);
   eq(afterCutoverStatus.membership.taskUsed, 0, '切 all 前的 2 条任务不会追溯占用新增池');
   eq(afterCutoverStatus.membership.protectedTaskUsed, 2, '切 all 前的任务转为历史保护池占用');
   preCutoverDb._seed(COLLECTIONS.REMINDER_CART, [mkCart('post_cutover_1')]);
   const postCutoverSubmit = await task.submit(preCutoverDb, USER, {
     channels: [ChannelType.OFFICIAL_ACCOUNT],
     offsets: [5],
+    membershipCapabilities: ['unlimited-v3'],
   });
   eq(postCutoverSubmit.success, true, '切 all 后可正常新建任务');
   const postCutoverTasks = preCutoverDb._dump(COLLECTIONS.REMINDER_TASKS);
@@ -142,7 +144,7 @@ async function run() {
   let db = createDb();
   seedUser(db);
   seedActiveTasks(db, 5);
-  let current = await membership.status(db, USER);
+  let current = await membership.status(db, USER, undefined, NEW_PLAN);
   eq(typeof current.enforced, 'boolean', 'status 明确下发当前用户是否进入名额限制灰度');
   eq(current.membership.member, false, '默认普通用户');
   eq(current.membership.taskLimit, 5, '免费上限 5');
@@ -158,7 +160,7 @@ async function run() {
   eq(memberPackage.addedSlots, 0, '不限套餐不伪造相对增量');
   eq(taskPack, undefined, '加量包不再出现在可售套餐中');
 
-  const blocked = await membership.capacityError(db, USER, 1);
+  const blocked = await membership.capacityError(db, USER, 1, undefined, NEW_PLAN);
   eq(blocked.success, false, '超额被拒');
   eq(blocked.errorCode, 1026, '返回提醒名额错误码');
   eq(blocked.taskLimit.shortfall, 1, '缺口 1');
@@ -172,7 +174,7 @@ async function run() {
       memberExpiresAt: memberExpiry,
     },
   });
-  current = await membership.status(db, USER);
+  current = await membership.status(db, USER, undefined, NEW_PLAN);
   eq(current.membership.member, true, '有效会员立即获得新权益');
   eq(current.membership.taskLimitUnlimited, true, '有效会员不限提醒名额');
   eq(current.membership.taskLimit, membership.LEGACY_CLIENT_UNLIMITED_TASK_LIMIT,
@@ -180,7 +182,8 @@ async function run() {
   eq(new Date(current.membership.memberExpiresAt).getTime(), memberExpiry.getTime(),
     '老会员自动升级不改变原有效期');
   eq(current.membership.ownedTaskPackSlots, 10, '历史加量包记录继续保留供售后追溯');
-  eq(await membership.capacityError(db, USER, 10), null, '会员不受有限提醒名额限制');
+  eq(await membership.capacityError(db, USER, 10, undefined, NEW_PLAN), null,
+    '会员不受有限提醒名额限制');
 
   const unlimitedDb = createDb();
   const fixedExpiry = new Date(Date.now() + 20 * DAY_MS);
@@ -189,15 +192,16 @@ async function run() {
     memberExpiresAt: fixedExpiry,
   });
   seedActiveTasks(unlimitedDb, 20, 'ENTITLEMENT', 'over_old_cap');
-  const unlimited = await membership.status(unlimitedDb, USER);
+  const unlimited = await membership.status(unlimitedDb, USER, undefined, NEW_PLAN);
   eq(unlimited.membership.taskUsed, 20, '老会员可超过旧 15 个上限继续占用');
-  eq(await membership.capacityError(unlimitedDb, USER, 50), null,
+  eq(await membership.capacityError(unlimitedDb, USER, 50, undefined, NEW_PLAN), null,
     '会员新增提醒不受有限数字兼容字段拦截');
   unlimitedDb._seed(COLLECTIONS.REMINDER_CART,
     Array.from({ length: 6 }, (_, i) => mkCart(`unlimited_cart_${i}`)));
   const unlimitedSubmit = await task.submit(unlimitedDb, USER, {
     channels: [ChannelType.OFFICIAL_ACCOUNT],
     offsets: [5],
+    membershipCapabilities: ['unlimited-v3'],
   });
   eq(unlimitedSubmit.success, true, '有效会员超过旧上限后仍可一次新建多条提醒');
   eq(unlimitedDb._size(COLLECTIONS.REMINDER_TASKS), 26, '20 + 6 条任务全部创建');
@@ -215,8 +219,9 @@ async function run() {
     memberLevel: MemberLevel.NORMAL,
     taskPackCount: 0,
   }]);
-  const gatedNew = await membership.status(gatedDb, USER);
-  const gatedLegacy = await membership.status(gatedDb, 'openid_legacy_scope_001');
+  const gatedNew = await membership.status(gatedDb, USER, undefined, NEW_PLAN);
+  const gatedLegacy = await membership.status(gatedDb, 'openid_legacy_scope_001', undefined, NEW_PLAN);
+  const gatedMissingCapability = await membership.status(gatedDb, USER);
   eq(gatedNew.membership.planVersion, 'unlimited-v3', '白名单用户进入新会员方案');
   eq(gatedNew.packages.map(item => item.id).join(','), 'member', '白名单只看到唯一新会员 SKU');
   eq(gatedNew.packages[0].priceFen, 600, '白名单看到 6 元会员');
@@ -225,9 +230,19 @@ async function run() {
     '非白名单继续看到旧会员和加量包');
   eq(gatedLegacy.packages.find(item => item.id === 'member').priceFen, 300,
     '非白名单仍看到 3 元会员');
+  eq(gatedMissingCapability.membership.planVersion, 'legacy-v2',
+    '白名单用户未声明 unlimited-v3 时仍返回旧方案');
+  eq(gatedMissingCapability.packages.map(item => item.id).join(','), 'member,task_pack_5',
+    '旧客户端不会看到新套餐或加量包下线');
+  const missingCapabilityOrder = await membership.createOrder(gatedDb, USER, {
+    packageId: 'member',
+    requestId: 'req_missing_capability_member_001',
+  });
+  eq(missingCapabilityOrder.amountFen, 300, '未声明能力的客户端仍按旧价下单');
   const legacyOrder = await membership.createOrder(gatedDb, 'openid_legacy_scope_001', {
     packageId: 'member',
     requestId: 'req_legacy_scope_member_001',
+    membershipCapabilities: ['unlimited-v3'],
   });
   eq(legacyOrder.amountFen, 300, '非白名单创建旧价会员订单');
   eq(legacyOrder.unlimitedReminders, false, '旧方案订单不携带不限权益');
@@ -241,7 +256,7 @@ async function run() {
   db._seed(COLLECTIONS.REMINDER_TASKS, [
     mkTask('expired_task', { releaseAt: new Date(Date.now() - DAY_MS) }),
   ]);
-  current = await membership.status(db, USER);
+  current = await membership.status(db, USER, undefined, NEW_PLAN);
   eq(current.membership.taskUsed, 5, '过期 WAITING 不计入占用');
 
   console.log('\n=== 3. cart.commit 超限时不留半成品 ===');
@@ -255,6 +270,7 @@ async function run() {
   let submitted = await task.submit(db, USER, {
     channels: [ChannelType.OFFICIAL_ACCOUNT],
     offsets: [5],
+    membershipCapabilities: ['unlimited-v3'],
   });
   eq(submitted.success, false, '免费用户新增 2 条被拒');
   eq(submitted.errorCode, 1026, '提交返回提醒名额错误码');
@@ -271,6 +287,7 @@ async function run() {
   submitted = await task.submit(db, USER, {
     channels: [ChannelType.OFFICIAL_ACCOUNT],
     offsets: [5],
+    membershipCapabilities: ['unlimited-v3'],
   });
   eq(submitted.success, true, '开通会员后可提交');
   eq(submitted.createdTasks, 2, '新增 2 条任务');
@@ -306,6 +323,7 @@ async function run() {
     remindOn: true,
     channels: [ChannelType.OFFICIAL_ACCOUNT],
     offsets: [5],
+    membershipCapabilities: ['unlimited-v3'],
   });
   eq(reopened.success, false, '免费额度已满时无法重新开启');
   eq(reopened.errorCode, 1026, '重新开启返回 1026');
@@ -322,6 +340,7 @@ async function run() {
     remindOn: true,
     channels: [ChannelType.OFFICIAL_ACCOUNT],
     offsets: [5],
+    membershipCapabilities: ['unlimited-v3'],
   });
   eq(reopenedOk.success, true, '会员可重新开启');
   eq(db._size(COLLECTIONS.REMINDER_TASKS), 6, '会员新增 1 条任务');
@@ -336,7 +355,7 @@ async function run() {
     protectionMigratedAt: migrationCutoff,
   });
   seedActiveTasks(db, 9, 'PROTECTED', 'protected');
-  current = await membership.status(db, USER);
+  current = await membership.status(db, USER, undefined, NEW_PLAN);
   eq(current.membership.taskLimitUnlimited, true, '会员新增池为不限');
   eq(current.membership.taskLimit, membership.LEGACY_CLIENT_UNLIMITED_TASK_LIMIT,
     '会员兼容字段不限制旧版本');
@@ -344,11 +363,11 @@ async function run() {
   eq(current.membership.protectedTaskUsed, 9, '历史保护池准确记录 9 条');
   eq(current.membership.taskRemaining, membership.LEGACY_CLIENT_UNLIMITED_TASK_LIMIT,
     '会员新旧任务均不受有限名额限制');
-  eq(await membership.capacityError(db, USER, 3), null,
+  eq(await membership.capacityError(db, USER, 3, undefined, NEW_PLAN), null,
     '历史 9 条时仍可一次新建 3 条提醒');
 
   seedActiveTasks(db, 3, 'ENTITLEMENT', 'entitlement');
-  current = await membership.status(db, USER);
+  current = await membership.status(db, USER, undefined, NEW_PLAN);
   eq(current.membership.taskUsed, 3, '新建 3 条只占新增池');
   eq(current.membership.protectedTaskUsed, 9, '历史池保持 9 条');
   eq(current.membership.taskRemaining,
@@ -385,6 +404,7 @@ async function run() {
   })]);
   const reconfigured = await itemActions.updateReminder(db, USER, {
     itemId: 'legacy_item', remindOn: true, channels: [ChannelType.OFFICIAL_ACCOUNT], offsets: [2],
+    membershipCapabilities: ['unlimited-v3'],
   });
   eq(reconfigured.success, true, '历史保护任务可修改提醒配置');
   eq(db._dump(COLLECTIONS.REMINDER_TASKS)[0].quotaPool, 'PROTECTED',
@@ -399,7 +419,7 @@ async function run() {
     taskPackSlots: 5,
   });
   seedActiveTasks(db, 12, 'PROTECTED');
-  current = await membership.status(db, USER);
+  current = await membership.status(db, USER, undefined, NEW_PLAN);
   eq(current.membership.member, false, '已过有效期按普通用户处理');
   eq(current.membership.taskLimit, 5, '过期会员的新增池回到免费 5 个');
   eq(current.membership.taskUsed, 0, '12 条历史保护任务不占免费新增池');
@@ -408,12 +428,14 @@ async function run() {
   const packOrder = await membership.createOrder(db, USER, {
     packageId: 'task_pack_5',
     requestId: 'req_membership_pack_expired_001',
+    membershipCapabilities: ['unlimited-v3'],
   });
   eq(packOrder.success, false, '已停售加量包不能创建新订单');
   eq(packOrder.errorCode, 1010, '停售 SKU 按非法商品参数拒绝');
   const renewOrder = await membership.createOrder(db, USER, {
     packageId: 'member',
     requestId: 'req_membership_renew_expired_001',
+    membershipCapabilities: ['unlimited-v3'],
   });
   eq(renewOrder.success, true, '过期会员可续费');
   eq(renewOrder.amountFen, 600, '新会员订单按 600 分创建');
@@ -426,10 +448,12 @@ async function run() {
   const firstRealisticOrder = await membership.createOrder(db, USER, {
     packageId: 'member',
     requestId: 'req_membership_cloud_missing_001',
+    membershipCapabilities: ['unlimited-v3'],
   });
   const retriedRealisticOrder = await membership.createOrder(db, USER, {
     packageId: 'member',
     requestId: 'req_membership_cloud_missing_001',
+    membershipCapabilities: ['unlimited-v3'],
   });
   eq(firstRealisticOrder.success, true, '确定性订单不存在时可正常创建首单');
   eq(firstRealisticOrder.amountFen, 600, '首单按当前 6 元价格创建');
@@ -516,6 +540,7 @@ async function run() {
   const freshOrder = await membership.createOrder(db, USER, {
     packageId: 'member',
     requestId: 'req_membership_fresh_after_expired_001',
+    membershipCapabilities: ['unlimited-v3'],
   });
   const orderRows = db._dump(COLLECTIONS.ORDERS);
   eq(freshOrder.success, true, '过期订单后仍可创建新订单');
@@ -543,6 +568,7 @@ async function run() {
   const priceChangedOrder = await membership.createOrder(db, USER, {
     packageId: 'member',
     requestId: 'req_membership_price_changed_001',
+    membershipCapabilities: ['unlimited-v3'],
   });
   const priceChangedRows = db._dump(COLLECTIONS.ORDERS);
   const oldPriceOrder = priceChangedRows.find(item => item._id === 'order_old_price');

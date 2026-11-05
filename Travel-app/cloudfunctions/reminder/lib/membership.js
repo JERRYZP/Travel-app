@@ -30,6 +30,7 @@ const LEGACY_CURRENT_TASK_PACK_SIZE = 10;
 const MEMBER_DURATION_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const LEGACY_TASK_PACK_SIZE = 5;
+const MEMBERSHIP_CAPABILITY_UNLIMITED_V3 = 'unlimited-v3';
 /* 仅用于旧客户端兼容：旧版本仍读取有限数字并据此做前端预检。 */
 const LEGACY_CLIENT_UNLIMITED_TASK_LIMIT = 10000;
 const ORDER_GRANT_SCHEMA_VERSION = 2;
@@ -153,14 +154,26 @@ function testOpenIdsOf() {
 
 /**
  * 会员方案灰度与额度限制解耦：
- * - MEMBERSHIP_ENFORCEMENT_MODE=test：仅 MEMBERSHIP_TEST_OPENIDS 使用新会员方案；
- * - all：所有用户使用新会员方案；
+ * - 客户端必须显式声明 unlimited-v3，未声明时永远返回旧契约；
+ * - MEMBERSHIP_ENFORCEMENT_MODE=test：仅 MEMBERSHIP_TEST_OPENIDS 可使用新会员方案；
+ * - all：所有声明能力的客户端可使用新会员方案；
  * - off 或缺失：保持旧会员方案。
  *
  * 数据库 membership_enforcement 仍决定额度限制模式，本函数只决定返回哪套商品和权益。
- * 生产验收期间必须保持 test，避免旧客户端读取新价格或兼容字段。
+ * 能力只接受固定版本标识，不接受 `newPlan=true` 之类布尔参数；它用于契约兼容路由，
+ * 不是权限凭证，真实价格与权益仍由服务端规则决定。
  */
-function isNewPlanEnabledFor(userId) {
+function hasMembershipCapability(source, capability) {
+  const values = Array.isArray(source)
+    ? source
+    : (source && Array.isArray(source.membershipCapabilities)
+      ? source.membershipCapabilities
+      : []);
+  return values.some(value => String(value) === capability);
+}
+
+function isNewPlanEnabledFor(userId, source = {}) {
+  if (!hasMembershipCapability(source, MEMBERSHIP_CAPABILITY_UNLIMITED_V3)) return false;
   const mode = enforcementModeOf();
   if (mode === 'all') return true;
   if (mode === 'test' && userId) return testOpenIdsOf().has(userId);
@@ -551,7 +564,7 @@ async function status(db, userId, nowTs = time.now(), options = {}) {
     await db.collection(COLLECTIONS.USERS).doc(user._id).update({ data: migrationPatch });
     Object.assign(user, migrationPatch);
   }
-  const newPlan = isNewPlanEnabledFor(userId);
+  const newPlan = isNewPlanEnabledFor(userId, options);
   const snapshot = snapshotFromTasks(user, activeTasks, nowTs, { newPlan });
   const salesView = membershipSales.publicView(sales);
   const upgradeNoticeView = upgradeNotice.publicViewOf(noticeConfig, nowTs, {
@@ -579,7 +592,10 @@ async function capacityError(db, userId, neededTasks, nowTs = time.now(), option
     || await enforcementState(db);
   if (!shouldEnforceForState(enforcement, userId)) return null;
 
-  const res = await status(db, userId, nowTs, { enforcementState: enforcement });
+  const res = await status(db, userId, nowTs, {
+    enforcementState: enforcement,
+    membershipCapabilities: options.membershipCapabilities,
+  });
   const membership = res.membership;
   if (membership.taskLimitUnlimited) return null;
   if (needed <= membership.taskRemaining) return null;
@@ -647,15 +663,18 @@ function orderResponseOf(order, reused = false) {
   });
 }
 
-async function createOrder(db, userId, { packageId, requestId } = {}) {
-  const newPlan = isNewPlanEnabledFor(userId);
+async function createOrder(db, userId, event = {}) {
+  const { packageId, requestId } = event;
+  const newPlan = isNewPlanEnabledFor(userId, event);
   const pkg = packageOf(packageId, { newPlan });
   if (!pkg || !REQUEST_ID_PATTERN.test(String(requestId || ''))) return fail(ERRORS.BAD_PARAM);
   const requestHash = requestIdHashOf(userId, requestId);
   const deterministicOrderId = orderIdOfRequest(requestHash);
 
   return quotaLock.withQuotaLock(db, userId, async () => {
-    const current = await status(db, userId);
+    const current = await status(db, userId, undefined, {
+      membershipCapabilities: event.membershipCapabilities,
+    });
     if (!current.sales || current.sales.purchaseEnabled !== true) {
       return fail(ERRORS.MEMBERSHIP_SALES_PAUSED, {
         sales: current.sales,
@@ -845,6 +864,7 @@ async function orderDetail(db, userId, orderId) {
 module.exports = {
   FREE_TASK_SLOTS,
   LEGACY_TASK_PACK_SIZE,
+  MEMBERSHIP_CAPABILITY_UNLIMITED_V3,
   LEGACY_CLIENT_UNLIMITED_TASK_LIMIT,
   ORDER_GRANT_SCHEMA_VERSION,
   MEMBER_PRICE_FEN,
@@ -857,6 +877,7 @@ module.exports = {
   LEGACY_PACKAGES,
   packageOf,
   packagesForPlan,
+  hasMembershipCapability,
   isNewPlanEnabledFor,
   enforcementModeOf,
   enforcementState,

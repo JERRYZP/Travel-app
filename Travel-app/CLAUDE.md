@@ -57,7 +57,7 @@
 | `miniprogram/**`、`test/**` | `.claude/rules/frontend.md`、`docs/engineering/frontend-pitfalls.md` |
 | 景点/规则数据、mock、seed | `.claude/rules/data-contracts.md` |
 | `cloudfunctions/**`、appid/cloudEnv | `.claude/rules/deployment.md`、`docs/engineering/current-state.md` |
-| API 域与数据模型 | `API-契约.md`、`docs/engineering/architecture.md` |
+| API 域、数据模型、新旧客户端兼容发布 | `API-契约.md`、`docs/engineering/architecture.md`、`docs/engineering/client-version-compatibility.md` |
 | 提醒发送和 MISSED | `docs/engineering/reminder-troubleshooting.md`、`docs/engineering/domain-rules.md` |
 | `admin-web/**` | `docs/engineering/admin-console.md`、`API-契约.md` |
 

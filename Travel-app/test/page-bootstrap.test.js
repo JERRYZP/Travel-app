@@ -24,6 +24,7 @@ const reminder = require('../cloudfunctions/reminder/index.js');
 Module._load = origLoad;
 
 async function run() {
+  process.env.MEMBERSHIP_ENFORCEMENT_MODE = 'all';
   CURRENT_DB._seed('users', [{
     _id: USER,
     openId: USER,
@@ -44,14 +45,37 @@ async function run() {
     sentOffsets: [],
   }]);
 
-  const user = await reminder.main({ action: 'user.bootstrap' });
+  const oldClient = await reminder.main({ action: 'user.bootstrap' });
+  assert.strictEqual(oldClient.membership.planVersion, 'legacy-v2',
+    '未声明能力的旧客户端继续使用 legacy 契约');
+
+  const user = await reminder.main({
+    action: 'user.bootstrap',
+    membershipCapabilities: ['unlimited-v3'],
+  });
   assert.strictEqual(user.success, true);
+  assert.strictEqual(user.membership.planVersion, 'unlimited-v3',
+    '新客户端能力声明在 bootstrap 入口生效');
   assert.strictEqual(user.user._id, USER);
   assert.strictEqual(user.user.nickname, '用户bootstrap');
   assert.ok(user.membership);
   assert.ok(Array.isArray(user.packages));
   assert.ok(user.subscription);
   assert.ok(user.runtimeVersion);
+
+  const profile = await reminder.main({
+    action: 'user.profile',
+    membershipCapabilities: ['unlimited-v3'],
+  });
+  assert.strictEqual(profile.user.membership.planVersion, 'unlimited-v3',
+    'user.profile 透传客户端能力声明');
+
+  const status = await reminder.main({
+    action: 'membership.status',
+    membershipCapabilities: ['unlimited-v3'],
+  });
+  assert.strictEqual(status.membership.planVersion, 'unlimited-v3',
+    'membership.status 透传客户端能力声明');
 
   CURRENT_DB._seed('spots', [{
     spotId: 'gugong',
@@ -75,11 +99,16 @@ async function run() {
     reservationRequired: true,
   }]);
 
-  const cart = await reminder.main({ action: 'cart.bootstrap' });
+  const cart = await reminder.main({
+    action: 'cart.bootstrap',
+    membershipCapabilities: ['unlimited-v3'],
+  });
   assert.strictEqual(cart.success, true);
   assert.strictEqual(cart.cartSummary.count, 1);
   assert.strictEqual(cart.summary.reminderCount, 1);
   assert.ok(cart.membership);
+  assert.strictEqual(cart.membership.planVersion, 'unlimited-v3',
+    'cart.bootstrap 透传客户端能力声明');
   assert.ok(cart.subscription);
   assert.ok(cart.runtimeVersion);
 

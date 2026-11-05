@@ -31,6 +31,16 @@ const READ_ACTIONS = new Set([
 const inflightReads = new Map();
 const failedReads = new Map();
 const READ_RETRY_BACKOFF_MS = 1500;
+const MEMBERSHIP_CAPABILITIES = Object.freeze(['unlimited-v3']);
+
+/**
+ * 会员契约能力声明由客户端统一注入。老版本不会带此字段，服务端因此继续返回
+ * legacy-v2 套餐和额度，不依赖发布后等待旧包覆盖率归零。
+ */
+function withRequestCapabilities(name, data) {
+  if (name !== 'reminder' || !data || typeof data !== 'object' || Array.isArray(data)) return data;
+  return { ...data, membershipCapabilities: [...MEMBERSHIP_CAPABILITIES] };
+}
 
 function requestKey(name, data) {
   let payload = '';
@@ -43,6 +53,7 @@ function requestKey(name, data) {
 }
 
 function call(name, data, options) {
+  data = withRequestCapabilities(name, data);
   if (USE_MOCK) return mockCall(name, data);
   const action = data && data.action;
   const canCoalesce = READ_ACTIONS.has(action) && !(options && options.noCoalesce);

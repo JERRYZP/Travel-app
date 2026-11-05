@@ -3,7 +3,8 @@
 > 面向：前端（微信小程序页面开发）
 > 2026-11-02 更新：新增 `tripShare.create/status/revoke/open` 与 PAGE-018 行程只读分享。分享令牌只从公开路径传入，普通行程接口仅返回 `shareActive`；主人接口可通过 `ownerNickname` 读取应用内昵称用于会话标题，接收方数据只含城市、日期、天数和景点名称。
 > 2026-11-03 更新：客服工作台 `adminReminderQuality.stats` 改为读取由 `payment` 两分钟定时器在北京时间 `13:00 / 21:00` 后首个 tick 持久化的质量快照；工作台打开和刷新不再扫描 `reminder_events` / `reminder_tasks`。仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用。
-> 2026-11-04 更新：会员升级通过 `MEMBERSHIP_ENFORCEMENT_MODE` 做方案灰度。仅 `test` 且命中 `MEMBERSHIP_TEST_OPENIDS` 的用户返回不限会员方案；非白名单继续旧 `¥3 / 15 个 / task_pack_5` 契约。`all` 仅供用户明确授权的全量切换。`taskLimitUnlimited` 是白名单不限权益标志；禁止用 `taskLimit=10000` 等占位影响线上旧客户端。
+> 2026-11-05 更新：会员新契约增加客户端能力门禁。新客户端在 `reminder` 请求中显式传 `membershipCapabilities: ['unlimited-v3']`；只有同时声明能力且命中 `MEMBERSHIP_ENFORCEMENT_MODE` 灰度时才返回 `¥6 / 30 天 / 不限`。未声明能力的旧客户端永久继续 `legacy-v2` 的 `¥3 / 15 个 / task_pack_5`，即使方案开关已切 `all`。
+> 2026-11-04 更新：会员升级通过 `MEMBERSHIP_ENFORCEMENT_MODE` 做方案灰度。仅 `test` 且命中 `MEMBERSHIP_TEST_OPENIDS` 的新能力客户端返回不限会员方案；非白名单继续旧契约。`all` 仅供用户明确授权的全量切换。`taskLimitUnlimited` 是新方案权益标志；禁止让旧客户端消费 `taskLimit=10000` 兼容投影。
 >
 > 2026-11-05 更新：当前不限会员价格由 ¥8 调整为 ¥6 / 30 天，规格版本升级为 `member-unlimited-30d-v4`。历史 `member-unlimited-30d-v3` / 800 分订单继续按订单快照支付、查单、发放和退款。
 > 2026-11-02 更新：客服工作台新增会员限制模式切换。运行期真身为 `payment_config/membership_enforcement`，管理员可切 `off/test/all` 并即时生效；切 `all` 前服务端强制核验两项上线迁移。
@@ -890,7 +891,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 ```
 用途：PAGE-010 我的页、PAGE-profile-edit 编辑资料页
-调用：{ action: 'user.profile' }
+调用：{ action: 'user.profile', membershipCapabilities: ['unlimited-v3'] }
 // 首次调用惰性创建（TABLE-005 默认值），并自动生成资料：
 //   昵称 = 「用户」+ 6 位随机字符（小写字母+数字，去 0/o/1/l，允许重复）
 //   头像 = 随机默认占位图 /images/avatars/default-{1..6}.png（主包本地路径）
@@ -1024,12 +1025,12 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 > 客户端在设置新提醒前必须按**可用额度**判断：`quota - pendingMessageCount`。`quota` 是本地台账剩余授权总数，`pendingMessageCount` 是未来 `WAITING` 任务尚未发送的消息数（每条任务每个未发送 offset 计 1）。只看 `quota` 会把已经预留给待发送提醒的次数重复承诺给新提醒。
 
-### 2.6 会员、提醒名额、支付与售后（2026-11-04）
+### 2.6 会员、提醒名额、支付与售后（2026-11-05）
 
 唯一额度口径在 `cloudfunctions/reminder/lib/membership.js`，唯一支付/退款状态机在 `cloudfunctions/payment/lib/order.js` 与 `cloudfunctions/payment/lib/after-sales.js`。客户端只消费服务端返回的额度、价格、有效期、退款资格和可执行动作。
 
 - 用户侧统一使用「提醒名额」。免费版 5 个；会员统一为 `¥6 / 30 天`，有效会员不限提醒名额，但每条微信订阅消息仍需按条授权。新购买或续费在原有效期末尾增加 30 天；已过期会员从支付成功时起算 30 天；不自动续费。
-- 会员方案是否返回新版由 `MEMBERSHIP_ENFORCEMENT_MODE` 控制：`test` 只对 `MEMBERSHIP_TEST_OPENIDS` 生效，其他用户必须得到 `planVersion='legacy-v2'`、旧价格、旧额度与旧加量包；`all` 才让全量用户使用 `planVersion='unlimited-v3'`。数据库 `payment_config/membership_enforcement` 继续负责额度限制模式，不能代替方案灰度。
+- 会员方案必须同时满足两项才返回新版：请求声明 `membershipCapabilities` 包含 `unlimited-v3`，且 OpenID 命中方案灰度。`test` 只对 `MEMBERSHIP_TEST_OPENIDS` 生效；`all` 对所有声明能力的客户端生效。未声明能力的请求无论灰度模式如何都返回 `planVersion='legacy-v2'`、旧价格、旧额度与旧加量包。数据库 `payment_config/membership_enforcement` 继续负责额度限制模式，不能代替方案灰度或客户端能力门禁。
 - 当前有效老会员自动获得不限权益，`memberExpiresAt` 不变，不需要批量迁移。提醒加量包已停售，新订单只接受 `member`；历史 `taskPackCount/taskPackSlots` 保留用于展示、对账和退款，不再影响会员额度。
 - 老用户保护池与新增池彼此独立：任务创建时若用户尚未进入会员限制（`off`，或 `test` 模式下不在白名单），任务进入历史保护池；只有 `test` 白名单或 `all` 模式下新建的任务进入免费/会员新增池。无 `quotaPool` 字段的旧任务一律兼容为保护池。`taskLimit / taskUsed / taskRemaining` 只描述新增池，`protectedTaskUsed` 单独返回保护池占用。
 - `reminder` 的会员限制运行期唯一真身为 `payment_config/membership_enforcement`，文档字段 `mode=off|test|all`。管理端切换后立即影响新任务；已有任务继续按原 `quotaPool` 计数。`MEMBERSHIP_ENFORCEMENT_MODE` 只在配置缺失、非法或读取失败时兜底，`MEMBERSHIP_TEST_OPENIDS` 继续控制 `test` 白名单。
@@ -1041,7 +1042,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 #### `membership.status`
 
 ```javascript
-调用：{ action: 'membership.status' }
+调用：{ action: 'membership.status', membershipCapabilities: ['unlimited-v3'] }
 返回：{
   success: true,
   enforced: Boolean, // 当前 OpenID 是否受提醒名额限制
@@ -1071,7 +1072,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     ownedTaskPackSlots: Number,
     memberDurationDays: Number,
     freeTaskSlots: 5,
-    memberTaskSlots: Number, // 新方案白名单为兼容投影；legacy-v2 为 15
+    memberTaskSlots: Number, // 新方案为兼容投影；legacy-v2 为 15
     taskPackSize: Number // 新方案为 0；legacy-v2 为 10
   },
   packages: [{
@@ -1084,12 +1085,17 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```
 
 - 停售期间套餐仍可展示价格和权益，但 `available=false`；客户端不得从 `sales.state` 自行推导订单或权益状态。
-- 白名单新方案有效会员为兼容旧客户端返回 `taskLimit/taskRemaining/memberTaskSlots=10000` 附近的有限投影，但服务端额度判断必须先读取 `taskLimitUnlimited=true` 并直接放行；新客户端不得展示或自行计算这个兼容数字。非白名单 `legacy-v2` 不得出现 `taskLimitUnlimited`，必须保持旧 `15 + 加量包` 契约。
+- 新方案有效会员返回 `taskLimit/taskRemaining/memberTaskSlots=10000` 作为有限数字兼容投影，但服务端额度判断必须先读取 `taskLimitUnlimited=true` 并直接放行；新客户端不得展示或自行计算这个兼容数字。未声明能力、非白名单或免费用户的 `legacy-v2` 响应返回 `taskLimitUnlimited=false`，并保持旧 `15 + 加量包` 契约。
 
 #### `membership.createOrder`
 
 ```javascript
-调用：{ action: 'membership.createOrder', packageId: 'member' | 'task_pack_5', requestId: String }
+调用：{
+  action: 'membership.createOrder',
+  packageId: 'member' | 'task_pack_5',
+  requestId: String,
+  membershipCapabilities: ['unlimited-v3']
+}
 返回：{
   success: true,
   orderId, outTradeNo, amountFen, packageId, productType,
@@ -1100,7 +1106,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 - 金额、商品类型和权益只从服务端套餐表读取，客户端不能传价格。
 - `requestId` 必填，8-80 位，只允许字母、数字、下划线和短横线。服务端用 `OpenID + requestId` 生成确定性订单 ID；同一请求重试返回同一订单，同一 `requestId` 改商品或规格必须拒绝。
-- 白名单 `unlimited-v3` 新会员订单固定为 600 分、30 天、`unlimitedReminders=true`、`addedSlots=0`，规格版本为 `member-unlimited-30d-v4`；该方案不创建 `task_pack_5`。非白名单 `legacy-v2` 继续按 300 分会员和 300 分 `task_pack_5` 创建订单。已创建的 800 分 v3、旧价订单和旧加量包待支付订单仍可按订单快照继续支付和发放。
+- 声明 `unlimited-v3` 且命中方案灰度的新会员订单固定为 600 分、30 天、`unlimitedReminders=true`、`addedSlots=0`，规格版本为 `member-unlimited-30d-v4`；该方案不创建 `task_pack_5`。未声明能力或未命中灰度的 `legacy-v2` 继续按 300 分会员和 300 分 `task_pack_5` 创建订单。已创建的 800 分 v3、旧价订单和旧加量包待支付订单仍可按订单快照继续支付和发放。
 - 只有 `productType + specVersion + addedSlots + unlimitedReminders + memberDays + amountFen` 全部一致且未过期的 `PENDING` 订单才可复用；旧规格订单只按 `status=PENDING` 条件关闭，不能覆盖并发回调已经置为 `PAID` 的订单。客户端取消或服务端关闭后再次购买必须生成新的 `requestId`、订单 ID 和 `outTradeNo`。
 - 新会员订单权益快照保存 `memberDaysAddedMs` 与 `unlimitedReminders=true`；历史会员订单和加量包缺少新字段时继续按原订单快照兼容，不回写历史金额或权益。
 - 提醒名额不足统一返回错误码 `1026`，携带 `taskLimit`、`membership` 和 `packages`；失败时不得创建行程、任务或清空清单。
@@ -2136,7 +2142,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 1. **页面级 bootstrap**
 
 ```javascript
-调用：{ action: 'user.bootstrap' }
+调用：{ action: 'user.bootstrap', membershipCapabilities: ['unlimited-v3'] }
 返回：{
   success: true,
   user: { /* users 文档 + membership + membershipSales */ },
@@ -2147,12 +2153,12 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   membershipUpgradeNotice: { id, endsAt } // 可选；仅公告前已开通的 unlimited-v3 白名单有效会员且公告有效
 }
 
-调用：{ action: 'cart.bootstrap' }
+调用：{ action: 'cart.bootstrap', membershipCapabilities: ['unlimited-v3'] }
 返回：{ success: true, items, groups, summary, membership, packages, sales, subscription, runtimeVersion }
 ```
 
 - `user.bootstrap` 共享一次用户与任务读取，替代个人页顺序调用 `user.profile + subscribe.get`；管理端能力标记仍由对应部署单元鉴权。
-- `membershipUpgradeNotice` 是可省略字段。服务端先判断当前 OpenID 是否进入 `unlimited-v3`、当前会员有效，且 `memberSince` 早于公告 `startsAt`，再校验公告有效期；新会员、非白名单或免费用户响应不得增加该字段。
+- `membershipUpgradeNotice` 是可省略字段。服务端先判断请求是否声明 `unlimited-v3`、当前 OpenID 是否命中方案灰度、当前会员有效，且 `memberSince` 早于公告 `startsAt`，再校验公告有效期；旧客户端、新会员、非白名单或免费用户响应不得增加该字段。
 - `cart.bootstrap` 替代设置提醒页的 `cart.list(includeMembership=true) + subscribe.get` 两个云函数往返。
 
 2. **清单命令返回规范视图**

@@ -1,7 +1,7 @@
 # Travel-app 当前工程状态
 
 > 当前分支与版本以 `git status`、`git log -1` 为准；本文件记录工作区状态，提交和部署状态分开判断。
-> 更新时间：2026-11-04
+> 更新时间：2026-11-05
 
 ## 当前定位
 
@@ -9,9 +9,11 @@
 
 ## 已实现
 
+- 2026-11-05 新旧客户端能力门禁已部署：`reminder` 保持在 `MEMBERSHIP_ENFORCEMENT_MODE=test` 与既有 `MEMBERSHIP_TEST_OPENIDS` 白名单，`reminder` 为 `Active`、Nodejs16.13、60 秒。真实云冒烟中，白名单账号声明 `unlimited-v3` 时返回 `¥6 / 30 天 / 不限`，同一账号不声明能力时仍返回旧 `¥3 / 15 / task_pack_5`；会员页不展示 `10000` 兼容投影。本轮只生成开发版预览码，未上传体验版、未提审、未发布。新旧客户端兼容标准见 `docs/engineering/client-version-compatibility.md`。
 - 2026-11-04 “我的”页会员升级临时横幅已部署白名单灰度，并完成视觉/文案候选：仅 `unlimited-v3` 白名单中、公告开始前已开通的当前有效会员显示，标题为“您的会员权益已升级”，金色 sparkle 图标，说明到期时间不变、提醒名额升级；免费用户、公告后新开通会员不显示，可按公告 ID 关闭。客服工作台公告控制卡可一次确认快速下架，恢复时默认 72 小时；公开配置缓存最多 45 秒，用户下次 `onShow` 隐藏。有效会员的“我的”会员卡动作固定为“查看”；会员页默认不选套餐，底部按钮在取消和选中状态都显示“续费30天会员”，未选中仍禁用。套餐改为方形勾选框，再次点击已选项可取消，手动选择后才可续费。权益区只保留新的主文案与影响范围小字。`payment` 于 22:58:39 更新；`reminder` 于 23:55:30 部署最终老会员门槛，云端源码与工作区一致。两函数均 `Active`、Nodejs16.13、60 秒；`payment` 21 个与 `reminder` 2 个环境变量哈希保持不变，`MEMBERSHIP_ENFORCEMENT_MODE=test`，两分钟补偿触发器仍启用。`payment_config/membership_upgrade_notice` 已创建为 22:59:50 至 11-07 22:59:50（北京时间）并写审计。2026-11-04 23:56 已上传体验版 `2.3.3`，包体 `1,133,122` 字节，备注为“会员升级公告仅公告前老会员可见，新开通会员不展示体验版”；只完成上传，未提交审核、未发布正式版。
 - 2026-11-04 公告“仅公告前老会员可见”规则已部署：服务端比较 `users.memberSince < payment_config.membership_upgrade_notice.startsAt`，公告上线后新开通会员不展示，缺少 `memberSince` 时保守隐藏；老会员续费保留原 `memberSince`。专项测试、mock、契约和部署状态均已同步。
 - 2026-11-05 不限会员价格已调整为 ¥6 / 30 天：`MEMBER_PRICE_FEN=600`，规格版本升级为 `member-unlimited-30d-v4`。`payment` 于 07:18:44 增加 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_V6=travel_task_vip_6`，原有 21 个环境变量逐项核验未变化；`payment` 于 07:19:44、`reminder` 于 07:20:21 部署，均 `Active`、Nodejs16.13、60 秒，云端源码与工作区一致，两分钟补偿触发器保持启用，`MEMBERSHIP_ENFORCEMENT_MODE=test` 不变。当前新订单按 600 分映射 `travel_task_vip_6`；历史 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED` / 800 分 / v3 订单继续按快照兼容。2026-11-05 07:21 已上传体验版 `2.3.4`，包体 `1,133,122` 字节，源码对应 tag `v2.3.4-rc.1`；未提交审核、未发布正式版。
+- 2026-11-05 会员契约能力门禁为本地候选，**尚未部署、未上传体验版、未真机验证**：新客户端统一在 `reminder` 请求声明 `membershipCapabilities=['unlimited-v3']`；服务端只在声明能力且命中 `MEMBERSHIP_ENFORCEMENT_MODE` 时返回新套餐、新额度、新订单规格与升级公告。未声明能力的旧客户端即使后端切 `all` 也继续 `legacy-v2`，不再依赖旧包覆盖率归零。专项回归覆盖新能力白名单命中、旧客户端默认 legacy、非白名单即使声明能力仍 legacy，以及 bootstrap/cart 透传。
 - 2026-11-04 会员升级改为白名单灰度：生产曾因旧客户端把 `taskLimit=10000` 兼容占位显示成 `11/10000` 而在 14:48 回滚；14:36–14:48 窗口内新增订单和提醒任务均为 0。随后按用户要求复用 `MEMBERSHIP_ENFORCEMENT_MODE`：环境变量设为 `test`，仅 `MEMBERSHIP_TEST_OPENIDS` 返回 `unlimited-v3`，非白名单继续 `legacy-v2` 的 `¥3 / 15 个 / task_pack_5`；数据库额度限制仍为 `all`。灰度 `payment` / `reminder` 于 14:59 / 15:02 部署，均 `Active`、Nodejs16.13、60 秒，`paymentReconcileEveryTwoMinutes` 保留。真实云白名单冒烟返回 ¥8 单套餐和不限权益；本轮只生成预览码，未上传体验版，历史 `2.3.0` 构建不得单独设为体验版。
 - 2026-11-04 安卓开发版 ¥8 支付未拉起：首轮 `payment.create` 虽然生成了 800 分签名，但使用旧商品 `travel_member_30d`，微信侧查单返回“数据不存在”。随后 MP 后台提供新固定道具 `travel_task_vip_8`，`payment` 于 17:49:10 部署双商品配置：旧 300 分会员继续使用 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER=travel_member_30d`，新 800 分白名单会员使用 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED=travel_task_vip_8`。函数为 `Active`、Nodejs16.13、60 秒、21 个环境变量，两分钟触发器保留。真实云冒烟返回 `productId=travel_task_vip_8`、`goodsPrice=800`、`env=0`；两笔测试待支付订单已关闭，未产生扣款。
 - 2026-11-03 客服工作台售后队列与订单退款统计已部署并进入体验版：售后筛选收敛为「全部 / 审核中 / 自动核验 / 处理中 / 异常」，进入售后页签默认选中「审核中」；已取消、已驳回、已完成仍可从「全部」查看。`adminOrders.stats` 新增 `refundedOrders`，按北京时间当日创建的已支付订单统计已完成退款数量，页面统计改为四项。`payment` 于 23:43 整包部署，真实管理员接口返回 `refundedOrders=8`，两分钟补偿触发器于 23:44:01 正常写心跳。

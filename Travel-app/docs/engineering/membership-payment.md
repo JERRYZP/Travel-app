@@ -2,6 +2,8 @@
 
 > 2026-11-04 白名单灰度：新方案曾因先部署生产导致旧客户端显示 `11/10000`，已回滚且无新增订单或提醒任务。随后 `MEMBERSHIP_ENFORCEMENT_MODE` 设为 `test`，只有 `MEMBERSHIP_TEST_OPENIDS` 返回 ¥8 不限方案；非白名单完整保持旧 `¥3 / 15 / task_pack_5`。灰度 `payment` / `reminder` 已部署并通过白名单真实云冒烟；本轮只生成预览码，未上传体验版。
 >
+> 2026-11-05 能力门禁已部署：新客户端统一在 `reminder` 请求中声明 `membershipCapabilities=['unlimited-v3']`。服务端只有在能力声明命中且方案灰度允许时才返回 ¥6 不限方案；旧客户端未声明能力时永久继续旧 `¥3 / 15 / task_pack_5`，即使 `MEMBERSHIP_ENFORCEMENT_MODE=all`。`reminder` 已于 23:10 前后部署为 `Active`、Nodejs16.13、60 秒，保持 `MEMBERSHIP_ENFORCEMENT_MODE=test` 与既有白名单；真实云冒烟确认白名单新能力返回 `unlimited-v3`，同一账号无能力声明返回 `legacy-v2`，会员页不展示 `10000`。本轮仅生成开发版预览码，未上传体验版、未提审、未发布。
+>
 > 2026-11-02 当前状态：会员购买断路器为 `payment_config/membership_sales=OPEN`（集合权限 `ADMINONLY`），会员限制运行期为 `payment_config/membership_enforcement={mode:"all"}`。`payment` 与 `reminder` 已于 16:14 / 16:15 部署为 `Active`，`paymentReconcileEveryTwoMinutes` 保持启用；管理员接口返回配置来源 `DB`，`membership.status` 返回 `enforced=true`。客服工作台已部署当日统计、近 7 / 30 / 90 天 / 全部筛选和 Apple 超时待支付关闭，并通过云端冒烟。正式客户端 `2.1.1` 已从 `main@af05573` / `v2.1.1-rc.2` 完成体验验收、送审和全量发布，新功能已在正式版可见。累计观察到 8 笔已支付订单。真实停售切换未执行；保护额度完成标记当前缺失，后台从其他模式切回 `all` 前需单独治理。
 >
 > 权威业务口径以 `产品文档.md` 为准，接口以 `API-契约.md` 为准，索引以 `数据库索引.md` 为准。
@@ -11,7 +13,7 @@
 - 会员不是抢票服务，而是 **30 天提醒名额扩容**。
 - 免费版：5 个提醒名额。
 - 会员：当前新订单为 ¥6 / 30 天，会员有效期内不限提醒名额，不自动续费。新购买或续费在原有效期末尾增加 30 天；已过期会员从支付成功时起算 30 天。历史 ¥8 订单继续按订单快照支付、查单、发放和退款。
-- 方案灰度复用 `MEMBERSHIP_ENFORCEMENT_MODE`：生产验收期间必须为 `test`，只有 `MEMBERSHIP_TEST_OPENIDS` 命中用户返回 ¥6 不限方案；非白名单继续完整旧契约 `¥3 / 15 个 / task_pack_5`。`all` 只在用户明确授权全量后切换，不能与数据库额度限制模式混为一谈。
+- 方案灰度复用 `MEMBERSHIP_ENFORCEMENT_MODE`，并叠加客户端能力门禁：请求必须声明 `membershipCapabilities=['unlimited-v3']`。生产验收期间模式为 `test`，只有同时命中 `MEMBERSHIP_TEST_OPENIDS` 才返回 ¥6 不限方案；非白名单或未声明能力继续完整旧契约 `¥3 / 15 个 / task_pack_5`。`all` 只对声明能力的新客户端开放新方案，不能与数据库额度限制模式混为一谈。
 - 当前有效老会员自动获得不限权益，`memberExpiresAt` 不变，不执行批量权益写入。
 - 提醒加量包停止新售，`membership.createOrder` 只接受 `member`；历史 `task_pack_5` 待支付订单仍可按订单快照完成，历史包继续用于展示、对账和退款，但不再参与会员额度计算。
 - 微信订阅消息仍需按条授权；“不限提醒名额”不替代订阅授权，会员到期不删除已有提醒；不保证景点有票，不代抢、不代约。
@@ -91,7 +93,7 @@ iOS Apple 内购订单在订单展示接口中返回 `paymentChannel=APPLE`。�
 ### 会员升级临时公告
 
 - 唯一真身：`payment_config/membership_upgrade_notice`，字段固定为 `noticeId / enabled / startsAt / endsAt / updatedAt / updatedBy`。它只控制“我的”页一次性横幅，不参与会员价格、有效期、额度、支付或退款。
-- 公开返回条件：当前 OpenID 命中 `unlimited-v3`、当前会员有效、`users.memberSince < startsAt`、`enabled=true`、当前北京时间位于 `startsAt..endsAt`。任一条件不满足时，`user.profile` / `user.bootstrap` 整体省略 `membershipUpgradeNotice`；非白名单、免费用户及公告上线后新开通会员不得新增空字段或占位。缺少 `memberSince` 时按保守策略不展示。
+- 公开返回条件：请求声明 `unlimited-v3` 能力、当前 OpenID 命中方案灰度、当前会员有效、`users.memberSince < startsAt`、`enabled=true`、当前北京时间位于 `startsAt..endsAt`。任一条件不满足时，`user.profile` / `user.bootstrap` 整体省略 `membershipUpgradeNotice`；旧客户端、非白名单、免费用户及公告上线后新开通会员不得新增空字段或占位。缺少 `memberSince` 时按保守策略不展示。
 - 默认窗口 72 小时。管理员在客服工作台一次确认即可下架；再次开启时如旧的 `endsAt` 已过，自动续到当前时间后 72 小时。开关写 `SET_MEMBERSHIP_UPGRADE_NOTICE` 审计。
 - `payment` 写配置后直接失效本实例缓存；`reminder` 公告配置实例缓存 45 秒。用户停留在“我的”页时不做秒级轮询，下次 `onShow` 才重新读取，因此下架的最迟可见延迟为 45 秒加下一次页面回到前台。
 - 客户端按公告 ID 本地关闭，不按天重置。横幅只对公告开始前已成为会员的当前有效会员展示，文案只说明有效期不变、提醒名额升级。统一使用“不限提醒名额”，不得写“不限次数”或暗示免除微信逐条订阅授权。
