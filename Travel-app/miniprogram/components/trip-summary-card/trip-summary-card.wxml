@@ -16,21 +16,7 @@
   <!-- ② 日期段 + 倒计时**同一行**（设计稿 UI/V.0.2-0919）：
        「10月2日~10月4日 · 还有27天」。此前倒计时被排在标题行右侧，
        与设计稿不符。 -->
-  <view class="sm-meta-row">
-    <text class="sm-meta">{{metaLine}}</text>
-    <view
-      wx:if="{{showEditAction}}"
-      class="sm-edit-hit"
-      bindtap="onEditTap"
-      aria-role="button"
-      aria-label="修改行程日期"
-    >
-      <view class="sm-edit-action">
-        <svg-icon name="calendar" size="12px" />
-        <text>修改</text>
-      </view>
-    </view>
-  </view>
+  <text class="sm-meta">{{metaLine}}</text>
 
   <!-- ③ 门票搞定：左标签 + 右分数（N/M 用不同字号拉开层次），下方进度条 -->
   <view class="sm-progress">

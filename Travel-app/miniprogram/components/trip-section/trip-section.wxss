@@ -22,43 +22,6 @@
   border-radius: 8rpx;
   padding: 2rpx 10rpx;
 }
-.ts-edit-hit {
-  width: 104rpx;
-  height: 88rpx;
-  margin: -22rpx -22rpx -22rpx 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.ts-edit-hit:active { opacity: .66; }
-
-/* 行程窗口首尾标识。它是时间墙上的分隔，不包成卡片，也不用警告色。 */
-.ts-window-marker {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  padding: 18rpx 2rpx 10rpx;
-}
-.ts-window-line {
-  flex: 1;
-  height: 1rpx;
-  background: var(--divider-strong);
-}
-.ts-window-label {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-  max-width: 78%;
-  padding: 8rpx 16rpx;
-  border-radius: 999rpx;
-  background: var(--color-cream);
-  color: var(--color-text);
-}
-.ts-window-date { font-size: 21rpx; color: var(--color-muted); }
-.ts-window-copy { font-size: 22rpx; font-weight: 500; color: var(--color-ink); }
-.ts-window-marker--end { padding-top: 10rpx; }
 
 /* 已结束日期折叠入口。它是**索引**，不是提醒：保持中性浅底，
    不把过去的待确认态重新包装成需要今天处理的任务。 */
@@ -141,13 +104,6 @@
   color: var(--color-muted);
   white-space: nowrap;
 }
-.ts-day-outside {
-  flex-shrink: 0;
-  font-size: 20rpx;
-  color: var(--color-muted);
-  white-space: nowrap;
-}
-.ts-day.is-outside-window .ts-day-title { color: var(--color-muted); }
 /* 细分割线把日期标题和右侧菜单拉开 */
 .ts-day-line { flex: 1; height: 1rpx; background: var(--divider-strong); }
 

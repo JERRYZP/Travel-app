@@ -13,7 +13,6 @@ function freshMock() {
   return require('../miniprogram/utils/mock.js');
 }
 const mock = require('../miniprogram/utils/mock.js');
-const time = require('../cloudfunctions/reminder/lib/time');
 
 let fail = 0;
 const eq = (a, b, m) => {
@@ -781,54 +780,6 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     eq(adminReplyErr.errorCode, 1099, 'mock 不实现 feedback.adminReply');
     const rewardStatus = await c('payment', { action: 'feedbackReward.adminStatus' });
     eq(rewardStatus.isAdmin, false, 'mock 不伪造反馈奖励管理员权限');
-  }
-
-  console.log('\n=== 12. 行程窗口镜像 ===');
-  {
-    const m = freshMock();
-    const c = (n, d) => m.mockCall(n, d);
-    const today = time.todayStr();
-    const created = await c('trip.create', {
-      startDate: time.addDays(today, 1),
-      endDate: time.addDays(today, 10),
-      spotIds: ['gugong'],
-    });
-    const edited = await c('trip.updateWindow', {
-      tripId: created.tripId,
-      startDate: time.addDays(today, 2),
-      endDate: time.addDays(today, 5),
-    });
-    eq(edited.windowStartDate, time.addDays(today, 2), 'mock 保存窗口开始日');
-    eq(edited.windowEndDate, time.addDays(today, 5), 'mock 保存窗口结束日');
-    const stored = m.__internals.db.trips[created.tripId];
-    eq(stored.startDate, time.addDays(today, 1), 'mock 不修改实际覆盖开始日');
-    eq(stored.endDate, time.addDays(today, 10), 'mock 不修改实际覆盖结束日');
-
-    const inside = time.addDays(today, 3);
-    const outside = time.addDays(today, 9);
-    m.__internals.db.items.I_WINDOW_IN = {
-      _id: 'I_WINDOW_IN', userId: 'mock-user', tripId: created.tripId,
-      spotId: 'gugong', visitDate: inside, backupGroupId: `${created.tripId}:gugong`,
-      remindOn: false, result: null, resultAt: null,
-    };
-    m.__internals.db.items.I_WINDOW_OUT = {
-      _id: 'I_WINDOW_OUT', userId: 'mock-user', tripId: created.tripId,
-      spotId: 'gugong', visitDate: outside, backupGroupId: `${created.tripId}:gugong`,
-      remindOn: false, result: null, resultAt: null,
-    };
-    const home = await c('home.bootstrap', {});
-    const trip = home.trips.find(t => t._id === created.tripId);
-    eq(trip.windowItemCount, 1, 'mock 首页返回窗口内项目数');
-    eq(trip.outsideItemCount, 1, 'mock 首页返回窗口外项目数');
-    eq(trip.items.find(i => i.itemId === 'I_WINDOW_OUT').windowPosition, 'AFTER',
-      'mock 首页标记范围外项目');
-    eq(trip.windowProgress.total, 1, 'mock 摘要进度只统计窗口内项目');
-
-    const share = await c('tripShare.create', { tripId: created.tripId });
-    const opened = await c('tripShare.open', { token: share.token });
-    eq(opened.trip.startDate, time.addDays(today, 2), 'mock 分享使用窗口开始日');
-    eq(opened.trip.endDate, time.addDays(today, 5), 'mock 分享使用窗口结束日');
-    eq(opened.trip.days.length, 1, 'mock 分享排除窗口外项目');
   }
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');

@@ -171,8 +171,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     eq(util.tripCountdownTextOf(D(9), D(12)), '还有9天', '行程级未开始不变');
     eq(util.countdownTextOf(D(-3)), '已结束',
       '行程项卡那套（距出行日）不改动——两套算法仍各自独立');
-    eq(/util\.tripCountdownTextOf\(startDate, endDate\)/.test(CARD_JS)
-      && /trip\.windowStartDate \|\| trip\.startDate/.test(CARD_JS), true,
+    eq(/util\.tripCountdownTextOf\(trip\.startDate, trip\.endDate\)/.test(CARD_JS), true,
       '摘要卡仍走 util 的行程级倒计时（组件里不另写一套日期算法）');
   }
 
@@ -209,8 +208,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     const CLOUD_CODE = codeOf(CLOUD_INDEX);
     eq(/const primaryTripId = activeTrips\.length \? activeTrips\[0\]\._id : '';/.test(CLOUD_CODE),
       true, '云端 primaryTripId 仍是「最近未结束行程」（本次是纯小程序端改动）');
-    eq(/historyTrips\.sort\(\(a, b\) => String\(b\.windowStartDate \|\| b\.startDate\)/
-      .test(CLOUD_CODE), true, 'history 按窗口开始日降序 —— 页面回退依赖服务端顺序');
+    eq(/historyTrips\.sort\(\(a, b\) => String\(b\.startDate\)\.localeCompare\(String\(a\.startDate\)\)\);/
+      .test(CLOUD_CODE), true, 'history 仍是 startDate 降序 —— 页面回退依赖的就是这个顺序');
   }
 
   console.log(fail === 0 ? '\nALL PASS' : `\n${fail} FAILED`);

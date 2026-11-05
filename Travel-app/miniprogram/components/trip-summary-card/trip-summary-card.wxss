@@ -93,42 +93,8 @@
   white-space: nowrap;
 }
 
-/* ② 日期段 + 倒计时同一行；编辑入口只占日期行右侧，不挤标题行。 */
-.sm-meta-row {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  min-height: 52rpx;
-}
-.sm-meta {
-  flex: 1;
-  min-width: 0;
-  font-size: 26rpx;
-  color: #EAD9A8;
-  line-height: 1.4;
-  margin-top: 4rpx;
-}
-.sm-edit-hit {
-  flex: none;
-  min-width: 88rpx;
-  min-height: 52rpx;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-}
-.sm-edit-hit:active { opacity: .72; }
-.sm-edit-action {
-  display: flex;
-  align-items: center;
-  gap: 5rpx;
-  padding: 6rpx 12rpx;
-  border-radius: 999rpx;
-  background: rgba(234, 217, 168, .2);
-  color: #EAD9A8;
-  font-size: 21rpx;
-  line-height: 1.3;
-  white-space: nowrap;
-}
+/* ② 日期段 + 倒计时同一行 */
+.sm-meta { display: block; font-size: 26rpx; color: #EAD9A8; margin-top: 4rpx; }
 
 /* ③ 门票搞定 —— ⚠️ 这几行是「北京之行」以下的正文，统一 #EAD9A8。
    标题 .sm-name 保持白色（标题级信息）。

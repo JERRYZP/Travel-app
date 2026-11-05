@@ -13,17 +13,8 @@ const FALLBACK_IMAGE = '/images/share/home-today.jpg';
 const COVER_WIDTH = 700;
 const COVER_HEIGHT = 560;
 
-function windowOf(trip) {
-  return {
-    startDate: trip.windowStartDate || trip.startDate,
-    endDate: trip.windowEndDate || trip.endDate,
-  };
-}
-
-function publicItemsInWindow(trip) {
-  const window = windowOf(trip);
-  return (trip && Array.isArray(trip.items) ? trip.items : [])
-    .filter(item => item.visitDate >= window.startDate && item.visitDate <= window.endDate)
+function firstPublicItem(trip) {
+  const rows = (trip && Array.isArray(trip.items) ? trip.items : [])
     .map(item => ({
       visitDate: item.visitDate,
       spotId: item.spotId,
@@ -35,10 +26,7 @@ function publicItemsInWindow(trip) {
       if (byDate !== 0) return byDate;
       return String(a.spotName).localeCompare(String(b.spotName));
     });
-}
-
-function firstPublicItem(trip) {
-  return publicItemsInWindow(trip)[0] || null;
+  return rows[0] || null;
 }
 
 /**
@@ -48,16 +36,14 @@ function firstPublicItem(trip) {
 function buildModel(trip) {
   const first = firstPublicItem(trip);
   if (!trip || !first) return null;
-  const window = windowOf(trip);
-  const items = publicItemsInWindow(trip);
   const spotIds = {};
-  items.forEach(item => {
+  (trip.items || []).forEach(item => {
     if (item && item.spotId) spotIds[item.spotId] = true;
   });
   return {
     displayName: util.tripDisplayName(trip),
-    dateRange: util.monthDayRange(window.startDate, window.endDate),
-    dayText: util.dayDiff(window.startDate, window.endDate) + '天',
+    dateRange: util.monthDayRange(trip.startDate, trip.endDate),
+    dayText: util.dayDiff(trip.startDate, trip.endDate) + '天',
     spotText: Object.keys(spotIds).length + '处景点',
     watermark: util.tripWatermark(trip).join(''),
     first: {
@@ -65,7 +51,7 @@ function buildModel(trip) {
       spotId: first.spotId,
       spotName: first.spotName,
       dateLabel: util.dayTitleOf(first.visitDate),
-      dayLabel: '第' + util.dayDiff(window.startDate, first.visitDate) + '天',
+      dayLabel: '第' + util.dayDiff(trip.startDate, first.visitDate) + '天',
     },
   };
 }

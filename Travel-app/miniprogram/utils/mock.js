@@ -1,4 +1,9 @@
-/* 内存 mock，仅用于 USE_MOCK 联调与镜像测试。 */
+/**
+ * Mock 后端 -- 测试号不支持云开发时的内存模拟
+ *
+ * 联调正式 appid 时：把 USE_MOCK 改成 false，走真实云函数（utils/api.js 自动切换）。
+ * 内存数据在小程序一次运行内连贯，重新编译会重置。
+ */
 
 const USE_MOCK = false;
 
@@ -39,25 +44,8 @@ let orderSeq = 0;
 let subscribeSeq = 0;
 const subscribeQuotas = {};
 
-function mockWindowOf(trip) {
-  return {
-    startDate: trip.windowStartDate || trip.startDate,
-    endDate: trip.windowEndDate || trip.endDate,
-    explicit: Boolean(trip.windowStartDate && trip.windowEndDate),
-  };
-}
-function mockWindowVersionOf(trip) {
-  const value = trip && (trip.windowUpdatedAt || trip.updatedAt);
-  if (!value) return '';
-  const ms = new Date(value).getTime();
-  return Number.isFinite(ms) ? String(ms) : String(value);
-}
-function mockInWindow(visitDate, window) {
-  return visitDate >= window.startDate && visitDate <= window.endDate;
-}
 function mockShareExpiresOn(trip) {
-  const window = mockWindowOf(trip || {});
-  return window.endDate ? addDays(window.endDate, 7) : '';
+  return trip && trip.endDate ? addDays(trip.endDate, 7) : '';
 }
 
 function mockShareStatusOf(trip) {
@@ -68,16 +56,11 @@ function mockShareStatusOf(trip) {
 
 function mockPublicTrip(trip) {
   if (!trip) return null;
-  const window = mockWindowOf(trip);
   return {
     _id: trip._id,
     city: trip.city,
     startDate: trip.startDate,
     endDate: trip.endDate,
-    windowStartDate: window.startDate,
-    windowEndDate: window.endDate,
-    windowUpdatedAt: trip.windowUpdatedAt || null,
-    windowVersion: mockWindowVersionOf(trip),
     name: trip.name,
     spotIds: Array.isArray(trip.spotIds) ? trip.spotIds.slice() : [],
     spots: Array.isArray(trip.spots) ? trip.spots.map(s => ({ ...s })) : [],
@@ -807,7 +790,9 @@ function groupBySpot(events, nowTs) {
     return { key: spotId, label: sorted[0].spotName, events: sorted, count: sorted.length, scrollIndex: defaultScrollIndex(sorted, nowTs) };
   }).sort((a, b) => (a.events[0].releaseAt ? a.events[0].releaseAt.getTime() : Number.MAX_SAFE_INTEGER) - (b.events[0].releaseAt ? b.events[0].releaseAt.getTime() : Number.MAX_SAFE_INTEGER));
 }
-/* 行程项展示态镜像 item.js，mock-mirror 会交叉断言。 */
+/* ===== 行程项展示态推导（镜像 cloudfunctions/reminder/lib/item.js）=====
+   六个展示态的唯一真身在前端这一侧的副本。⚠️ 云端改动必须同步这里，
+   test/mock-mirror.test.js 会交叉断言两边对同一组输入给出同一结果。 */
 
 
 
@@ -1252,6 +1237,8 @@ function mockReminderHealthOf(tasks, remainingQuota, nowTs = new Date()) {
 function mockReminderQuotaWarningOf(health, nowTs = new Date()) {
   if (!health || !['low', 'short', 'exhausted'].includes(health.level)) return null;
   if (!health.nearestRemindAt) return null;
+  /* 与云端 task.buildReminderQuotaWarning 同口径：short/exhausted 是真实缺口，
+     不受 48 小时窗口限制；只有 low（刚好够、仅缺 1 次缓冲）保留窗口。 */
   const withinWindow = health.nearestRemindAt.getTime() - nowTs.getTime()
     <= MOCK_QUOTA_WARNING_WINDOW_HOURS * 3600000;
   if (health.level === 'low' && !withinWindow) return null;
@@ -1848,7 +1835,9 @@ const handlers = {
 
   /* ----- trip ----- */
   'trip.create': (data) => {
-    /* 同城即合并；景点保留自己的日期段。 */
+    /* TRIP-RULE-002 创建或合并（2026-09-14 恢复自动合并，镜像云函数 trip.create）：
+       同城市且日期相交/相接 → 合并成一个行程（= 一个任务分组 Tab），日期取并集；
+       但各景点保留自己被选中时的日期段（spots），时间线不会冒出没选过的组合。 */
     const city = data.city || '北京';
     const startDate = data.startDate;
     const endDate = data.endDate;
@@ -1895,19 +1884,6 @@ const handlers = {
     trip.name = name;
     trip.spotIds = finalSpotIds;
     trip.spots = finalSpots;
-    const windowSource = [trip, ...mergedTrips]
-      .filter(t => t && mockWindowOf(t).explicit)
-      .sort((a, b) => {
-        if (a._id === keepId) return -1;
-        if (b._id === keepId) return 1;
-        return new Date(b.windowUpdatedAt || b.updatedAt || 0).getTime()
-          - new Date(a.windowUpdatedAt || a.updatedAt || 0).getTime();
-      })[0] || null;
-    if (windowSource) {
-      trip.windowStartDate = windowSource.windowStartDate;
-      trip.windowEndDate = windowSource.windowEndDate;
-      trip.windowUpdatedAt = windowSource.windowUpdatedAt || new Date();
-    }
     const shareSource = [trip, ...mergedTrips]
       .filter(t => t && mockShareStatusOf(t) === 'ACTIVE')
       .sort((a, b) => {
@@ -1957,8 +1933,7 @@ const handlers = {
       delete db.trips[t._id];
       return false;
     });
-    const sorted = kept.sort((a, b) => String(mockWindowOf(a).startDate)
-      .localeCompare(String(mockWindowOf(b).startDate)));
+    const sorted = kept.sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
     // 老数据只有 spotIds → 统一补出 spots 段（按行程整段），前端可放心依赖
     sorted.forEach(t => { t.spots = normalizeSpots(t); });
     return { success: true, trips: sorted.map(mockPublicTrip), showGroupTabs: sorted.length >= 2 };
@@ -1997,36 +1972,6 @@ const handlers = {
     pruneStaleCart(data.tripId);
     return { success: true, tripId: data.tripId, startDate: trip.startDate, endDate: trip.endDate, spots };
   },
-  'trip.updateWindow': (data) => {
-    const trip = db.trips[data.tripId];
-    if (!trip || !data.startDate || !data.endDate || data.startDate > data.endDate)
-      return { success: false, error: '行程日期不合法', errorCode: 1006 };
-    const window = mockWindowOf(trip);
-    if (window.endDate < fmt(new Date())) return { success: false, error: '参数不合法', errorCode: 1010 };
-    if (data.expectedWindowUpdatedAt !== undefined
-      && String(data.expectedWindowUpdatedAt || '') !== mockWindowVersionOf(trip))
-      return { success: false, error: '行程日期已在别处更新，请刷新后重试', errorCode: 1043 };
-    const changed = window.startDate !== data.startDate || window.endDate !== data.endDate;
-    if (changed) {
-      trip.windowStartDate = data.startDate;
-      trip.windowEndDate = data.endDate;
-      trip.windowUpdatedAt = new Date();
-      trip.updatedAt = trip.windowUpdatedAt;
-    }
-    const mine = Object.values(db.items).filter(item => item.tripId === trip._id);
-    const windowItemCount = mine.filter(item => mockInWindow(item.visitDate, data)).length;
-    return {
-      success: true,
-      tripId: trip._id,
-      windowStartDate: data.startDate,
-      windowEndDate: data.endDate,
-      windowUpdatedAt: trip.windowUpdatedAt || trip.updatedAt || null,
-      windowVersion: mockWindowVersionOf(trip),
-      unchanged: !changed,
-      windowItemCount,
-      outsideItemCount: mine.length - windowItemCount,
-    };
-  },
   /* 显式删除行程（含其任务与提醒清单）：清理「进行中 0 / 已过期 0」的空壳行程（同步云函数 trip.remove） */
   'trip.remove': (data) => {
     if (!db.trips[data.tripId]) return { success: false, error: '参数不合法', errorCode: 1010 };
@@ -2044,10 +1989,8 @@ const handlers = {
     const trip = db.trips[data.tripId];
     if (!trip) return { success: false, error: '当前行程暂不可分享', errorCode: 1041 };
     const today = fmt(new Date());
-    const window = mockWindowOf(trip);
-    if (window.endDate < today) return { success: false, error: '当前行程暂不可分享', errorCode: 1041 };
-    if (!Object.values(db.items).some(item => item.tripId === trip._id
-      && mockInWindow(item.visitDate, window))) {
+    if (trip.endDate < today) return { success: false, error: '当前行程暂不可分享', errorCode: 1041 };
+    if (!Object.values(db.items).some(item => item.tripId === trip._id)) {
       return { success: false, error: '当前行程暂不可分享', errorCode: 1041 };
     }
     if (mockShareStatusOf(trip) === 'ACTIVE') {
@@ -2076,7 +2019,6 @@ const handlers = {
     const trip = db.trips[data.tripId];
     if (!trip) return { success: false, error: '参数不合法', errorCode: 1010 };
     const status = mockShareStatusOf(trip);
-    const window = mockWindowOf(trip);
     return {
       success: true,
       tripId: trip._id,
@@ -2085,7 +2027,7 @@ const handlers = {
       shareActive: status === 'ACTIVE',
       token: status === 'ACTIVE' ? trip.shareToken : '',
       expiresOn: status === 'ACTIVE' ? mockShareExpiresOn(trip) : '',
-      canCreate: window.endDate >= fmt(new Date()),
+      canCreate: trip.endDate >= fmt(new Date()),
     };
   },
   'tripShare.revoke': (data) => {
@@ -2112,9 +2054,8 @@ const handlers = {
     if (!trip || !token || mockShareStatusOf(trip) !== 'ACTIVE') {
       return { success: false, error: '这份行程暂时无法查看', errorCode: 1042 };
     }
-    const window = mockWindowOf(trip);
     const rows = Object.values(db.items)
-      .filter(item => item.tripId === trip._id && mockInWindow(item.visitDate, window))
+      .filter(item => item.tripId === trip._id)
       .map(item => {
         const spot = SPOTS.find(s => s.spotId === item.spotId);
         return {
@@ -2144,13 +2085,13 @@ const handlers = {
       },
       trip: {
         city: trip.city,
-        startDate: window.startDate,
-        endDate: window.endDate,
-        dayCount: diffDays(window.startDate, window.endDate) + 1,
+        startDate: trip.startDate,
+        endDate: trip.endDate,
+        dayCount: diffDays(trip.startDate, trip.endDate) + 1,
         spotCount: new Set(rows.map(row => row.spotId)).size,
         days: [...grouped.entries()].map(([visitDate, items]) => ({
           visitDate,
-          dayNumber: diffDays(window.startDate, visitDate) + 1,
+          dayNumber: diffDays(trip.startDate, visitDate) + 1,
           items,
         })),
       },
@@ -3982,45 +3923,28 @@ const handlers = {
     const historyTrips = [];
     Object.values(db.trips).forEach(t => {
       const mine = decorated.filter(d => d.tripId === t._id);
-      const window = mockWindowOf(t);
-      const windowItems = mine.filter(d => mockInWindow(d.visitDate, window));
       const entry = {
         _id: t._id, city: t.city, startDate: t.startDate, endDate: t.endDate, name: t.name,
-        windowStartDate: window.startDate,
-        windowEndDate: window.endDate,
-        windowUpdatedAt: t.windowUpdatedAt || null,
-        windowVersion: mockWindowVersionOf(t),
-        progress: backupGroupProgress(mine),
-        windowProgress: backupGroupProgress(windowItems),
-        itemCount: mine.length,
-        windowItemCount: windowItems.length,
-        outsideItemCount: mine.length - windowItems.length,
+        progress: backupGroupProgress(mine), itemCount: mine.length,
         shareActive: mockShareStatusOf(t) === 'ACTIVE',
         /* 首页预填 add-trip 用；与云端 homeBootstrap 同一口径 */
         spotIds: [...new Set(mine.map(i => i.spotId))],
       };
       /* 结束日当天仍属进行中（还能回看和补标），次日才归入历史 */
-      const effectiveEnd = window.endDate > t.endDate ? window.endDate : t.endDate;
-      if (effectiveEnd >= today) {
+      if (t.endDate >= today) {
         entry.items = mine.slice().sort((a, b) => {
           const d = String(a.visitDate).localeCompare(String(b.visitDate));
           if (d !== 0) return d;
           return (a.releaseAt ? a.releaseAt.getTime() : Number.MAX_SAFE_INTEGER)
             - (b.releaseAt ? b.releaseAt.getTime() : Number.MAX_SAFE_INTEGER);
-        }).map(item => ({
-          ...item,
-          windowPosition: item.visitDate < window.startDate ? 'BEFORE'
-            : (item.visitDate > window.endDate ? 'AFTER' : 'INSIDE'),
-        }));
+        });
         activeTrips.push(entry);
       } else {
         historyTrips.push(entry);
       }
     });
-    activeTrips.sort((a, b) => String(a.windowStartDate || a.startDate)
-      .localeCompare(String(b.windowStartDate || b.startDate)));
-    historyTrips.sort((a, b) => String(b.windowStartDate || b.startDate)
-      .localeCompare(String(a.windowStartDate || a.startDate)));
+    activeTrips.sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
+    historyTrips.sort((a, b) => String(b.startDate).localeCompare(String(a.startDate)));
 
     /* 吸顶横幅：跨全部当前/未来行程取全局最近的一条 */
     const soon = decorated
@@ -4050,14 +3974,6 @@ const handlers = {
         return new Date(b.releaseAt) - new Date(a.releaseAt);
       });
 
-    const primaryWindow = activeTrips.length
-      ? { startDate: activeTrips[0].windowStartDate, endDate: activeTrips[0].windowEndDate }
-      : null;
-    const primaryWindowItems = primaryWindow
-      ? decorated.filter(item => item.tripId === activeTrips[0]._id
-        && mockInWindow(item.visitDate, primaryWindow))
-      : [];
-
     return {
       success: true,
       serverNow: nowTs,
@@ -4073,7 +3989,6 @@ const handlers = {
       membership: mockMembershipSnapshot(nowTs, data),
       /* 摘要卡底部的「即将提醒」胶囊：与 stickyBanner 平级、独立，不限 1h 窗口 */
       releasePills: releasePillsOf(decorated, nowTs, 2),
-      windowReleasePills: releasePillsOf(primaryWindowItems, nowTs, 2),
       /* 「没抢到」之后还能换哪些日期（决策文档 4.3）。与云端 homeBootstrap 同口径：
          必须跟着这一份响应一起来，页面不得另开一次请求去算。 */
       recoverableIds: mockRecoverableIds(decorated, nowTs),

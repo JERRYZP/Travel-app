@@ -20,11 +20,6 @@ Component({
     maxDate: { type: String, value: '' },
     start: { type: String, value: '' },
     end: { type: String, value: '' },
-    title: { type: String, value: '选择行程日期' },
-    subtitle: { type: String, value: '最多可选 90 天' },
-    note: { type: String, value: '' },
-    confirmText: { type: String, value: '确认' },
-    saving: { type: Boolean, value: false },
   },
 
   data: {
@@ -34,7 +29,6 @@ Component({
     endStr: '',
     rangeText: '请选择出行日期',
     canConfirm: false,
-    scrollIntoView: '',
   },
 
   observers: {
@@ -61,10 +55,6 @@ Component({
         cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
       }
       this.applySelection(months, startStr, endStr);
-      const focus = parseLocal(startStr) || min;
-      this.setData({
-        scrollIntoView: 'drp-month-' + focus.getFullYear() + '-' + (focus.getMonth() + 1),
-      });
     },
 
     buildMonth(monthFirst, min, max) {
@@ -124,11 +114,10 @@ Component({
         endStr = date;
       }
       this.applySelection(this.data.months, startStr, endStr);
-      this.triggerEvent('change', { start: startStr, end: endStr });
     },
 
     onConfirm() {
-      if (!this.data.canConfirm || this.data.saving) return;
+      if (!this.data.canConfirm) return;
       this.triggerEvent('confirm', { start: this.data.startStr, end: this.data.endStr });
     },
 

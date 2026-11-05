@@ -65,7 +65,6 @@
 | `RULE-ADMIN-001` | 2026-10-06 新增 | 只读 Web 管理后台、事件账本与统计口径 | `docs/engineering/admin-console.md`、`API-契约.md`、`数据库索引.md` | `extracted` |
 | `RULE-ADMIN-002` | 2026-11-02 客服工作台 | 会员购买开关置顶；会员订单与售后双页签；昵称/OpenID 展示、搜索、订单详情和管理员审计 | `产品文档.md` PAGE-017、`API-契约.md`、`数据库索引.md` | `delegated` |
 | `RULE-SHARE-001` | 2026-11-02 行程只读分享 | PAGE-018 只分享当前未结束整趟行程；链接只带 32 字节令牌，`endDate + 7 天` 当日仍有效；接收方不可编辑、复制或二次转发，公开投影不夹带身份与票务/提醒状态。主人应用内昵称只用于会话标题，Canvas 封面只画公开行程信息 | `产品文档.md` PAGE-018 / SHARE-RULE-008~009、`API-契约.md`、`数据库索引.md`、`docs/engineering/domain-rules.md` | `delegated` |
-| `RULE-TRIP-WINDOW-001` | 2026-11-03 行程窗口 | `trips.startDate/endDate` 保持提醒事实范围；可编辑 `windowStartDate/windowEndDate` 只影响首页展示、摘要进度和分享投影。编辑不触碰行程项/提醒任务/景点段，窗口外提醒照常；分享只取窗口内项目并按窗口结束日计算失效 | `产品文档.md` TRIP-RULE-007 / PAGE-018、`API-契约.md` `trip.updateWindow` / 8.2 / 2.1.1、`docs/engineering/domain-rules.md`、`docs/engineering/frontend-pitfalls.md`、`figma_design.md` | `delegated` |
 | `RULE-ADMIN-003` | 2026-11-02 客服工作台提醒质量 | 每日 13:00 / 21:00 更新最近完成 8 小时时段的任务级 2 分钟内送达率；页面只直出当前送达率和前 5 日加权均值，低于 99% 才标红 | `产品文档.md` PAGE-017、`API-契约.md`、`docs/engineering/reminder-troubleshooting.md`、`数据库索引.md` | `delegated` |
 | `RULE-RESOURCE-001` | 2026-11-02 调用量结构性优化 | 静态景点快照出云函数；页面级 bootstrap；写命令返回规范视图；`user_runtime` 只是可重建读模型；`off/shadow/on` 灰度后才能启用 | `API-契约.md` 8.8、`docs/engineering/architecture.md`、`.claude/rules/deployment.md`、`数据库索引.md` | `delegated` |
 

@@ -87,7 +87,7 @@ console.log('=== 3. ⚠️ 早退必须在「非 silent 且有缓存」的分支
 console.log('=== 4. 写入后的刷新不受影响 ===');
 {
   const silentCalls = (code.match(/loadHome\(\{ silent: true \}\)/g) || []).length;
-  eq(silentCalls, 9, '9 处写后刷新原样保留（新增行程窗口编辑）');
+  eq(silentCalls, 8, '8 处写后刷新原样保留');
   eq(/silent: true[^)]*?\}/.test(code), true, 'silent 调用形态未变');
   eq(/allowTtlReuse[^;]*silent/.test(code) || /silent[^;]*allowTtlReuse/.test(code), false,
     '没有任何一处把 silent 与 allowTtlReuse 混在一起');

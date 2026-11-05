@@ -10,7 +10,6 @@ const tripItem = require('./trip-item');
 const item = require('./item');
 const cart = require('./cart');
 const tripShare = require('./trip-share');
-const tripWindow = require('./trip-window');
 
 /* ============ 纯函数区：可脱离云环境测试 ============ */
 
@@ -138,11 +137,7 @@ function validateRange(startDate, endDate) {
  * @param {Array} trips 行程数组
  */
 function sortTrips(trips) {
-  return [...trips].sort((x, y) => {
-    const wx = tripWindow.windowOf(x);
-    const wy = tripWindow.windowOf(y);
-    return String(wx.startDate || x.startDate).localeCompare(String(wy.startDate || y.startDate));
-  });
+  return [...trips].sort((x, y) => String(x.startDate).localeCompare(String(y.startDate)));
 }
 
 /* ============ 数据库操作区 ============ */
@@ -229,8 +224,6 @@ async function create(db, userId, {
       mergedFrom: [],
       trip: {
         _id: res._id, city, ...range, name,
-        windowStartDate: range.startDate,
-        windowEndDate: range.endDate,
         spotIds: finalSpotIds, spots: finalSpots, status: TripStatus.ACTIVE,
       },
     });
@@ -241,19 +234,6 @@ async function create(db, userId, {
      多个候选冲突时固定优先存续行程自身的令牌，再按 merge 顺序取第一个。
      其余行程随后被物理删除，旧链接自然一起失效。 */
   const keptTrip = existing.find(t => t._id === keepId) || null;
-  const windowCandidate = [keptTrip, ...mergedTrips]
-    .filter(t => t && tripWindow.windowOf(t).explicit)
-    .sort((a, b) => {
-      if (a._id === keepId) return -1;
-      if (b._id === keepId) return 1;
-      return new Date(b.windowUpdatedAt || b.updatedAt || 0).getTime()
-        - new Date(a.windowUpdatedAt || a.updatedAt || 0).getTime();
-    })[0] || null;
-  const inheritedWindow = windowCandidate ? {
-    windowStartDate: windowCandidate.windowStartDate,
-    windowEndDate: windowCandidate.windowEndDate,
-    windowUpdatedAt: windowCandidate.windowUpdatedAt || nowTs,
-  } : {};
   const shareCandidate = [keptTrip, ...mergedTrips]
     .filter(t => t && tripShare.isShareActive(t, time.todayStr(nowTs)))
     .sort((a, b) => {
@@ -274,7 +254,6 @@ async function create(db, userId, {
       spotIds: finalSpotIds,
       spots: finalSpots,
       updatedAt: nowTs,
-      ...inheritedWindow,
       ...inheritedShare,
     },
   });
@@ -329,7 +308,6 @@ async function create(db, userId, {
     mergedFrom: mergedIds,
     trip: {
       _id: keepId, city, ...range, name,
-      ...tripWindow.windowOf({ ...keptTrip, ...range, ...inheritedWindow }),
       spotIds: finalSpotIds, spots: finalSpots, status: TripStatus.ACTIVE,
     },
   });
@@ -392,67 +370,6 @@ async function updateRange(db, userId, tripId, startDate, endDate) {
     },
   });
   return ok({ tripId, startDate, endDate, spots });
-}
-
-/**
- * 修改用户可见的行程窗口。只更新 trips，不触碰 trip_items / reminder_tasks。
- */
-async function updateWindow(db, userId, tripId, {
-  startDate, endDate, expectedWindowUpdatedAt = null,
-} = {}) {
-  if (!validateRange(startDate, endDate)) return fail(ERRORS.TRIP_DATE_INVALID);
-  const res = await db.collection(COLLECTIONS.TRIPS)
-    .where({ _id: tripId, userId })
-    .get();
-  const trip = (res.data || [])[0];
-  if (!trip) return fail(ERRORS.BAD_PARAM);
-  if (tripWindow.effectiveEndDateOf(trip) < time.todayStr()) {
-    return fail(ERRORS.BAD_PARAM);
-  }
-
-  const currentWindow = tripWindow.windowOf(trip);
-  if (expectedWindowUpdatedAt !== null
-    && String(expectedWindowUpdatedAt || '') !== tripWindow.versionOfTrip(trip)) {
-    return fail(ERRORS.TRIP_WINDOW_CONFLICT);
-  }
-
-  const nowTs = time.now();
-  const changed = currentWindow.startDate !== startDate || currentWindow.endDate !== endDate;
-  if (changed) {
-    await db.collection(COLLECTIONS.TRIPS).doc(tripId).update({
-      data: {
-        windowStartDate: startDate,
-        windowEndDate: endDate,
-        windowUpdatedAt: nowTs,
-        updatedAt: nowTs,
-      },
-    });
-  }
-
-  const itemsRes = await db.collection(COLLECTIONS.TRIP_ITEMS)
-    .where({ userId, tripId })
-    .get();
-  const items = itemsRes.data || [];
-  const nextWindow = { startDate, endDate };
-  let windowItemCount = 0;
-  let outsideItemCount = 0;
-  for (const row of items) {
-    if (tripWindow.inWindow(row.visitDate, nextWindow)) windowItemCount += 1;
-    else outsideItemCount += 1;
-  }
-
-  return ok({
-    tripId,
-    windowStartDate: startDate,
-    windowEndDate: endDate,
-    windowUpdatedAt: changed ? nowTs : (trip.windowUpdatedAt || trip.updatedAt || null),
-    windowVersion: changed
-      ? tripWindow.versionOf(nowTs)
-      : tripWindow.versionOfTrip(trip),
-    unchanged: !changed,
-    windowItemCount,
-    outsideItemCount,
-  });
 }
 
 /**
@@ -704,7 +621,6 @@ module.exports = {
   create,
   updateSpots,
   updateRange,
-  updateWindow,
   removeIfEmpty,
   purgeIfNoItem,
   purgeIfNoTask,

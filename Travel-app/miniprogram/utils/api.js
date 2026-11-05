@@ -147,7 +147,6 @@ const reminder = {
     list: () => call('reminder', { action: 'trip.list' }),
     updateSpots: (p) => call('reminder', { action: 'trip.updateSpots', ...p }),
     updateRange: (p) => call('reminder', { action: 'trip.updateRange', ...p }),
-    updateWindow: (p) => homeMutationCall('reminder', { action: 'trip.updateWindow', ...p }),
     remove: (p) => call('reminder', { action: 'trip.remove', ...p }),
   },
   tripShare: {

@@ -2,7 +2,6 @@
 
 > 面向：前端（微信小程序页面开发）
 > 2026-11-05 更新：反馈支持管理员追加多条单向回复、逐条修改，用户端展示完整回复线程和「已修改」标记；新增反馈采纳奖励 `payment.feedbackReward.adminStatus/adminGrant/adminRevoke`，每次奖励 30 天会员，可按反馈叠加。新反馈与历史反馈均可奖励，历史反馈标记为「补发」。用户端通过 `feedback.list.rewardNotices` 查看补发和撤回通知；通知按 `rewardUpdatedAt` 独立分页读取，不受最近 50 条反馈限制。
-> 2026-11-03 更新：新增 `trip.updateWindow`。`trips.startDate/endDate` 保持实际提醒覆盖范围；可选 `windowStartDate/windowEndDate/windowUpdatedAt` 表示用户可编辑的展示与分享边界。首页新增 `windowProgress/windowReleasePills/windowPosition` 兼容字段；PAGE-018 只投影窗口内项目，并按窗口结束日计算失效日。
 > 2026-11-05 更新：规则新增 `releaseSlots`，一个行程项可在同一出行日展开多个放票时段并创建多条 `reminder_tasks`。新客户端在 `reminder` 请求中统一携带 `supportsMultiRelease: true`；服务端只有收到该能力声明才启用多任务，旧客户端继续使用单任务旧契约。清华按出行日落在工作日或周末/法定节假日分别使用即时预约与抽签预约的提前天数；法定节假日日期由规则级 `holidayRanges` 提供。军博每日 `08:00 / 17:00 / 20:00` 三个时段均创建任务。`cart.list` 与 `cart.planDates` 新增 `reminderTaskCount`，新客户端按任务数而非日期数计算授权与提醒名额。
 > 2026-11-02 更新：新增 `tripShare.create/status/revoke/open` 与 PAGE-018 行程只读分享。分享令牌只从公开路径传入，普通行程接口仅返回 `shareActive`；主人接口可通过 `ownerNickname` 读取应用内昵称用于会话标题，接收方数据只含城市、日期、天数和景点名称。
 > 2026-11-03 更新：客服工作台 `adminReminderQuality.stats` 改为读取由 `payment` 两分钟定时器在北京时间 `13:00 / 21:00` 后首个 tick 持久化的质量快照；工作台打开和刷新不再扫描 `reminder_events` / `reminder_tasks`。仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用。
@@ -437,34 +436,6 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 }
 ```
 
-#### `trip.updateWindow` — 修改行程展示 / 分享窗口
-
-```
-调用：{
-  action: 'trip.updateWindow',
-  tripId: 'abc123',
-  startDate: '2026-10-07',
-  endDate: '2026-12-27',
-  expectedWindowUpdatedAt: '...' // 可选；首页返回的 windowVersion，用于并发保护
-}
-说明：只更新 trips.windowStartDate / windowEndDate / windowUpdatedAt，
-     不删除或改写 trip_items、reminder_tasks、spots。
-     window 内项目进入摘要卡进度和 PAGE-018；window 外项目继续在首页显示，
-     提醒照常发送。后续同城合并扩大 startDate/endDate 时不覆盖手动窗口。
-返回：{
-  success: true,
-  tripId,
-  windowStartDate,
-  windowEndDate,
-  windowUpdatedAt,
-  windowVersion,
-  unchanged,
-  windowItemCount,
-  outsideItemCount
-}
-失败：1006 日期不合法；1043 窗口版本冲突。
-```
-
 #### `trip.remove` — 显式删除行程（含其任务与提醒清单）
 
 ```
@@ -496,14 +467,14 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```
 调用：{ action: 'tripShare.create', tripId }
 说明：幂等创建或读取当前整趟行程的只读分享令牌。
-     只允许行程属于当前调用者、窗口结束日 >= 北京今天，且窗口内至少有一个 trip_item。
+     只允许行程属于当前调用者、endDate >= 北京今天，且至少有一个 trip_item。
      已有效时复用原令牌；停止后再次调用生成新令牌。
 返回：{
   success: true,
   tripId,
   ownerNickname,         // 仅主人接口返回的应用内昵称，用于会话分享标题，不回传微信昵称
   token,                 // 64 位十六进制安全随机令牌，仅主人接口返回
-  expiresOn,             // windowEndDate + 7 天，YYYY-MM-DD
+  expiresOn,             // endDate + 7 天，YYYY-MM-DD
   reused                 // true = 复用旧链接
 }
 失败：1041 当前行程不可分享；1010 行程不存在或不属于调用者
@@ -521,7 +492,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   shareActive,
   token,                 // 仅 ACTIVE 时返回，供分享浮层复用
   expiresOn,             // 仅 ACTIVE 时返回
-  canCreate              // 窗口结束日未过时为 true
+  canCreate              // 行程未结束时为 true
 }
 ```
 
@@ -538,20 +509,19 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```
 调用：{ action: 'tripShare.open', token }
 说明：任意获得链接的微信用户均可读取。token 是唯一授权凭证，
-     不接受 tripId、userId 或 OpenID 作为辅助授权。公开投影只包含
-     windowStartDate..windowEndDate 内的 trip_items。
+     不接受 tripId、userId 或 OpenID 作为辅助授权。
 返回：{
   success: true,
   share: { readOnly: true, expiresOn },
   trip: {
-    city, startDate, endDate, dayCount, spotCount, // startDate/endDate 已是窗口边界
+    city, startDate, endDate, dayCount, spotCount,
     days: [{
       visitDate, dayNumber,
       items: [{ spotId, spotName }]
     }]
   }
 }
-失败：1042。无效、停止、过期、行程删除与窗口内无行程项统一使用该错误。
+失败：1042。无效、停止、过期、行程删除与无行程项统一使用该错误。
 ```
 
 安全约束：
@@ -559,7 +529,6 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - 公开投影是白名单，不得包含 `userId/openId/tripId/itemId/shareToken/releaseAt/result/ticketState/reminder`。
 - `ownerNickname` 只用于主人侧会话分享标题，只出现在 `tripShare.create/status`；不属于公开只读投影。
 - `trips` 文档内字段：`shareToken/shareCreatedAt/shareUpdatedAt`。普通 `trip.list` 和 `home.bootstrap` 只返回 `shareActive`。
-- 有效分享令牌在窗口被修改后继续复用；公开页在每次打开时实时读取最新窗口，只有窗口内没有项目时才不可查看。
 - 行程同城合并时，有效令牌迁到存续行程；多个候选冲突时保留存续行程自身令牌，否则取确定的首个候选。被合并或删除的行程旧令牌失效。
 
 ---
@@ -1851,29 +1820,23 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   primaryTripId: 'trip_a',
   trips: [{
     _id, city, startDate, endDate, name,
-    windowStartDate, windowEndDate, windowUpdatedAt, windowVersion,
     shareActive: true,              // 只读分享是否有效；不下发 shareToken
     progress: {
       done: 2,                    // 已成的预约需求组数
       total: 3,                   // 需预约的需求组总数，免预约不计
       noReservationCount: 1       // 另有 X 处随到随玩
     },
-    windowProgress: { done: 1, total: 2, noReservationCount: 0 },
-    windowItemCount: 3,
-    outsideItemCount: 2,
     items: [/* 见 8.3 item 结构 */]
   }],
   history: [{
     _id, city, startDate, endDate, name,
-    windowStartDate, windowEndDate,
-    shareActive: false,             // 历史行程在窗口结束日 + 7 天内仍可能为 true
+    shareActive: false,             // 历史行程在 endDate + 7 天内仍可能为 true
     progress: { done, total, noReservationCount }
   }],
   stickyBanner: {
     releaseAt, spotName, visitDate, itemId, countdownText
   } | null,
   releasePills: [/* 摘要卡底部「即将提醒」胶囊，按放票时刻合并 */],
-  windowReleasePills: [/* 只取当前摘要行程窗口内的胶囊；旧客户端仍用 releasePills */],
   reminderQuotaWarning: {         // 授权 short/exhausted 时返回；low 仅限 48 小时内
     level, pendingMessageCount, remainingQuota, shortfall, replenishNeeded,
     nearestRemindAt, text
@@ -1893,9 +1856,9 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   首屏期间空态预览由包内本地切片兜住（`miniprogram/utils/empty-preview.js`）。
   ⚠️ 调用方若确实需要 `hotSpots`，必须显式传 `includeSpots: true`。
 
-- `trips` 只包含未结束行程，按窗口开始日升序返回；窗口开始日缺省回退 `startDate`。
-- `history` 只包含实际结束日与窗口结束日较晚值次日起的历史行程，按窗口开始日降序；页面不重新判定。
-- 行程在有效结束日当天仍保留在主墙；次日按北京时间读取时归入历史，不依赖定时任务。
+- `trips` 只包含未结束行程，按 `startDate` 升序。
+- `history` 只包含 `endDate` 次日起的历史行程，按 `startDate` 降序。
+- 一个行程结束后仍在 `endDate` 当天保留在主墙；次日按北京时间读取时归入历史，不依赖定时任务。
 - 首页结构：一张 `primaryTripId` 全局摘要卡 + 纵向分段墙；其他行程只显示紧凑分段标题，不用横向 Tab。
 - ⚠️ `primaryTripId` 的语义**只是「最近未结束行程」**（没有则为空串）：全部行程都结束时，客户端摘要卡会退化展示 `history[0]`（最近一段过往行程，副标题「已结束」），**不**把 `primaryTripId` 指到历史行程上——那个字段同时被「新增提醒」预填当成「还能继续加项的行程」（见 `PAGE-005-RULE-001`），指错了会把过去的时间范围预填进 PAGE-005。退化只发生在渲染层，本文契约字段不变（`HOME-RULE-008`）。
 - 顶部吸顶 Banner 跨全部当前/未来行程取全局最近 1–2 个放票项。
@@ -1915,7 +1878,6 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   spotId: 'gugong',
   spotName: '故宫博物院',
   visitDate: '2026-10-02',
-  windowPosition: 'INSIDE',        // BEFORE | INSIDE | AFTER，服务端按行程窗口计算
   backupGroupId: 'trip_a:gugong',
   reservationRequired: true,
   remindOn: true,
