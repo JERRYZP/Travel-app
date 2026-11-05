@@ -40,7 +40,7 @@
 - 首页新用户空态的提醒区域只提供真实样式入口，不伪造微信通知内容。
 - 微信一次性订阅的原子约束是“一次用户点击 → 一次 `wx.requestSubscribeMessage` → 同模板最多 +1 条”。“总是保持以上选择”只免去后续弹窗，禁止在第一个授权回调后的异步链里连续申请，第二次调用会脱离用户手势上下文，真机失败。
 - 设置提醒前的额度判断必须用**可用授权** = `quota - pendingMessageCount`，且待发送数只能按任务实际模板统计。不同模板的余额不能互相填缺口；漏减或混算都会让新提醒静默抢占同一笔额度，发送时变成「未送达」。
-- 一个清单日期项可以展开多条提醒任务：授权与会员名额一律读 `summary.reminderTaskCount` / `plan.summary.reminderTaskCount`，不能用 `reminderCount` 或“可提醒日期数”代替。军博一天会有 3 条任务，清华即时/抽签 2 条；清华周末提前规则同时覆盖 `holidayRanges` 中的法定节假日。
+- 授权与会员名额一律读 `summary.reminderTaskCount` / `plan.summary.reminderTaskCount`，不能用 `reminderCount` 或“可提醒日期数”代替。当前清华只保留即时预约、军博只保留最早 `08:00`，两个景点每个出行日都只有 1 条任务；清华周末提前规则同时覆盖 `holidayRanges` 中的法定节假日。底层虽兼容 `releaseSlots` 多任务，但当前数据不得重新扩成多任务而不重新评估额度。
 - 新客户端对 `reminder` 的调用统一在 `utils/api.js` 携带 `supportsMultiRelease=true`；不要只在某个页面单独传，否则首页、清单、时间线和重新开启提醒会出现一半多任务、一半单任务的混用状态。
 - 授权结果不能只看 `requestSubscribeBurst` 的 `ok`：用户拒绝时额度不会增加，授权到账也可能立刻被待发送提醒占用。页面要对比刷新前后的台账与可用额度，把「当前可用」「待发送占用」「本次未授权」写进授权卡，不能只靠 Toast；否则会出现“已补齐 1 次”但页面数字不变。
 

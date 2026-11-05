@@ -46,28 +46,29 @@ eq(gg.map(e => e.visitDate).join(','), '2026-05-31,2026-06-02,2026-06-03,2026-06
 eq(gg.map(e => e.releaseDateStr).join(','), '2026-05-24,2026-05-26,2026-05-27,2026-05-28', '各自提前 7 天');
 eq(gg.every(e => time.formatHourMinute(e.releaseAt) === '20:00'), true, '全部 20:00 放票');
 
-console.log('\n--- 清华：工作日/周末分别按即时与抽签两条线推算 ---');
+console.log('\n--- 清华：只保留即时预约，工作日/周末分别推算 ---');
 const th = TL.buildEvents(sm.tsinghua, rm.tsinghua, trip, { supportsMultiRelease: true });
 eq(th.length, 4, '清华 4 条（5/31~6/4 只跳过周一）');
 eq(th.map(e => e.visitDate).join(','), '2026-05-31,2026-06-02,2026-06-03,2026-06-04', '跳过 6/1 周一');
 eq(th.every(e => time.dayNameOf(e.visitDate) !== 'monday'), true, '无事件落在周一');
-eq(th[0].releaseSlots.map(slot => slot.releaseTime).join(','), '17:00,08:00', '周末抽签 17:00 + 即时 08:00');
-eq(th[0].releaseSlots.map(slot => slot.releaseDateStr).join(','), '2026-05-23,2026-05-24', '周末抽签提前 8 天、即时提前 7 天');
-eq(time.formatHourMinute(th[0].releaseAt), '17:00', '事件主放票时刻取最早一场');
-eq(th[0].releaseDateStr, '2026-05-23', '5/31 票抽签提前 8 天');
-eq(th[1].releaseSlots.map(slot => slot.releaseDateStr).join(','), '2026-05-31,2026-06-01', '工作日抽签提前 2 天、即时提前 1 天');
+eq(th[0].releaseSlots.length, 1, '周末只有一个即时预约提醒任务');
+eq(th[0].releaseSlots[0].releaseTime, '08:00', '周末即时预约 08:00 放票');
+eq(th[0].releaseSlots[0].releaseDateStr, '2026-05-24', '周末即时预约提前 7 天');
+eq(time.formatHourMinute(th[0].releaseAt), '08:00', '事件放票时刻为 08:00');
+eq(th[0].releaseDateStr, '2026-05-24', '5/31 票提前 7 天');
+eq(th[1].releaseSlots[0].releaseDateStr, '2026-06-01', '工作日即时预约提前 1 天');
 eq(time.isOpenOn(rm.tsinghua, 'wednesday'), true, '清华周三可约（工作日不禁约）');
 
-console.log('\n--- 军博：同一出行日保留 3 个放票时段 ---');
+console.log('\n--- 军博：同一出行日只保留最早放票时段 ---');
 const jb = TL.buildEvents(
   sm.junbo,
   rm.junbo,
   { startDate: '2026-05-31', endDate: '2026-05-31' },
   { supportsMultiRelease: true }
 )[0];
-eq(jb.releaseSlots.length, 3, '军博 1 个事件携带 3 个放票时段');
-eq(jb.releaseSlots.map(slot => slot.releaseTime).join(','), '08:00,17:00,20:00', '三个时段顺序稳定');
-eq(jb.releaseSlots.every(slot => slot.releaseDateStr === '2026-05-24'), true, '三个时段同为提前 7 天');
+eq(jb.releaseSlots.length, 1, '军博 1 个事件只携带 1 个放票时段');
+eq(jb.releaseSlots[0].releaseTime, '08:00', '只保留最早 08:00 放票');
+eq(jb.releaseSlots[0].releaseDateStr, '2026-05-24', '保留提前 7 天规则');
 
 console.log('\n--- openDays 白名单优先于 closedDays（北大：closedDays 也含 monday，被接管）---');
 eq(TL.buildEvents(sm['peking-university'], rm['peking-university'], trip).length, 1, '北大 1 条（仅周末）');

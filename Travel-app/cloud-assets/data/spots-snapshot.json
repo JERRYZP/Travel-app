@@ -1,6 +1,6 @@
 {
   "schemaVersion": "spots-snapshot/v1",
-  "contentVersion": "4b610383b89f76a9114a",
+  "contentVersion": "6d1867825cef8ebd31af",
   "generatedAt": "2026-09-22T00:00:00+08:00",
   "sourceMaxDate": "2026-09-22",
   "cards": [
@@ -520,36 +520,20 @@
       "cardDesc": "随到随买，免费",
       "tags": [
         "提前7天放票",
-        "每日08:00、17:00、20:00放票"
+        "每日08:00放票"
       ],
       "advanceDays": 7,
       "releaseTime": [
-        "08:00",
-        "17:00",
-        "20:00"
+        "08:00"
       ],
       "releaseTimes": [
-        "08:00",
-        "17:00",
-        "20:00"
+        "08:00"
       ],
       "releaseSlots": [
         {
           "key": "junbo-0800",
           "label": "第1场",
           "releaseTime": "08:00",
-          "advanceDays": 7
-        },
-        {
-          "key": "junbo-1700",
-          "label": "第2场",
-          "releaseTime": "17:00",
-          "advanceDays": 7
-        },
-        {
-          "key": "junbo-2000",
-          "label": "第3场",
-          "releaseTime": "20:00",
           "advanceDays": 7
         }
       ],
@@ -598,7 +582,7 @@
           "hint": "点击直接进入官网预约"
         }
       ],
-      "bookingTips": "提前7天可约（官网写「提前8天」，实测按提前7天放票，2026-09-22 用户核实）；常规每日8:00、17:00、20:00三个放票时段；2026暑期（7月27日至8月31日）每日9:00、17:00释放次日回流票，9月起以官网/公众号为准；卡点进入，约不上别退出持续刷新",
+      "bookingTips": "提前7天可约（官网写「提前8天」，实测按提前7天放票，2026-09-22 用户核实）；官方常规每日8:00、17:00、20:00三个放票时段，本应用仅提醒最早8:00放票；2026暑期（7月27日至8月31日）每日9:00、17:00释放次日回流票，9月起以官网/公众号为准；卡点进入，约不上别退出持续刷新",
       "specialNotice": "",
       "specialNoticeUntil": "",
       "idRequirement": "须持预约时使用的有效身份证件原件",
@@ -1282,17 +1266,15 @@
       "weak": false,
       "cardDesc": "随到随买，免费",
       "tags": [
-        "提前1-8天放票",
-        "每日08:00、17:00放票"
+        "提前1-7天放票",
+        "每日08:00放票"
       ],
       "advanceDays": 7,
       "releaseTime": [
-        "08:00",
-        "17:00"
+        "08:00"
       ],
       "releaseTimes": [
-        "08:00",
-        "17:00"
+        "08:00"
       ],
       "releaseSlots": [
         {
@@ -1301,13 +1283,6 @@
           "releaseTime": "08:00",
           "advanceDays": 1,
           "weekendAdvanceDays": 7
-        },
-        {
-          "key": "tsinghua-lottery",
-          "label": "抽签预约",
-          "releaseTime": "17:00",
-          "advanceDays": 2,
-          "weekendAdvanceDays": 8
         }
       ],
       "holidayRanges": [
@@ -1384,7 +1359,7 @@
           "hint": "点击直接进入官网预约"
         }
       ],
-      "bookingTips": "通过「参观清华」小程序实名预约，双轨制：即时预约每日8:00-17:00（工作日最多提前1天，周末及法定节假日最多提前7天）；抽签预约每日17:00-21:45（工作日最多提前2天，周末及法定节假日最多提前8天，22:00公布中签）；每人每180天仅可成功预约1次",
+      "bookingTips": "通过「参观清华」小程序实名预约，即时预约每日8:00-17:00（工作日最多提前1天，周末及法定节假日最多提前7天）；每人每180天仅可成功预约1次。本应用仅提醒即时预约，抽签预约请自行关注官方",
       "specialNotice": "",
       "specialNoticeUntil": "",
       "idRequirement": "实名认证，入校时人证核验",

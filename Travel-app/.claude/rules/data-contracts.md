@@ -24,7 +24,7 @@ paths:
 
 `shortName` 是窄容器专用民间简称；不得为完整名称足够短的景点硬造简称。宽容器继续使用全名。
 
-多放票时段统一写 `rules.releaseSlots`：每个时段包含稳定 `key`、可选 `label`、`releaseTime`、`advanceDays`，周末及法定节假日提前天数不同时写 `weekendAdvanceDays`。法定节假日用规则级 `holidayRanges: [[startDate,endDate], ...]` 表达，只录入已由用户确认或官方公布且覆盖对应日期的范围；不得按常识推断未公布年份。一个出行日对应几个时段，就创建几条提醒任务；顶层 `advanceDays/releaseTime/releaseTimes` 仅保留给旧客户端兼容和单时段规则。
+多放票时段统一写 `rules.releaseSlots`：每个时段包含稳定 `key`、可选 `label`、`releaseTime`、`advanceDays`，周末及法定节假日提前天数不同时写 `weekendAdvanceDays`。法定节假日用规则级 `holidayRanges: [[startDate,endDate], ...]` 表达，只录入已由用户确认或官方公布且覆盖对应日期的范围；不得按常识推断未公布年份。一个出行日对应几个时段，就创建几条提醒任务。当前种子数据按成本收敛为一个出行日最多一条：清华只保留即时预约，军博只保留最早的 08:00；不得重新加入抽签或军博后续场次而不重新评估名额消耗。
 
 2026 年清华节假日范围来源：国务院办公厅《关于2026年部分节假日安排的通知》`https://www.gov.cn/zhengce/content/202511/content_7047090.htm`。2027 年安排公布后需补 `holidayRanges`，不能沿用 2026 年日期。
 
