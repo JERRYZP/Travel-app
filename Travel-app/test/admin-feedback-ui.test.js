@@ -11,7 +11,12 @@ const api = require('../miniprogram/utils/api');
 const original = {
   adminList: api.feedback.adminList,
   adminReply: api.feedback.adminReply,
+  adminAddReply: api.feedback.adminAddReply,
+  adminUpdateReply: api.feedback.adminUpdateReply,
   adminUpdateStatus: api.feedback.adminUpdateStatus,
+  rewardStatus: api.payment.feedbackReward.adminStatus,
+  rewardGrant: api.payment.feedbackReward.adminGrant,
+  rewardRevoke: api.payment.feedbackReward.adminRevoke,
 };
 
 let fail = 0;
@@ -26,6 +31,8 @@ const eq = (actual, expected, message) => {
 
 const clipboard = [];
 const toastTitles = [];
+const modalAnswers = [];
+let modalCount = 0;
 
 let pageDefinition = null;
 global.getApp = () => ({ globalData: { statusBarHeight: 20, navBarHeight: 44 } });
@@ -33,11 +40,16 @@ global.Page = definition => { pageDefinition = definition; };
 global.wx = {
   showToast(options) { toastTitles.push(options && options.title); },
   setClipboardData(options) { clipboard.push(options && options.data); },
+  showModal(options) {
+    modalCount += 1;
+    const confirm = modalAnswers.length ? modalAnswers.shift() : true;
+    if (options && options.success) options.success({ confirm, cancel: !confirm });
+  },
   navigateBack() {},
   stopPullDownRefresh() {},
 };
 
-require('../miniprogram/pages/admin-feedback/admin-feedback');
+require('../miniprogram/admin/feedback/feedback');
 
 function rawItem(overrides = {}) {
   return {
@@ -53,9 +65,20 @@ function rawItem(overrides = {}) {
     adminReply: '',
     adminReplyAt: null,
     adminReplyBy: null,
+    replies: [],
+    reward: {
+      status: 'NONE', days: 0, backfill: false, grantedAt: null, revokedAt: null, memberExpiresAt: null,
+    },
     createdAt: new Date('2026-11-01T02:00:00.000Z'),
     userId: 'openid_a',
-    user: { openId: 'openid_a', nickname: '小赵', avatarUrl: '' },
+    user: {
+      openId: 'openid_a',
+      nickname: '小赵',
+      avatarUrl: '',
+      member: true,
+      memberExpiresAt: '2099-12-31T00:00:00.000Z',
+      memberExpiresAtText: '2099-12-31',
+    },
     ...overrides,
   };
 }
@@ -74,8 +97,9 @@ function pageOf(items, overrides = {}) {
 }
 
 const PAGE_METHODS = [
-  'load', 'decorate', 'onFilter', 'onLoadMore', 'onRetry', 'onMark',
-  'onReplyStart', 'onReplyInput', 'onReplyCancel', 'onReplySubmit', 'onCopyText',
+  'load', 'loadRewardPermission', 'decorate', 'onFilter', 'onLoadMore', 'onRetry', 'onMark',
+  'onReplyStart', 'onReplyEdit', 'onReplyInput', 'onReplyCancel', 'onReplySubmit', 'onCopyText',
+  'onGrantReward', 'onRevokeReward',
 ];
 
 function context() {
@@ -108,10 +132,17 @@ async function run() {
   eq(ctx.data.hasMore, true, 'hasMore 取自服务端');
   eq(ctx.data.items[0].nickname, '小赵', '展示昵称');
   eq(ctx.data.items[0].openId, 'openid_a', '展示完整 OpenID');
+  eq(ctx.data.items[0].member, true, '透传服务端会员状态');
+  eq(ctx.data.items[0].memberExpiryText, '至 2099-12-31', '会员标签后展示到期时间');
   eq(ctx.data.items[1].hasReply, true, '有回复时打「已回复」标记');
   eq(ctx.data.items[1].adminReply, '收到，下版本处理', '回复正文透传');
   eq(ctx.data.items[1].replyTime !== '', true, '回复时间已格式化为北京时间');
   eq(ctx.data.items[0].time, '11月1日 10:00', '提交时间按北京时间展示，不用设备时区');
+  const normal = pageDefinition.decorate(rawItem({
+    user: { openId: 'openid_a', nickname: '小赵', member: false, memberExpiresAtText: '' },
+  }));
+  eq(normal.member, false, '非会员不显示会员标签');
+  eq(normal.memberExpiryText, '', '非会员不生成到期文案');
 
   console.log('\n=== 2. 筛选 Tab 的参数映射 ===');
   const tabCases = [
@@ -193,19 +224,52 @@ async function run() {
   eq(ctx.data.forbidden, false, '网络错误不冒充无权限');
   eq(ctx.data.items.length, 0, '失败时清空列表');
 
-  console.log('\n=== 6. 卡片内回复 ===');
-  const replyCalls = [];
-  api.feedback.adminReply = params => {
-    replyCalls.push(params);
+  console.log('\n=== 6. 多条回复、追加与指定回复修改 ===');
+  const addCalls = [];
+  const editCalls = [];
+  api.feedback.adminAddReply = params => {
+    addCalls.push(params);
     return Promise.resolve({
       success: true,
+      replies: [{
+        replyId: 'legacy', content: '旧回复', createdAt: new Date('2026-11-01T03:00:00.000Z'),
+        updatedAt: new Date('2026-11-01T03:00:00.000Z'), editCount: 0,
+      }, {
+        replyId: 'new-1', content: params.reply, createdAt: new Date('2026-11-02T06:00:00.000Z'),
+        updatedAt: new Date('2026-11-02T06:00:00.000Z'), editCount: 0,
+      }],
       adminReply: '谢谢反馈',
       adminReplyAt: new Date('2026-11-02T06:00:00.000Z'),
       status: 'PROCESSED',
     });
   };
+  api.feedback.adminUpdateReply = params => {
+    editCalls.push(params);
+    return Promise.resolve({
+      success: true,
+      replies: [{
+        replyId: params.replyId, content: params.reply, createdAt: new Date('2026-11-01T03:00:00.000Z'),
+        updatedAt: new Date('2026-11-03T06:00:00.000Z'), editCount: 1,
+      }, {
+        replyId: 'second', content: '后一条回复', createdAt: new Date('2026-11-02T06:00:00.000Z'),
+        updatedAt: new Date('2026-11-02T06:00:00.000Z'), editCount: 0,
+      }],
+      adminReply: '后一条回复',
+      adminReplyAt: new Date('2026-11-02T06:00:00.000Z'),
+      status: 'PROCESSED',
+    });
+  };
   api.feedback.adminList = () => Promise.resolve(pageOf([
-    rawItem({ _id: 'r1', adminReply: '旧回复' }),
+    rawItem({
+      _id: 'r1',
+      replies: [{
+        replyId: 'first', content: '旧回复', createdAt: new Date('2026-11-01T03:00:00.000Z'),
+        updatedAt: new Date('2026-11-01T03:00:00.000Z'), editCount: 0,
+      }, {
+        replyId: 'second', content: '后一条回复', createdAt: new Date('2026-11-02T03:00:00.000Z'),
+        updatedAt: new Date('2026-11-02T03:00:00.000Z'), editCount: 0,
+      }],
+    }),
     rawItem({ _id: 'r2' }),
   ]));
   ctx = context();
@@ -214,8 +278,16 @@ async function run() {
 
   pageDefinition.onReplyStart.call(ctx, { currentTarget: { dataset: { id: 'r1' } } });
   eq(ctx.data.replyId, 'r1', '打开对应卡片的编辑器');
-  eq(ctx.data.replyDraft, '旧回复', '已有回复时预填，方便修改');
-  eq(ctx.data.replyCanSend, true, '预填内容可直接发送');
+  eq(ctx.data.replyMode, 'add', '默认进入追加回复模式');
+  eq(ctx.data.replyDraft, '', '追加回复不复用旧正文');
+  eq(ctx.data.replyCanSend, false, '空的新回复不能发送');
+
+  pageDefinition.onReplyEdit.call(ctx, { currentTarget: { dataset: { id: 'r1', replyId: 'first' } } });
+  eq(ctx.data.replyMode, 'edit', '点击单条回复进入修改模式');
+  eq(ctx.data.editingReplyId, 'first', '修改目标为指定 replyId');
+  eq(ctx.data.replyDraft, '旧回复', '修改时预填目标回复');
+  eq(ctx.data.replyCanSend, true, '预填内容可保存');
+  pageDefinition.onReplyCancel.call(ctx);
 
   pageDefinition.onReplyStart.call(ctx, { currentTarget: { dataset: { id: 'r2' } } });
   eq(ctx.data.replyId, 'r2', '同一时间只开一个编辑器');
@@ -225,23 +297,41 @@ async function run() {
   pageDefinition.onReplyInput.call(ctx, { detail: { value: '   ' } });
   eq(ctx.data.replyCanSend, false, '纯空白不能发送');
   pageDefinition.onReplySubmit.call(ctx);
-  eq(replyCalls.length, 0, '不能发送时不发请求');
+  eq(addCalls.length, 0, '不能发送时不发请求');
 
   pageDefinition.onReplyInput.call(ctx, { detail: { value: '  谢谢反馈  ' } });
   eq(ctx.data.replyCanSend, true, '有内容可发送');
   await pageDefinition.onReplySubmit.call(ctx);
-  eq(replyCalls.length, 1, '发送一次请求');
-  eq(replyCalls[0].id, 'r2', '发给当前编辑的条目');
-  eq(replyCalls[0].reply, '谢谢反馈', '提交前 trim');
+  eq(addCalls.length, 1, '追加回复发送一次请求');
+  eq(addCalls[0].id, 'r2', '发给当前编辑的条目');
+  eq(addCalls[0].reply, '谢谢反馈', '提交前 trim');
   eq(ctx.data.replyId, '', '发送成功后收起编辑器');
   eq(ctx.data.replyDraft, '', '发送成功后清空草稿');
 
   const updated = ctx.data.items.find(i => i.id === 'r2');
-  eq(updated.adminReply, '谢谢反馈', '目标卡片就地更新回复');
+  eq(updated.replies.length, 2, '目标卡片显示完整回复线程');
+  eq(updated.replies[1].content, '谢谢反馈', '新回复追加在线程末尾');
   eq(updated.hasReply, true, '目标卡片打上已回复标记');
   eq(updated.status, 'PROCESSED', '回复后状态同步为已处理');
   eq(updated.statusLabel, '已处理', '状态文案同步');
   eq(ctx.data.items[0] === olderItem, true, '未涉及的条目对象引用不变');
+
+  const beforeEditItem = ctx.data.items.find(i => i.id === 'r1');
+  pageDefinition.onReplyEdit.call(ctx, {
+    currentTarget: { dataset: { id: 'r1', replyId: 'first' } },
+  });
+  pageDefinition.onReplyInput.call(ctx, { detail: { value: '旧回复（修订）' } });
+  await pageDefinition.onReplySubmit.call(ctx);
+  eq(editCalls.length, 1, '修改回复只调用 updateReply');
+  eq(editCalls[0].id, 'r1', '修改请求带反馈 id');
+  eq(editCalls[0].replyId, 'first', '修改请求带指定 replyId');
+  eq(editCalls[0].reply, '旧回复（修订）', '修改正文已 trim');
+  const editedItem = ctx.data.items.find(i => i.id === 'r1');
+  eq(editedItem.replies[0].edited, true, '被修改的回复显示已修改');
+  eq(editedItem.replies[0].content, '旧回复（修订）', '被修改回复就地更新');
+  eq(editedItem.replies[1].content, '后一条回复', '其他回复保持不变');
+  eq(editedItem.adminReply, '后一条回复', '旧镜像正文仍指向最新回复');
+  eq(editedItem !== beforeEditItem, true, '修改后列表使用新对象');
 
   console.log('\n=== 7. 复制 OpenID 与状态流转 ===');
   clipboard.length = 0;
@@ -261,9 +351,61 @@ async function run() {
   eq(ctx.data.items !== beforeMark, true, '列表使用新数组引用');
   eq(ctx.data.items.find(i => i.id === 'r2').status, 'PROCESSED', '其他条目状态不受影响');
 
+  console.log('\n=== 8. 奖励权限、赠送与撤回 ===');
+  api.payment.feedbackReward.adminStatus = () => Promise.resolve({ success: true, isAdmin: true });
+  await ctx.loadRewardPermission();
+  eq(ctx.data.canReward, true, '客服管理员同时获得奖励操作权限');
+
+  const grantCalls = [];
+  modalAnswers.push(true, true);
+  modalCount = 0;
+  api.payment.feedbackReward.adminGrant = id => {
+    grantCalls.push(id);
+    return Promise.resolve({
+      success: true,
+      feedbackId: id,
+      reward: {
+        status: 'GRANTED', days: 30, backfill: true,
+        grantedAt: new Date('2026-11-04T03:00:00.000Z'),
+        revokedAt: null, memberExpiresAt: new Date('2026-12-04T03:00:00.000Z'),
+      },
+    });
+  };
+  await pageDefinition.onGrantReward.call(ctx, { currentTarget: { dataset: { id: 'r1' } } });
+  eq(grantCalls[0], 'r1', '赠送请求带反馈 id');
+  eq(modalCount, 2, '赠送需要连续两次确认');
+  eq(ctx.data.items.find(i => i.id === 'r1').reward.status, 'GRANTED', '赠送后就地更新奖励状态');
+  eq(ctx.data.items.find(i => i.id === 'r1').reward.backfill, true, '历史反馈显示补发');
+
+  const revokeCalls = [];
+  modalAnswers.push(true, true);
+  modalCount = 0;
+  api.payment.feedbackReward.adminRevoke = id => {
+    revokeCalls.push(id);
+    return Promise.resolve({
+      success: true,
+      feedbackId: id,
+      reward: {
+        status: 'REVOKED', days: 30, backfill: true,
+        grantedAt: new Date('2026-11-04T03:00:00.000Z'),
+        revokedAt: new Date('2026-11-05T03:00:00.000Z'),
+        memberExpiresAt: new Date('2026-11-05T03:00:00.000Z'),
+      },
+    });
+  };
+  await pageDefinition.onRevokeReward.call(ctx, { currentTarget: { dataset: { id: 'r1' } } });
+  eq(revokeCalls[0], 'r1', '撤回请求带反馈 id');
+  eq(modalCount, 2, '撤回需要连续两次确认');
+  eq(ctx.data.items.find(i => i.id === 'r1').reward.status, 'REVOKED', '撤回后就地更新状态');
+
   api.feedback.adminList = original.adminList;
   api.feedback.adminReply = original.adminReply;
+  api.feedback.adminAddReply = original.adminAddReply;
+  api.feedback.adminUpdateReply = original.adminUpdateReply;
   api.feedback.adminUpdateStatus = original.adminUpdateStatus;
+  api.payment.feedbackReward.adminStatus = original.rewardStatus;
+  api.payment.feedbackReward.adminGrant = original.rewardGrant;
+  api.payment.feedbackReward.adminRevoke = original.rewardRevoke;
 
   if (fail) {
     console.error(`\n${fail} assertion(s) failed`);
@@ -275,7 +417,12 @@ async function run() {
 run().catch(err => {
   api.feedback.adminList = original.adminList;
   api.feedback.adminReply = original.adminReply;
+  api.feedback.adminAddReply = original.adminAddReply;
+  api.feedback.adminUpdateReply = original.adminUpdateReply;
   api.feedback.adminUpdateStatus = original.adminUpdateStatus;
+  api.payment.feedbackReward.adminStatus = original.rewardStatus;
+  api.payment.feedbackReward.adminGrant = original.rewardGrant;
+  api.payment.feedbackReward.adminRevoke = original.rewardRevoke;
   console.error(err);
   process.exit(1);
 });

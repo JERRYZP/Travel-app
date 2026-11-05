@@ -166,7 +166,11 @@ def check_wxs_cloud_literal(files):
 
 def check_pages():
     app = json.load(open(os.path.join(ROOT, "app.json"), encoding="utf-8"))
-    for p in app.get("pages", []):
+    pages = list(app.get("pages", []))
+    for package in app.get("subPackages", app.get("subpackages", [])):
+        root = str(package.get("root", "")).strip("/")
+        pages.extend(f"{root}/{page}" if root else page for page in package.get("pages", []))
+    for p in pages:
         for ext in (".js", ".wxml", ".json"):
             if not os.path.exists(os.path.join(ROOT, p + ext)):
                 problems.append(f"app.json 声明的页面缺文件: {p}{ext}")
@@ -205,13 +209,23 @@ def check_css_vars(files):
 def check_package_size():
     """Fail before WeChat DevTools' 1.5MB main-package quality limit.
 
-    This intentionally counts every file under miniprogram/, including the
-    miniprogram_npm build output, because both sources and built components
-    contribute to the uploaded main package.
+    Main-package sources and miniprogram_npm build output count toward the
+    upload, but files under an app.json subpackage root do not.
     """
+    app = json.load(open(os.path.join(ROOT, "app.json"), encoding="utf-8"))
+    package_roots = {
+        str(package.get("root", "")).strip("/")
+        for package in app.get("subPackages", app.get("subpackages", []))
+        if package.get("root")
+    }
     total = 0
     for dirpath, dirnames, filenames in os.walk(ROOT):
-        dirnames[:] = [d for d in dirnames if d != "node_modules"]
+        relative = os.path.relpath(dirpath, ROOT)
+        dirnames[:] = [
+            d for d in dirnames
+            if d != "node_modules"
+            and os.path.normpath(os.path.join(relative, d)) not in package_roots
+        ]
         for fn in filenames:
             total += os.path.getsize(os.path.join(dirpath, fn))
     if total > MAX_PACKAGE_BYTES:

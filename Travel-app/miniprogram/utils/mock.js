@@ -1542,6 +1542,72 @@ function mockTaskLimitError(needed, data = {}) {
   };
 }
 
+function mockFeedbackRepliesOf(doc = {}) {
+  if (Array.isArray(doc.adminReplies) && doc.adminReplies.length > 0) {
+    return doc.adminReplies.map(item => ({ ...item }));
+  }
+  const content = String(doc.adminReply || '').trim();
+  if (!content) return [];
+  return [{
+    replyId: 'legacy',
+    content,
+    createdAt: doc.adminReplyAt || doc.createdAt || null,
+    createdBy: doc.adminReplyBy || '',
+    updatedAt: doc.adminReplyAt || doc.createdAt || null,
+    updatedBy: doc.adminReplyBy || '',
+    editCount: 0,
+    legacy: true,
+  }];
+}
+
+function mockFeedbackRewardOf(doc = {}) {
+  return {
+    status: ['GRANTED', 'REVOKED'].includes(doc.rewardStatus) ? doc.rewardStatus : 'NONE',
+    days: Math.max(0, Number(doc.rewardDays) || 0),
+    backfill: doc.rewardBackfill === true,
+    grantedAt: doc.rewardGrantedAt || null,
+    revokedAt: doc.rewardRevokedAt || null,
+    memberExpiresAt: doc.rewardMemberExpiresAt || null,
+    updatedAt: doc.rewardUpdatedAt || null,
+  };
+}
+
+function mockFeedbackUserView(doc = {}) {
+  return {
+    _id: doc._id,
+    type: doc.type,
+    category: doc.category,
+    spotId: doc.spotId,
+    spotName: doc.spotName,
+    errorType: doc.errorType,
+    content: doc.content,
+    contact: doc.contact || '',
+    status: doc.status,
+    replies: mockFeedbackRepliesOf(doc).map(item => ({
+      replyId: item.replyId,
+      content: item.content,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      edited: Number(item.editCount) > 0,
+    })),
+    adminReply: String(doc.adminReply || ''),
+    adminReplyAt: doc.adminReplyAt || null,
+    reward: mockFeedbackRewardOf(doc),
+    createdAt: doc.createdAt,
+  };
+}
+
+function mockFeedbackRewardNoticeOf(doc = {}) {
+  return {
+    feedbackId: doc._id,
+    type: doc.type,
+    category: doc.category,
+    spotName: doc.spotName,
+    content: String(doc.content || '').slice(0, 80),
+    reward: mockFeedbackRewardOf(doc),
+  };
+}
+
 const handlers = {
   /* ----- spots ----- */
   'list': () => ({ success: true, data: SPOTS.map(s => buildCard(s)).sort((a, b) => (b.popularityScore || 0) - (a.popularityScore || 0)) }),
@@ -3464,30 +3530,49 @@ const handlers = {
       content: String(data.content).trim(),
       contact: (data.contact || '').trim(),
       status: 'OPEN',
+      adminReplies: [],
       adminReply: '',
       adminReplyAt: null,
       adminReplyBy: null,
+      rewardStatus: 'NONE',
+      rewardProgramVersion: 'feedback-member-30d-v1',
       createdAt: new Date(),
     };
     return { success: true, id };
   },
-  'feedback.list': () => ({
-    success: true,
-    items: Object.values(db.feedbacks)
+  'feedback.list': () => {
+    const all = Object.values(db.feedbacks).filter(item => item.userId === 'mock-user');
+    const rewardNotices = all
+      .filter(item => item.rewardUpdatedAt && new Date(item.rewardUpdatedAt).getTime() > feedbackSeenAt)
+      .sort((a, b) => new Date(b.rewardUpdatedAt) - new Date(a.rewardUpdatedAt))
+      .slice(0, 20)
+      .map(mockFeedbackRewardNoticeOf);
+    return {
+      success: true,
+      items: all
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .slice(0, 50),
-    asOf: new Date(),
-  }),
+      .slice(0, 50)
+      .map(mockFeedbackUserView),
+      rewardNotices,
+      asOf: new Date(),
+    };
+  },
   'feedback.entrySummary': () => {
     const handledUnreadCount = Object.values(db.feedbacks).filter(item => (
       item.userId === 'mock-user'
       && item.handledAt
       && new Date(item.handledAt).getTime() > feedbackSeenAt
     )).length;
+    const rewardUnreadCount = Object.values(db.feedbacks).filter(item => (
+      item.userId === 'mock-user'
+      && item.rewardUpdatedAt
+      && new Date(item.rewardUpdatedAt).getTime() > feedbackSeenAt
+    )).length;
     return {
       success: true,
       isAdmin: false,
-      handledUnreadCount,
+      handledUnreadCount: Math.max(handledUnreadCount, rewardUnreadCount),
+      rewardUnreadCount,
       adminPendingCount: 0,
     };
   },
@@ -3499,6 +3584,9 @@ const handlers = {
   },
   /* mock 用户按普通用户处理；管理员入口必须走真实 feedback 云函数白名单。 */
   'feedback.adminStatus': () => ({ success: true, isAdmin: false }),
+  'feedbackReward.adminStatus': () => ({ success: true, isAdmin: false }),
+  'feedbackReward.adminGrant': () => ({ success: false, error: '无权限', errorCode: 1040 }),
+  'feedbackReward.adminRevoke': () => ({ success: false, error: '无权限', errorCode: 1040 }),
 
   /* 首页聚合（镜像云端 reminder homeBootstrap）：复用各域 handler 组合返回，供 USE_MOCK=true 时首页使用 */
   /* 首页行程状态墙 V2（镜像 reminder/index.js 的 homeBootstrap，API-契约 8.2）*/

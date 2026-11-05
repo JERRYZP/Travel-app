@@ -231,13 +231,12 @@ Page({
   },
 
   /**
-   * 反馈入口统计只用 5 分钟存储缓存。
-   * 统计允许稍晚到，避免每次 onShow 都读用户和 feedbacks 两张表。
+   * 缓存只用于先渲染上次数字；每次 onShow 都后台刷新一次，
+   * 避免奖励到账后因旧缓存看不到数字标识。这里不是轮询。
    */
   loadFeedbackEntry() {
     const cached = feedbackEntryCache.read();
     if (cached) this.applyFeedbackEntry(cached.data);
-    if (cached && cached.fresh) return Promise.resolve(cached.data);
 
     return api.feedback.entrySummary().then(res => {
       this.applyFeedbackEntry(res);
@@ -303,7 +302,7 @@ Page({
 
   onFeedbackAdmin() {
     if (!this.data.showFeedbackAdminEntry) return;
-    wx.navigateTo({ url: '/pages/admin-feedback/admin-feedback' });
+    wx.navigateTo({ url: '/admin/feedback/feedback' });
   },
 
   onLegal(e) {

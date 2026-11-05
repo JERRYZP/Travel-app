@@ -89,7 +89,10 @@
         <text wx:if="{{feedbackUnreadCount > 0}}" class="setting-pending-badge">{{feedbackUnreadText}}</text>
       </view>
       <view class="setting-row-right">
-        <text class="setting-row-hint">在线客服 / 反馈与纠错</text>
+        <view class="setting-row-hint feedback-gift-hint">
+          <svg-icon name="gift" size="13px" />
+          <text>/ 在线客服 / 反馈与纠错</text>
+        </view>
         <svg-icon name="chevron-down" size="14px" rotate="270" />
       </view>
     </view>

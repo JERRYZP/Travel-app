@@ -221,19 +221,35 @@ const USER = 'openid_test_001';
 
   console.log('\n=== 9. 用户信息补全 ===');
   db2._seed(COLLECTIONS.USERS, [
-    { openId: PAGE_USER, nickname: '小赵', avatarUrl: 'https://x/a.png' },
+    {
+      openId: PAGE_USER,
+      nickname: '小赵',
+      avatarUrl: 'https://x/a.png',
+      memberExpiresAt: new Date('2099-12-31T00:00:00.000Z'),
+    },
   ]);
   const withUser = await feedback.adminList(db2, ADMIN, { pageSize: 10 });
   const byUser = withUser.items.find(i => i.userId === PAGE_USER);
   eq(byUser.user.nickname, '小赵', '关联到 users 昵称');
   eq(byUser.user.openId, PAGE_USER, 'openId 正确');
   eq(byUser.user.avatarUrl, 'https://x/a.png', 'avatarUrl 透传');
+  eq(byUser.user.member, true, '未来有效期显示为会员');
+  eq(byUser.user.memberExpiresAtText, '2099-12-31', '会员有效期按北京时间输出日期');
   const noUser = withUser.items.find(i => i.userId === 'openid_corr_user');
   eq(noUser.user.nickname, '', '无 users 文档时昵称为空串');
   eq(noUser.user.openId, 'openid_corr_user', '无文档时 openId 用 userId 兜底');
+  eq(noUser.user.member, false, '无 users 文档时不是会员');
+  eq(noUser.user.memberExpiresAtText, '', '无 users 文档时有效期为空');
+  const expired = userDirectory.userBriefOf(
+    { openId: 'expired', memberExpiresAt: new Date('2000-01-01T00:00:00.000Z') },
+    'expired',
+    new Date('2026-11-05T00:00:00.000Z').getTime()
+  );
+  eq(expired.member, false, '过期有效期显示为非会员');
+  eq(expired.memberExpiresAtText, '2000-01-01', '过期会员仍保留到期日展示');
   eq(userDirectory.USER_QUERY_CHUNK, 20, '查表分块 20 条（与 payment 侧一致）');
 
-  console.log('\n=== 10. 管理员回复（adminReply） ===');
+  console.log('\n=== 10. 管理员回复（adminReply 兼容入口） ===');
   const deniedReply = await feedback.adminReply(db2, USER, { id: 'fb1', reply: 'hi' });
   eq(deniedReply.success, false, '非管理员回复拒绝');
   eq(deniedReply.errorCode, 1040, '回复拒绝错误码 1040');
@@ -254,10 +270,10 @@ const USER = 'openid_test_001';
   eq(doc1.status, 'PROCESSED', '状态已置 PROCESSED');
 
   const r2 = await feedback.adminReply(db2, ADMIN, { id: 'fb1', reply: '更新：已上线' });
-  eq(r2.adminReply, '更新：已上线', '二次回复覆盖');
+  eq(r2.adminReply, '更新：已上线', '旧接口二次调用修改最新回复');
   const doc1b = db2._dump(COLLECTIONS.FEEDBACKS).find(d => d._id === 'fb1');
-  eq(doc1b.adminReply, '更新：已上线', '库里仍是单条回复（字符串，不是数组）');
-  eq(Array.isArray(doc1b.adminReply), false, '回复字段不是数组');
+  eq(doc1b.adminReply, '更新：已上线', '最新回复继续同步到旧镜像字段');
+  eq(doc1b.adminReplies.length, 1, '旧接口不额外追加回复线程');
 
   await feedback.adminUpdateStatus(db2, ADMIN, { id: 'fb2', status: 'IGNORED' });
   const r3 = await feedback.adminReply(db2, ADMIN, { id: 'fb2', reply: '这条不改，规则是对的' });

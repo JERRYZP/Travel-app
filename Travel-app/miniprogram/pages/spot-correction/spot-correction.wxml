@@ -10,6 +10,16 @@
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
 
 <view class="page-body">
+  <view class="feedback-reward-banner">
+    <view class="feedback-reward-head">
+      <view class="feedback-reward-title-row">
+        <svg-icon name="gift" size="17px" />
+        <text class="feedback-reward-title">反馈建议有礼</text>
+      </view>
+    </view>
+    <text class="feedback-reward-copy">欢迎反馈问题与建议。我们会逐条核实；对确有帮助且经我们确认采纳的反馈，将酌情赠送 30 天会员。</text>
+  </view>
+
   <!-- 选择景点 -->
   <view class="form-card">
     <text class="form-label">选择景点</text>

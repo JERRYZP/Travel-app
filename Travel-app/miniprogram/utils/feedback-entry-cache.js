@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'profileFeedbackEntryV2';
-const TTL_MS = 5 * 60 * 1000;
+const TTL_MS = 60 * 1000;
 
 function read(now = Date.now()) {
   try {

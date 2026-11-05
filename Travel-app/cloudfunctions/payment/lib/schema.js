@@ -15,6 +15,7 @@ const COLLECTIONS = {
   REMINDER_EVENTS: 'reminder_events',
   PAYMENT_RECONCILE_STATE: 'payment_reconcile_state',
   PAYMENT_CONFIG: 'payment_config',
+  FEEDBACKS: 'feedbacks',
 };
 
 const MemberLevel = {
@@ -91,6 +92,9 @@ const ERRORS = {
     message: '上线前数据迁移未完成，不能切换全量会员限制',
   },
   FORBIDDEN: { code: 1040, message: '无权限' },
+  FEEDBACK_NOT_FOUND: { code: 1043, message: '反馈不存在' },
+  FEEDBACK_REWARD_REVOKED: { code: 1047, message: '该反馈奖励已撤回，不能重复发放' },
+  FEEDBACK_REWARD_CONFLICT: { code: 1048, message: '奖励后已有新的会员权益，不能自动撤回' },
   SERVER_ERROR: { code: 1500, message: '服务异常，请稍后重试' },
   UNKNOWN_ACTION: { code: 1099, message: 'unknown action' },
 };

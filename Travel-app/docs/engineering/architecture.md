@@ -152,9 +152,15 @@ reminder.membership.createOrder
 - 登录为无感登录，首次调用用户接口时惰性创建资料。
 - 昵称和头像只能来自用户主动选择或系统生成占位，不能读取真实微信资料冒充。
 - 反馈分建议/Bug；信息纠错必须附景点、纠错类型和描述。
-- 反馈管理页只对白名单管理员开放。管理员可对单条反馈写一次回复（就地覆盖，不做多轮对话）：写 `adminReply / adminReplyAt / adminReplyBy` 并同时把状态置为 `PROCESSED`。回复正文与时间对提交者可见，回复人 OpenID 只在管理端返回。
-- “我的”页管理员入口位于用户信息卡右侧，不依赖长按。`feedback.entrySummary` 汇总管理员待处理数和当前用户未查看的处理数，客户端缓存 5 分钟。
+- 反馈管理页只对白名单管理员开放。管理员可对一条反馈追加多条单向回复，也可在任意日期修改任一已有回复；用户端只读。新回复写入 `adminReplies[]`，`adminReply / adminReplyAt / adminReplyBy` 同步为最新一条，供旧客户端兼容。回复正文、回复时间和「已修改」标记对提交者可见，回复人 OpenID 只在管理端返回。
+- 反馈管理页的提交人摘要由 `feedback.adminList` 关联 `users` 返回昵称、完整 OpenID、会员状态与有效期。会员状态只按 `users.memberExpiresAt` 做展示投影，不查订单、不发权益，也不作为第二套会员规则。
+- “我的”页管理员入口位于用户信息卡右侧，不依赖长按。`feedback.entrySummary` 汇总管理员待处理数和当前用户未查看的处理/奖励数；客户端先用旧缓存渲染，每次 `onShow` 后台刷新一次，避免奖励到账后数字漏显示。
 - 管理员回复或改状态时写 `feedbacks.handledAt`；用户成功打开「我的反馈」后，用 `feedback.list.asOf` 调用 `feedback.markSeen` 推进 `users.feedbackSeenAt`。未读按反馈条数去重，不按操作次数累加。
+- 反馈采纳奖励的唯一账本入口是 `cloudfunctions/payment/lib/feedback-reward.js`。发放和撤回都在事务内同时更新 `users`、`feedbacks` 和 `admin_audit_logs`，并与订单发放共用 `taskQuotaLock`，避免会员到期日并发覆盖。
+- 每次采纳奖励固定增加 30 天会员。新反馈创建时写入 `rewardProgramVersion=feedback-member-30d-v1`；没有该版本的历史反馈首次奖励标记 `rewardBackfill=true`。同一反馈只能发放一次，不同反馈的奖励按当前有效到期日顺延叠加。
+- `users.lastMembershipGrantAt/Id/Type` 标记最后一次会员权益发放。订单发放写 `ORDER`，反馈奖励写 `FEEDBACK_REWARD`；反馈记录保存上一笔发放指针。撤回只允许奖励仍是最新一笔权益时执行，按 30 天扣回并最低保留到当前时间，不产生负时长，随后恢复上一笔指针。若奖励后出现订单或其他新权益，服务端返回 `1048`，不做自动回滚。
+- `feedback.list.rewardNotices` 按 `rewardUpdatedAt` 独立分页读取已读水位后的补发、到账和撤回记录，不受最近 50 条反馈限制。奖励变化同时推进 `handledAt`，使「我的反馈」入口显示未读；客户端看到新通知后递增 `membershipDataVersion`，让会员快照页面重新读取服务端状态。
+- 反馈管理页位于 `admin` 分包 `/admin/feedback/feedback`。反馈数据和奖励操作分别鉴权：前者使用 `ADMIN_OPENIDS`，后者使用 `AFTER_SALES_ADMIN_OPENIDS`；任何一项权限都不能由客户端隐藏按钮替代服务端校验。
 
 ## 只读 Web 管理后台
 

@@ -293,25 +293,34 @@ function resetWx(patch = {}) {
   const helpWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/help-feedback/help-feedback.wxml'), 'utf8');
   const helpJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/help-feedback/help-feedback.js'), 'utf8');
   const myFeedbackJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/my-feedback/my-feedback.js'), 'utf8');
+  const myFeedbackWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/my-feedback/my-feedback.wxml'), 'utf8');
+  const profileWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.wxml'), 'utf8');
   const feedbackWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/feedback/feedback.wxml'), 'utf8');
+  const correctionWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-correction/spot-correction.wxml'), 'utf8');
   const helpWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/help-feedback/help-feedback.wxss'), 'utf8');
   eq(/"pages\/help-feedback\/help-feedback"/.test(appJson), true, '帮助与反馈页已注册路由');
   eq(/"pages\/my-feedback\/my-feedback"/.test(appJson), true, '我的反馈页已注册路由');
   eq(/onHelpFeedback/.test(profileJs) && /\/pages\/help-feedback\/help-feedback/.test(profileJs), true,
     '我的页统一进入帮助与反馈');
-  eq(/api\.feedback\.entrySummary\(\)[\s\S]*showFeedbackAdminEntry[\s\S]*\/pages\/admin-feedback\/admin-feedback/.test(profileJs), true,
+  eq(/api\.feedback\.entrySummary\(\)[\s\S]*showFeedbackAdminEntry[\s\S]*\/admin\/feedback\/feedback/.test(profileJs), true,
     '反馈管理按钮仅在服务端确认管理员后显示并可进入');
   eq(/bindlongpress|onAdminEntry/.test(fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.wxml'), 'utf8') + profileJs), false,
     '反馈管理不再占用头像长按');
   eq(/<button class="setting-row service-row" open-type="contact"/.test(helpWxml), true,
     '帮助与反馈页提供微信原生在线客服');
-  eq(helpWxml.indexOf('在线客服') < helpWxml.indexOf('意见反馈')
-    && helpWxml.indexOf('意见反馈') < helpWxml.indexOf('信息纠错'), true,
+  eq(/<svg-icon name="gift"[\s\S]*反馈建议有礼/.test(helpWxml), true, '反馈活动标题前显示礼品图标');
+  eq(/经我们确认采纳[\s\S]*酌情赠送 30 天会员/.test(helpWxml + feedbackWxml + correctionWxml), true,
+    '反馈奖励文案明确说明需确认采纳后酌情赠送');
+  eq(/长期活动/.test(helpWxml + feedbackWxml + correctionWxml), false, '反馈活动不再显示长期活动标签');
+  eq(helpWxml.indexOf('service-row') < helpWxml.indexOf('bindtap="onFeedback"')
+    && helpWxml.indexOf('bindtap="onFeedback"') < helpWxml.indexOf('bindtap="onReportError"'), true,
   '上方依次展示在线客服、意见反馈、信息纠错');
   eq(/setting-card my-feedback-card[\s\S]*我的反馈/.test(helpWxml), true,
     '我的反馈使用下方独立卡片');
   eq(/feedbackUnreadCount > 0[\s\S]*feedbackUnreadText/.test(helpWxml), true,
     '帮助页的我的反馈行显示未读数字');
+  eq(/feedback-gift-hint[\s\S]*name="gift"[\s\S]*\/ 在线客服 \/ 反馈与纠错/.test(profileWxml), true,
+    '帮助与反馈入口小字带礼物图标和斜杠');
   eq(/常见问题/.test(helpWxml), false, '帮助页不重复展示攻略中的常见问题');
   eq(/onFeedback\(\)[\s\S]*\/pages\/feedback\/feedback/.test(helpJs), true, '意见反馈直接进入表单页');
   eq(/onReportError\(\)[\s\S]*\/pages\/spot-correction\/spot-correction/.test(helpJs), true,
@@ -320,6 +329,8 @@ function resetWx(patch = {}) {
     '我的反馈直接进入记录页');
   eq(/open-type="contact"/.test(feedbackWxml), true, '意见反馈页保留次要在线客服入口');
   eq(/api\.feedback\.list\(\)/.test(myFeedbackJs), true, '我的反馈读取本人历史接口');
+  eq(/name="gift"[\s\S]*已获赠 30 天会员/.test(myFeedbackWxml), true,
+    '用户端获赠会员文案前显示礼物图标');
   eq(/api\.feedback\.markSeen\(\{ through: res\.asOf \}\)/.test(myFeedbackJs), true,
     '我的反馈成功加载后推进已读水位');
   eq(/util\.monthDayTime\(item\.createdAt\)/.test(myFeedbackJs), true, '反馈时间按北京时间展示');
@@ -335,7 +346,6 @@ function resetWx(patch = {}) {
 
   console.log('\n=== 4.1 开发环境新用户预览 ===');
   const appSrc = fs.readFileSync(path.join(ROOT, 'miniprogram/app.js'), 'utf8');
-  const profileWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.wxml'), 'utf8');
   const profileWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/profile/profile.wxss'), 'utf8');
   const homeWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxml'), 'utf8');
   eq(/开发调试|onPreviewNewUser|devMode|dev-card|dev-hint/.test(profileJs + profileWxml + profileWxss),

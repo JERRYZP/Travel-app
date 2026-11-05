@@ -17,13 +17,14 @@ const eq = (actual, expected, message) => {
 };
 
 const storage = {};
+const appState = { globalData: { statusBarHeight: 20, navBarHeight: 44, membershipDataVersion: 0 } };
 global.wx = {
   getStorageSync(key) { return storage[key]; },
   setStorageSync(key, value) { storage[key] = value; },
   navigateTo() {},
   stopPullDownRefresh() {},
 };
-global.getApp = () => ({ globalData: { statusBarHeight: 20, navBarHeight: 44 } });
+global.getApp = () => appState;
 
 let pageDefinition = null;
 global.Page = definition => { pageDefinition = definition; };
@@ -80,7 +81,7 @@ async function run() {
   const cache = require('../miniprogram/utils/feedback-entry-cache.js');
   const now = Date.now();
   cache.write({ isAdmin: false, handledUnreadCount: 2, adminPendingCount: 0 }, now);
-  eq(cache.read(now + 4 * 60 * 1000).fresh, true, '入口统计在 5 分钟内复用缓存');
+  eq(cache.read(now + 30 * 1000).fresh, true, '入口统计在 1 分钟内复用缓存');
   eq(cache.read(now + cache.TTL_MS).fresh, false, '入口统计缓存到期后重新请求');
   cache.markUserRead();
   eq(cache.read(now).data.handledUnreadCount, 0, '打开我的反馈后本地用户数字立即清零');
@@ -91,7 +92,7 @@ async function run() {
   calls.summary = 0;
   await profile.loadFeedbackEntry.call(profile);
   await profile.loadFeedbackEntry.call(profile);
-  eq(calls.summary, 1, '五分钟内重复进入我的页不重复统计');
+  eq(calls.summary, 2, '每次进入我的页都后台刷新数字');
   eq(profile.data.showFeedbackAdminEntry, true, '管理员显示右对齐反馈管理按钮');
   eq(profile.data.feedbackAdminPendingText, '7', '管理按钮显示待处理数字');
   eq(profile.data.feedbackUnreadText, '3', '帮助与反馈行显示用户未读数字');
@@ -110,9 +111,10 @@ async function run() {
   const helpFeedback = instantiate(loadPage('miniprogram/pages/help-feedback/help-feedback.js'));
   delete storage[cache.STORAGE_KEY];
   cache.write({ isAdmin: false, handledUnreadCount: 5, adminPendingCount: 0 });
+  summaryResponse = { success: true, isAdmin: false, handledUnreadCount: 5, adminPendingCount: 0 };
   calls.summary = 0;
   await helpFeedback.loadFeedbackEntry.call(helpFeedback);
-  eq(calls.summary, 0, '帮助页复用五分钟内的入口统计缓存');
+  eq(calls.summary, 1, '帮助页先显示缓存数字并后台刷新');
   eq(helpFeedback.data.feedbackUnreadText, '5', '帮助页的我的反馈行显示未读数字');
   helpFeedback.applyFeedbackEntry.call(helpFeedback, { handledUnreadCount: 120 });
   eq(helpFeedback.data.feedbackUnreadText, '99+', '帮助页未读数过大时使用 99+');
@@ -130,6 +132,69 @@ async function run() {
   listResponse = { success: true, items: [] };
   await myFeedback.load.call(myFeedback);
   eq(calls.markSeen.length, 0, '旧接口未返回 asOf 时不误清未读');
+
+  console.log('\n=== 我的反馈：多条回复与奖励通知 ===');
+  listResponse = {
+    success: true,
+    asOf: new Date('2026-11-05T08:00:00.000Z'),
+    items: [{
+      _id: 'fb_rewarded',
+      type: 'feedback',
+      category: 'suggestion',
+      status: 'PROCESSED',
+      content: '建议增加景点筛选',
+      replies: [{
+        replyId: 'reply_1', content: '已记录', createdAt: new Date('2026-11-04T02:00:00.000Z'),
+        updatedAt: new Date('2026-11-04T03:00:00.000Z'), editCount: 1,
+      }, {
+        replyId: 'reply_2', content: '该建议已上线', createdAt: new Date('2026-11-05T02:00:00.000Z'),
+        updatedAt: new Date('2026-11-05T02:00:00.000Z'), editCount: 0,
+      }],
+      reward: {
+        status: 'GRANTED', days: 30, backfill: true,
+        grantedAt: new Date('2026-11-05T03:00:00.000Z'),
+        memberExpiresAt: new Date('2026-12-05T03:00:00.000Z'),
+        updatedAt: new Date('2026-11-05T03:00:00.000Z'),
+      },
+      createdAt: new Date('2026-11-01T02:00:00.000Z'),
+    }],
+    rewardNotices: [{
+      feedbackId: 'legacy_feedback',
+      type: 'correction',
+      category: null,
+      content: '补发的历史反馈',
+      reward: {
+        status: 'GRANTED', days: 30, backfill: true,
+        grantedAt: new Date('2026-11-05T03:00:00.000Z'),
+        memberExpiresAt: new Date('2026-12-05T03:00:00.000Z'),
+        updatedAt: new Date('2026-11-05T03:00:00.000Z'),
+      },
+    }],
+  };
+  calls.markSeen = [];
+  const rewardedPage = instantiate(loadPage('miniprogram/pages/my-feedback/my-feedback.js'));
+  const versionBefore = appState.globalData.membershipDataVersion;
+  await rewardedPage.load.call(rewardedPage);
+  eq(rewardedPage.data.items[0].replies.length, 2, '用户端展示完整回复线程');
+  eq(rewardedPage.data.items[0].replies[0].edited, true, '用户端展示已修改标记');
+  eq(rewardedPage.data.items[0].reward.backfill, true, '用户端展示补发标记');
+  eq(rewardedPage.data.rewardNotices.length, 1, '独立奖励通知可见');
+  eq(/补发奖励已到账/.test(rewardedPage.data.rewardNotices[0].title), true, '补发通知标题明确');
+  eq(/2026年12月5日/.test(rewardedPage.data.rewardNotices[0].detail), true, '通知展示会员到期日');
+  eq(calls.markSeen.length, 1, '看到奖励通知后按列表快照推进已读');
+  eq(appState.globalData.membershipDataVersion, versionBefore + 1,
+    '新奖励到账后递增会员缓存版本');
+
+  await rewardedPage.load.call(rewardedPage);
+  eq(appState.globalData.membershipDataVersion, versionBefore + 1,
+    '同一通知重复加载不重复递增版本');
+
+  listResponse.rewardNotices[0].reward.status = 'REVOKED';
+  listResponse.rewardNotices[0].reward.updatedAt = new Date('2026-11-06T03:00:00.000Z');
+  await rewardedPage.load.call(rewardedPage);
+  eq(rewardedPage.data.rewardNotices[0].title, '反馈奖励已撤回', '撤回通知对用户可见');
+  eq(appState.globalData.membershipDataVersion, versionBefore + 2,
+    '奖励撤回也触发会员缓存刷新');
 
   Module._load = originalLoad;
   if (fail) {
