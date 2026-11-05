@@ -19,6 +19,7 @@ const {
 const time = require('./lib/time');
 const trip = require('./lib/trip');
 const tripShare = require('./lib/trip-share');
+const tripWindow = require('./lib/trip-window');
 const timeline = require('./lib/timeline');
 const cart = require('./lib/cart');
 const task = require('./lib/task');
@@ -38,7 +39,7 @@ const { createResourceMonitor } = require('./lib/resource-metrics');
 const resource = createResourceMonitor('reminder', rawDb);
 const db = resource.db;
 const USER_RUNTIME_MUTATIONS = new Set([
-  'trip.create', 'trip.updateSpots', 'trip.updateRange', 'trip.remove',
+  'trip.create', 'trip.updateSpots', 'trip.updateRange', 'trip.updateWindow', 'trip.remove',
   'timeline.generate',
   'tripItem.markResult', 'tripItem.undoResult', 'tripItem.updateReminder',
   'tripItem.remove', 'tripItem.removeVisitDate',
@@ -80,6 +81,12 @@ async function main(event) {
         });
       case 'trip.updateRange':
         return await trip.updateRange(db, userId, event.tripId, event.startDate, event.endDate);
+      case 'trip.updateWindow':
+        return await trip.updateWindow(db, userId, event.tripId, {
+          startDate: event.startDate,
+          endDate: event.endDate,
+          expectedWindowUpdatedAt: event.expectedWindowUpdatedAt,
+        });
       case 'trip.remove':
         // 显式删除行程（含其任务与提醒清单）：清理「进行中 0 / 已过期 0」的空壳行程
         return await trip.remove(db, userId, event.tripId);
@@ -431,7 +438,9 @@ async function runtimeHomeBootstrap(db, userId, event, t0, timing) {
 
 function compactRuntimeSources(sources, history, nowTs) {
   const today = time.todayStr(nowTs);
-  const trips = (sources.trips || []).filter(tripRow => tripRow.endDate >= today);
+  const trips = (sources.trips || []).filter(
+    tripRow => tripWindow.effectiveEndDateOf(tripRow) >= today
+  );
   const tripIds = new Set(trips.map(tripRow => tripRow._id));
   const items = (sources.items || []).filter(row => tripIds.has(row.tripId));
   const itemIds = new Set(items.map(row => row._id));
@@ -535,29 +544,58 @@ async function composeHomeBootstrap(db, userId, sources, event, t0, timing, opti
   const historyTrips = hasStoredHistory ? [...(sources.history || [])] : [];
   for (const tripRow of trips) {
     const mine = decorated.filter(row => row.tripId === tripRow._id);
+    const window = tripWindow.windowOf(tripRow);
+    const windowItems = mine.filter(row => tripWindow.inWindow(row.visitDate, window));
     const entry = {
       _id: tripRow._id,
       city: tripRow.city,
       startDate: tripRow.startDate,
       endDate: tripRow.endDate,
+      windowStartDate: window.startDate,
+      windowEndDate: window.endDate,
+      windowUpdatedAt: tripRow.windowUpdatedAt || null,
+      windowVersion: tripWindow.versionOfTrip(tripRow),
       name: tripRow.name,
       progress: item.backupGroupProgress(mine),
+      windowProgress: item.backupGroupProgress(windowItems),
       itemCount: mine.length,
+      windowItemCount: windowItems.length,
+      outsideItemCount: mine.length - windowItems.length,
       shareActive: tripShare.isShareActive(tripRow, today),
       /* 2026-09-21：首页「+ 新增提醒」要拿它预填 add-trip 的景点标签。
          只给 id，页面再走 spots.batch 取名字——这里多查一次会让 bootstrap 变重，
          而预填只发生在用户点按钮之后，没有必要让每次首页加载都背上它。 */
       spotIds: [...new Set(mine.map(row => row.spotId))],
     };
-    if (tripRow.endDate >= today) activeTrips.push({ ...entry, items: item.sortItems(mine) });
+    const sortedItems = item.sortItems(mine).map(row => ({
+      ...row,
+      windowPosition: tripWindow.positionOf(row.visitDate, window),
+    }));
+    if (tripWindow.effectiveEndDateOf(tripRow) >= today) {
+      activeTrips.push({ ...entry, items: sortedItems });
+    }
     else if (!hasStoredHistory) historyTrips.push(entry);
   }
-  activeTrips.sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
-  historyTrips.sort((a, b) => String(b.startDate).localeCompare(String(a.startDate)));
+  activeTrips.sort((a, b) => String(a.windowStartDate || a.startDate)
+    .localeCompare(String(b.windowStartDate || b.startDate)));
+  historyTrips.sort((a, b) => String(b.windowStartDate || b.startDate)
+    .localeCompare(String(a.windowStartDate || a.startDate)));
   historyTrips.forEach((entry) => {
     entry.shareActive = entry.shareActive === true;
+    if (!entry.windowStartDate || !entry.windowEndDate) {
+      const window = tripWindow.windowOf(entry);
+      entry.windowStartDate = window.startDate;
+      entry.windowEndDate = window.endDate;
+    }
+    if (!entry.windowProgress) entry.windowProgress = entry.progress;
   });
   const primaryTripId = activeTrips.length ? activeTrips[0]._id : '';
+  const primaryTripRow = trips.find(row => row._id === primaryTripId) || null;
+  const primaryWindow = tripWindow.windowOf(primaryTripRow);
+  const primaryWindowItems = primaryTripId
+    ? decorated.filter(row => row.tripId === primaryTripId
+      && tripWindow.inWindow(row.visitDate, primaryWindow))
+    : [];
 
   return ok({
     serverNow: nowTs,
@@ -568,6 +606,7 @@ async function composeHomeBootstrap(db, userId, sources, event, t0, timing, opti
     history: historyTrips,
     stickyBanner: task.buildReleaseBanner(decorated, nowTs),
     releasePills: task.buildReleasePills(decorated, nowTs, 2),
+    windowReleasePills: task.buildReleasePills(primaryWindowItems, nowTs, 2),
     reminderQuotaWarning: task.buildReminderQuotaWarning(quotaHealth, nowTs),
     membership: membership.snapshotFromTasks(user, allTasks, nowTs, {
       newPlan: membership.isNewPlanEnabledFor(userId, event),

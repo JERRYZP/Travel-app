@@ -31,6 +31,23 @@ function shareExpiryText(dateStr) {
   return `${m[1]}年${Number(m[2])}月${Number(m[3])}日`;
 }
 
+function shiftDate(dateStr, days) {
+  const d = new Date(String(dateStr) + 'T00:00:00+08:00');
+  if (Number.isNaN(d.getTime())) return '';
+  return new Date(d.getTime() + days * 86400000 + 8 * 3600000)
+    .toISOString().slice(0, 10);
+}
+
+function windowEditCopyOf(trip, start, end) {
+  const items = (trip && trip.items) || [];
+  const outside = items.filter(it => it.visitDate < start || it.visitDate > end).length;
+  const inside = items.length - outside;
+  const lines = ['只调整行程标识和分享范围，不改变提醒'];
+  if (outside > 0) lines.push(`范围外仍有 ${outside} 项提醒，会继续显示并发送`);
+  if (inside === 0) lines.push('范围内暂无行程项，保存后暂不能分享');
+  return lines.join('；');
+}
+
 /**
  * 把 `home.bootstrap` 的返回体加工成页面 data 补丁（纯函数）。
  *
@@ -43,12 +60,15 @@ function shareExpiryText(dateStr) {
  */
 function buildHomeData(res, now, opts) {
   const silent = !!(opts && opts.silent);
+  const withWindow = t => Object.assign({}, t, {
+    windowStartDate: t.windowStartDate || t.startDate,
+    windowEndDate: t.windowEndDate || t.endDate,
+    windowProgress: t.windowProgress || t.progress,
+  });
   const trips = (res.trips || []).map((t, i) =>
-    /* `_weak` 决定行程分段标题渲不渲染，**这个判断放在这里、不放模板**：
-       模板里做不了「只有第一趟」。 */
-    Object.assign({}, t, { _weak: i === 0 }));
+    Object.assign(withWindow(t), { _weak: i === 0 }));
   const primary = trips.length ? trips[0] : null;
-  const history = (res.history || []).map(t => Object.assign({}, t, {
+  const history = (res.history || []).map(t => Object.assign(withWindow(t), {
     shareActive: t.shareActive === true,
   }));
   /* 摘要卡展示的那一趟（2026-10-15 用户口径）：优先最近未结束行程；
@@ -62,8 +82,10 @@ function buildHomeData(res, now, opts) {
         （`endDate >= today` 留在主墙，次日归历史），数组序也是服务端给的
         （history 按 `startDate` 降序），页面只沿同一个顺序回退一层。 */
   const summaryTrip = primary || history[0] || null;
+  const showSummaryEdit = !!(primary && summaryTrip && primary._id === summaryTrip._id);
   const canCreateTripShare = !!primary
-    && ((primary.items || []).length > 0 || Number(primary.itemCount) > 0);
+    && (Number(primary.windowItemCount) > 0
+      || (!primary.windowItemCount && Number(primary.itemCount) > 0));
   const shareActive = !!(summaryTrip && summaryTrip.shareActive);
   const releasePreview = buildEmptyPreview(res, now);
   const serverNow = res.serverNow ? new Date(res.serverNow) : now;
@@ -77,6 +99,7 @@ function buildHomeData(res, now, opts) {
     trips,
     primaryTrip: primary,
     summaryTrip,
+    showSummaryEdit,
     showTripShareAction: shareActive || canCreateTripShare,
     tripShareActionLabel: (shareActive || canCreateTripShare) ? '分享行程' : '',
     /* 被划掉的气泡在重新加载后清空：新的一次会话可以再问一次，
@@ -91,7 +114,7 @@ function buildHomeData(res, now, opts) {
     /* ⚠️ 胶囊是**顶层独立字段**，不挂在 stickyBanner 下——横幅只覆盖眼下一小时，
        而胶囊要回答「后面还有哪几场」。别在这里自己从 trips 里挑放票时刻：
        那是第二套口径，必然与云端漂。 */
-    bannerPills: res.releasePills || [],
+    bannerPills: res.windowReleasePills || res.releasePills || [],
     banner: res.stickyBanner || null,
     emptyReleaseRows: releasePreview.rows,
     emptyReleaseSample: releasePreview.sample,
@@ -166,10 +189,19 @@ Page({
        那一趟」，只有 `onAddTrip` 的预填读它。 */
     summaryTrip: null,
     primaryTrip: null,
+    showSummaryEdit: false,
     showTripShareAction: false,
     tripShareActionLabel: '',
     showTripShareSheet: false,
     tripShareSheet: null,
+    showWindowCalendar: false,
+    windowEditingTripId: '',
+    windowEditStart: '',
+    windowEditEnd: '',
+    windowEditMinDate: '',
+    windowEditMaxDate: '',
+    windowEditNote: '',
+    windowEditSaving: false,
     /* 摘要卡底部的「即将提醒」胶囊：接下来的放票时刻（服务端拼好文案）。
        来源是 stickyBanner.pills —— 不放独立字段，避免两处口径漂。 */
     bannerPills: [],
@@ -371,10 +403,14 @@ Page({
         history: [],
         summaryTrip: null,
         primaryTrip: null,
+        showSummaryEdit: false,
         showTripShareAction: false,
         tripShareActionLabel: '',
         showTripShareSheet: false,
         tripShareSheet: null,
+        showWindowCalendar: false,
+        windowEditingTripId: '',
+        windowEditSaving: false,
         bannerPills: [],
         banner: null,
         reminderQuotaWarning: null,
@@ -630,8 +666,8 @@ Page({
     const t = emptyHome ? null : this.data.primaryTrip;
     const q = (t && t._id)
       ? ('?tripId=' + t._id
-        + '&startDate=' + t.startDate
-        + '&endDate=' + t.endDate
+        + '&startDate=' + (t.windowStartDate || t.startDate)
+        + '&endDate=' + (t.windowEndDate || t.endDate)
         + '&spotIds=' + (t.spotIds || []).join(','))
       : '';
     wx.navigateTo({ url: '/pages/add-trip/add-trip' + q });
@@ -674,6 +710,79 @@ Page({
   onBannerOpen(e) {
     const spotId = e.detail && e.detail.spotId;
     if (spotId) this.openSpotPopup(spotId);
+  },
+
+  /* ===== 行程窗口 ===== */
+
+  onTripWindowEdit(e) {
+    const tripId = String((e && e.detail && e.detail.tripId)
+      || (this.data.primaryTrip && this.data.primaryTrip._id)
+      || '');
+    const trip = (this.data.trips || []).find(t => t._id === tripId)
+      || (this.data.primaryTrip && this.data.primaryTrip._id === tripId
+        ? this.data.primaryTrip : null);
+    if (!trip) return;
+    const today = util.beijingTodayStr();
+    const currentStart = trip.windowStartDate || trip.startDate;
+    const currentEnd = trip.windowEndDate || trip.endDate;
+    this.setData({
+      showWindowCalendar: true,
+      windowEditingTripId: tripId,
+      windowEditStart: currentStart,
+      windowEditEnd: currentEnd,
+      windowEditMinDate: shiftDate(currentStart < today ? currentStart : today, -90),
+      windowEditMaxDate: shiftDate(currentEnd > today ? currentEnd : today, 180),
+      windowEditNote: windowEditCopyOf(trip, currentStart, currentEnd),
+      windowEditSaving: false,
+    });
+  },
+  onTripWindowChange(e) {
+    const start = e && e.detail && e.detail.start;
+    const end = e && e.detail && e.detail.end;
+    if (!start || !end) return;
+    const trip = (this.data.trips || []).find(t => t._id === this.data.windowEditingTripId);
+    this.setData({
+      windowEditStart: start,
+      windowEditEnd: end,
+      windowEditNote: trip ? windowEditCopyOf(trip, start, end) : '',
+    });
+  },
+  onTripWindowCancel() {
+    if (this.data.windowEditSaving) return;
+    this.setData({
+      showWindowCalendar: false,
+      windowEditingTripId: '',
+      windowEditSaving: false,
+    });
+  },
+  onTripWindowConfirm() {
+    if (this.data.windowEditSaving) return;
+    const tripId = this.data.windowEditingTripId;
+    const trip = (this.data.trips || []).find(t => t._id === tripId);
+    if (!trip || !this.data.windowEditStart || !this.data.windowEditEnd) return;
+    const unchanged = this.data.windowEditStart === (trip.windowStartDate || trip.startDate)
+      && this.data.windowEditEnd === (trip.windowEndDate || trip.endDate);
+    if (unchanged) return this.onTripWindowCancel();
+    this.setData({ windowEditSaving: true });
+    api.reminder.trip.updateWindow({
+      tripId,
+      startDate: this.data.windowEditStart,
+      endDate: this.data.windowEditEnd,
+      expectedWindowUpdatedAt: trip.windowVersion || '',
+    }).then(() => {
+      this._tripShareSeq = (this._tripShareSeq || 0) + 1;
+      this._tripSharePath = this._tripShareTitle = this._tripShareCoverPath = '';
+      this.setData({
+        showWindowCalendar: false,
+        windowEditingTripId: '',
+        windowEditSaving: false,
+      });
+      wx.showToast({ title: '行程日期已更新', icon: 'none' });
+      this.loadHome({ silent: true });
+    }).catch(err => {
+      this.setData({ windowEditSaving: false });
+      api.toastError(err);
+    });
   },
 
   /* ===== 行程只读分享 ===== */
@@ -785,7 +894,8 @@ Page({
     const primaryTrip = patchTrip(this.data.primaryTrip);
     const summaryTrip = patchTrip(this.data.summaryTrip);
     const canCreate = !!primaryTrip
-      && ((primaryTrip.items || []).length > 0 || Number(primaryTrip.itemCount) > 0);
+      && (Number(primaryTrip.windowItemCount) > 0
+        || (!primaryTrip.windowItemCount && Number(primaryTrip.itemCount) > 0));
     this.setData({
       trips: (this.data.trips || []).map(patchTrip),
       history: (this.data.history || []).map(patchTrip),

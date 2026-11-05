@@ -180,7 +180,7 @@ console.log('=== 4. 摘要卡底部的「即将提醒」胶囊 ===');
   /* ⚠️ 胶囊必须是 home.bootstrap 的**顶层独立字段**，不能挂在 stickyBanner 下：
      横幅受 BANNER_WINDOW_HOURS(1h) 限制只覆盖眼下，挂进去就等于「一小时内有票要放
      才显示胶囊」——而设计稿上要展示的恰恰是「后面还有哪几场」。 */
-  eq(/bannerPills: res\.releasePills \|\| \[\]/.test(JS), true,
+  eq(/bannerPills: res\.windowReleasePills \|\| res\.releasePills \|\| \[\]/.test(JS), true,
     '胶囊取顶层 releasePills（不挂在 stickyBanner 下）');
   const HOMEFN = fs.readFileSync(path.join(ROOT, 'cloudfunctions/reminder/index.js'), 'utf8');
   eq(/releasePills: task\.buildReleasePills\(decorated, nowTs, 2\)/.test(HOMEFN), true,
@@ -373,7 +373,7 @@ console.log('=== 6. 行程分段标题：摘要卡那趟不渲染，未来行程
 
   eq(/pastCount: 0/.test(SECTION_JS) && /pastElapsedDays: 0/.test(SECTION_JS) && /pastItemCount: 0/.test(SECTION_JS),
     true, '已过去日期默认折叠，并保留天数/项数状态');
-  eq(/const pastDays = history \? \[\] : days\.filter\(day => day\.daysPast > 0\)/.test(SECTION_JS),
+  eq(/const pastDays = history \? \[\] : dayEntries\.filter\(day => day\.daysPast > 0\)/.test(SECTION_JS),
     true, '只在进行中行程折叠已结束日期，历史行程不重复折叠');
   eq(/onPastToggle\(\)[\s\S]*pastOpen: !this\.data\.pastOpen/.test(SECTION_JS),
     true, '点击折叠入口切换展开态');
@@ -381,7 +381,7 @@ console.log('=== 6. 行程分段标题：摘要卡那趟不渲染，未来行程
     true, '折叠入口按最早已结束日期展示真实已过去天数');
   eq(/class="ts-past-fold" bindtap="onPastToggle"/.test(SECTION_WXML), true,
     '折叠入口渲染在日期列表前');
-  eq(/ts-past-fold[\s\S]*wx:for="\{\{days\}\}"[\s\S]*history \|\| dayIndex >= pastCount \|\| pastOpen/.test(SECTION_WXML),
+  eq(/ts-past-fold[\s\S]*wx:for="\{\{days\}\}"[\s\S]*history \|\| !day\.collapsed \|\| pastOpen/.test(SECTION_WXML),
     true, '折叠入口位于今天/未来日期之前，展开后才渲染已过去日期');
   eq(/\.ts-past-fold \{[^}]*\}/.test(SECTION_WXSS), true, '折叠入口样式在');
   eq(/\.ts-past-title \{[^}]*color: var\(--color-text\)/.test(SECTION_WXSS), true,

@@ -80,7 +80,8 @@ Component({
 
       /* 按出行日分组。⚠️ wx:key 必须用 itemId——
          同一景点可以有多个备选日期，用 spotId 会重键（backendup 组正是为此存在） */
-      const p = trip.progress || { done: 0, total: 0, noReservationCount: 0 };
+      const p = trip.windowProgress || trip.progress
+        || { done: 0, total: 0, noReservationCount: 0 };
       const map = new Map();
       (trip.items || []).forEach(it => {
         if (!map.has(it.visitDate)) map.set(it.visitDate, []);
@@ -95,37 +96,77 @@ Component({
         }));
       });
 
-      const start = trip.startDate;
-      const days = [...map.entries()]
+      const windowStart = trip.windowStartDate || trip.startDate;
+      const windowEnd = trip.windowEndDate || trip.endDate;
+      const dayEntries = [...map.entries()]
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([visitDate, items]) => ({
           key: visitDate,
+          kind: 'day',
           title: util.dayTitleOf(visitDate),
           /* 「第 1 天」——让用户在行程里定位自己在哪一段。
              2026-09-22 按设计稿改为**方括号包裹**（`【第1天】`）：徽标改成了金色底，
              方括号让它在视觉上更明确是「这一段是第几天」的标记，而不是一个可点的标签。
              ⚠️ 数字两侧不加空格（设计稿是 `第1天`，旧实现是 `第 1 天`）。 */
-          badge: '【第' + (util.dayDiff(start, visitDate)) + '天】',
+          badge: '',
           daysPast: util.pastDaysOf(visitDate),
           items,
           /* 菜单键只认 visitDate：同屏只会展开一趟行程的某一天
              （同一天出现在两趟行程里本就罕见，且这样不必再把 tripId 编进键里）。 */
           menuOpen: menuDate === visitDate,
+          inside: visitDate >= windowStart && visitDate <= windowEnd,
+          outsideLabel: visitDate < windowStart ? '行程前 · 提醒照常'
+            : (visitDate > windowEnd ? '行程后 · 提醒照常' : ''),
         }));
 
       /* 进行中的行程只把「今天/未来」留在展开区；已结束日期默认收成一枚入口，
          入口仍在它们上方，展开后顺序不变。历史行程本身已在页面底部整趟折叠，
          这里不能再套一层，否则要连点两次才能看到记录。 */
-      const pastDays = history ? [] : days.filter(day => day.daysPast > 0);
+      const pastDays = history ? [] : dayEntries.filter(day => day.daysPast > 0);
       const pastElapsedDays = pastDays.length ? pastDays[0].daysPast : 0;
       const pastItemCount = pastDays.reduce((sum, day) => sum + day.items.length, 0);
       const pastRangeText = pastDays.length === 1
         ? pastDays[0].title
         : (pastDays.length > 1 ? util.monthDayRange(pastDays[0].key, pastDays[pastDays.length - 1].key) : '');
+      const dates = [...new Set([
+        ...dayEntries.map(day => day.key),
+        windowStart,
+        windowEnd,
+      ].filter(Boolean))].sort();
+      const dayMap = new Map(dayEntries.map(day => [day.key, day]));
+      const days = [];
+      dates.forEach((date) => {
+        if (date === windowStart) {
+          days.push({
+            key: 'window-start',
+            kind: 'marker',
+            markerType: 'start',
+            title: util.dayTitleOf(windowStart),
+            label: '北京之行开始',
+          });
+        }
+        const day = dayMap.get(date);
+        if (day) {
+          days.push({
+            ...day,
+            badge: day.inside ? '【第' + util.dayDiff(windowStart, day.key) + '天】' : '',
+            collapsed: !history && day.daysPast > 0 && !this.data.pastOpen,
+          });
+        }
+        if (date === windowEnd) {
+          days.push({
+            key: 'window-end',
+            kind: 'marker',
+            markerType: 'end',
+            title: util.dayTitleOf(windowEnd),
+            label: '北京之行结束',
+          });
+        }
+      });
 
       this.setData({
         days,
-        dateRange: util.monthDayRange(trip.startDate, trip.endDate),
+        dateRange: util.monthDayRange(windowStart, windowEnd),
         progressText: p.total > 0 ? ('搞定 ' + p.done + '/' + p.total) : '随到随玩',
         pastCount: pastDays.length,
         pastElapsedDays,
@@ -136,6 +177,12 @@ Component({
   },
 
   methods: {
+    onWindowEdit() {
+      if (this.data.history || !this.data.trip) return;
+      this.triggerEvent('editwindow', {
+        tripId: this.data.trip._id,
+      });
+    },
     onPastToggle() {
       this.setData({ pastOpen: !this.data.pastOpen });
     },

@@ -14,6 +14,7 @@ const { COLLECTIONS, ERRORS, ok, fail } = require('./schema');
 const time = require('./time');
 const item = require('./item');
 const userDomain = require('./user');
+const tripWindow = require('./trip-window');
 
 const SHARE_DAYS_AFTER_END = 7;
 const TOKEN_BYTES = 32;
@@ -44,8 +45,9 @@ async function withShareLock(userId, tripId, task) {
 }
 
 function expiresOnOf(trip) {
-  if (!trip || !trip.endDate) return '';
-  return time.addDays(trip.endDate, SHARE_DAYS_AFTER_END);
+  const window = tripWindow.windowOf(trip);
+  if (!window.endDate) return '';
+  return time.addDays(window.endDate, SHARE_DAYS_AFTER_END);
 }
 
 function shareStatusOf(trip, today = time.todayStr()) {
@@ -67,11 +69,16 @@ function isShareActive(trip, today = time.todayStr()) {
  */
 function publicTrip(trip, today = time.todayStr()) {
   if (!trip) return null;
+  const window = tripWindow.windowOf(trip);
   return {
     _id: trip._id,
     city: trip.city,
     startDate: trip.startDate,
     endDate: trip.endDate,
+    windowStartDate: window.startDate,
+    windowEndDate: window.endDate,
+    windowUpdatedAt: trip.windowUpdatedAt || null,
+    windowVersion: tripWindow.versionOfTrip(trip),
     name: trip.name,
     spotIds: Array.isArray(trip.spotIds) ? [...trip.spotIds] : [],
     spots: Array.isArray(trip.spots) ? trip.spots.map(s => ({ ...s })) : [],
@@ -93,9 +100,15 @@ async function findOwnedTrip(db, userId, tripId) {
   return (res.data || [])[0] || null;
 }
 
-async function hasTripItems(db, userId, tripId) {
+async function hasWindowTripItems(db, trip) {
+  if (!trip) return false;
+  const window = tripWindow.windowOf(trip);
   const res = await db.collection(COLLECTIONS.TRIP_ITEMS)
-    .where({ userId, tripId })
+    .where({
+      userId: trip.userId,
+      tripId: trip._id,
+      visitDate: db.command.gte(window.startDate).and(db.command.lte(window.endDate)),
+    })
     .limit(1)
     .get();
   return (res.data || []).length > 0;
@@ -147,8 +160,9 @@ async function create(db, userId, params = {}) {
 
   const nowTs = params.nowTs || time.now();
   const today = time.todayStr(nowTs);
-  if (trip.endDate < today) return fail(ERRORS.TRIP_SHARE_UNAVAILABLE);
-  if (!(await hasTripItems(db, userId, trip._id))) return fail(ERRORS.TRIP_SHARE_UNAVAILABLE);
+  const window = tripWindow.windowOf(trip);
+  if (window.endDate < today) return fail(ERRORS.TRIP_SHARE_UNAVAILABLE);
+  if (!(await hasWindowTripItems(db, trip))) return fail(ERRORS.TRIP_SHARE_UNAVAILABLE);
 
   return withShareLock(userId, trip._id, async () => {
     const result = await db.runTransaction(async transaction => {
@@ -189,6 +203,7 @@ async function status(db, userId, params = {}) {
   const trip = await findOwnedTrip(db, userId, params.tripId);
   if (!trip) return fail(ERRORS.BAD_PARAM);
 
+  const window = tripWindow.windowOf(trip);
   const state = shareStatusOf(trip, time.todayStr(params.nowTs || time.now()));
   return ok({
     tripId: trip._id,
@@ -197,7 +212,7 @@ async function status(db, userId, params = {}) {
     shareActive: state === 'ACTIVE',
     token: state === 'ACTIVE' ? trip.shareToken : '',
     expiresOn: state === 'ACTIVE' ? expiresOnOf(trip) : '',
-    canCreate: trip.endDate >= time.todayStr(params.nowTs || time.now()),
+    canCreate: window.endDate >= time.todayStr(params.nowTs || time.now()),
   });
 }
 
@@ -253,7 +268,9 @@ async function open(db, token, params = {}) {
   const today = time.todayStr(params.nowTs || time.now());
   if (!isShareActive(trip, today)) return invalidShare();
 
-  const rows = await listAllTripItems(db, trip.userId, trip._id);
+  const window = tripWindow.windowOf(trip);
+  const allRows = await listAllTripItems(db, trip.userId, trip._id);
+  const rows = allRows.filter(row => tripWindow.inWindow(row.visitDate, window));
   if (!rows.length) return invalidShare();
 
   const { spotMap } = await item.loadSpotContext(db, rows.map(row => row.spotId));
@@ -278,7 +295,7 @@ async function open(db, token, params = {}) {
 
   const days = [...grouped.entries()].map(([visitDate, items]) => ({
     visitDate,
-    dayNumber: time.diffDays(trip.startDate, visitDate) + 1,
+    dayNumber: time.diffDays(window.startDate, visitDate) + 1,
     items,
   }));
   const spotCount = new Set(normalized.map(row => row.spotId)).size;
@@ -290,9 +307,9 @@ async function open(db, token, params = {}) {
     },
     trip: {
       city: trip.city,
-      startDate: trip.startDate,
-      endDate: trip.endDate,
-      dayCount: time.diffDays(trip.startDate, trip.endDate) + 1,
+      startDate: window.startDate,
+      endDate: window.endDate,
+      dayCount: time.diffDays(window.startDate, window.endDate) + 1,
       spotCount,
       days,
     },

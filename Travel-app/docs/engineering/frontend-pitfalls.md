@@ -34,6 +34,8 @@
 - 景点页多日期必须先消费服务端 `cart.planDates` 的 `REMINDABLE / TRIP_ONLY / IN_CART / IN_TRIP`，不得用卡片的 `advanceDays/releaseTime` 在页面重推。全部只能加入行程时必须停留统一浮层明确确认，禁止只弹 Toast 后自动提交；部分失效时必须按具体日期列出“可设提醒”和“仅加入行程”，不能只给数量汇总。
 - 首页票务态和提醒态全部消费服务端结果，不在页面侧重新按时间推导。
 - 摘要卡在**全部行程都已结束**时展示最近一段过往行程（副标题「已结束」，见 `HOME-RULE-008`），但**预填/提交类逻辑一律不认它**：`summaryTrip` 只喂 `trip-summary-card`，`onAddTrip` 的预填只读 `primaryTrip`（未结束行程）。把摘要卡那趟的日期段带进 PAGE-005 会预填出一个过去的时间范围，提交时被判 1016。退化的“哪一趟”也只沿服务端数组序（`trips[0]` → `history[0]`）回退，页面不重判结束状态。回归见 `test/home-past-trip-card.test.js`。
+- 行程窗口是 `trips.windowStartDate/windowEndDate`，不是实际提醒范围。编辑窗口只能调用 `trip.updateWindow`，禁止在页面侧重算或改写 `trip_items / reminder_tasks / spots`；窗口外项目必须继续带原提醒状态显示，并标注“提醒照常”。
+- 摘要卡日期、`windowProgress`、`windowReleasePills` 和分享投影只认窗口；全局放票横幅仍认全部任务。页面不得把“窗口外”误写成“已删除/已关闭/不提醒”。
 - `MISSED` 必须覆盖普通票务态显示。
 - 首页空态与悬浮新增入口互斥，不能同屏出现两个同职责 CTA。
 - 首页新用户空态的提醒区域只提供真实样式入口，不伪造微信通知内容。

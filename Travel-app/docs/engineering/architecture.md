@@ -55,6 +55,7 @@
 4. 前端只渲染服务端结果；票务状态和提醒送达状态不得在页面侧重新推导。
 5. `trip_items` 是首页、票务结果、提醒关联和删除动线的事实来源。
 6. `user_runtime` 是可丢弃、可重建的读模型，不是事实来源；所有用户写操作成功后标记失效，`notifier` 的状态转换和支付权益变更也负责标记失效。
+7. `trips.windowStartDate/windowEndDate` 是用户可编辑的展示/分享边界和可重建投影输入，不是提醒事实；`home.bootstrap` 下发 `windowPosition/windowProgress/windowReleasePills`，窗口外任务继续保留。
 
 ## 景点静态快照
 
@@ -69,8 +70,8 @@
 - 景点分享统一落 `pages/spot-hub?spotId=...`。
 - 今日放票和国庆场景统一落 `pages/share-scene?sceneId=...`。
 - 公开分享链接不携带昵称、OpenID、行程 ID、票务结果或提醒状态。
-- 行程只读分享走 `pages/trip-share?token=...`。令牌是唯一授权凭证，服务端按 `trips.shareToken` 查询后输出城市、日期和景点白名单；普通行程接口只暴露 `shareActive`。
-- 行程分享在 `endDate + 7 天` 当天仍有效，接收方不可转发到会话或朋友圈；首页右上角菜单仍只分享原公开首页。
+- 行程只读分享走 `pages/trip-share?token=...`。令牌是唯一授权凭证，服务端按 `trips.shareToken` 查询后输出窗口内城市、日期和景点白名单；普通行程接口只暴露 `shareActive`。
+- 行程分享在窗口结束日 + 7 天当天仍有效，窗口修改后同一令牌实时读取新边界；接收方不可转发到会话或朋友圈；首页右上角菜单仍只分享原公开首页。
 
 ## 行程与提醒模型
 

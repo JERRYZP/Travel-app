@@ -225,9 +225,11 @@
     <trip-summary-card
       trip="{{summaryTrip}}"
       pills="{{bannerPills}}"
+      show-edit-action="{{showSummaryEdit}}"
       show-share-action="{{showTripShareAction}}"
       share-action-label="{{tripShareActionLabel}}"
       bind:pill="onBannerPillTap"
+      bind:edit="onTripWindowEdit"
       bind:share="onTripShareTap"
     />
 
@@ -261,6 +263,7 @@
         bind:dismiss="onDismissBubble"
         bind:dismissrecover="onDismissRecover"
         bind:recover="onRecover"
+        bind:editwindow="onTripWindowEdit"
       />
     </view>
 
@@ -317,6 +320,22 @@
   bind:close="onTripShareSheetClose"
   bind:retry="onTripShareRetry"
   bind:revoke="onTripShareRevoke"
+/>
+
+<date-range-picker
+  show="{{showWindowCalendar}}"
+  min-date="{{windowEditMinDate}}"
+  max-date="{{windowEditMaxDate}}"
+  start="{{windowEditStart}}"
+  end="{{windowEditEnd}}"
+  title="修改行程日期"
+  subtitle="只修改首页标识和分享范围"
+  note="{{windowEditNote}}"
+  confirm-text="保存行程日期"
+  saving="{{windowEditSaving}}"
+  bind:change="onTripWindowChange"
+  bind:confirm="onTripWindowConfirm"
+  bind:close="onTripWindowCancel"
 />
 
 <!-- 会话封面绘制节点：放在屏幕外，仅用于生成 700x560 JPG，不参与页面布局。 -->

@@ -14,6 +14,9 @@
       <text class="ts-range">{{dateRange}}</text>
       <text class="ts-progress">{{progressText}}</text>
     </view>
+    <view wx:if="{{!history}}" class="ts-edit-hit" bindtap="onWindowEdit" aria-role="button" aria-label="修改行程日期">
+      <svg-icon name="edit" size="13px" />
+    </view>
   </view>
 
   <!-- 已结束日期折叠入口：放在今天/未来之前，展开后仍按原时间顺序回到这里。
@@ -27,12 +30,22 @@
   </view>
 
   <block wx:for="{{days}}" wx:key="key" wx:for-index="dayIndex" wx:for-item="day">
-  <view wx:if="{{history || dayIndex >= pastCount || pastOpen}}" class="ts-day">
+  <view wx:if="{{day.kind === 'marker'}}" class="ts-window-marker ts-window-marker--{{day.markerType}}">
+    <view class="ts-window-line"></view>
+    <view class="ts-window-label">
+      <svg-icon name="calendar" size="13px" />
+      <text class="ts-window-date">{{day.title}}</text>
+      <text class="ts-window-copy">{{day.label}}</text>
+    </view>
+    <view class="ts-window-line"></view>
+  </view>
+  <view wx:elif="{{history || !day.collapsed || pastOpen}}" class="ts-day {{day.inside ? 'is-inside-window' : 'is-outside-window'}}">
     <!-- 日期分段标题：带「删除当天行程」菜单（删除动线第二层）。
          滚动时吸顶在导航栏下沿，偏移量由页面下发；没量到偏移就不吸顶。 -->
     <view class="ts-day-head {{dayStickyTop > 0 ? 'is-pinned' : ''}}" style="top: {{dayStickyTop}}px;">
       <text class="ts-day-title">{{day.title}}</text>
-      <view class="ts-day-badge">{{day.badge}}</view>
+      <view wx:if="{{day.badge}}" class="ts-day-badge">{{day.badge}}</view>
+      <text wx:if="{{day.outsideLabel}}" class="ts-day-outside">{{day.outsideLabel}}</text>
       <text wx:if="{{day.daysPast > 0}}" class="ts-day-past-note">已过去{{day.daysPast}}天</text>
       <view class="ts-day-line"></view>
       <!-- ⚠️ 捕获层与 `.ts-day-menu` 平级、且在它之前 —— 与 `trip-card` 的三点菜单

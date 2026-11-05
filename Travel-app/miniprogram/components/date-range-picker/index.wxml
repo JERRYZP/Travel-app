@@ -2,14 +2,14 @@
   <view class="drp-sheet" catchtap="noop">
     <view class="drp-handle"></view>
     <view class="drp-header">
-      <text class="drp-title">选择行程日期</text>
-      <text class="drp-sub">最多可选 90 天</text>
+      <text class="drp-title">{{title}}</text>
+      <text class="drp-sub">{{subtitle}}</text>
     </view>
     <view class="drp-weekdays">
       <text wx:for="{{weekdays}}" wx:key="*this" class="drp-weekday">{{item}}</text>
     </view>
-    <scroll-view scroll-y class="drp-months">
-      <view wx:for="{{months}}" wx:for-item="m" wx:key="key" class="drp-month">
+    <scroll-view scroll-y class="drp-months" scroll-into-view="{{scrollIntoView}}">
+      <view id="drp-month-{{m.key}}" wx:for="{{months}}" wx:for-item="m" wx:key="key" class="drp-month">
         <text class="drp-month-title">{{m.title}}</text>
         <view class="drp-grid">
           <view
@@ -28,7 +28,10 @@
     </scroll-view>
   </view>
   <view class="drp-confirm-bar" catchtap="noop">
-    <text class="drp-range-text">{{rangeText}}</text>
-    <view class="drp-confirm-btn {{canConfirm ? '' : 'is-disabled'}}" bindtap="onConfirm">确认</view>
+    <view class="drp-confirm-copy">
+      <text class="drp-range-text">{{rangeText}}</text>
+      <text wx:if="{{note}}" class="drp-note">{{note}}</text>
+    </view>
+    <view class="drp-confirm-btn {{canConfirm && !saving ? '' : 'is-disabled'}}" bindtap="onConfirm">{{saving ? '保存中…' : confirmText}}</view>
   </view>
 </view>

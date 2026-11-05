@@ -9,6 +9,7 @@
     "trip-section": "/components/trip-section/trip-section",
     "result-sheet": "/components/result-sheet/result-sheet",
     "date-picker-sheet": "/components/date-picker-sheet/date-picker-sheet",
+    "date-range-picker": "/components/date-range-picker/index",
     "reminder-auth-sheet": "/components/reminder-auth-sheet/reminder-auth-sheet",
     "trip-share-sheet": "/components/trip-share-sheet/trip-share-sheet",
     "snackbar": "/components/snackbar/snackbar",

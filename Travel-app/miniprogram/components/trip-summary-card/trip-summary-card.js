@@ -26,6 +26,7 @@ Component({
        ⚠️ 文案已由服务端拼好，组件不碰时间格式化。 */
     pills: { type: Array, value: [] },
     /* 行程只读分享入口位于标题行最右侧；装饰英文在标题与分享之间。 */
+    showEditAction: { type: Boolean, value: false },
     showShareAction: { type: Boolean, value: false },
     shareActionLabel: { type: String, value: '' },
   },
@@ -44,13 +45,16 @@ Component({
     trip: function (trip) {
       if (!trip) return;
       const util = require('../../utils/util.js');
-      const p = trip.progress || { done: 0, total: 0, noReservationCount: 0 };
+      const startDate = trip.windowStartDate || trip.startDate;
+      const endDate = trip.windowEndDate || trip.endDate;
+      const p = trip.windowProgress || trip.progress
+        || { done: 0, total: 0, noReservationCount: 0 };
       this.setData({
         displayName: util.tripDisplayName(trip),
         /* ⚠️ 用 tripCountdownTextOf（行程级）而不是 countdownTextOf（景点级）：
            后者在进行中显示「就是今天」，摘要卡要的是「进行中第N天」。 */
-        metaLine: util.tripMetaLine(trip.startDate, trip.endDate,
-          util.tripCountdownTextOf(trip.startDate, trip.endDate)),
+        metaLine: util.tripMetaLine(startDate, endDate,
+          util.tripCountdownTextOf(startDate, endDate)),
         watermark: util.tripWatermark(trip),
         percent: p.total > 0 ? Math.round((p.done / p.total) * 100) : 0,
         noReservation: p.noReservationCount || 0,
@@ -67,6 +71,9 @@ Component({
     },
     onShareTap() {
       this.triggerEvent('share');
+    },
+    onEditTap() {
+      this.triggerEvent('edit', { tripId: this.data.trip && this.data.trip._id });
     },
   },
 });
