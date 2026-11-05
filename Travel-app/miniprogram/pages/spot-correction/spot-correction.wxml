@@ -17,7 +17,7 @@
         <text class="feedback-reward-title">反馈建议有礼</text>
       </view>
     </view>
-    <text class="feedback-reward-copy">欢迎反馈问题与建议。我们会逐条核实；对确有帮助且经我们确认采纳的反馈，将酌情赠送 30 天会员。奖励并非提交即得，是否赠送由我们根据反馈质量和采纳情况决定。</text>
+    <text class="feedback-reward-copy">欢迎反馈问题与建议。我们会逐条核实；对确有帮助且经我们确认采纳的反馈，将酌情赠送 30 天会员。</text>
   </view>
 
   <!-- 选择景点 -->

@@ -309,8 +309,8 @@ function resetWx(patch = {}) {
   eq(/<button class="setting-row service-row" open-type="contact"/.test(helpWxml), true,
     '帮助与反馈页提供微信原生在线客服');
   eq(/<svg-icon name="gift"[\s\S]*反馈建议有礼/.test(helpWxml), true, '反馈活动标题前显示礼品图标');
-  eq(/奖励并非提交即得[\s\S]*反馈质量和采纳情况决定/.test(helpWxml + feedbackWxml + correctionWxml), true,
-    '反馈奖励文案明确说明奖励并非提交即得');
+  eq(/经我们确认采纳[\s\S]*酌情赠送 30 天会员/.test(helpWxml + feedbackWxml + correctionWxml), true,
+    '反馈奖励文案明确说明需确认采纳后酌情赠送');
   eq(/长期活动/.test(helpWxml + feedbackWxml + correctionWxml), false, '反馈活动不再显示长期活动标签');
   eq(helpWxml.indexOf('service-row') < helpWxml.indexOf('bindtap="onFeedback"')
     && helpWxml.indexOf('bindtap="onFeedback"') < helpWxml.indexOf('bindtap="onReportError"'), true,
