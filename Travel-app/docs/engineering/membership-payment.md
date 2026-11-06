@@ -1,5 +1,7 @@
 # 会员支付、售后与提醒名额
 
+> 2026-11-06 正式发布并全量生效：客户端 `2.3.7` 已上线。`reminder` 的 `MEMBERSHIP_ENFORCEMENT_MODE` 已从 `test` 切换为 `all`，完整云端配置回读确认只有该值变化；3 个 `MEMBERSHIP_TEST_OPENIDS`、超时、运行时、内存和其余环境变量不变，函数保持 `Active`。数据库额度配置 `payment_config/membership_enforcement.mode=all` 继续生效。声明 `unlimited-v3` 的新客户端全量获得 ¥6 / 30 天 / 不限提醒名额；未声明能力的旧客户端仍返回 `legacy-v2`。
+>
 > 2026-11-04 白名单灰度：新方案曾因先部署生产导致旧客户端显示 `11/10000`，已回滚且无新增订单或提醒任务。随后 `MEMBERSHIP_ENFORCEMENT_MODE` 设为 `test`，只有 `MEMBERSHIP_TEST_OPENIDS` 返回 ¥8 不限方案；非白名单完整保持旧 `¥3 / 15 / task_pack_5`。灰度 `payment` / `reminder` 已部署并通过白名单真实云冒烟；本轮只生成预览码，未上传体验版。
 >
 > 2026-11-05 能力门禁已部署：新客户端统一在 `reminder` 请求中声明 `membershipCapabilities=['unlimited-v3']`。服务端只有在能力声明命中且方案灰度允许时才返回 ¥6 不限方案；旧客户端未声明能力时永久继续旧 `¥3 / 15 / task_pack_5`，即使 `MEMBERSHIP_ENFORCEMENT_MODE=all`。`reminder` 已于 23:10 前后部署为 `Active`、Nodejs16.13、60 秒，保持 `MEMBERSHIP_ENFORCEMENT_MODE=test` 与既有白名单；真实云冒烟确认白名单新能力返回 `unlimited-v3`，同一账号无能力声明返回 `legacy-v2`，会员页不展示 `10000`。本轮仅生成开发版预览码，未上传体验版、未提审、未发布。
@@ -13,7 +15,7 @@
 - 会员不是抢票服务，而是 **30 天提醒名额扩容**。
 - 免费版：5 个提醒名额。
 - 会员：当前新订单为 ¥6 / 30 天，会员有效期内不限提醒名额，不自动续费。新购买或续费在原有效期末尾增加 30 天；已过期会员从支付成功时起算 30 天。历史 ¥8 订单继续按订单快照支付、查单、发放和退款。
-- 方案灰度复用 `MEMBERSHIP_ENFORCEMENT_MODE`，并叠加客户端能力门禁：请求必须声明 `membershipCapabilities=['unlimited-v3']`。生产验收期间模式为 `test`，只有同时命中 `MEMBERSHIP_TEST_OPENIDS` 才返回 ¥6 不限方案；非白名单或未声明能力继续完整旧契约 `¥3 / 15 个 / task_pack_5`。`all` 只对声明能力的新客户端开放新方案，不能与数据库额度限制模式混为一谈。
+- 方案灰度复用 `MEMBERSHIP_ENFORCEMENT_MODE`，并叠加客户端能力门禁：请求必须声明 `membershipCapabilities=['unlimited-v3']`。2026-11-06 正式发布后模式已切为 `all`，所有声明能力的新客户端返回 ¥6 不限方案；未声明能力继续完整旧契约 `¥3 / 15 个 / task_pack_5`。`all` 只对声明能力的新客户端开放新方案，不能与数据库额度限制模式混为一谈。
 - 当前有效老会员自动获得不限权益，`memberExpiresAt` 不变，不执行批量权益写入。
 - 提醒加量包停止新售，`membership.createOrder` 只接受 `member`；历史 `task_pack_5` 待支付订单仍可按订单快照完成，历史包继续用于展示、对账和退款，但不再参与会员额度计算。
 - 微信订阅消息仍需按条授权；“不限提醒名额”不替代订阅授权，会员到期不删除已有提醒；不保证景点有票，不代抢、不代约。
