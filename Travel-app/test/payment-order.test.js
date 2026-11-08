@@ -9,8 +9,10 @@ const {
 } = require('../cloudfunctions/payment/lib/schema');
 const {
   findOrderById, fulfillOrder, markOrderClosed, reverseOrderEntitlement,
+  activeUpgradeOrderForUser, upgradeDependencyBlockingRefund,
   isCallbackPaidResult, isQueryPaidResult,
 } = require('../cloudfunctions/payment/lib/order');
+const membershipCredit = require('../cloudfunctions/payment/lib/membership-credit');
 
 const USER = 'openid_pay_001';
 
@@ -165,6 +167,147 @@ async function run() {
   eq(order.grantStatus, GrantStatus.FAILED, '过期升级单进入权益补救队列');
   eq(db._dump(COLLECTIONS.USERS)[0].memberTier, 'QUOTA_10',
     '过期升级单不回写 UNLIMITED');
+
+  console.log('\n=== 1d. 先退会员的依赖拦截与升级权益券 ===');
+  db = createDb({ cloudSetRejectsId: true });
+  const activeExpiry = new Date(Date.now() + 10 * 86400000);
+  seedUser(db, {
+    memberLevel: MemberLevel.MEMBER,
+    memberTier: 'UNLIMITED',
+    memberExpiresAt: activeExpiry,
+  });
+  const addedBaseOrder = await addOrder(db, {
+    packageId: 'member_quota_10',
+    planVersion: 'two-tier-v5',
+    membershipTier: 'QUOTA_10',
+    unlimited: false,
+    upgrade: false,
+    amountFen: 300,
+    unlimitedReminders: false,
+    specVersion: 'member-quota-10-30d-v3',
+    memberDays: 30,
+    memberFloorDays: 30,
+    status: OrderStatus.PAID,
+    grantStatus: GrantStatus.GRANTED,
+    paidAt: new Date(Date.now() - 60 * 1000),
+    entitlementGrant: { memberDaysAddedMs: 30 * 86400000, beforeTier: '' },
+  });
+  const addedUpgradeOrder = await addOrder(db, {
+    packageId: 'member_unlimited_upgrade',
+    planVersion: 'two-tier-v5',
+    membershipTier: 'UNLIMITED',
+    unlimited: true,
+    upgrade: true,
+    amountFen: 190,
+    unlimitedReminders: false,
+    specVersion: 'member-unlimited-upgrade-v4',
+    memberDays: 0,
+    memberFloorDays: 0,
+    status: OrderStatus.PAID,
+    grantStatus: GrantStatus.GRANTED,
+    paidAt: new Date(),
+    upgradeExpiresAt: activeExpiry,
+    entitlementGrant: {
+      beforeTier: 'QUOTA_10',
+      beforeTierOrderId: addedBaseOrder._id,
+      memberDaysAddedMs: 0,
+    },
+  });
+  const baseOrder = await findOrderById(db, addedBaseOrder._id);
+  const upgradeOrder = await findOrderById(db, addedUpgradeOrder._id);
+  await db.collection(COLLECTIONS.USERS).doc('user_pay_001').update({
+    data: { memberTierOrderId: upgradeOrder._id },
+  });
+  user = db._dump(COLLECTIONS.USERS)[0];
+  const unrelatedUpgrade = await activeUpgradeOrderForUser(db, USER, {
+    baseOrderId: 'another_base_order',
+  });
+  eq(unrelatedUpgrade, null, '其他会员单的升级包不阻断本单退款');
+  const expiredUpgrade = await activeUpgradeOrderForUser(db, USER, {
+    baseOrderId: baseOrder._id,
+    now: new Date(activeExpiry.getTime() + 1000),
+  });
+  eq(expiredUpgrade, null, '已过期升级包不再阻断会员退款');
+  const dependent = await upgradeDependencyBlockingRefund(db, baseOrder, user, new Date());
+  eq(dependent && dependent._id, upgradeOrder._id, '先退会员时识别到依赖升级单');
+
+  const converted = await reverseOrderEntitlement(db, baseOrder, 300);
+  eq(converted.success, true, '平台强制退会员时仍完成权益回收');
+  user = db._dump(COLLECTIONS.USERS)[0];
+  eq(user.memberLevel, MemberLevel.NORMAL, '会员主订单退款后回到非会员');
+  const credit = await membershipCredit.read(db, USER);
+  eq(credit && credit.status, membershipCredit.CreditStatus.AVAILABLE,
+    '仍在有效的升级单转为一次性升级权益');
+  const convertedUpgrade = await findOrderById(db, upgradeOrder._id);
+  eq(convertedUpgrade.grantStatus, GrantStatus.REVERTED,
+    '原升级单停止直接发放权益');
+  eq(convertedUpgrade.entitlementGrant.creditConverted, true,
+    '升级单记录已转为权益券');
+
+  const creditOrder = await addOrder(db, {
+    packageId: 'member_quota_10',
+    planVersion: 'two-tier-v5',
+    membershipTier: 'QUOTA_10',
+    unlimited: false,
+    upgrade: false,
+    upgradeCreditApplied: true,
+    upgradeCreditId: credit._id,
+    amountFen: 300,
+    unlimitedReminders: false,
+    specVersion: 'member-quota-10-30d-v3',
+    memberDays: 30,
+    memberFloorDays: 30,
+    status: OrderStatus.PENDING,
+  });
+  await membershipCredit.reserve(db, USER, creditOrder._id, new Date(Date.now() + 15 * 60000));
+  const creditOrderDoc = await findOrderById(db, creditOrder._id);
+  const creditPaid = await fulfillOrder(db, creditOrderDoc, { totalFee: 300 });
+  eq(creditPaid.success, true, '3 元订单消费升级权益后发放成功');
+  user = db._dump(COLLECTIONS.USERS)[0];
+  eq(user.memberTier, 'UNLIMITED', '3 元订单使用权益券后直接成为不限额度');
+  eq((await membershipCredit.read(db, USER)).status, membershipCredit.CreditStatus.CONSUMED,
+    '权益券只能消费一次');
+  const paidCreditOrder = await findOrderById(db, creditOrderDoc._id);
+  const creditReversed = await reverseOrderEntitlement(db, paidCreditOrder, 300);
+  eq(creditReversed.success, true, '使用权益券的订单可正常退款');
+  eq((await membershipCredit.read(db, USER)).status, membershipCredit.CreditStatus.AVAILABLE,
+    '订单退款后升级权益券恢复可用');
+  const convertedUpgradeRefund = await reverseOrderEntitlement(db, convertedUpgrade, 190);
+  eq(convertedUpgradeRefund.success, true, '平台退款已转权益券的升级单仍可收口');
+  eq((await membershipCredit.read(db, USER)).status, membershipCredit.CreditStatus.REVOKED,
+    '升级单被外部退款后撤销未消费权益券');
+  const refundedConvertedUpgrade = await findOrderById(db, convertedUpgrade._id);
+  eq(refundedConvertedUpgrade.refundStatus, RefundStatus.REFUNDED,
+    '已转权益券的升级单记录平台退款状态');
+  eq(refundedConvertedUpgrade.entitlementGrant.creditRevoked, true,
+    '权益券撤销结果写回升级单快照');
+
+  const staleCreditOrder = await addOrder(db, {
+    packageId: 'member_quota_10',
+    planVersion: 'two-tier-v5',
+    membershipTier: 'QUOTA_10',
+    unlimited: false,
+    upgrade: false,
+    upgradeCreditApplied: true,
+    upgradeCreditId: credit._id,
+    amountFen: 300,
+    unlimitedReminders: false,
+    specVersion: 'member-quota-10-30d-v3',
+    memberDays: 30,
+    memberFloorDays: 30,
+    status: OrderStatus.PENDING,
+  });
+  const staleCreditPaid = await fulfillOrder(
+    db,
+    await findOrderById(db, staleCreditOrder._id),
+    { totalFee: 300 }
+  );
+  eq(staleCreditPaid.success, true, '权益券撤销后已拉起支付的 3 元单仍按普通额度档发放');
+  user = db._dump(COLLECTIONS.USERS)[0];
+  eq(user.memberTier, 'QUOTA_10', '失效权益券不会错误发放不限额度');
+  const staleCreditSnapshot = await findOrderById(db, staleCreditOrder._id);
+  eq(staleCreditSnapshot.entitlementGrant.upgradeCreditRevoked, true,
+    '订单快照记录权益券已撤销');
 
   console.log('\n=== 2. 重复回调幂等 ===');
   db = createDb();

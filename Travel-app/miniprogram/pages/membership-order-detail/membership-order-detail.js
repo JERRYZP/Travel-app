@@ -26,6 +26,13 @@ function afterSalesActionLabelOf(order) {
 
 function stateOfOrder(order, latestCase) {
   if (!order) return null;
+  if (order.entitlementStatus === 'CREDITED' || order.creditConverted) {
+    return {
+      tone: 'review',
+      title: '升级权益已保留',
+      desc: '原会员订单退款后，本单 ¥1.9 升级权益已转为一次性权益。下次开通 3 元会员时会自动升级为不限额度，无需再次支付。',
+    };
+  }
   if (order.refundStatus === 'REFUNDED') {
     if (order.grantStatus === 'GRANTED' && !entitlementReverted(order)) {
       return {

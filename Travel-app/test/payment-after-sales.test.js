@@ -5,7 +5,7 @@ const Module = require('module');
 const path = require('path');
 const { createDb } = require('./mock-db');
 const {
-  COLLECTIONS, CaseStatus, RefundStatus, GrantStatus, OrderStatus,
+  COLLECTIONS, CaseStatus, CaseType, RefundStatus, GrantStatus, OrderStatus,
 } = require('../cloudfunctions/payment/lib/schema');
 const afterSales = require('../cloudfunctions/payment/lib/after-sales');
 const { reverseOrderEntitlement, fulfillOrder } = require('../cloudfunctions/payment/lib/order');
@@ -351,6 +351,93 @@ async function run() {
   const later = db._dump(COLLECTIONS.ORDERS).find(item => item._id === 'later');
   const wideEvidence = await afterSales.duplicateEvidence(db, later);
   eq(wideEvidence.duplicate, false, '间隔超过 1 分钟的连续购买不判为重复支付');
+
+  console.log('\n=== 3.1 有升级包时先退会员被服务端拦截 ===');
+  db = createDb();
+  const dependencyExpiry = new Date(Date.now() + 10 * DAY);
+  seedUser(db, {
+    memberExpiresAt: dependencyExpiry,
+    memberTier: 'UNLIMITED',
+    memberTierOrderId: 'order_upgrade_dependency',
+  });
+  seedPaidOrder(db, {
+    _id: 'order_base_dependency',
+    packageId: 'member_quota_10',
+    productType: 'MEMBER',
+    amountFen: 300,
+    memberDays: 30,
+    memberFloorDays: 30,
+    entitlementGrant: {
+      memberDaysAddedMs: 30 * DAY,
+      beforeTier: '',
+      appliedAt: new Date(Date.now() - 3500000),
+    },
+  });
+  db._seed(COLLECTIONS.ORDERS, [
+    db._dump(COLLECTIONS.ORDERS)[0],
+    {
+      _id: 'order_upgrade_dependency',
+      userId: USER,
+      outTradeNo: 'TUPGRADEDEPENDENCY',
+      packageId: 'member_unlimited_upgrade',
+      productType: 'MEMBER',
+      membershipTier: 'UNLIMITED',
+      unlimited: true,
+      upgrade: true,
+      title: '升级不限提醒名额',
+      amountFen: 190,
+      memberDays: 0,
+      status: OrderStatus.PAID,
+      grantStatus: GrantStatus.GRANTED,
+      refundStatus: RefundStatus.NONE,
+      paidAt: new Date(Date.now() - 1800000),
+      createdAt: new Date(Date.now() - 1900000),
+      upgradeExpiresAt: dependencyExpiry,
+      entitlementGrant: {
+        beforeTier: 'QUOTA_10',
+        beforeTierOrderId: 'order_base_dependency',
+        memberDaysAddedMs: 0,
+        appliedAt: new Date(Date.now() - 1700000),
+      },
+    },
+  ]);
+  const dependencyBlocked = await afterSales.createCaseRecord(db, USER, {
+    orderId: 'order_base_dependency',
+    type: CaseType.UNUSED_REFUND,
+    requestId: 'req_dependency_base_refund',
+  });
+  eq(dependencyBlocked.success, false, '先退会员被服务端拒绝');
+  eq(dependencyBlocked.errorCode, 1034, '返回升级包退款依赖错误码');
+  eq(dependencyBlocked.dependentUpgradeOrderId, 'order_upgrade_dependency',
+    '返回需要先处理的升级单');
+  db._seed(COLLECTIONS.ORDERS, [{
+    _id: 'order_credit_converted',
+    userId: USER,
+    outTradeNo: 'TCREDITCONVERTED',
+    packageId: 'member_unlimited_upgrade',
+    productType: 'MEMBER',
+    title: '升级不限提醒名额',
+    amountFen: 190,
+    memberDays: 0,
+    status: OrderStatus.PAID,
+    grantStatus: GrantStatus.REVERTED,
+    refundStatus: RefundStatus.NONE,
+    paidAt: new Date(Date.now() - 1800000),
+    entitlementGrant: {
+      creditConverted: true,
+      creditId: 'upgrade_credit_test',
+      memberDaysAddedMs: 0,
+      appliedAt: new Date(Date.now() - 1700000),
+      revertedAt: new Date(),
+    },
+  }]);
+  const convertedCreditCase = await afterSales.createCaseRecord(db, USER, {
+    orderId: 'order_credit_converted',
+    type: CaseType.UNUSED_REFUND,
+    requestId: 'req_credit_converted_refund',
+  });
+  eq(convertedCreditCase.success, false, '已转权益券的升级单拒绝普通退款接口');
+  eq(convertedCreditCase.errorCode, 1029, '权益券订单返回不可退款错误码');
 
   console.log('\n=== 4. 退款按本单快照回收，不删除提醒 ===');
   db = createDb();

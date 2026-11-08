@@ -9,7 +9,7 @@
 > 2026-11-04 更新：会员升级通过 `MEMBERSHIP_ENFORCEMENT_MODE` 做方案灰度。仅 `test` 且命中 `MEMBERSHIP_TEST_OPENIDS` 的新能力客户端返回不限会员方案；非白名单继续旧契约。`all` 仅供用户明确授权的全量切换。`taskLimitUnlimited` 是新方案权益标志；禁止让旧客户端消费 `taskLimit=10000` 兼容投影。
 >
 > 2026-11-05 更新：当前不限会员价格由 ¥8 调整为 ¥6 / 30 天，规格版本升级为 `member-unlimited-30d-v4`。历史 `member-unlimited-30d-v3` / 800 分订单继续按订单快照支付、查单、发放和退款。
-> 2026-11-08 更新：新增 `two-tier-v5` 候选契约，仅对 `MEMBERSHIP_TEST_OPENIDS` 生效：¥3 / 30 天 / 10 个提醒名额、¥4.9 / 30 天 / 不限额度、¥1.9 补差升级。非白名单继续现有 `unlimited-v3` 或 `legacy-v2`，不受候选价格影响。
+> 2026-11-08 更新：新增 `two-tier-v5` 候选契约，仅对 `MEMBERSHIP_TEST_OPENIDS` 生效：¥3 / 30 天 / 10 个提醒名额、¥4.9 / 30 天 / 不限额度、¥1.9 补差升级。升级包依赖 3 元会员单，先退会员返回 `1034`；平台强制先退会员时，未过期升级包转一次性升级权益券，仅随下一笔 3 元会员单原子消费。非白名单继续现有 `unlimited-v3` 或 `legacy-v2`，不受候选价格影响。
 > 2026-11-02 更新：客服工作台新增会员限制模式切换。运行期真身为 `payment_config/membership_enforcement`，管理员可切 `off/test/all` 并即时生效；切 `all` 前服务端强制核验两项上线迁移。
 > 2026-11-02 更新：新增客服工作台。管理员可通过 `adminOrders.list/detail` 查询全部会员订单，售后列表补全昵称、完整 OpenID 与关键词搜索；会员购买总开关保留在页面顶部。
 > 2026-11-02 更新：新增会员购买总开关 `payment_config/membership_sales`。暂停只阻止新订单和新发起支付；已支付订单继续查单与发权益，会员状态、订单、退款和售后不受影响。
@@ -64,6 +64,7 @@
 | 1026 | 提醒名额不足 | 进入会员页或提醒页内付费入口；保留原清单并展示真实缺口 |
 | 1032 | 会员购买暂停中 | 关闭支付入口；保留清单和会员/订单/售后状态，稍后由服务端恢复 |
 | 1033 | 上线迁移未完成，不能切全量 | 保持原会员限制模式；先完成对应迁移 |
+| 1034 | 升级包依赖会员主订单 | 停止退款并引导先查看/退款升级包；平台强制先退会员时由服务端转权益券 |
 | 1041 | 当前行程暂不可分享 | 分享浮层保留可见错误，不创建令牌 |
 | 1042 | 分享行程不可查看 | 只读页统一显示失效态，不区分停止、过期、删除或非法令牌 |
 | 1043 | 反馈不存在 | Toast「反馈不存在」并刷新列表 |
@@ -1065,7 +1066,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 - 用户侧统一使用「提醒名额」。免费版 5 个。现有 `unlimited-v3` 契约保持 `¥6 / 30 天 / 不限`；候选 `two-tier-v5` 为 `member_quota_10`（¥3 / 30 天 / 总额度 10）和 `member_unlimited`（¥4.9 / 30 天 / 不限）。每条微信订阅消息仍需按条授权，不自动续费。
 - 方案路由顺序固定：先判断 `two-tier-v5`，再判断现有 `unlimited-v3`，最后回退 `legacy-v2`。`two-tier-v5` 必须同时满足请求声明该能力且 OpenID 命中 `MEMBERSHIP_TEST_OPENIDS`；不受数据库额度模式 `all` 影响。非白名单即使声明 `two-tier-v5`，只要还声明 `unlimited-v3` 就继续当前 ¥6 契约；旧客户端仍返回旧价格、旧额度和旧加量包。
-- 3 元档超过 10 个时只允许 `member_unlimited_upgrade` 补 ¥1.9 升级；订单保存 `upgradeExpiresAt`，只换档、不增加会员时长。剩余不足 15 分钟时服务端拒绝创单。
+- 3 元档超过 10 个时只允许 `member_unlimited_upgrade` 补 ¥1.9 升级；订单保存 `upgradeExpiresAt`，只换档、不增加会员时长。剩余不足 15 分钟时服务端拒绝创单。升级单是 3 元会员单的子权益，有有效升级单时先退主会员单返回 `1034`。
+- 外部平台强制先退 3 元会员单时，退款状态机必须把仍有效且绑定本单的升级单转为一次性升级权益券，不能留下“无会员但升级包有效”的非法状态。权益券只允许绑定下一笔 `member_quota_10` 订单；该 3 元订单支付后直接发放 `UNLIMITED`，不再另收 ¥1.9。3 元订单退款时恢复权益券。已转权益券的 1.9 元订单不再进入普通售后；若平台仍强制退款该升级单，权益券原地转为 `REVOKED`，已拉起支付的 3 元单按普通 `QUOTA_10` 发放。
 - 当前有效老会员自动获得不限权益，`memberExpiresAt` 不变。`two-tier-v5` 旧会员没有 `memberTier` 时按 `LEGACY_UNLIMITED` 保护，到期后才恢复两档价格。历史 `taskPackCount/taskPackSlots` 继续按订单/用户账本兼容。
 - 老用户保护池与新增池彼此独立：任务创建时若用户尚未进入会员限制（`off`，或 `test` 模式下不在白名单），任务进入历史保护池；只有 `test` 白名单或 `all` 模式下新建的任务进入免费/会员新增池。无 `quotaPool` 字段的旧任务一律兼容为保护池。`taskLimit / taskUsed / taskRemaining` 只描述新增池，`protectedTaskUsed` 单独返回保护池占用。
 - `reminder` 的会员限制运行期唯一真身为 `payment_config/membership_enforcement`，文档字段 `mode=off|test|all`。管理端切换后立即影响新任务；已有任务继续按原 `quotaPool` 计数。`MEMBERSHIP_ENFORCEMENT_MODE` 只在配置缺失、非法或读取失败时兜底，`MEMBERSHIP_TEST_OPENIDS` 继续控制 `test` 白名单。
@@ -1099,6 +1101,11 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     upgradeAvailable: Boolean,
     upgradeShortWindow: Boolean,
     upgradeWindowClosed: Boolean,
+    upgradeCreditAvailable: Boolean,
+    upgradeCreditPending: Boolean,
+    upgradeCreditText: String,
+    upgradeCreditSourceOrderId: String,
+    upgradeCreditPendingOrderId: String,
     taskLimitUnlimited: Boolean, // true 时客户端必须按不限展示并跳过名额拦截
     taskLimit: Number | null,
     taskUsed: Number,
@@ -1120,7 +1127,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     id: 'member' | 'task_pack_5' | 'member_quota_10' | 'member_unlimited' | 'member_unlimited_upgrade',
     type: 'MEMBER' | 'TASK_PACK',
     title, priceFen, priceText, description,
-    membershipTier, unlimited, upgrade,
+    membershipTier, unlimited, upgrade, upgradeCreditApplied,
     unlimitedReminders, memberDays, addedSlots, specVersion, available, actionText
   }]
 }
@@ -1128,6 +1135,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 - 停售期间套餐仍可展示价格和权益，但 `available=false`；客户端不得从 `sales.state` 自行推导订单或权益状态。
 - `unlimited-v3` 有效会员继续返回 `taskLimit/taskRemaining/memberTaskSlots=10000` 兼容投影，额度判断先读 `taskLimitUnlimited=true`。`two-tier-v5` 的不限会员返回 `taskLimit/taskRemaining=null`、`pricingVisible=false`、`packages=[]`；3 元档返回 `memberTier=QUOTA_10` 且只带升级包。`legacy-v2` 保持旧 `15 + 加量包` 契约。
+- 存在可用升级权益券且当前不是会员时，`packages` 只返回 `member_quota_10`，并标记 `upgradeCreditApplied=true`；此时禁止直接购买 `member_unlimited`。权益券被待支付订单预留时 `upgradeCreditPending=true`，`upgradeCreditPendingOrderId` 指向占用订单。
 
 #### `membership.createOrder`
 
@@ -1143,6 +1151,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   orderId, outTradeNo, amountFen, packageId, productType,
   specVersion, addedSlots, unlimitedReminders, memberDays, title,
   planVersion, membershipTier, unlimited, upgrade, upgradeExpiresAt,
+  upgradeCreditApplied, upgradeCreditId,
   reused?: true
 }
 ```
@@ -1150,6 +1159,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - 金额、商品类型和权益只从服务端套餐表读取，客户端不能传价格。
 - `requestId` 必填，8-80 位，只允许字母、数字、下划线和短横线。服务端用 `OpenID + requestId` 生成确定性订单 ID；同一请求重试返回同一订单，同一 `requestId` 改商品或规格必须拒绝。
 - `two-tier-v5` 三个订单规格固定为：`member_quota_10` 300 分 / 30 天 / `QUOTA_10`；`member_unlimited` 490 分 / 30 天 / `UNLIMITED`；`member_unlimited_upgrade` 190 分 / 0 天 / 升级并冻结 `upgradeExpiresAt`。非白名单或未声明能力继续按 `unlimited-v3` / `legacy-v2` 原契约下单。
+- 使用升级权益券创建 3 元订单时，订单固化 `upgradeCreditApplied=true` 与 `upgradeCreditId`，并在创建后预留该券；关单释放预留，支付时原子消费。同一权益券只能被一笔有效待支付或已支付订单占用。
 - 只有 `productType + specVersion + addedSlots + unlimitedReminders + memberDays + amountFen` 以及 `two-tier-v5` 的 `planVersion + membershipTier + unlimited + upgrade + upgradeExpiresAt` 全部一致且未过期的 `PENDING` 订单才可复用；旧规格订单只按 `status=PENDING` 条件关闭，不能覆盖并发回调已经置为 `PAID` 的订单。
 - 新会员订单权益快照保存 `beforeTier / afterTier / beforeTierOrderId / memberDaysAddedMs`；升级单保持原到期时间并为 `memberDaysAddedMs=0`。历史会员订单和加量包缺少新字段时继续按原订单快照兼容，不回写历史金额或权益。
 - 提醒名额不足统一返回错误码 `1026`，携带 `taskLimit`、`membership` 和 `packages`；失败时不得创建行程、任务或清空清单。
@@ -1172,14 +1182,20 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     refundStatusLabel, refundAmountFen, refundedAtText,
     paymentChannel: 'APPLE' | 'WECHAT_VIRTUAL' | 'WECHAT_PAY',
     grantStatus: 'NONE' | 'GRANTED' | 'FAILED' | 'REVERTED',
-    entitlementStatus: 'PENDING' | 'PAID_GRANT_UNKNOWN' | 'PAID_GRANTED' | 'PAID_GRANT_FAILED' | 'CLOSED' | 'REFUNDED',
+    entitlementStatus: 'PENDING' | 'PAID_GRANT_UNKNOWN' | 'PAID_GRANTED' | 'PAID_GRANT_FAILED' | 'CLOSED' | 'REFUNDED' | 'CREDITED',
+    upgradeCreditApplied: Boolean,
+    upgradeCreditId: String,
     entitlementGrant: {
       beforeExpiresAt, afterExpiresAt, memberDaysAddedMs,
       taskPackDelta, taskPackCountAdded, taskPackSlotsAdded, unlimitedReminders,
-      specVersion, appliedAt, revertedAt
+      specVersion, upgradeCreditApplied, upgradeCreditId,
+      creditConverted, creditId, appliedAt, revertedAt
     } | null,
     canRequestRefund: Boolean,
-    refundEligibility: { withinWindow, usedAfterPurchase, alreadyRefunded, refundInProgress, hoursSincePaid, eligible },
+    refundEligibility: {
+      withinWindow, usedAfterPurchase, alreadyRefunded, refundInProgress,
+      hoursSincePaid, eligible, convertedToCredit
+    },
     isExpired: Boolean,
     actions: [{ key: 'PAY' | 'CANCEL' | 'SYNC' | 'AFTER_SALES' | 'REBUY', label }],
     actionFlags: { canPay, canCancel, canSync, canAfterSales, canRebuy, afterSalesLabel },
@@ -1267,6 +1283,9 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 { action: 'afterSales.detail', caseId }
 { action: 'afterSales.syncRights', orderId }
 ```
+
+- 有有效升级单且退款会移除当前会员时，`afterSales.submit` 在创建售后前返回 `1034` 和 `dependentUpgradeOrderId`；客服批准退款前再次执行同一服务端拦截，不能只依赖页面按钮。
+- `entitlementGrant.creditConverted=true` 的升级单不进入普通售后；直接调用接口返回 `1029`。平台强制退款仍通过退款状态机把权益券置为 `REVOKED`，不能只依赖客户端隐藏按钮。
 
 - `type`: `RIGHTS_NOT_RECEIVED | DUPLICATE_CHARGE | UNUSED_REFUND | ENTITLEMENT_MISMATCH | OTHER`。
 - `requestId` 必填，8-80 位，只允许字母、数字、下划线和短横线。同一用户、订单和 `requestId` 的重试返回同一售后单；同一订单事务内只允许一条活动售后，终态后清空订单的 `activeAfterSalesCaseId`。

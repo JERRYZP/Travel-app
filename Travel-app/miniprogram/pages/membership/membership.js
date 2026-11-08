@@ -11,6 +11,7 @@ const PREVIEW_LABELS = Object.freeze({
   quota_closed: '静态预览 · 3 元档会员（不足15分钟）',
   unlimited: '静态预览 · 新不限额度会员',
   legacy: '静态预览 · 老会员用户',
+  credit: '静态预览 · 已保留升级权益',
 });
 
 function usagePercentOf(used, limit) {
@@ -439,6 +440,9 @@ Page({
     }
     if (pkg.upgrade) return `补 ${pkg.priceText}，升级不限额度`;
     const days = Math.max(0, Number(pkg.memberDays) || 0);
+    if (pkg.upgradeCreditApplied) {
+      return `支付 ${pkg.priceText}，开通 30 天并升级不限额度`;
+    }
     if (pkg.unlimited || pkg.unlimitedReminders) {
       return `支付 ${pkg.priceText}，${current.member ? `续费 ${days} 天不限额度` : `开通 ${days} 天不限额度`}`;
     }
@@ -510,20 +514,25 @@ Page({
     const expiry = expectedExpiryOf(pkg, this.data.membership);
     const memberSlots = Math.max(0, Number(this.data.membership && this.data.membership.memberTaskSlots) || 0);
     const isUpgrade = pkg.upgrade === true;
+    const upgradeCreditApplied = pkg.upgradeCreditApplied === true;
     const isUnlimited = pkg.unlimited === true || pkg.unlimitedReminders === true;
     this.setData({
       showPayConfirm: true,
       confirmTitle: isUpgrade
         ? '升级不限提醒名额'
+        : (upgradeCreditApplied
+          ? `${Number(pkg.memberDays) || 0} 天不限提醒名额`
         : (isUnlimited
           ? `${Number(pkg.memberDays) || 0} 天不限提醒名额`
-          : `${Number(pkg.memberDays) || 0} 天 ${Math.max(0, Number(pkg.taskSlots) || 0)} 个提醒名额`),
+          : `${Number(pkg.memberDays) || 0} 天 ${Math.max(0, Number(pkg.taskSlots) || 0)} 个提醒名额`)),
       confirmAmount: pkg.priceText,
       confirmEffect: isUpgrade
         ? '支付成功后立即升级为不限提醒名额，不延长会员有效期'
+        : (upgradeCreditApplied
+          ? '支付成功后自动使用已保留的 ¥1.9 升级权益，开通不限提醒名额'
         : (isUnlimited
           ? '支付成功后 30 天内不限制提醒名额'
-          : `支付成功后 30 天内最多 ${memberSlots} 个提醒名额`),
+          : `支付成功后 30 天内最多 ${memberSlots} 个提醒名额`)),
       confirmExpiry: `会员有效期至 ${formatBeijingDate(expiry)}`,
       confirmPayButtonText: `支付 ${pkg.priceText}`,
     });

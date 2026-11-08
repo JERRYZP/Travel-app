@@ -9,6 +9,7 @@
 const COLLECTIONS = {
   USERS: 'users',
   ORDERS: 'orders',
+  MEMBERSHIP_CREDITS: 'membership_credits',
   AFTER_SALES_CASES: 'after_sales_cases',
   ADMIN_AUDIT_LOGS: 'admin_audit_logs',
   REMINDER_TASKS: 'reminder_tasks',
@@ -90,6 +91,10 @@ const ERRORS = {
   MEMBERSHIP_ENFORCEMENT_NOT_READY: {
     code: 1033,
     message: '上线前数据迁移未完成，不能切换全量会员限制',
+  },
+  UPGRADE_REFUND_REQUIRED: {
+    code: 1034,
+    message: '请先退款 ¥1.9 升级包，再退会员',
   },
   FORBIDDEN: { code: 1040, message: '无权限' },
   FEEDBACK_NOT_FOUND: { code: 1043, message: '反馈不存在' },

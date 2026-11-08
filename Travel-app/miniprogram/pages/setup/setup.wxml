@@ -77,7 +77,18 @@
       <text class="membership-gate-desc">{{membershipGateDesc}}</text>
       <text class="membership-gate-note">{{membershipGateNote}}</text>
     </view>
-    <view class="membership-gate-action {{membershipGateActionDisabled ? 'disabled' : ''}}" bindtap="onUpgradeAndContinue">
+    <view wx:if="{{membershipOptions.length}}" class="membership-option-list">
+      <view
+        wx:for="{{membershipOptions}}"
+        wx:key="packageId"
+        class="membership-option {{item.primary ? 'primary' : 'secondary'}} {{item.disabled ? 'disabled' : ''}}"
+        data-id="{{item.packageId}}"
+        bindtap="onUpgradeAndContinue"
+      >
+        <text class="membership-option-text">{{item.payText}}</text>
+      </view>
+    </view>
+    <view wx:else class="membership-gate-action {{membershipGateActionDisabled ? 'disabled' : ''}}" bindtap="onUpgradeAndContinue">
       <text>{{membershipActionText}}</text>
     </view>
     <view class="membership-gate-link" bindtap="onMembership">
@@ -90,18 +101,6 @@
     <text class="payment-state-title">{{paymentState.title}}</text>
     <text class="payment-state-desc">{{paymentState.description}}</text>
     <view wx:if="{{paymentState.orderId}}" class="payment-state-action" bindtap="onPaymentOrder">查看订单详情</view>
-  </view>
-
-  <view class="setting-card sms-card">
-    <view class="setting-row">
-      <view class="setting-row-left">
-        <svg-icon name="sms-bubble" size="24px" />
-        <view class="setting-row-info">
-          <text class="setting-row-label">短信提醒</text>
-        </view>
-      </view>
-      <text class="setting-row-coming">敬请期待</text>
-    </view>
   </view>
 
   <text class="section-label">提醒时间</text>
@@ -125,7 +124,7 @@
     </view>
   </view>
 
-  <view class="submit-btn {{canSubmit ? '' : 'disabled'}}" bindtap="onSubmit">
+  <view class="submit-btn {{canSubmit && !showMembershipGate ? '' : 'disabled'}}" bindtap="onSubmit">
     <svg-icon name="check" size="14px" />
     <text>开启行程放票提醒</text>
   </view>

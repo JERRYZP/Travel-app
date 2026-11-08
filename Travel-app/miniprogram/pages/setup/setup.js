@@ -17,7 +17,6 @@ Page({
     navBarHeight: 44,
     channels: {
       officialAccount: true,
-      sms: false,
     },
     offsets: [5],
     checkedOffset5: true,
@@ -44,6 +43,7 @@ Page({
     membershipQuotaRequested: 0,
     membershipQuotaGap: 0,
     upgradePackageId: '',
+    membershipOptions: [],
     paymentState: null,
     showUpgradeConfirm: false,
     upgradeConfirmTitle: '',
@@ -159,6 +159,7 @@ Page({
         membershipGateActionDisabled: false,
         ...quotaFields,
         upgradePackageId: '',
+        membershipOptions: [],
       };
     }
 
@@ -166,7 +167,6 @@ Page({
     const packages = Array.isArray(availablePackages) ? availablePackages : [];
     const freeSlots = Math.max(0, Number(current.freeTaskSlots) || 0);
     const memberSlots = Math.max(freeSlots, Number(current.memberTaskSlots) || 0);
-    const memberDays = Math.max(0, Number(current.memberDurationDays) || 0);
     const purchaseEnabled = !sales || sales.purchaseEnabled !== false;
     const salesMessage = (sales && sales.message) || '会员购买暂停中，请稍后再试。';
     const candidates = packages.filter(item =>
@@ -187,7 +187,6 @@ Page({
         : (unlimitedPlan || quotaPlan);
     }
     const priceText = (pkg && pkg.priceText) || '';
-    const displayMemberDays = Math.max(0, Number(pkg && pkg.memberDays) || memberDays);
     const isUpgrade = !!(pkg && pkg.upgrade === true);
     const isUnlimited = !!(pkg
       && (pkg.unlimited === true || pkg.unlimitedReminders === true));
@@ -195,6 +194,13 @@ Page({
     const alternativeText = alternative
       ? `也可选择 ${alternative.priceText} ${alternative.unlimited ? '不限额度' : `${alternative.taskSlots} 个提醒名额`}。`
       : '';
+    const membershipOptions = membershipEntry.purchaseOptionsOf(
+      current,
+      packages,
+      requested,
+      purchaseEnabled,
+      salesMessage
+    );
     if (isUpgrade || current.memberTier === 'QUOTA_10') {
       const upgradeWindowClosed = current.memberTier === 'QUOTA_10'
         && current.upgradeWindowClosed === true;
@@ -209,7 +215,7 @@ Page({
         membershipGateNote: upgradeWindowClosed
           ? `会员到期：${current.memberExpiresAtText || '—'}`
           : (purchaseEnabled
-          ? `会员到期：${current.memberExpiresAtText || '—'}；升级后当前会员权益继续有效`
+          ? `会员到期：${current.memberExpiresAtText || '—'}；升级后的不限额度权益在会员有效期内生效。`
           : `会员到期：${current.memberExpiresAtText || '—'}；已有权益不受影响`),
         membershipActionText: upgradeWindowClosed
           ? '会员即将到期'
@@ -221,6 +227,7 @@ Page({
         membershipGateActionDisabled: upgradeWindowClosed || !purchaseEnabled || !pkg,
         ...quotaFields,
         upgradePackageId: upgradeWindowClosed ? '' : (pkg ? pkg.id : ''),
+        membershipOptions,
       };
     }
 
@@ -230,12 +237,14 @@ Page({
       membershipGateDesc: purchaseEnabled
         ? (isUnlimited
           ? `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额；选择不限额度会员后，30 天内不限制提醒名额。`
-          : `选择 ${priceText || ''} 会员后，30 天内最多 ${memberSlots} 个提醒名额。`)
+          : `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额。`)
         : salesMessage,
       membershipGateNote: purchaseEnabled
-        ? (pkg
-          ? `${priceText} / ${displayMemberDays} 天，不自动续费。${alternativeText}`
-          : '会员商品暂不可购买')
+        ? (current.upgradeCreditAvailable
+          ? (current.upgradeCreditText || '已保留 ¥1.9 升级权益，将在本次开通后自动使用。')
+        : (pkg
+          ? `一次性付费，不自动续费。${alternativeText}`
+          : '会员商品暂不可购买'))
         : '已有会员权益、订单和售后不受影响',
       membershipActionText: purchaseEnabled
         ? (pkg
@@ -247,6 +256,7 @@ Page({
       membershipGateActionDisabled: !purchaseEnabled,
       ...quotaFields,
       upgradePackageId: pkg ? pkg.id : '',
+      membershipOptions,
     };
   },
 
@@ -297,7 +307,6 @@ Page({
 
   onToggleChannel(e) {
     const key = e.currentTarget.dataset.key;
-    if (key === 'sms') return;
     const channels = Object.assign({}, this.data.channels);
     channels[key] = !channels[key];
     this.setData({ channels }, () => this.refreshAccessState(this.data.quotaNeeded));
@@ -556,13 +565,21 @@ Page({
     wx.navigateTo({ url: `/pages/membership/membership?${query}` });
   },
 
-  onUpgradeAndContinue() {
+  onUpgradeAndContinue(e) {
     if (this._upgrading || this.data.submitting) return;
     if (this.data.membershipSales && this.data.membershipSales.purchaseEnabled === false) {
       wx.showToast({ title: '会员购买暂停中，请稍后再试', icon: 'none' });
       return;
     }
-    const packageId = this.data.upgradePackageId;
+    const optionId = String((e && e.currentTarget && e.currentTarget.dataset
+      && e.currentTarget.dataset.id) || '');
+    const option = (this.data.membershipOptions || []).find(item =>
+      item && item.packageId === optionId);
+    if (option && option.disabled) {
+      wx.showToast({ title: option.disabledReason || '当前方案暂不可购买', icon: 'none' });
+      return;
+    }
+    const packageId = (option && option.packageId) || this.data.upgradePackageId;
     if (!packageId) return;
     const pkg = (this.data.packages || []).find(item => item && item.id === packageId);
     if (!pkg) return;
@@ -590,7 +607,10 @@ Page({
     const current = this.data.membership || {};
     const memberSlots = Math.max(0, Number(current.memberTaskSlots) || 0);
     const isUpgrade = pkg.upgrade === true;
-    const isUnlimited = pkg.unlimited === true || pkg.unlimitedReminders === true;
+    const upgradeCreditApplied = pkg.upgradeCreditApplied === true;
+    const isUnlimited = pkg.unlimited === true
+      || pkg.unlimitedReminders === true
+      || upgradeCreditApplied;
     this.setData({
       showUpgradeConfirm: true,
       upgradeConfirmTitle: isUpgrade
@@ -601,9 +621,11 @@ Page({
       upgradeConfirmAmount: pkg.priceText || '',
       upgradeConfirmDesc: isUpgrade
         ? '支付成功后立即升级为不限提醒名额，不延长会员有效期，并继续完成本次提醒。'
+        : (upgradeCreditApplied
+          ? '支付成功后自动使用已保留的 ¥1.9 升级权益，开通不限提醒名额并继续完成本次提醒。'
         : (isUnlimited
           ? '支付成功后 30 天内不限提醒名额，并继续完成本次提醒。'
-          : `支付成功后 30 天内最多 ${memberSlots} 个提醒名额，并继续完成本次提醒。`),
+          : `支付成功后 30 天内最多 ${memberSlots} 个提醒名额，并继续完成本次提醒。`)),
       upgradeConfirmExpiry: `会员有效期至 ${p.getUTCFullYear()}年${p.getUTCMonth() + 1}月${p.getUTCDate()}日`,
     });
   },

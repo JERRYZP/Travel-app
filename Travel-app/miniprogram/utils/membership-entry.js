@@ -39,6 +39,133 @@ function packageForLimit(current, packages, requested, includeUnavailable = fals
   return unlimitedPlan || quotaPlan;
 }
 
+function optionCopyOf(pkg, current, creditApplied = false) {
+  const isUpgrade = pkg.upgrade === true;
+  const isUnlimited = pkg.unlimited === true || pkg.unlimitedReminders === true;
+  if (isUpgrade) {
+    return {
+      title: pkg.title || '升级不限提醒名额',
+      description: '仅当前会员期内生效，不延长有效期',
+      payText: `补 ${pkg.priceText}，升级不限额度并继续`,
+    };
+  }
+  if (isUnlimited) {
+    return {
+      title: pkg.title || '不限提醒名额',
+      description: `有效期${Math.max(0, Number(pkg.memberDays) || 0)}天，不限额度`,
+      payText: `支付 ${pkg.priceText}，开通不限额度并继续`,
+    };
+  }
+  if (creditApplied) {
+    return {
+      title: pkg.title || '10 个提醒名额',
+      description: '已保留 ¥1.9 升级权益，支付后自动升级为不限额度',
+      payText: `支付 ${pkg.priceText}，开通 30 天并升级不限额度`,
+    };
+  }
+  return {
+    title: pkg.title || `${pkg.taskSlots || 10} 个提醒名额`,
+    description: `有效期${Math.max(0, Number(pkg.memberDays) || 0)}天，${pkg.taskSlots || 10}个提醒额度`,
+    payText: `支付 ${pkg.priceText}，开通 ${pkg.taskSlots || 10} 个提醒名额并继续`,
+  };
+}
+
+function purchaseOptionsOf(current, packages, requested, purchaseEnabled = true, salesMessage = '') {
+  const source = (packages || []).filter(item => item && item.type === 'MEMBER');
+  if (!source.length) return [];
+  const creditApplied = current && current.upgradeCreditAvailable === true
+    && current.member !== true;
+  if (current && current.memberTier === 'QUOTA_10') {
+    const upgrade = source.find(item => item.upgrade === true);
+    return upgrade ? [{
+      packageId: upgrade.id,
+      priceText: upgrade.priceText,
+      memberDays: Number(upgrade.memberDays) || 0,
+      memberFloorDays: Number(upgrade.memberFloorDays) || 0,
+      taskSlots: upgrade.taskSlots == null ? null : Number(upgrade.taskSlots) || 0,
+      primary: true,
+      secondary: false,
+      disabled: !purchaseEnabled || upgrade.available === false || current.upgradeWindowClosed === true,
+      disabledReason: current.upgradeWindowClosed
+        ? '会员即将到期'
+        : ((purchaseEnabled && upgrade.available !== false) ? '' : (salesMessage || '升级暂不可购买')),
+      upgrade: true,
+      unlimited: true,
+      upgradeCreditApplied: false,
+      ...optionCopyOf(upgrade, current),
+    }] : [];
+  }
+  if (current && (current.unlimited === true || current.taskLimitUnlimited === true)) return [];
+
+  const quotaPlan = source.find(item => item.unlimited !== true && item.unlimitedReminders !== true && item.upgrade !== true);
+  const unlimitedPlan = source.find(item => (item.unlimited === true || item.unlimitedReminders === true) && item.upgrade !== true);
+  if (creditApplied && quotaPlan) {
+    const creditPending = current.upgradeCreditPending === true;
+    return [{
+      packageId: quotaPlan.id,
+      priceText: quotaPlan.priceText,
+      memberDays: Number(quotaPlan.memberDays) || 0,
+      memberFloorDays: Number(quotaPlan.memberFloorDays) || 0,
+      taskSlots: Number(quotaPlan.taskSlots) || 0,
+      primary: true,
+      secondary: false,
+      disabled: !purchaseEnabled || quotaPlan.available === false || creditPending,
+      disabledReason: creditPending
+        ? '升级权益正在确认，请到会员订单继续支付'
+        : (purchaseEnabled ? '' : (salesMessage || '会员购买暂停中')),
+      upgrade: false,
+      unlimited: false,
+      upgradeCreditApplied: true,
+      ...optionCopyOf(quotaPlan, current, true),
+    }];
+  }
+
+  const used = Math.max(0, Number(current && current.taskUsed) || 0);
+  const requestedCount = Math.max(0, Number(requested) || 0);
+  const quotaLimit = Math.max(0, Number(quotaPlan && quotaPlan.taskSlots) || 10);
+  const quotaSufficient = !!quotaPlan && used + requestedCount <= quotaLimit;
+  const options = [];
+  if (quotaPlan) {
+    options.push({
+      packageId: quotaPlan.id,
+      priceText: quotaPlan.priceText,
+      memberDays: Number(quotaPlan.memberDays) || 0,
+      memberFloorDays: Number(quotaPlan.memberFloorDays) || 0,
+      taskSlots: Number(quotaPlan.taskSlots) || 0,
+      primary: quotaSufficient || !unlimitedPlan,
+      secondary: !!unlimitedPlan && quotaSufficient,
+      disabled: !purchaseEnabled
+        || quotaPlan.available === false
+        || (!quotaSufficient && !!unlimitedPlan),
+      disabledReason: !purchaseEnabled
+        ? (salesMessage || '会员购买暂停中')
+        : (!quotaSufficient && unlimitedPlan ? '本次仍不够，请选择不限额度' : ''),
+      upgrade: false,
+      unlimited: false,
+      upgradeCreditApplied: false,
+      ...optionCopyOf(quotaPlan, current),
+    });
+  }
+  if (unlimitedPlan) {
+    options.push({
+      packageId: unlimitedPlan.id,
+      priceText: unlimitedPlan.priceText,
+      memberDays: Number(unlimitedPlan.memberDays) || 0,
+      memberFloorDays: Number(unlimitedPlan.memberFloorDays) || 0,
+      taskSlots: null,
+      primary: !quotaSufficient,
+      secondary: quotaSufficient,
+      disabled: !purchaseEnabled || unlimitedPlan.available === false,
+      disabledReason: purchaseEnabled ? '' : (salesMessage || '会员购买暂停中'),
+      upgrade: false,
+      unlimited: true,
+      upgradeCreditApplied: false,
+      ...optionCopyOf(unlimitedPlan, current),
+    });
+  }
+  return options;
+}
+
 function viewOf(err) {
   const source = taskLimitOf(err);
   if (!source) return null;
@@ -67,11 +194,17 @@ function viewOf(err) {
   const memberDays = Math.max(0, Number(current.memberDurationDays) || 0);
   const selected = pkg || fallbackPkg || {};
   const isUpgrade = selected.upgrade === true;
-  const isUnlimited = selected.unlimited === true || selected.unlimitedReminders === true;
+  const upgradeCreditApplied = current.upgradeCreditAvailable === true
+    && !current.member
+    && selected.id === 'member_quota_10';
+  const isUnlimited = selected.unlimited === true
+    || selected.unlimitedReminders === true
+    || upgradeCreditApplied;
   const priceText = selected.priceText || '';
   const upgradeShortWindow = current.upgradeShortWindow === true;
   const upgradeWindowClosed = current.upgradeWindowClosed === true
     || (isUpgrade && selected.available === false);
+  const options = purchaseOptionsOf(current, packages, requested, purchaseEnabled, sales.message || '');
 
   return {
     title: `还差 ${shortfall} 个提醒名额`,
@@ -83,6 +216,7 @@ function viewOf(err) {
     member,
     unlimited: isUnlimited,
     upgrade: isUpgrade,
+    upgradeCreditApplied,
     memberTier: current.memberTier || '',
     packageId: purchaseEnabled && pkg && !upgradeWindowClosed ? pkg.id : '',
     packageType: selected.type || 'MEMBER',
@@ -96,6 +230,10 @@ function viewOf(err) {
     memberExpiresAtText: current.memberExpiresAtText || '',
     upgradeShortWindow,
     upgradeWindowClosed,
+    options,
+    upgradeCreditAvailable: current.upgradeCreditAvailable === true,
+    upgradeCreditText: current.upgradeCreditText || '',
+    upgradeCreditPending: current.upgradeCreditPending === true,
     purchaseEnabled,
     salesMessage: sales.message || '',
     actionText: upgradeWindowClosed
@@ -109,9 +247,11 @@ function viewOf(err) {
       ? (sales.message || '会员购买暂停中，已有会员权益和订单不受影响。')
       : (isUpgrade
         ? `补 ${priceText} 升级为不限提醒名额，仅当前会员期内生效，不延长有效期。`
+        : (upgradeCreditApplied
+          ? '你已保留 ¥1.9 升级权益；本次支付 ¥3 后将自动升级为不限额度。'
         : (isUnlimited
           ? '选择不限额度方案后，30 天内不限制提醒名额。'
-          : `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额；${priceText} 会员档最多 ${memberSlots} 个。`))),
+          : `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额；${priceText} 会员档最多 ${memberSlots} 个。`)))),
     note: member
       ? (current.memberExpiresAtText ? `会员到期：${current.memberExpiresAtText}` : '')
       : `会员有效期 ${memberDays} 天，不自动续费`,
@@ -121,9 +261,11 @@ function viewOf(err) {
       ? '会员购买暂停中'
       : (isUpgrade
         ? `补 ${priceText}，升级不限额度并继续`
+        : (upgradeCreditApplied
+          ? `支付 ${priceText}，开通 30 天并升级不限额度`
         : (isUnlimited
           ? `支付 ${priceText}，开通不限额度并继续`
-          : `支付 ${priceText}，开通 ${memberSlots} 个提醒名额并继续`))),
+          : `支付 ${priceText}，开通 ${memberSlots} 个提醒名额并继续`)))),
   };
 }
 
@@ -156,16 +298,20 @@ function payConfirmOf(limit, now = Date.now()) {
   );
   const title = limit.upgrade
     ? '升级不限提醒名额'
-    : (limit.unlimited
+    : (limit.upgradeCreditApplied
       ? `${memberDays} 天不限提醒名额`
-      : `${memberDays} 天 ${Math.max(0, Number(limit.taskSlots) || 0)} 个提醒名额`);
+      : (limit.unlimited
+      ? `${memberDays} 天不限提醒名额`
+      : `${memberDays} 天 ${Math.max(0, Number(limit.taskSlots) || 0)} 个提醒名额`));
   return {
     title,
     amount: limit.priceText,
     expiry: `会员有效期至 ${beijingDateText(expiryMs)}`,
     effect: limit.upgrade
       ? '支付成功后立即升级为不限提醒名额，不延长会员有效期'
-      : '支付成功后立即生效',
+      : (limit.upgradeCreditApplied
+        ? '支付成功后自动使用已保留的 ¥1.9 升级权益，开通不限提醒名额'
+        : '支付成功后立即生效'),
   };
 }
 
@@ -189,5 +335,5 @@ function openTaskLimit(err) {
 }
 
 module.exports = {
-  taskLimitOf, viewOf, payConfirmOf, showUpgradeWindowWarning, openPage, openTaskLimit,
+  taskLimitOf, purchaseOptionsOf, viewOf, payConfirmOf, showUpgradeWindowWarning, openPage, openTaskLimit,
 };

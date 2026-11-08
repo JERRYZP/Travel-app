@@ -10,6 +10,7 @@ const {
 } = require('./schema');
 const {
   REFUND_WINDOW_MS, DUPLICATE_WINDOW_MS, dateMs, isLiveEntitlement,
+  upgradeDependencyBlockingRefund,
 } = require('./order');
 const directory = require('./admin-directory');
 
@@ -352,6 +353,12 @@ async function createCaseRecord(db, userId, event = {}, evidence = {}) {
   if (!requestId) return fail(ERRORS.BAD_PARAM);
   const order = await findOrderForUser(db, userId, event.orderId);
   if (!order) return fail(ERRORS.ORDER_NOT_FOUND);
+  if (order.entitlementGrant && order.entitlementGrant.creditConverted === true) {
+    return fail({
+      code: ERRORS.REFUND_NOT_ELIGIBLE.code,
+      message: '升级权益已保留，这笔 ¥1.9 不再进入普通退款流程',
+    });
+  }
   if (type !== CaseType.RIGHTS_NOT_RECEIVED && order.status !== OrderStatus.PAID) {
     return fail({
       code: ERRORS.REFUND_NOT_ELIGIBLE.code,
@@ -376,6 +383,12 @@ async function createCaseRecord(db, userId, event = {}, evidence = {}) {
 
   const user = await refundEvidenceUser(db, userId);
   if (!user) return fail(ERRORS.UNAUTHORIZED);
+  const dependentUpgrade = await upgradeDependencyBlockingRefund(db, order, user, new Date());
+  if (dependentUpgrade) {
+    return fail(ERRORS.UPGRADE_REFUND_REQUIRED, {
+      dependentUpgradeOrderId: dependentUpgrade._id,
+    });
+  }
   const eligibility = refundEligibilityOf(order, user);
   if (type === CaseType.UNUSED_REFUND && !eligibility.eligibleForReview) {
     return fail({

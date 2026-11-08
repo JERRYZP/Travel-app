@@ -1,6 +1,8 @@
 # 会员支付、售后与提醒名额
 
-> 2026-11-08 两档候选：新增 `two-tier-v5` 契约，只对两个测试 OpenID 生效。¥3 / 30 天总额度 10 个、¥4.9 / 30 天不限额度、¥1.9 只换档不延期。非白名单继续现有 `unlimited-v3`，旧客户端继续 `legacy-v2`。`reminder` / `payment` 已部署为 `Active`，体验版 `2.4.0` 已从 `c857fd5` 上传；**未提审、未发布、未真机支付验证**。
+> 2026-11-08 两档候选：新增 `two-tier-v5` 契约，只对两个测试 OpenID 生效。¥3 / 30 天总额度 10 个、¥4.9 / 30 天不限额度、¥1.9 只换档不延期。非白名单继续现有 `unlimited-v3`，旧客户端继续 `legacy-v2`。升级包退款依赖、权益券兜底和双档支付弹窗已增量部署：`membership_credits` 于 21:57:19 创建，`payment` 于 21:57:44 / 21:57:59 更新，`reminder` 于 21:58:07 更新，两函数回读 `Active`，22:00:07 补偿心跳继续刷新。`pendingPayments` 仍有 1 个既有查询错误，不阻断本轮候选。体验版 `2.4.1` 已于 22:11 上传，总包 `1,183,741` 字节；**未真机验证**，线上正式版仍为 `2.3.7`。
+>
+> 本轮权益券验收窗口从 `2026-11-08 21:58:07`（`reminder` 完成增量部署）开始，只统计窗口后创建并支付的 `two-tier-v5` 订单。窗口前的历史退款、旧测试单和 iOS 退款不计入本轮 1.9 元权益券链路结论；它们与当前父子订单和权益券状态机无关。状态机自身仍保留对历史有效升级单的兼容，不按时间硬拒绝旧订单，避免上线后主动退还旧权益时产生新的非法状态。
 >
 > 2026-11-06 正式发布并全量生效：客户端 `2.3.7` 已上线。`reminder` 的 `MEMBERSHIP_ENFORCEMENT_MODE` 已从 `test` 切换为 `all`，完整云端配置回读确认只有该值变化；3 个 `MEMBERSHIP_TEST_OPENIDS`、超时、运行时、内存和其余环境变量不变，函数保持 `Active`。数据库额度配置 `payment_config/membership_enforcement.mode=all` 继续生效。声明 `unlimited-v3` 的新客户端全量获得 ¥6 / 30 天 / 不限提醒名额；未声明能力的旧客户端仍返回 `legacy-v2`。
 >
@@ -20,6 +22,10 @@
 - 方案路由顺序为 `two-tier-v5 → unlimited-v3 → legacy-v2`。`two-tier-v5` 必须同时声明能力且命中 `MEMBERSHIP_TEST_OPENIDS`，不依赖生产 `MEMBERSHIP_ENFORCEMENT_MODE=all`。非白名单仍走现有 `unlimited-v3`；旧客户端继续 `legacy-v2` 的 `¥3 / 15 个 / task_pack_5`。
 - 当前有效老会员自动获得不限权益，`memberExpiresAt` 不变。`two-tier-v5` 中缺少 `memberTier` 的有效老会员按 `LEGACY_UNLIMITED` 保护；到期后才展示两档价格。
 - 3 元档超额只创建 `member_unlimited_upgrade`。订单冻结 `upgradeExpiresAt`，支付只把 `QUOTA_10` 改为 `UNLIMITED`，`memberDays=0`、`memberFloorDays=0`，不延期；不足 15 分钟服务端拒绝创单。
+- 3 元会员单与 ¥1.9 升级单是父子权益。升级单仍有效且退款会移除当前会员时，用户售后提交和客服批准都返回 `1034`，必须先退升级单。
+- 外部平台可不经小程序直接退 3 元会员单。退款状态机识别仍有效且 `beforeTierOrderId` 指向本单的升级单后，把它改为 `REVERTED + creditConverted=true`，写入 `membership_credits` 一次性权益券，避免留下“无会员但升级包有效”的非法状态。
+- 权益券只允许绑定下一笔 `member_quota_10`。创建 3 元订单时先预留；关单释放；支付时在同一事务内消费并直接发放 `UNLIMITED`；该订单退款时恢复权益券。有可用权益券时禁止直接买 4.9 元档。
+- 已转权益券的 1.9 元订单从普通售后接口移除并返回 `1029`。若外部平台仍强制退款该升级单，退款状态机把权益券置为 `REVOKED`；若对应的 3 元订单已经拉起支付，则按普通 `QUOTA_10` 发放，不能继续使用已撤销权益。
 - 历史 `task_pack_5` 待支付订单仍可按订单快照完成，历史包继续用于展示、对账和退款。
 - 微信订阅消息仍需按条授权；“不限提醒名额”不替代订阅授权，会员到期不删除已有提醒；不保证景点有票，不代抢、不代约。
 - 用户侧统一使用「提醒名额」，不再使用「任务位」。
@@ -170,6 +176,7 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 - 退款调用 `POST /v3/refund/domestic/refunds`，`outRefundNo` 由原商户订单号确定性生成，网络重试不重复退款。
 - 退款结果只认退款回调或主动退款查询；客户端操作成功不代表到账。
 - 退款成功后按订单 `entitlementGrant` 快照回收本单新增会员时长和权益，不影响其他订单，不删除已有提醒。
+- 先退 3 元会员单时，若仍有有效升级单且退款会移除当前会员，服务端返回 `1034`；平台强制退款则按上节转为权益券，升级单详情显示“升级权益已保留”，不按普通退款回收。
 - 发放失败的订单只更新退款结果，不修改用户权益。新会员订单以 `memberDaysAddedMs` 和 `unlimitedReminders=true` 快照记录权益；历史加量包继续按历史包数及名额快照回收。
 - 用户额度被回收后若当前提醒数超过上限，只禁止继续新增，不删除既有提醒。
 - 售后集合：`after_sales_cases`；审计集合：`admin_audit_logs`；补偿游标：`payment_reconcile_state`。
@@ -192,6 +199,7 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 - 会员升级公告读取：`cloudfunctions/reminder/lib/membership-upgrade-notice.js`
 - 会员升级公告管理：`cloudfunctions/payment/lib/membership-upgrade-notice.js`
 - 订单创建：`reminder.membership.createOrder`
+- 升级权益券：`cloudfunctions/{payment,reminder}/lib/membership-credit.js`
 - 权益硬闸门：`cart.commit`、`tripItem.updateReminder`
 - 支付、查单、退款、定时补偿：`cloudfunctions/payment/index.js`
 - 订单状态与权益发放：`cloudfunctions/payment/lib/order.js`
@@ -212,6 +220,7 @@ RIGHTS_NOT_RECEIVED 补发成功后 -> RESOLVED
 
 本地已通过：
 
+- 2026-11-08 升级权益券候选：`npm test` 覆盖双档支付弹窗、主会员退款 `1034` 依赖拦截、平台强制先退会员转权益券、权益券只能被 3 元订单消费、3 元订单退款恢复权益券、权益券订单拒绝普通售后、平台强退 1.9 元时撤销权益并让在途 3 元单按普通额度发放，以及无关/过期升级单不阻断退款。集合创建和 `payment` / `reminder` 增量部署已完成，真实云能力冒烟通过；客户端尚未上传体验版。
 - 2026-11-04 会员不限权益候选：`npm test`、`npm run check`、`npm run test:admin-web` 与 `git diff --check` 通过；覆盖有效老会员超过旧 15 条上限仍可创建、到期时间不变、过期回免费 5 条、¥8 新订单、停售加量包拒绝新下单、旧价订单继续支付、退款快照和 mock 一致性。
 - 2026-11-05 不限会员价格已调整为 ¥6 / 30 天：套餐金额改为 600 分，规格版本升级为 `member-unlimited-30d-v4`；新订单使用 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_V6=travel_task_vip_6` 的 600 分固定商品，历史 ¥8 / v3 订单继续使用 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED` 对应商品查单、补发、退款和售后。`payment` / `reminder` 已于 07:19:44 / 07:20:21 部署，均 Active、Nodejs16.13、60 秒，云端源码与工作区一致；原有 payment 环境变量逐项核验未变化，两分钟触发器保持启用。体验版 `2.3.4` 于 07:21 上传，未提交审核、未发布正式版。
 - 2026-11-04 会员升级临时公告已部署白名单灰度：专项测试覆盖白名单/legacy 隔离、免费会员不展示、启用/停用/过期、管理员 72 小时恢复、审计、会员文案、按公告 ID 关闭和后台快速下架；静态检查保持主包低于 1536KB 硬线。`reminder` 于 23:43:58 补部署会员专属公告门槛，云端源码与工作区一致，保持 Nodejs16.13 / 60 秒，2 个环境变量哈希与 `MEMBERSHIP_ENFORCEMENT_MODE=test` 不变；公告配置窗口为 11-04 22:59:50 至 11-07 22:59:50（北京时间）。体验版 `2.3.2` 于 23:44 上传，包体 1,133,028 字节；未提交审核、未发布正式版。

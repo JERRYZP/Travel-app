@@ -208,7 +208,8 @@ console.log('\n=== 4. 设置提醒权限与硬闸门 ===');
   eq(/confirmReminderAccess/.test(SETUP_JS), false, '提交不再调用带“仅加行程”分支的旧闸门');
   eq(/当前可用 \' \+ subscribeQuota \+ \' 次，还差 \' \+ shortfall \+ \' 次授权，补齐后才能开启提醒/.test(SETUP_JS), true,
     '额度不足时给出当前可用与真实缺口的硬提示');
-  eq(/view class="submit-btn \{\{canSubmit \? '' : 'disabled'\}\}"/.test(SETUP_WXML), true, '额度不足时主按钮禁用');
+  eq(/view class="submit-btn \{\{canSubmit && !showMembershipGate \? '' : 'disabled'\}\}"/.test(SETUP_WXML),
+    true, '授权或会员额度不足时主按钮禁用');
   eq(/wx:if="\{\{shortfall > 0 && systemOk\}\}"[\s\S]*?class="auth-note"/.test(SETUP_WXML), true,
     '授权说明只在授权不足且可补齐时展示');
   eq(/当前可用 \{\{subscribeQuota\}\} 次/.test(SETUP_WXML), true,

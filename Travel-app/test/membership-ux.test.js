@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const Module = require('module');
 const membershipEntry = require('../miniprogram/utils/membership-entry.js');
+const reminderFlow = require('../miniprogram/utils/reminder-flow.js');
 
 const ROOT = path.join(__dirname, '..');
 let fail = 0;
@@ -121,6 +122,55 @@ async function run() {
   eq(gate.upgradePackageId, 'member_unlimited', '一次超过 10 个容量时推荐 4.9 元不限档');
   eq(gate.membershipActionText, '支付 ¥4.9，开通不限额度并继续',
     '不限档按钮只读服务端价格');
+  const normalOptions = membershipEntry.purchaseOptionsOf(
+    { ...free, taskUsed: 3 },
+    serverPackages,
+    5,
+    true
+  );
+  eq(normalOptions.length, 2, '额度不足时同时提供 3 元档和 4.9 元档');
+  eq(normalOptions[0].packageId, 'member_quota_10', '上方按钮固定为 3 元档');
+  eq(normalOptions[0].primary, true, '3 元足够本次使用时作为主按钮');
+  eq(normalOptions[1].packageId, 'member_unlimited', '下方按钮固定为 4.9 元档');
+  eq(normalOptions[1].secondary, true, '4.9 元作为次按钮展示');
+  const capacityOptions = membershipEntry.purchaseOptionsOf(
+    { ...free, taskUsed: 8 },
+    serverPackages,
+    5,
+    true
+  );
+  eq(capacityOptions[1].primary, true, '超过 10 个容量时 4.9 元成为主按钮');
+  eq(capacityOptions[0].disabled, true, '不够本次容量时 3 元按钮禁用');
+  eq(capacityOptions[0].disabledReason, '本次仍不够，请选择不限额度',
+    '禁用按钮明确说明原因');
+  const creditOptions = membershipEntry.purchaseOptionsOf({
+    ...free,
+    upgradeCreditAvailable: true,
+    upgradeCreditText: '已保留 ¥1.9 升级权益，开通 3 元档后自动升级为不限额度',
+  }, serverPackages, 1, true);
+  eq(creditOptions.length, 1, '存在升级权益券时只展示 3 元自动升级路径');
+  eq(creditOptions[0].upgradeCreditApplied, true, '3 元按钮明确会自动使用升级权益');
+  eq(creditOptions[0].payText, '支付 ¥3，开通 30 天并升级不限额度',
+    '权益券路径不再额外收取 1.9 元');
+  const pendingCreditOptions = membershipEntry.purchaseOptionsOf({
+    ...free,
+    upgradeCreditAvailable: true,
+    upgradeCreditPending: true,
+  }, serverPackages, 1, true);
+  eq(pendingCreditOptions[0].disabled, true, '权益券确认中的待支付订单锁住重复下单');
+  eq(pendingCreditOptions[0].disabledReason, '升级权益正在确认，请到会员订单继续支付',
+    '权益券确认中明确引导到订单页');
+  const dualLimit = membershipEntry.viewOf({
+    errorCode: 1026,
+    membership: { ...free, taskUsed: 3 },
+    taskLimit: { limit: 5, used: 3, remaining: 2, requested: 5, shortfall: 3 },
+    packages: serverPackages,
+    sales: { purchaseEnabled: true },
+  });
+  const selectedUnlimited = reminderFlow.selectedTaskLimitOf(dualLimit, 'member_unlimited');
+  eq(selectedUnlimited.packageId, 'member_unlimited', '点击下方按钮会切换为 4.9 元档');
+  eq(membershipEntry.payConfirmOf(selectedUnlimited).amount, '¥4.9',
+    '支付确认只展示用户实际点击的档位金额');
 
   console.log('\n=== 2. 不限额度会员不出现续费和购买入口 ===');
   gate = membershipGateOf(1, {
@@ -230,8 +280,12 @@ async function run() {
     taskPackSize: 0,
   });
   eq(gate.upgradePackageId, 'member_quota_10', '过期会员在容量内重新选择 3 元档');
-  eq(gate.membershipGateDesc, '选择 ¥3 会员后，30 天内最多 10 个提醒名额。',
-    '非会员说明推荐档位与真实容量');
+  eq(gate.membershipGateDesc, '因服务器压力，普通用户最多有 5 个提醒名额。',
+    '非会员正文只说明免费额度，不重复套餐容量');
+  eq(gate.membershipGateNote.startsWith('一次性付费，不自动续费。'), true,
+    '非会员付款小字不再重复价格和有效期');
+  eq(gate.membershipGateNote.includes('¥3 / 30 天'), false,
+    '付款小字删除重复的价格有效期前缀');
   eq(gate.membershipGateDesc.includes('本次需要'), false, '标题已经说明缺口，正文不再重复本次数量');
 
   console.log('\n=== 3.1 1.9 元升级窗口提示 ===');
@@ -326,6 +380,14 @@ async function run() {
     '景点设提醒入口提供更稳的安卓纵向热区');
   eq(setupWxml.includes('本次新建 {{membershipQuotaRequested}} 个，还差 {{membershipQuotaGap}} 个'),
     true, '支付卡展示本次新建数和缺口');
+  eq(setupJs.includes('一次性付费，不自动续费'), true,
+    '付款小字明确一次性付费且不自动续费');
+  eq(setupJs.includes('升级后的不限额度权益在会员有效期内生效。'), true,
+    '补差价说明明确升级权益只在当前会员有效期内生效');
+  eq(setupJs.includes("选择 ${priceText || ''} 会员后，30 天内最多"),
+    false, '付款说明不重复展开 3 元档容量');
+  eq(setupWxml.includes('短信提醒'), false, '设置页移除短信提醒占位选项');
+  eq(setupWxss.includes('.sms-card'), false, '设置页移除短信提醒占位样式');
   eq(/if \(restored\.status === 'PAID_GRANTED'\)[\s\S]{0,260}this\.loadCartAndAccess\(\{ force: true \}\)/.test(setupJs),
     true, '恢复已支付订单后强制刷新会员额度，不使用支付前缓存');
   eq(/if \(result\.status === 'PAID_GRANTED'\)[\s\S]{0,260}this\.loadCartAndAccess\(\{ force: true \}\)/.test(setupJs),
@@ -358,6 +420,10 @@ async function run() {
     '统一浮层提供会员权益说明入口');
   eq(reminderAuthWxml.includes('{{membership.payText}}'), true,
     '名额主按钮直接使用服务端套餐生成的支付并继续文案');
+  eq(reminderAuthWxml.includes('membership.options.length') && reminderAuthWxml.includes('ras-pay-option'),
+    true, '统一提醒浮层渲染服务端双档支付选项');
+  eq(reminderAuthWxml.includes('membership.upgradeCreditAvailable'), true,
+    '存在升级权益券时提示会自动升级');
   eq(reminderAuthWxml.includes('{{continueText}}'), true,
     '无名额限制时统一浮层使用状态机提供的正式提交按钮');
   eq(/continueText:\s*\{\s*type:\s*String,\s*value:\s*'开启行程放票提醒'/.test(reminderAuthJs), true,
@@ -430,8 +496,8 @@ async function run() {
     '会员卡有独立的权益详情入口');
   eq(setupWxml.includes('查看会员权益与退款说明'), true,
     '权益入口明确说明可查看会员和退款信息');
-  eq(/submit-btn \{\{canSubmit \? '' : 'disabled'\}\}/.test(setupWxml), true,
-    '会员名额不足时通过统一 canSubmit 同步置灰主按钮');
+  eq(/class="submit-btn \{\{canSubmit && !showMembershipGate \? '' : 'disabled'\}\}"/.test(setupWxml),
+    true, '会员付费入口出现时底部提交按钮强制置灰');
   eq(/membershipBlocked\s*=\s*this\.data\.showMembershipGate === true/.test(setupJs), true,
     'JS 提交态与会员闸门使用同一事实');
   eq(setupJs.includes("upgradeConfirmAmount: ''") && setupJs.includes('upgradeConfirmAmount: pkg.priceText'), true,
@@ -442,6 +508,11 @@ async function run() {
     true, '设置提醒页支付确认层直接复用会员页商品、金额和到期信息');
   eq(setupWxml.includes('支付 {{upgradeConfirmAmount}}'), true,
     '设置提醒支付按钮复用确认金额字段，避免再次调价漏改');
+  eq(setupWxml.includes('membershipOptions.length')
+    && /class="membership-option \{\{item\.primary \? 'primary' : 'secondary'\}\}/.test(setupWxml),
+  true, '设置提醒页按服务端选项上下渲染双档按钮');
+  eq(setupWxss.includes('.membership-option.primary') && setupWxss.includes('.membership-option.secondary'),
+    true, '双档按钮使用主次视觉层级');
   eq(setupWxml.includes('upgrade-sheet') || setupWxml.includes('upgrade-rule'), false,
     '设置提醒页不再维护独立的旧版支付弹窗和退款文案');
   eq(setupWxml.includes('agreementAccepted'), false,
@@ -510,6 +581,9 @@ async function run() {
     '套餐价格右侧使用单选组件');
   eq(membershipWxml.includes('effect="{{confirmEffect}}"'), true,
     '支付确认层展示升级不延期说明');
+  eq(membershipWxml.includes('membership.upgradeCreditAvailable')
+    && membershipWxml.includes('upgrade-credit-note'), true,
+    '会员页在权益券状态提示已保留升级权益');
   eq(membershipWxml.includes('<text class="order-entry-title">会员订单</text>'), true,
     '订单入口标题改为会员订单');
   eq(membershipWxml.includes('<text class="order-entry-desc">查看支付结果和售后信息</text>'), true,
@@ -743,8 +817,22 @@ async function run() {
   }, null);
   eq(unknownGrantState.title, '支付已确认，权益待核验',
     '真正未知的权益发放状态仍保留保护性提示');
+  const creditState = orderDetailPage.stateOfOrder({
+    status: 'PAID',
+    grantStatus: 'REVERTED',
+    refundStatus: 'NONE',
+    entitlementStatus: 'CREDITED',
+    creditConverted: true,
+    entitlementGrant: { creditConverted: true },
+  }, null);
+  eq(creditState.title, '升级权益已保留',
+    '会员先退款时升级单展示为权益券而不是普通退款');
+  eq(creditState.desc.includes('下次开通 3 元会员'), true,
+    '权益券状态说明下次 3 元订单会自动升级');
   eq(orderDetailWxml.includes('该记录由系统根据平台退款结果自动生成'), true,
     '系统自动退款记录有明确来源说明');
+  eq(orderDetailWxml.includes('order.entitlementGrant.revertedAt && !order.creditConverted'), true,
+    '权益券订单不再同时展示普通退款回收文案');
   eq(orderDetailWxml.includes('refund-service-link'), false,
     'Apple 退款说明不再提供无效的售后页面跳转');
   eq(orderDetailWxss.includes('.refund-service-link'), false,

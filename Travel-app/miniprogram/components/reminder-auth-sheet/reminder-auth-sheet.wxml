@@ -66,8 +66,21 @@
         </view>
         <text class="ras-limit-desc">{{membership.description}}</text>
         <text wx:if="{{membership.note}}" class="ras-limit-note">{{membership.note}}</text>
+        <text wx:if="{{membership.upgradeCreditAvailable}}" class="ras-credit-note">{{membership.upgradeCreditText}}</text>
       </view>
-      <view class="ras-pay {{payDisabled ? 'disabled' : ''}}" bindtap="onPay">
+      <view wx:if="{{membership.options.length}}" class="ras-pay-options">
+        <view
+          wx:for="{{membership.options}}"
+          wx:key="packageId"
+          class="ras-pay-option {{item.primary ? 'primary' : 'secondary'}} {{item.disabled ? 'disabled' : ''}}"
+          data-id="{{item.packageId}}"
+          bindtap="onPay"
+        >
+          <text class="ras-pay-text">{{item.payText}}</text>
+          <text wx:if="{{item.disabledReason}}" class="ras-pay-reason">{{item.disabledReason}}</text>
+        </view>
+      </view>
+      <view wx:else class="ras-pay {{payDisabled ? 'disabled' : ''}}" bindtap="onPay">
         {{membership.payText}}
       </view>
       <view class="ras-benefits" bindtap="onBenefits">

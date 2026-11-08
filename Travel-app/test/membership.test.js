@@ -8,6 +8,7 @@ const {
   COLLECTIONS, ChannelType, MemberLevel, ReminderBackendStatus,
 } = require('../cloudfunctions/reminder/lib/schema');
 const membership = require('../cloudfunctions/reminder/lib/membership');
+const membershipCredit = require('../cloudfunctions/reminder/lib/membership-credit');
 const task = require('../cloudfunctions/reminder/lib/task');
 const itemActions = require('../cloudfunctions/reminder/lib/trip-item-actions');
 const time = require('../cloudfunctions/reminder/lib/time');
@@ -331,6 +332,80 @@ async function run() {
   eq(unlimitedTwoTier.membership.unlimited, true, '4.9 元会员为不限额度');
   eq(unlimitedTwoTier.membership.pricingVisible, false, '不限额度会员隐藏价格区');
   eq(unlimitedTwoTier.packages.length, 0, '不限额度会员不返回购买套餐');
+
+  console.log('\n=== 1.3 升级权益券只允许 3 元自动升级 ===');
+  const creditDb = createDb();
+  creditDb._seed(COLLECTIONS.USERS, [{
+    _id: 'user_credit_two_tier',
+    openId: TEST_OPENID_A,
+    memberLevel: MemberLevel.NORMAL,
+    taskPackCount: 0,
+  }]);
+  const creditId = membershipCredit.idOf(TEST_OPENID_A);
+  creditDb._seed(COLLECTIONS.MEMBERSHIP_CREDITS, [{
+    _id: creditId,
+    userId: TEST_OPENID_A,
+    sourceOrderId: 'order_orphan_upgrade',
+    sourceAmountFen: 190,
+    status: membershipCredit.CreditStatus.AVAILABLE,
+    reservedByOrderId: '',
+    reservationExpiresAt: null,
+    consumedByOrderId: '',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }]);
+  const creditStatus = await membership.status(creditDb, TEST_OPENID_A, undefined, TWO_TIER_PLAN);
+  eq(creditStatus.membership.upgradeCreditAvailable, true, '状态返回可用升级权益券');
+  eq(creditStatus.packages.map(item => item.id).join(','), 'member_quota_10',
+    '存在权益券时只返回 3 元自动升级方案');
+  eq(creditStatus.packages[0].upgradeCreditApplied, true,
+    '3 元方案标记会自动使用升级权益');
+  const directUnlimited = await membership.createOrder(creditDb, TEST_OPENID_A, {
+    packageId: 'member_unlimited',
+    requestId: 'req_credit_direct_unlimited',
+    membershipCapabilities: ['unlimited-v3', 'two-tier-v5'],
+  });
+  eq(directUnlimited.success, false, '存在权益券时禁止直接购买 4.9 元档');
+  const creditOrder = await membership.createOrder(creditDb, TEST_OPENID_A, {
+    packageId: 'member_quota_10',
+    requestId: 'req_credit_quota_order',
+    membershipCapabilities: ['unlimited-v3', 'two-tier-v5'],
+  });
+  eq(creditOrder.success, true, '权益券可用于 3 元订单');
+  eq(creditOrder.upgradeCreditApplied, true, '3 元订单固化权益券应用标记');
+  const reservedCredit = await membershipCredit.read(creditDb, TEST_OPENID_A);
+  eq(reservedCredit.reservedByOrderId, creditOrder.orderId,
+    '3 元订单创建后预留权益券，避免重复消费');
+  const pendingCreditStatus = await membership.status(creditDb, TEST_OPENID_A, undefined, TWO_TIER_PLAN);
+  eq(pendingCreditStatus.membership.upgradeCreditPending, true,
+    '状态返回权益券确认中');
+  eq(pendingCreditStatus.packages[0].available, false,
+    '权益券确认中禁用重复购买 3 元档');
+  const convertedOrderView = membership.orderViewOf({
+    _id: 'order_converted_upgrade',
+    userId: TEST_OPENID_A,
+    packageId: 'member_unlimited_upgrade',
+    productType: 'MEMBER',
+    title: '升级不限提醒名额',
+    amountFen: 190,
+    memberDays: 0,
+    status: 'PAID',
+    grantStatus: 'REVERTED',
+    refundStatus: 'NONE',
+    paidAt: new Date(),
+    entitlementGrant: {
+      creditConverted: true,
+      creditId,
+      revertedAt: new Date(),
+    },
+  }, {}, new Date());
+  eq(convertedOrderView.entitlementStatus, 'CREDITED',
+    '转权益券的升级单展示为已保留权益');
+  eq(convertedOrderView.canRequestRefund, false,
+    '已转为权益券的升级单不再提供普通退款按钮');
+  eq(convertedOrderView.actions.some(item => item.key === 'AFTER_SALES'), false,
+    '已转为权益券的升级单不再进入普通售后流程');
+
   delete process.env.MEMBERSHIP_TEST_OPENIDS;
 
   console.log('\n=== 2. 过期任务不占新提醒名额 ===');

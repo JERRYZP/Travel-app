@@ -731,10 +731,30 @@ function closeTaskLimit(page) {
   });
 }
 
-function openTaskLimitPayment(page) {
+function selectedTaskLimitOf(limit, packageId) {
+  if (!limit || !packageId) return limit;
+  const option = (limit.options || []).find(item =>
+    item && item.packageId === packageId);
+  if (!option) return limit;
+  return {
+    ...limit,
+    ...option,
+    packageId: option.packageId,
+    packageType: 'MEMBER',
+    packageTitle: option.title,
+  };
+}
+
+function openTaskLimitPayment(page, e) {
   if (!page || page._taskLimitClosing || (page.data && page.data.taskLimitPaying)) return false;
   const limit = page.data && page.data.membershipLimit;
   if (!limit) return false;
+  const packageId = String((e && e.detail && e.detail.packageId) || '');
+  const selectedLimit = selectedTaskLimitOf(limit, packageId);
+  if (selectedLimit && selectedLimit.disabled) {
+    wx.showToast({ title: selectedLimit.disabledReason || '当前方案暂不可购买', icon: 'none' });
+    return false;
+  }
   if (limit.purchaseEnabled === false) {
     page.setData({
       taskLimitPayFeedback: limit.salesMessage || '会员购买暂停中，请稍后再试。',
@@ -744,12 +764,12 @@ function openTaskLimitPayment(page) {
     wx.showToast({ title: limit.salesMessage || '会员购买暂停中', icon: 'none' });
     return false;
   }
-  if (limit.upgradeWindowClosed === true) {
+  if (selectedLimit.upgradeWindowClosed === true) {
     wx.showToast({ title: '会员即将到期，请到期后重新开通', icon: 'none' });
     return false;
   }
-  membershipEntry.showUpgradeWindowWarning(limit, () => {
-    const confirm = membershipEntry.payConfirmOf(limit);
+  membershipEntry.showUpgradeWindowWarning(selectedLimit, () => {
+    const confirm = membershipEntry.payConfirmOf(selectedLimit);
     if (!confirm) {
       wx.showToast({ title: '套餐信息加载失败，请稍后重试', icon: 'none' });
       return;
@@ -764,6 +784,7 @@ function openTaskLimitPayment(page) {
       taskLimitPayDisabled: mode === 'blocked',
       taskLimitPayFeedback: '',
     });
+    page._taskLimitSelectedLimit = selectedLimit;
   });
   return true;
 }
@@ -820,6 +841,7 @@ function closeTaskLimitPayment(page) {
     taskLimitPayDisabled: false,
     taskLimitPayFeedback: '',
   });
+  page._taskLimitSelectedLimit = null;
   return true;
 }
 
@@ -991,11 +1013,16 @@ function confirmTaskLimitPayment(page) {
   if (page._taskLimitPayMode === 'resume') return resumeTaskLimitAfterPayment(page);
 
   const waitingOrderId = page._taskLimitPayMode === 'status' && page._taskLimitPendingOrderId;
+  const selectedCandidate = page._taskLimitSelectedLimit;
+  const selectedLimit = selectedCandidate
+    && (limit.options || []).some(item => item.packageId === selectedCandidate.packageId)
+    ? selectedCandidate
+    : limit;
   page.setData({ taskLimitPaying: true, taskLimitPayDisabled: false, taskLimitPayFeedback: '' });
   wx.showLoading({ title: waitingOrderId ? '正在确认支付...' : '正在准备支付...' });
   const payment = waitingOrderId
     ? membershipPay.waitForPaid(waitingOrderId)
-    : membershipPay.purchase(limit.packageId);
+    : membershipPay.purchase(selectedLimit.packageId);
   return payment.then(result => {
     wx.hideLoading();
     if (result.status === 'PAID_GRANTED') {
@@ -1093,6 +1120,7 @@ module.exports = {
   showReminderCheckoutWithLimit,
   closeTaskLimit,
   openTaskLimitPayment,
+  selectedTaskLimitOf,
   closeTaskLimitPayment,
   confirmTaskLimitPayment,
   openTaskLimitBenefitsPage,

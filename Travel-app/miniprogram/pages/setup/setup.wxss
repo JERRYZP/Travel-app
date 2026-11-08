@@ -52,7 +52,6 @@
 .setting-row-info { display: flex; flex-direction: column; gap: 4rpx; }
 .setting-row-label { font-size: 28rpx; color: var(--color-ink); }
 .setting-row-hint { font-size: 22rpx; color: #C3B199; }
-.setting-row-coming { font-size: 24rpx; color: #BAA588; }
 
 /* 图2：选中勾选框为金色 #B8904A */
 .checkbox {
@@ -159,8 +158,6 @@
   color: #B07E35;
   font-size: 24rpx;
 }
-.sms-card { margin-top: 24rpx; }
-
 .membership-gate {
   position: relative;
   z-index: 1;
@@ -230,6 +227,45 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+}
+.membership-option-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+  margin-top: 20rpx;
+}
+.membership-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  width: 100%;
+  min-height: 76rpx;
+  padding: 0 22rpx;
+  border-radius: 16rpx;
+  box-sizing: border-box;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+.membership-option.primary {
+  border: 1rpx solid var(--color-primary);
+  background: var(--color-primary);
+  color: #FFFEFB;
+}
+.membership-option.secondary {
+  border: 1rpx solid #D8BE8B;
+  background: #FFFDF8;
+  color: #7A5143;
+}
+.membership-option.disabled {
+  border-color: #E5DED2;
+  background: #EFEAE2;
+  color: #A99B8C;
+}
+.membership-option-text {
+  min-width: 0;
+  text-align: center;
+  line-height: 1.4;
 }
 .membership-gate-link {
   display: flex;

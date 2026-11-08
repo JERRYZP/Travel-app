@@ -128,6 +128,29 @@ Page({
       });
       return this.load();
     }).catch(err => {
+      if (err && err.errorCode === 1034) {
+        this.setData({
+          submitting: false,
+          resultTone: 'error',
+          resultMessage: '这笔会员包含 ¥1.9 升级包，请先处理升级包退款。',
+        });
+        wx.showModal({
+          title: '请先退款升级包',
+          content: '升级包依赖会员主订单。先退升级包后，再退会员不会被拦截。',
+          confirmText: '查看升级包',
+          cancelText: '暂不处理',
+          success: res => {
+            if (!res.confirm) return;
+            const orderId = String(err.dependentUpgradeOrderId || '');
+            wx.navigateTo({
+              url: orderId
+                ? `/pages/membership-order-detail/membership-order-detail?orderId=${encodeURIComponent(orderId)}`
+                : '/pages/membership-orders/membership-orders',
+            });
+          },
+        });
+        return;
+      }
       this.setData({
         submitting: false,
         resultTone: 'error',

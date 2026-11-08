@@ -79,6 +79,7 @@
 
 .section-label { display: block; margin: 34rpx 4rpx 14rpx; color: var(--color-ink); font-size: 26rpx; font-weight: 600; }
 .section-hint { display: block; margin: -6rpx 4rpx 16rpx; color: var(--color-muted); font-size: 21rpx; line-height: 1.5; }
+.upgrade-credit-note { display: block; margin: 0 4rpx 16rpx; padding: 14rpx 16rpx; border-radius: 12rpx; background: #FFF3D8; color: #8A5A12; font-size: 21rpx; line-height: 1.55; }
 .benefit-list { overflow: hidden; border-radius: 20rpx; background: var(--color-surface); box-shadow: var(--shadow-card); }
 .benefit-row { display: flex; gap: 16rpx; padding: 24rpx 26rpx; border-bottom: 1rpx solid var(--color-border); }
 .benefit-row:last-child { border-bottom: none; }

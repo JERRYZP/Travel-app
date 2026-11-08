@@ -222,6 +222,7 @@ return newContract ? buildNewContract() : buildLegacyContract();
 | 有效期 | 30 天 | 30 天 | 30 天；升级不延期 |
 | 提醒额度 | 15 个，可购买加量包 | 有效期内不限 | 10 个或不限 |
 | 商品 | `member`、`task_pack_5` | 仅 `member` | `member_quota_10`、`member_unlimited`、`member_unlimited_upgrade` |
+| 升级退款依赖 | 不适用 | 不适用 | 有效升级单阻断主会员退款 `1034`；平台强制退主会员转一次性权益券 |
 
 关键实现约束：
 
@@ -232,5 +233,6 @@ return newContract ? buildNewContract() : buildLegacyContract();
 - `unlimited-v3` 有效会员继续返回兼容字段 `taskLimit/taskRemaining/memberTaskSlots=10000`；`two-tier-v5` 不限会员返回 `taskLimit/taskRemaining=null`，3 元档返回真实 `taskLimit=10`。
 - 会员升级横幅、公告接口和所有相关 bootstrap 接口都消费同一能力判断。
 - 历史订单、旧加量包、退款和售后继续按订单快照处理。
+- 权益券字段只在 `two-tier-v5` 状态中生成可用购买路径；非白名单不得因 `membership_credits` 集合存在而改变旧价、旧额度或旧加量包。
 
 这套模式不只适用于会员。以后遇到接口字段迁移、默认值切换、数据结构升级、付费商品替换或新权益灰度，都可以复用同一套能力门禁和发布矩阵。

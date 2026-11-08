@@ -45,7 +45,8 @@
       <text wx:if="{{order.unlimitedReminders}}">会员有效期内不限提醒名额</text>
       <text wx:elif="{{order.entitlementGrant.taskPackDelta}}">提醒名额增加：{{order.entitlementGrant.taskPackDelta * order.addedSlots}} 个</text>
       <text wx:else>会员基础额度</text>
-      <text wx:if="{{order.entitlementGrant.revertedAt}}">退款后已按本单快照回收；不会删除已有提醒。</text>
+      <text wx:if="{{order.entitlementGrant.revertedAt && !order.creditConverted}}">退款后已按本单快照回收；不会删除已有提醒。</text>
+      <text wx:if="{{order.creditConverted}}">本单已转为一次性升级权益，将在下次开通 3 元会员时自动使用。</text>
     </view>
 
     <view wx:if="{{latestCase}}" class="after-sales-card">

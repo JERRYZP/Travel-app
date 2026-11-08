@@ -30,9 +30,14 @@ Component({
       this.triggerEvent('settings');
     },
 
-    onPay() {
+    onPay(e) {
       if (this.data.paying || this.data.payDisabled || !this.data.membership) return;
-      this.triggerEvent('pay');
+      const packageId = String((e && e.currentTarget && e.currentTarget.dataset
+        && e.currentTarget.dataset.id) || '');
+      const option = ((this.data.membership && this.data.membership.options) || [])
+        .find(item => item && item.packageId === packageId);
+      if (option && option.disabled) return;
+      this.triggerEvent('pay', { packageId });
     },
 
     onBenefits() {

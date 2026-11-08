@@ -84,6 +84,7 @@
     <block wx:if="{{membership.pricingVisible && (!sales || sales.purchaseEnabled)}}">
       <text class="section-label">{{membership.member ? '会员方案' : '开通会员以增加提醒额度'}}</text>
       <text wx:if="{{!membership.member}}" class="section-hint">提醒名额为可同时开启的提醒数量</text>
+      <text wx:if="{{membership.upgradeCreditAvailable}}" class="upgrade-credit-note">{{membership.upgradeCreditText}}</text>
       <view class="package-list">
         <view
           wx:for="{{visiblePackages}}"

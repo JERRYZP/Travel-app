@@ -11,6 +11,7 @@ const {
 const userDomain = require('./user');
 const quotaLock = require('./quota-lock');
 const userRuntimeStale = require('./user-runtime-stale');
+const membershipCredit = require('./membership-credit');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ORDER_TTL_MS = 15 * 60 * 1000;
@@ -68,6 +69,53 @@ function isKeepExpiryUpgradeOrder(order = {}) {
       || dateMs(order.upgradeExpiresAt) > 0);
 }
 
+function isBaseMemberOrder(order = {}) {
+  return order.productType === 'MEMBER' && !isUnlimitedUpgradeOrder(order);
+}
+
+function memberDaysAddedMsOf(order = {}) {
+  const grant = order.entitlementGrant || {};
+  if (grant.memberDaysAddedMs != null) {
+    return Math.max(0, Number(grant.memberDaysAddedMs) || 0);
+  }
+  return Math.max(0, Number(order.memberDays) || 0) * DAY_MS;
+}
+
+function refundRemovesMembership(order = {}, user = {}, now = new Date()) {
+  const currentExpiryMs = dateMs(user.memberExpiresAt);
+  return currentExpiryMs - memberDaysAddedMsOf(order) <= new Date(now).getTime();
+}
+
+async function activeUpgradeOrderForUser(db, userId, options = {}) {
+  if (!db || !userId) return null;
+  const nowMs = new Date(options.now || new Date()).getTime();
+  const baseOrderId = String(options.baseOrderId || '');
+  const res = await db.collection(COLLECTIONS.ORDERS)
+    .where({
+      userId,
+      packageId: 'member_unlimited_upgrade',
+      status: OrderStatus.PAID,
+    })
+    .limit(20)
+    .get();
+  return (res.data || []).find(order => {
+    if (!isUnlimitedUpgradeOrder(order) || !isLiveEntitlement(order)) return false;
+    if (dateMs(order.upgradeExpiresAt) <= nowMs) return false;
+    const beforeTierOrderId = String(
+      (order.entitlementGrant && order.entitlementGrant.beforeTierOrderId) || ''
+    );
+    return !baseOrderId || beforeTierOrderId === baseOrderId;
+  }) || null;
+}
+
+async function upgradeDependencyBlockingRefund(db, order, user, now = new Date()) {
+  if (!isBaseMemberOrder(order) || !refundRemovesMembership(order, user, now)) return null;
+  return activeUpgradeOrderForUser(db, order.userId, {
+    baseOrderId: order._id,
+    now,
+  });
+}
+
 function sameExpiryWindow(a, b) {
   return Math.abs(dateMs(a) - dateMs(b)) <= SAME_EXPIRY_TOLERANCE_MS;
 }
@@ -113,6 +161,8 @@ async function findCaseByOutRefundNo(db, outRefundNo) {
 }
 
 function grantStateOf(order = {}) {
+  const grant = order.entitlementGrant || {};
+  if (grant.creditConverted === true) return 'CREDITED';
   if (order.grantStatus === GrantStatus.REVERTED
     || order.refundStatus === RefundStatus.REFUNDED
     || order.status === OrderStatus.REFUNDED) {
@@ -148,6 +198,10 @@ function isLiveEntitlement(order = {}) {
     && order.refundStatus !== RefundStatus.REFUNDED;
 }
 
+function isConvertedCreditOrder(order = {}) {
+  return !!(order.entitlementGrant && order.entitlementGrant.creditConverted === true);
+}
+
 function paymentViewOf(order = {}) {
   return {
     orderId: order._id,
@@ -161,6 +215,7 @@ function paymentViewOf(order = {}) {
     unlimited: order.unlimited === true,
     membershipTier: order.membershipTier || '',
     upgrade: order.upgrade === true,
+    creditConverted: (order.entitlementGrant || {}).creditConverted === true,
     isExpired: isOrderExpired(order),
   };
 }
@@ -180,9 +235,13 @@ async function markOrderClosed(db, order, reason = 'EXPIRED') {
     },
   });
   // 条件更新避免“查询时仍 PENDING、回调已置 PAID、随后本地关单覆盖支付结果”。
-  return (await findOrderById(db, order._id)) || {
+  const closed = (await findOrderById(db, order._id)) || {
     ...order, status: OrderStatus.CLOSED, closedAt: nowTs, closeReason: reason,
   };
+  if (closed.status === OrderStatus.CLOSED && closed.upgradeCreditId) {
+    await membershipCredit.release(db, closed.userId, closed._id, nowTs);
+  }
+  return closed;
 }
 
 async function markGrantFailed(db, order, message) {
@@ -309,12 +368,22 @@ async function fulfillOrder(db, order, payment = {}) {
       const latestUser = docDataOf(await transaction.collection(COLLECTIONS.USERS).doc(user._id).get())
         || user;
       const nowTs = new Date();
+      let creditRevoked = false;
+      const appliedCredit = latestOrder.upgradeCreditId
+        ? await membershipCredit.consume(transaction, latestOrder.userId, latestOrder._id, nowTs)
+        : null;
+      if (latestOrder.upgradeCreditId && !appliedCredit) {
+        const creditState = await membershipCredit.read(transaction, latestOrder.userId);
+        creditRevoked = !!creditState
+          && creditState.status === membershipCredit.CreditStatus.REVOKED;
+        if (!creditRevoked) throw new Error('升级权益券已被占用或不存在');
+      }
       const memberDays = Math.max(0, Number(latestOrder.memberDays) || 0);
       const memberFloorDays = Math.max(0, Number(latestOrder.memberFloorDays) || 0);
       const taskPackCountAdded = taskPackCountAddedOf(latestOrder);
       const taskPackSlotsAdded = taskPackSlotsAddedOf(latestOrder);
       const beforeTier = effectiveMemberTierOf(latestUser, nowTs);
-      const orderTier = grantTierOf(latestOrder);
+      const orderTier = appliedCredit ? MemberTier.UNLIMITED : grantTierOf(latestOrder);
       const afterTier = orderTier || beforeTier;
       const upgrade = isUnlimitedUpgradeOrder(latestOrder);
       const keepExpiryUpgrade = isKeepExpiryUpgradeOrder(latestOrder);
@@ -344,12 +413,16 @@ async function fulfillOrder(db, order, payment = {}) {
         taskPackCountAdded,
         taskPackSlotsAdded,
         unlimitedReminders: latestOrder.unlimitedReminders === true
-          || latestOrder.unlimited === true,
+          || latestOrder.unlimited === true
+          || !!appliedCredit,
         beforeTier,
         afterTier,
         beforeTierOrderId: latestUser.memberTierOrderId || '',
         tierChanged: !!orderTier && orderTier !== beforeTier,
         upgrade,
+        upgradeCreditApplied: !!appliedCredit,
+        upgradeCreditRevoked: creditRevoked,
+        upgradeCreditId: latestOrder.upgradeCreditId || '',
         specVersion: latestOrder.specVersion || '',
         appliedAt: nowTs,
         revertedAt: null,
@@ -442,16 +515,81 @@ async function fulfillOrder(db, order, payment = {}) {
   }
 }
 
+async function reverseConvertedCreditOrder(db, order, refundedAmountFen) {
+  await userDomain.ensureUser(db, order.userId);
+  const lock = await quotaLock.acquireQuotaLock(db, order.userId);
+  if (!lock) return fail(ERRORS.TASK_QUOTA_BUSY);
+  try {
+    const transaction = await db.startTransaction();
+    try {
+      const latest = docDataOf(await transaction.collection(COLLECTIONS.ORDERS).doc(order._id).get())
+        || order;
+      if (latest.refundStatus === RefundStatus.REFUNDED) {
+        await rollbackQuietly(transaction);
+        return ok({ orderId: latest._id, alreadyReverted: true });
+      }
+      if (!isConvertedCreditOrder(latest)) {
+        await rollbackQuietly(transaction);
+        return fail({ code: 1500, message: '订单权益状态不允许自动回收' });
+      }
+      const nowTs = new Date();
+      const revokedCredit = await membershipCredit.revoke(
+        transaction,
+        latest.userId,
+        latest._id,
+        nowTs
+      );
+      await transaction.collection(COLLECTIONS.ORDERS).doc(latest._id).update({
+        data: {
+          refundStatus: RefundStatus.REFUNDED,
+          refundedAmountFen: Number(refundedAmountFen) || Number(latest.amountFen) || 0,
+          refundedAt: nowTs,
+          grantStatus: GrantStatus.REVERTED,
+          entitlementGrant: {
+            ...(latest.entitlementGrant || {}),
+            creditRevoked: !!revokedCredit,
+            creditRevokedAt: revokedCredit ? nowTs : (latest.entitlementGrant || {}).creditRevokedAt || null,
+            revertedAt: nowTs,
+          },
+          updatedAt: nowTs,
+        },
+      });
+      await transaction.commit();
+    } catch (err) {
+      try { await transaction.rollback(); } catch (rollbackErr) { /* commit 结果未知，下面以回读为准 */ }
+      const fresh = await findOrderById(db, order._id);
+      if (fresh && fresh.refundStatus === RefundStatus.REFUNDED) {
+        return ok({ orderId: fresh._id, alreadyReverted: true });
+      }
+      return fail({ code: 1500, message: `权益回收失败：${err.message}` });
+    }
+    return ok({
+      orderId: order._id,
+      refundedAmountFen: Number(refundedAmountFen) || Number(order.amountFen) || 0,
+      entitlementReversed: true,
+      creditRevoked: true,
+    });
+  } finally {
+    await quotaLock.releaseQuotaLock(db, lock);
+  }
+}
+
 async function reverseOrderEntitlement(db, order, refundedAmountFen) {
   if (!order) return fail(ERRORS.ORDER_NOT_FOUND);
   if (order.status === OrderStatus.REFUNDED
     || order.grantStatus === GrantStatus.REVERTED
     || order.refundStatus === RefundStatus.REFUNDED) {
+    if (isConvertedCreditOrder(order) && order.refundStatus !== RefundStatus.REFUNDED) {
+      return reverseConvertedCreditOrder(db, order, refundedAmountFen);
+    }
     return ok({ orderId: order._id, alreadyReverted: true });
   }
   if (order.status !== OrderStatus.PAID) return fail(ERRORS.ORDER_NOT_FOUND);
   const freshSeed = await findOrderById(db, order._id);
   if (!freshSeed) return fail(ERRORS.ORDER_NOT_FOUND);
+  if (isConvertedCreditOrder(freshSeed) && freshSeed.grantStatus === GrantStatus.REVERTED) {
+    return reverseConvertedCreditOrder(db, freshSeed, refundedAmountFen);
+  }
 
   const recordRefundWithoutReversal = async () => {
     const nowTs = new Date();
@@ -489,6 +627,9 @@ async function reverseOrderEntitlement(db, order, refundedAmountFen) {
   const lock = await quotaLock.acquireQuotaLock(db, freshSeed.userId);
   if (!lock) return fail(ERRORS.TASK_QUOTA_BUSY);
   try {
+    const dependentUpgrade = await activeUpgradeOrderForUser(db, freshSeed.userId, {
+      baseOrderId: freshSeed._id,
+    });
     const transaction = await db.startTransaction();
     try {
       const latestOrder = docDataOf(await transaction.collection(COLLECTIONS.ORDERS).doc(freshSeed._id).get())
@@ -535,6 +676,36 @@ async function reverseOrderEntitlement(db, order, refundedAmountFen) {
         nextTier = '';
         nextTierOrderId = '';
       }
+      let convertedUpgrade = null;
+      if (dependentUpgrade
+        && isBaseMemberOrder(latestOrder)
+        && refundRemovesMembership(latestOrder, latestUser, nowTs)) {
+        const credit = await membershipCredit.createForOrder(
+          transaction,
+          latestUser.openId || latestOrder.userId,
+          dependentUpgrade,
+          nowTs
+        );
+        convertedUpgrade = {
+          orderId: dependentUpgrade._id,
+          creditId: credit._id,
+        };
+        nextTier = grant.beforeTier || '';
+        nextTierOrderId = grant.beforeTierOrderId || '';
+        await transaction.collection(COLLECTIONS.ORDERS).doc(dependentUpgrade._id).update({
+          data: {
+            grantStatus: GrantStatus.REVERTED,
+            entitlementGrant: {
+              ...(dependentUpgrade.entitlementGrant || {}),
+              revertedAt: nowTs,
+              revertedReason: 'BASE_MEMBERSHIP_REFUNDED',
+              creditConverted: true,
+              creditId: credit._id,
+            },
+            updatedAt: nowTs,
+          },
+        });
+      }
       const userPatch = {
         memberExpiresAt: new Date(nextExpiryMs),
         memberLevel: member ? MemberLevel.MEMBER : MemberLevel.NORMAL,
@@ -545,6 +716,12 @@ async function reverseOrderEntitlement(db, order, refundedAmountFen) {
         userPatch.memberTier = nextTier || null;
         userPatch.memberTierOrderId = nextTierOrderId || null;
       }
+      const restoredCredit = await membershipCredit.restore(
+        transaction,
+        latestOrder.userId,
+        latestOrder._id,
+        nowTs
+      );
       await transaction.collection(COLLECTIONS.USERS).doc(user._id).update({ data: userPatch });
       await transaction.collection(COLLECTIONS.ORDERS).doc(latestOrder._id).update({
         data: {
@@ -559,6 +736,14 @@ async function reverseOrderEntitlement(db, order, refundedAmountFen) {
             taskPackCountAdded,
             taskPackSlotsAdded,
             revertedTier: nextTier || '',
+            upgradeCreditRestored: !!restoredCredit,
+            dependentUpgradeConvertedToCredit: !!convertedUpgrade,
+            dependentUpgradeOrderId: convertedUpgrade
+              ? convertedUpgrade.orderId
+              : '',
+            dependentUpgradeCreditId: convertedUpgrade
+              ? convertedUpgrade.creditId
+              : '',
             legacyBackfill: !hasMemberSnapshot || grant.taskPackSlotsAdded == null,
             revertedAt: nowTs,
           },
@@ -618,6 +803,11 @@ module.exports = {
   effectiveMemberTierOf,
   grantTierOf,
   isUnlimitedUpgradeOrder,
+  isBaseMemberOrder,
+  refundRemovesMembership,
+  activeUpgradeOrderForUser,
+  upgradeDependencyBlockingRefund,
+  membershipCredit,
   orderExpiresAtMs,
   isOrderExpired,
   findOrderById,

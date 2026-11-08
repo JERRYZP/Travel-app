@@ -23,6 +23,7 @@ const quotaLock = require('./quota-lock');
 const membershipSales = require('./membership-sales');
 const membershipEnforcement = require('./membership-enforcement');
 const upgradeNotice = require('./membership-upgrade-notice');
+const membershipCredit = require('./membership-credit');
 
 const FREE_TASK_SLOTS = 5;
 const MEMBER_TASK_SLOTS = 10;
@@ -428,9 +429,11 @@ function orderActionsOf(order = {}, eligibility = {}, nowTs = time.now(), sales 
     ? 'REFUNDED' : 'NONE');
   const pendingExpired = order.status === OrderStatus.PENDING && isExpiredOrder(order, nowTs);
   const purchaseEnabled = !sales || sales.purchaseEnabled === true;
-  const canAfterSales = order.status === OrderStatus.PAID
+  const creditConverted = eligibility.convertedToCredit === true
+    || (order.entitlementGrant && order.entitlementGrant.creditConverted === true);
+  const canAfterSales = !creditConverted && order.status === OrderStatus.PAID
     && ['NONE', 'REQUESTED', 'UNDER_REVIEW', 'PROCESSING', 'REFUNDED', 'REJECTED', 'FAILED'].includes(refundStatus);
-  const canSync = order.status === OrderStatus.PAID
+  const canSync = !creditConverted && order.status === OrderStatus.PAID
     && ['NONE', 'REJECTED', 'FAILED'].includes(refundStatus);
   const actionFlags = {
     canPay: purchaseEnabled && order.status === OrderStatus.PENDING && !pendingExpired,
@@ -477,19 +480,28 @@ function paymentChannelOf(order = {}) {
 }
 
 function orderViewOf(order = {}, user = {}, nowTs = time.now(), sales = null) {
+  const orderGrant = order.entitlementGrant || {};
   const refundStatus = order.refundStatus || (order.status === OrderStatus.REFUNDED
     ? 'REFUNDED' : 'NONE');
+  const creditConverted = orderGrant.creditConverted === true;
   const refunded = refundStatus === 'REFUNDED'
     || order.grantStatus === 'REVERTED'
     || order.status === OrderStatus.REFUNDED;
-  const entitlementStatus = refunded
+  const entitlementStatus = creditConverted
+    ? 'CREDITED'
+    : refunded
     ? 'REFUNDED'
     : (order.status === OrderStatus.PAID
       ? (order.grantStatus === 'FAILED'
         ? 'PAID_GRANT_FAILED'
         : (order.grantStatus === 'GRANTED' ? 'PAID_GRANTED' : 'PAID_GRANT_UNKNOWN'))
       : (order.status === OrderStatus.CLOSED ? 'CLOSED' : 'PENDING'));
-  const eligibility = refundEligibilityOf(order, user, nowTs);
+  const baseEligibility = refundEligibilityOf(order, user, nowTs);
+  const eligibility = {
+    ...baseEligibility,
+    convertedToCredit: creditConverted,
+    eligible: creditConverted ? false : baseEligibility.eligible,
+  };
   const actionState = orderActionsOf(order, eligibility, nowTs, sales);
   return {
     _id: order._id,
@@ -502,11 +514,11 @@ function orderViewOf(order = {}, user = {}, nowTs = time.now(), sales = null) {
     unlimitedReminders: order.unlimitedReminders === true
       || order.unlimited === true,
     upgrade: order.upgrade === true,
+    creditConverted,
     title: orderDisplayTitleOf(order),
     amountFen: Math.max(0, Number(order.amountFen) || 0),
     amountText: amountTextOf(order.amountFen),
     addedSlots: Math.max(0, Number(order.addedSlots) || 0),
-    unlimitedReminders: order.unlimitedReminders === true,
     memberDays: Math.max(0, Number(order.memberDays) || 0),
     status: order.status || OrderStatus.PENDING,
     statusLabel: ORDER_STATUS_LABEL[order.status] || '处理中',
@@ -522,9 +534,11 @@ function orderViewOf(order = {}, user = {}, nowTs = time.now(), sales = null) {
       afterExpiresAt: order.entitlementGrant.afterExpiresAt || null,
       memberDaysAddedMs: Math.max(0, Number(order.entitlementGrant.memberDaysAddedMs) || 0),
       taskPackDelta: Math.max(0, Number(order.entitlementGrant.taskPackDelta) || 0),
-      unlimitedReminders: order.entitlementGrant.unlimitedReminders === true
+      unlimitedReminders: orderGrant.unlimitedReminders === true
         || order.unlimitedReminders === true
         || order.unlimited === true,
+      creditConverted,
+      creditId: orderGrant.creditId || '',
       appliedAt: order.entitlementGrant.appliedAt || null,
       revertedAt: order.entitlementGrant.revertedAt || null,
     } : null,
@@ -608,6 +622,11 @@ function normalizeTwoTierUser(user = {}, nowTs = time.now()) {
     quotaPlanPriceText: amountTextOf(TWO_TIER_MEMBER_PRICE_FEN),
     unlimitedPlanPriceText: amountTextOf(TWO_TIER_UNLIMITED_PRICE_FEN),
     upgradePlanPriceText: amountTextOf(TWO_TIER_UPGRADE_PRICE_FEN),
+    upgradeCreditAvailable: false,
+    upgradeCreditPending: false,
+    upgradeCreditText: '',
+    upgradeCreditSourceOrderId: '',
+    upgradeCreditPendingOrderId: '',
   };
 }
 
@@ -694,7 +713,9 @@ function packageViews(snapshot, sales = null, planVersion = PlanVersion.LEGACY) 
   const purchaseEnabled = !sales || sales.purchaseEnabled === true;
   if (planVersion === PlanVersion.TWO_TIER) {
     let items = TWO_TIER_PACKAGES;
-    if (snapshot.unlimited) {
+    if (snapshot.upgradeCreditAvailable && !snapshot.member) {
+      items = TWO_TIER_PACKAGES.filter(item => item.id === 'member_quota_10');
+    } else if (snapshot.unlimited) {
       items = [];
     } else if (snapshot.memberTier === MemberTier.QUOTA_10) {
       items = TWO_TIER_PACKAGES.filter(item => item.upgrade);
@@ -704,19 +725,25 @@ function packageViews(snapshot, sales = null, planVersion = PlanVersion.LEGACY) 
     return items.map(item => {
       const upgradeTooShort = item.upgrade
         && snapshot.memberRemainingMs <= UPGRADE_MIN_REMAINING_MS;
-      const available = purchaseEnabled && !upgradeTooShort;
+      const creditPending = snapshot.upgradeCreditPending
+        && item.id === 'member_quota_10';
+      const available = purchaseEnabled && !upgradeTooShort && !creditPending;
       return {
         ...item,
+        upgradeCreditApplied: snapshot.upgradeCreditAvailable
+          && item.id === 'member_quota_10',
         available,
         actionText: !purchaseEnabled
           ? (sales && sales.message) || '会员购买暂停中'
           : (upgradeTooShort
             ? '会员即将到期，请到期后重新开通'
+            : (creditPending
+              ? '升级权益确认中，请到会员订单继续支付'
             : (item.upgrade
               ? `补 ${item.priceText} 升级不限额度`
               : (snapshot.member
                 ? `续费 ${item.memberDays} 天 ${item.priceText}`
-                : `开通 ${item.memberDays} 天 ${item.priceText}`))),
+                : `开通 ${item.memberDays} 天 ${item.priceText}`)))),
       };
     });
   }
@@ -745,6 +772,7 @@ function packageViews(snapshot, sales = null, planVersion = PlanVersion.LEGACY) 
 }
 
 async function status(db, userId, nowTs = time.now(), options = {}) {
+  const planVersion = planVersionFor(userId, options);
   const enforcementPromise = options.enforcementState
     ? Promise.resolve(options.enforcementState)
     : enforcementState(db, { cache: options.configCache === true });
@@ -754,7 +782,10 @@ async function status(db, userId, nowTs = time.now(), options = {}) {
   const noticePromise = options.includeUpgradeNotice
     ? upgradeNotice.read(db, { cache: options.configCache === true })
     : Promise.resolve(null);
-  const [userRes, taskRes, latestTaskRes, sales, enforcement, noticeConfig] = await Promise.all([
+  const creditPromise = userId && planVersion === PlanVersion.TWO_TIER
+    ? membershipCredit.read(db, userId).catch(() => null)
+    : Promise.resolve(null);
+  const [userRes, taskRes, latestTaskRes, sales, enforcement, noticeConfig, credit] = await Promise.all([
     hasUser
       ? Promise.resolve({ data: options.user ? [options.user] : [] })
       : db.collection(COLLECTIONS.USERS).where({ openId: userId }).get(),
@@ -778,6 +809,7 @@ async function status(db, userId, nowTs = time.now(), options = {}) {
     membershipSales.read(db, { cache: options.configCache === true }),
     enforcementPromise,
     noticePromise,
+    creditPromise,
   ]);
 
   const user = (userRes.data || [])[0] || {};
@@ -805,9 +837,14 @@ async function status(db, userId, nowTs = time.now(), options = {}) {
     await db.collection(COLLECTIONS.USERS).doc(user._id).update({ data: migrationPatch });
     Object.assign(user, migrationPatch);
   }
-  const planVersion = planVersionFor(userId, options);
   const newPlan = planVersion === PlanVersion.UNLIMITED;
   const snapshot = snapshotFromTasks(user, activeTasks, nowTs, { planVersion });
+  const creditView = membershipCredit.publicViewOf(credit, nowTs);
+  snapshot.upgradeCreditAvailable = creditView.available;
+  snapshot.upgradeCreditPending = creditView.pending;
+  snapshot.upgradeCreditText = creditView.text;
+  snapshot.upgradeCreditSourceOrderId = creditView.sourceOrderId;
+  snapshot.upgradeCreditPendingOrderId = creditView.pendingOrderId;
   const salesView = membershipSales.publicView(sales);
   const upgradeNoticeView = upgradeNotice.publicViewOf(noticeConfig, nowTs, {
     newPlan,
@@ -872,7 +909,7 @@ function orderIdOfRequest(hash) {
   return `ord_${String(hash).slice(0, 28)}`;
 }
 
-function orderSpecMatches(order, pkg, snapshot = null) {
+function orderSpecMatches(order, pkg, snapshot = null, creditId = '') {
   if (!order) return false;
   const twoTier = order.planVersion === PlanVersion.TWO_TIER;
   return order
@@ -888,6 +925,8 @@ function orderSpecMatches(order, pkg, snapshot = null) {
       && order.upgrade === (pkg.upgrade === true)
       && (!pkg.upgrade
         || sameExpiryWindow(order.upgradeExpiresAt, snapshot && snapshot.memberExpiresAt))
+      && (pkg.id !== 'member_quota_10'
+        || String(order.upgradeCreditId || '') === String(creditId || ''))
     ))
     && (twoTier || (order.unlimitedReminders === true) === (pkg.unlimitedReminders === true));
 }
@@ -924,6 +963,8 @@ function orderResponseOf(order, reused = false) {
     unlimitedReminders: order.unlimitedReminders === true
       || order.unlimited === true,
     upgrade: order.upgrade === true,
+    upgradeCreditApplied: order.upgradeCreditApplied === true,
+    upgradeCreditId: order.upgradeCreditId || '',
     title: order.title,
     specVersion: order.specVersion,
     addedSlots: order.addedSlots,
@@ -945,6 +986,10 @@ async function createOrder(db, userId, event = {}) {
     const current = await status(db, userId, undefined, {
       membershipCapabilities: event.membershipCapabilities,
     });
+    const credit = current.membership.upgradeCreditAvailable
+      ? await membershipCredit.read(db, userId)
+      : null;
+    const creditId = credit ? credit._id : '';
     if (!current.sales || current.sales.purchaseEnabled !== true) {
       return fail(ERRORS.MEMBERSHIP_SALES_PAUSED, {
         sales: current.sales,
@@ -952,6 +997,12 @@ async function createOrder(db, userId, event = {}) {
     }
     if (pkg.type === 'TASK_PACK' && !current.membership.member) return fail(ERRORS.MEMBERSHIP_REQUIRED);
     if (planVersion === PlanVersion.TWO_TIER) {
+      if (creditId && pkg.id === 'member_unlimited') {
+        return fail({
+          code: ERRORS.BAD_PARAM.code,
+          message: '已保留 ¥1.9 升级权益，请选择 3 元档自动升级',
+        });
+      }
       if (pkg.upgrade
         && current.membership.memberRemainingMs <= UPGRADE_MIN_REMAINING_MS) {
         return fail({
@@ -983,7 +1034,7 @@ async function createOrder(db, userId, event = {}) {
       if (requestOrder.userId !== userId || requestOrder.requestIdHash !== requestHash) {
         return fail(ERRORS.BAD_PARAM);
       }
-      if (!orderSpecMatches(requestOrder, pkg, current.membership)) {
+      if (!orderSpecMatches(requestOrder, pkg, current.membership, creditId)) {
         return fail({ code: ERRORS.BAD_PARAM.code, message: '同一支付请求不能变更商品规格' });
       }
       return orderResponseOf(requestOrder, true);
@@ -998,15 +1049,15 @@ async function createOrder(db, userId, event = {}) {
     const pendingOrders = recentRes.data || [];
     const stalePending = pendingOrders
       .filter(order => isExpiredOrder(order, nowTs)
-        || !orderSpecMatches(order, pkg, current.membership))
+        || !orderSpecMatches(order, pkg, current.membership, creditId))
       .map(order => ({
         order,
         closeReason: isExpiredOrder(order, nowTs)
           ? 'EXPIRED_LOCAL'
           : staleOrderCloseReasonOf(order, pkg, current.membership),
       }));
-    await Promise.all(stalePending.map(({ order, closeReason }) =>
-      db.collection(COLLECTIONS.ORDERS).where({
+    await Promise.all(stalePending.map(async ({ order, closeReason }) => {
+      await db.collection(COLLECTIONS.ORDERS).where({
         _id: order._id,
         status: OrderStatus.PENDING,
       }).update({
@@ -1016,11 +1067,14 @@ async function createOrder(db, userId, event = {}) {
           closeReason,
           updatedAt: nowTs,
         },
-      })
-    ));
+      });
+      if (order.upgradeCreditId) {
+        await membershipCredit.release(db, userId, order._id, nowTs);
+      }
+    }));
     const reusable = pendingOrders.find(order =>
       !isExpiredOrder(order, nowTs)
-      && orderSpecMatches(order, pkg, current.membership)
+      && orderSpecMatches(order, pkg, current.membership, creditId)
     );
     if (reusable) return orderResponseOf(reusable, true);
 
@@ -1037,6 +1091,8 @@ async function createOrder(db, userId, event = {}) {
       membershipTier: pkg.membershipTier || '',
       unlimited: pkg.unlimited === true,
       upgrade: pkg.upgrade === true,
+      upgradeCreditApplied: !!creditId && pkg.id === 'member_quota_10',
+      upgradeCreditId: pkg.id === 'member_quota_10' ? creditId : '',
       title: pkg.title,
       body: `智序准点游-${pkg.title}`,
       amountFen: pkg.priceFen,
@@ -1054,6 +1110,32 @@ async function createOrder(db, userId, event = {}) {
       paidAt: null,
     };
     await db.collection(COLLECTIONS.ORDERS).doc(deterministicOrderId).set({ data: order });
+    if (creditId) {
+      const reserved = await membershipCredit.reserve(
+        db,
+        userId,
+        deterministicOrderId,
+        order.expiresAt,
+        nowTs
+      );
+      if (!reserved) {
+        await db.collection(COLLECTIONS.ORDERS).where({
+          _id: deterministicOrderId,
+          status: OrderStatus.PENDING,
+        }).update({
+          data: {
+            status: OrderStatus.CLOSED,
+            closedAt: nowTs,
+            closeReason: 'UPGRADE_CREDIT_BUSY',
+            updatedAt: nowTs,
+          },
+        });
+        return fail({
+          code: ERRORS.BAD_PARAM.code,
+          message: '升级权益正在其他订单中确认，请到会员订单继续支付',
+        });
+      }
+    }
     return orderResponseOf({ _id: deterministicOrderId, ...order });
   });
 }

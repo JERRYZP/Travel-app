@@ -16,6 +16,7 @@ const COLLECTIONS = {
   REMINDER_CART: 'reminder_cart',   // TABLE-007
   TRIP_ITEMS: 'trip_items',         // TABLE-008（2026-09-16 首页行程状态墙）
   ORDERS: 'orders',                 // TABLE-009（2026-10-27 会员 / 提醒名额订单）
+  MEMBERSHIP_CREDITS: 'membership_credits',
   AFTER_SALES_CASES: 'after_sales_cases',
   ADMIN_AUDIT_LOGS: 'admin_audit_logs',
   PAYMENT_CONFIG: 'payment_config',
@@ -144,6 +145,10 @@ const ERRORS = {
   MEMBERSHIP_ENFORCEMENT_NOT_READY: {
     code: 1033,
     message: '上线前数据迁移未完成，不能切换全量会员限制',
+  },
+  UPGRADE_REFUND_REQUIRED: {
+    code: 1034,
+    message: '请先退款 ¥1.9 升级包，再退会员',
   },
   MEMBERSHIP_REQUIRED: { code: 1022, message: '请先开通会员' },
   PAYMENT_NOT_READY: { code: 1023, message: '支付通道准备中，请稍后再试' },

@@ -44,6 +44,7 @@ const {
   paymentViewOf,
   grantStateOf,
   reverseOrderEntitlement,
+  upgradeDependencyBlockingRefund,
 } = require('./lib/order');
 const afterSales = require('./lib/after-sales');
 const membershipSales = require('./lib/membership-sales');
@@ -1703,8 +1704,23 @@ async function approveRefund(context, event, operatorOverride = '') {
   }
   const order = await findOrderById(db, caseItem.orderId);
   if (!order || order.status !== OrderStatus.PAID) return fail(ERRORS.ORDER_NOT_FOUND);
+  if (order.entitlementGrant && order.entitlementGrant.creditConverted === true) {
+    return fail({
+      code: ERRORS.REFUND_NOT_ELIGIBLE.code,
+      message: '升级权益已保留，这笔 ¥1.9 不再进入普通退款流程',
+    });
+  }
   if (order.refundStatus === RefundStatus.REFUNDED || order.grantStatus === GrantStatus.REVERTED) {
     return fail(ERRORS.AFTER_SALES_EXISTS);
+  }
+  const refundUser = await afterSales.refundEvidenceUser(db, order.userId);
+  const dependentUpgrade = refundUser
+    ? await upgradeDependencyBlockingRefund(db, order, refundUser, new Date())
+    : null;
+  if (dependentUpgrade) {
+    return fail(ERRORS.UPGRADE_REFUND_REQUIRED, {
+      dependentUpgradeOrderId: dependentUpgrade._id,
+    });
   }
   const outRefundNo = caseItem.outRefundNo || afterSales.outRefundNoOf(order);
 

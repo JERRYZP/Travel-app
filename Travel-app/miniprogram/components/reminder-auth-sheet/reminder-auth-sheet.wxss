@@ -302,6 +302,68 @@
   font-size: 21rpx;
 }
 
+.ras-credit-note {
+  margin-top: 8rpx;
+  padding: 12rpx 14rpx;
+  border-radius: 12rpx;
+  background: #FFF3D8;
+  color: #8A5A12;
+  font-size: 21rpx;
+  line-height: 1.5;
+}
+
+.ras-pay-options {
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+  margin-top: 20rpx;
+}
+
+.ras-pay-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8rpx 12rpx;
+  width: 100%;
+  min-height: 78rpx;
+  padding: 12rpx 22rpx;
+  border-radius: 16rpx;
+  box-sizing: border-box;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.ras-pay-option.primary {
+  border: 1rpx solid var(--color-primary);
+  background: var(--color-primary);
+  color: #FFFEFB;
+}
+
+.ras-pay-option.secondary {
+  border: 1rpx solid #D8BE8B;
+  background: #FFFDF8;
+  color: #7A5143;
+}
+
+.ras-pay-option.disabled {
+  border-color: #E5DED2;
+  background: #EFEAE2;
+  color: #A99B8C;
+}
+
+.ras-pay-text {
+  min-width: 0;
+  text-align: center;
+}
+
+.ras-pay-reason {
+  width: 100%;
+  font-size: 19rpx;
+  font-weight: 400;
+  text-align: center;
+}
+
 .ras-pay {
   width: 100%;
   min-height: 72rpx;

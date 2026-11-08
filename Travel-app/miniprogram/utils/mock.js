@@ -16,6 +16,7 @@ const db = {
   items: {},
   feedbacks: {},
   orders: {},
+  membershipCredits: {},
   afterSalesCases: {},
   paymentConfig: {
     membership_sales: { state: 'OPEN', reason: '', updatedAt: null, updatedBy: '' },
@@ -1476,6 +1477,11 @@ function mockTwoTierMembershipSnapshot(nowTs = new Date()) {
     quotaPlanPriceText: '¥3',
     unlimitedPlanPriceText: '¥4.9',
     upgradePlanPriceText: '¥1.9',
+    upgradeCreditAvailable: false,
+    upgradeCreditPending: false,
+    upgradeCreditText: '',
+    upgradeCreditSourceOrderId: '',
+    upgradeCreditPendingOrderId: '',
   };
 }
 
@@ -1647,6 +1653,36 @@ function mockPreviewMembership(preview, nowTs = new Date()) {
       memberTaskSlots: 10,
     });
   }
+  if (preview === 'credit') {
+    return {
+      ...common,
+      member: false,
+      memberLevel: 'NORMAL',
+      memberTier: '',
+      memberPlanId: '',
+      memberPlanLabel: '',
+      unlimited: false,
+      legacyUnlimited: false,
+      pricingVisible: true,
+      upgradeAvailable: false,
+      upgradeShortWindow: false,
+      upgradeWindowClosed: false,
+      memberExpiresAt: null,
+      memberExpiresAtText: '',
+      memberDaysRemaining: 0,
+      memberRemainingMs: 0,
+      taskLimitUnlimited: false,
+      taskLimit: FREE_TASK_SLOTS,
+      entitlementTaskLimit: FREE_TASK_SLOTS,
+      taskRemaining: FREE_TASK_SLOTS,
+      memberTaskSlots: 10,
+      upgradeCreditAvailable: true,
+      upgradeCreditPending: false,
+      upgradeCreditText: '已保留 ¥1.9 升级权益，开通 3 元档后自动升级为不限额度',
+      upgradeCreditSourceOrderId: 'mock-orphan-upgrade',
+      upgradeCreditPendingOrderId: '',
+    };
+  }
   return {
     ...common,
     member: false,
@@ -1769,7 +1805,9 @@ function mockMembershipPackages(snapshot, data = {}) {
   const planVersion = mockPlanVersion(data);
   let items = mockPackagesForPlan(data);
   if (planVersion === 'two-tier-v5') {
-    if (snapshot.unlimited) items = [];
+    if (snapshot.upgradeCreditAvailable && !snapshot.member) {
+      items = items.filter(item => item.id === 'member_quota_10');
+    } else if (snapshot.unlimited) items = [];
     else if (snapshot.memberTier === 'QUOTA_10') items = items.filter(item => item.upgrade);
     else items = items.filter(item => !item.upgrade);
   }
@@ -1781,6 +1819,8 @@ function mockMembershipPackages(snapshot, data = {}) {
       && (planVersion !== 'legacy-v2' || item.type === 'MEMBER' || snapshot.member);
     return {
       ...item,
+      upgradeCreditApplied: snapshot.upgradeCreditAvailable
+        && item.id === 'member_quota_10',
       priceText,
       available,
       actionText: !sales.purchaseEnabled
