@@ -1281,11 +1281,15 @@ const FREE_TASK_SLOTS = 5;
 const LEGACY_TASK_PACK_SIZE = 5;
 const LEGACY_CLIENT_UNLIMITED_TASK_LIMIT = 10000;
 const MEMBER_PRICE_FEN = 600;
+const TWO_TIER_MEMBER_PRICE_FEN = 300;
+const TWO_TIER_UNLIMITED_PRICE_FEN = 490;
+const TWO_TIER_UPGRADE_PRICE_FEN = 190;
+const MEMBER_TASK_SLOTS = 10;
 const MEMBER_DURATION_DAYS = 30;
 const MOCK_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
 
 function mockPriceText(amountFen) {
-  return `¥${(Number(amountFen) / 100).toFixed(2).replace(/\.00$/, '')}`;
+  return `¥${(Number(amountFen) / 100).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}`;
 }
 
 const MOCK_MEMBER_BASE = {
@@ -1311,21 +1315,174 @@ const MOCK_LEGACY_MEMBERSHIP_PACKAGES = Object.freeze([
   },
 ]);
 
+const MOCK_TWO_TIER_PACKAGES = Object.freeze([
+  {
+    id: 'member_quota_10',
+    type: 'MEMBER',
+    membershipTier: 'QUOTA_10',
+    title: '10 个提醒名额 · 30 天',
+    priceFen: TWO_TIER_MEMBER_PRICE_FEN,
+    taskSlots: MEMBER_TASK_SLOTS,
+    addedSlots: MEMBER_TASK_SLOTS - FREE_TASK_SLOTS,
+    unlimited: false,
+    upgrade: false,
+    memberDays: MEMBER_DURATION_DAYS,
+    memberFloorDays: MEMBER_DURATION_DAYS,
+    description: `30 天内最多 ${MEMBER_TASK_SLOTS} 个提醒名额`,
+    badge: '',
+    specVersion: 'member-quota-10-30d-v3',
+  },
+  {
+    id: 'member_unlimited',
+    type: 'MEMBER',
+    membershipTier: 'UNLIMITED',
+    title: '不限提醒名额 · 30 天',
+    priceFen: TWO_TIER_UNLIMITED_PRICE_FEN,
+    taskSlots: null,
+    addedSlots: 0,
+    unlimited: true,
+    upgrade: false,
+    memberDays: MEMBER_DURATION_DAYS,
+    memberFloorDays: MEMBER_DURATION_DAYS,
+    description: '30 天内不限提醒名额',
+    badge: '',
+    specVersion: 'member-unlimited-30d-v5',
+  },
+  {
+    id: 'member_unlimited_upgrade',
+    type: 'MEMBER',
+    membershipTier: 'UNLIMITED',
+    title: '升级不限提醒名额',
+    priceFen: TWO_TIER_UPGRADE_PRICE_FEN,
+    taskSlots: null,
+    addedSlots: 0,
+    unlimited: true,
+    upgrade: true,
+    memberDays: 0,
+    memberFloorDays: 0,
+    description: '补差价升级，仅当前会员期内生效，不延长有效期',
+    badge: '',
+    specVersion: 'member-unlimited-upgrade-v4',
+  },
+]);
+
 function mockHasUnlimitedV3(data) {
   return !!(data && Array.isArray(data.membershipCapabilities)
     && data.membershipCapabilities.includes('unlimited-v3'));
 }
 
+function mockHasTwoTierV5(data) {
+  return !!(data && Array.isArray(data.membershipCapabilities)
+    && data.membershipCapabilities.includes('two-tier-v5'));
+}
+
+function mockPlanVersion(data) {
+  if (mockHasTwoTierV5(data)) return 'two-tier-v5';
+  return mockHasUnlimitedV3(data) ? 'unlimited-v3' : 'legacy-v2';
+}
+
 function mockPackagesForPlan(data) {
-  return mockHasUnlimitedV3(data) ? MOCK_MEMBERSHIP_PACKAGES : MOCK_LEGACY_MEMBERSHIP_PACKAGES;
+  const planVersion = mockPlanVersion(data);
+  if (planVersion === 'two-tier-v5') return MOCK_TWO_TIER_PACKAGES;
+  return planVersion === 'unlimited-v3'
+    ? MOCK_MEMBERSHIP_PACKAGES
+    : MOCK_LEGACY_MEMBERSHIP_PACKAGES;
 }
 
 function mockPackageOf(packageId, data = {}) {
   return mockPackagesForPlan(data).find(item => item.id === packageId) || null;
 }
 
+function mockTaskUsage(nowTs) {
+  const activeTasks = Object.values(db.tasks).filter(t =>
+    t.backendStatus === 'WAITING'
+    && Number.isFinite(new Date(t.releaseAt).getTime())
+    && new Date(t.releaseAt).getTime() > nowTs.getTime());
+  const protectedTaskUsed = activeTasks.filter(t => {
+    if (t.quotaPool === 'PROTECTED') return true;
+    if (t.quotaPool === 'ENTITLEMENT') return false;
+    return true;
+  }).length;
+  return {
+    protectedTaskUsed,
+    taskUsed: activeTasks.length - protectedTaskUsed,
+  };
+}
+
+function mockTwoTierMembershipSnapshot(nowTs = new Date()) {
+  const memberExpiresMs = new Date(mockUser.memberExpiresAt || 0).getTime();
+  const member = Number.isFinite(memberExpiresMs) && memberExpiresMs > nowTs.getTime();
+  const rawTier = String(mockUser.memberTier || '').trim().toUpperCase();
+  const memberTier = member
+    ? (['QUOTA_10', 'UNLIMITED'].includes(rawTier) ? rawTier : 'LEGACY_UNLIMITED')
+    : '';
+  const unlimited = member && ['LEGACY_UNLIMITED', 'UNLIMITED'].includes(memberTier);
+  const taskPackCount = member ? Math.max(0, Number(mockUser.taskPackCount) || 0) : 0;
+  const taskPackSlots = member ? Math.max(0, Number(mockUser.taskPackSlots) || 0) : 0;
+  const protectedTaskQuota = Math.max(FREE_TASK_SLOTS, Number(mockUser.protectedTaskQuota) || FREE_TASK_SLOTS);
+  const entitlementTaskLimit = unlimited
+    ? null
+    : FREE_TASK_SLOTS
+      + (memberTier === 'QUOTA_10' ? MEMBER_TASK_SLOTS - FREE_TASK_SLOTS : 0)
+      + taskPackSlots;
+  const usage = mockTaskUsage(nowTs);
+  const memberRemainingMs = member ? Math.max(0, memberExpiresMs - nowTs.getTime()) : 0;
+  return {
+    member,
+    memberLevel: member ? 'MEMBER' : 'NORMAL',
+    memberTier,
+    memberPlanId: unlimited
+      ? (memberTier === 'LEGACY_UNLIMITED' ? 'legacy_unlimited' : 'member_unlimited')
+      : (memberTier === 'QUOTA_10' ? 'member_quota_10' : ''),
+    memberPlanLabel: unlimited
+      ? (memberTier === 'LEGACY_UNLIMITED' ? '老会员不限额度' : '不限额度会员')
+      : (memberTier === 'QUOTA_10' ? `${MEMBER_TASK_SLOTS} 个提醒名额` : ''),
+    unlimited,
+    legacyUnlimited: memberTier === 'LEGACY_UNLIMITED',
+    pricingVisible: !unlimited,
+    upgradeAvailable: memberTier === 'QUOTA_10' && memberRemainingMs > 15 * 60 * 1000,
+    upgradeShortWindow: memberTier === 'QUOTA_10'
+      && memberRemainingMs > 15 * 60 * 1000
+      && memberRemainingMs < 5 * DAY_MS,
+    upgradeWindowClosed: memberTier === 'QUOTA_10'
+      && memberRemainingMs <= 15 * 60 * 1000,
+    memberExpiresAt: mockUser.memberExpiresAt || null,
+    memberExpiresAtText: member
+      ? `${beijingParts(new Date(memberExpiresMs)).year}年${beijingParts(new Date(memberExpiresMs)).month}月${beijingParts(new Date(memberExpiresMs)).day}日`
+      : '',
+    memberDaysRemaining: member
+      ? Math.max(1, Math.ceil((memberExpiresMs - nowTs.getTime()) / DAY_MS))
+      : 0,
+    memberRemainingMs,
+    planVersion: 'two-tier-v5',
+    taskLimitUnlimited: unlimited,
+    taskLimit: entitlementTaskLimit,
+    entitlementTaskLimit,
+    protectedTaskQuota: Math.max(protectedTaskQuota, usage.protectedTaskUsed),
+    taskUsed: usage.taskUsed,
+    protectedTaskUsed: usage.protectedTaskUsed,
+    entitlementTaskUsed: usage.taskUsed,
+    taskRemaining: entitlementTaskLimit == null
+      ? null
+      : Math.max(0, entitlementTaskLimit - usage.taskUsed),
+    taskPackCount,
+    taskPackSlots,
+    ownedTaskPackCount: Math.max(0, Number(mockUser.taskPackCount) || 0),
+    ownedTaskPackSlots: Math.max(0, Number(mockUser.taskPackSlots) || 0),
+    memberDurationDays: MEMBER_DURATION_DAYS,
+    freeTaskSlots: FREE_TASK_SLOTS,
+    memberTaskSlots: MEMBER_TASK_SLOTS,
+    taskPackSize: 0,
+    quotaPlanPriceText: '¥3',
+    unlimitedPlanPriceText: '¥4.9',
+    upgradePlanPriceText: '¥1.9',
+  };
+}
+
 function mockMembershipSnapshot(nowTs = new Date(), data = {}) {
-  const newPlan = mockHasUnlimitedV3(data);
+  const planVersion = mockPlanVersion(data);
+  if (planVersion === 'two-tier-v5') return mockTwoTierMembershipSnapshot(nowTs);
+  const newPlan = planVersion === 'unlimited-v3';
   const memberExpiresMs = new Date(mockUser.memberExpiresAt || 0).getTime();
   const member = Number.isFinite(memberExpiresMs) && memberExpiresMs > nowTs.getTime();
   const taskPackCount = member ? Math.max(0, Number(mockUser.taskPackCount) || 0) : 0;
@@ -1338,19 +1495,21 @@ function mockMembershipSnapshot(nowTs = new Date(), data = {}) {
   const entitlementTaskLimit = newPlan
     ? (member ? LEGACY_CLIENT_UNLIMITED_TASK_LIMIT : FREE_TASK_SLOTS)
     : FREE_TASK_SLOTS + (member ? 10 : 0) + taskPackSlots;
-  const activeTasks = Object.values(db.tasks).filter(t =>
-    t.backendStatus === 'WAITING'
-    && Number.isFinite(new Date(t.releaseAt).getTime())
-    && new Date(t.releaseAt).getTime() > nowTs.getTime());
-  const protectedTaskUsed = activeTasks.filter(t => {
-    if (t.quotaPool === 'PROTECTED') return true;
-    if (t.quotaPool === 'ENTITLEMENT') return false;
-    return true;
-  }).length;
-  const taskUsed = activeTasks.length - protectedTaskUsed;
+  const usage = mockTaskUsage(nowTs);
+  const protectedTaskUsed = usage.protectedTaskUsed;
+  const taskUsed = usage.taskUsed;
   return {
     member,
     memberLevel: member ? 'MEMBER' : 'NORMAL',
+    memberTier: newPlan && member ? 'LEGACY_UNLIMITED' : '',
+    memberPlanId: newPlan && member ? 'legacy_unlimited' : (member ? 'legacy_member_15' : ''),
+    memberPlanLabel: newPlan && member ? '现有不限额度会员' : (member ? '15 个提醒名额' : ''),
+    unlimited: newPlan && member,
+    legacyUnlimited: newPlan && member,
+    pricingVisible: true,
+    upgradeAvailable: false,
+    upgradeShortWindow: false,
+    upgradeWindowClosed: false,
     memberExpiresAt: mockUser.memberExpiresAt || null,
     memberExpiresAtText: member
       ? `${beijingParts(new Date(memberExpiresMs)).year}年${beijingParts(new Date(memberExpiresMs)).month}月${beijingParts(new Date(memberExpiresMs)).day}日`
@@ -1358,6 +1517,7 @@ function mockMembershipSnapshot(nowTs = new Date(), data = {}) {
     memberDaysRemaining: member
       ? Math.max(1, Math.ceil((memberExpiresMs - nowTs.getTime()) / DAY_MS))
       : 0,
+    memberRemainingMs: member ? Math.max(0, memberExpiresMs - nowTs.getTime()) : 0,
     planVersion: newPlan ? 'unlimited-v3' : 'legacy-v2',
     taskLimitUnlimited: newPlan && member,
     taskLimit: entitlementTaskLimit,
@@ -1374,6 +1534,141 @@ function mockMembershipSnapshot(nowTs = new Date(), data = {}) {
     freeTaskSlots: FREE_TASK_SLOTS,
     memberTaskSlots: newPlan ? LEGACY_CLIENT_UNLIMITED_TASK_LIMIT : 15,
     taskPackSize: newPlan ? 0 : 10,
+  };
+}
+
+function mockPreviewMembership(preview, nowTs = new Date()) {
+  const nowMs = nowTs.getTime();
+  const base = mockTwoTierMembershipSnapshot(nowTs);
+  const common = {
+    ...base,
+    taskUsed: 0,
+    protectedTaskUsed: 0,
+    entitlementTaskUsed: 0,
+    taskPackCount: 0,
+    taskPackSlots: 0,
+    ownedTaskPackCount: 0,
+    ownedTaskPackSlots: 0,
+  };
+  const withMember = (tier, remainingMs, patch = {}) => {
+    const expiresAt = new Date(nowMs + remainingMs);
+    const p = beijingParts(expiresAt);
+    return {
+      ...common,
+      member: true,
+      memberLevel: 'MEMBER',
+      memberTier: tier,
+      memberExpiresAt: expiresAt,
+      memberExpiresAtText: `${p.year}年${p.month}月${p.day}日`,
+      memberDaysRemaining: Math.max(1, Math.ceil(remainingMs / DAY_MS)),
+      memberRemainingMs: remainingMs,
+      ...patch,
+    };
+  };
+  if (preview === 'quota') {
+    return withMember('QUOTA_10', 20 * DAY_MS, {
+      memberPlanId: 'member_quota_10',
+      memberPlanLabel: '10 个提醒名额',
+      unlimited: false,
+      legacyUnlimited: false,
+      pricingVisible: true,
+      upgradeAvailable: true,
+      upgradeShortWindow: false,
+      upgradeWindowClosed: false,
+      taskLimit: 10,
+      entitlementTaskLimit: 10,
+      taskRemaining: 10,
+      memberTaskSlots: 10,
+    });
+  }
+  if (preview === 'quota_short') {
+    return withMember('QUOTA_10', 4 * DAY_MS, {
+      memberPlanId: 'member_quota_10',
+      memberPlanLabel: '10 个提醒名额',
+      unlimited: false,
+      legacyUnlimited: false,
+      pricingVisible: true,
+      upgradeAvailable: true,
+      upgradeShortWindow: true,
+      upgradeWindowClosed: false,
+      taskLimit: 10,
+      entitlementTaskLimit: 10,
+      taskRemaining: 10,
+      memberTaskSlots: 10,
+    });
+  }
+  if (preview === 'quota_closed') {
+    return withMember('QUOTA_10', 10 * 60 * 1000, {
+      memberPlanId: 'member_quota_10',
+      memberPlanLabel: '10 个提醒名额',
+      unlimited: false,
+      legacyUnlimited: false,
+      pricingVisible: true,
+      upgradeAvailable: false,
+      upgradeShortWindow: false,
+      upgradeWindowClosed: true,
+      taskLimit: 10,
+      entitlementTaskLimit: 10,
+      taskRemaining: 10,
+      memberTaskSlots: 10,
+    });
+  }
+  if (preview === 'unlimited') {
+    return withMember('UNLIMITED', 20 * DAY_MS, {
+      memberPlanId: 'member_unlimited',
+      memberPlanLabel: '不限额度会员',
+      unlimited: true,
+      legacyUnlimited: false,
+      pricingVisible: false,
+      upgradeAvailable: false,
+      upgradeShortWindow: false,
+      upgradeWindowClosed: false,
+      taskLimit: null,
+      entitlementTaskLimit: null,
+      taskRemaining: null,
+      taskLimitUnlimited: true,
+      memberTaskSlots: 10,
+    });
+  }
+  if (preview === 'legacy') {
+    return withMember('LEGACY_UNLIMITED', 20 * DAY_MS, {
+      memberPlanId: 'legacy_unlimited',
+      memberPlanLabel: '老会员不限额度',
+      unlimited: true,
+      legacyUnlimited: true,
+      pricingVisible: false,
+      upgradeAvailable: false,
+      upgradeShortWindow: false,
+      upgradeWindowClosed: false,
+      taskLimit: null,
+      entitlementTaskLimit: null,
+      taskRemaining: null,
+      taskLimitUnlimited: true,
+      memberTaskSlots: 10,
+    });
+  }
+  return {
+    ...common,
+    member: false,
+    memberLevel: 'NORMAL',
+    memberTier: '',
+    memberPlanId: '',
+    memberPlanLabel: '',
+    unlimited: false,
+    legacyUnlimited: false,
+    pricingVisible: true,
+    upgradeAvailable: false,
+    upgradeShortWindow: false,
+    upgradeWindowClosed: false,
+    memberExpiresAt: null,
+    memberExpiresAtText: '',
+    memberDaysRemaining: 0,
+    memberRemainingMs: 0,
+    taskLimitUnlimited: false,
+    taskLimit: FREE_TASK_SLOTS,
+    entitlementTaskLimit: FREE_TASK_SLOTS,
+    taskRemaining: FREE_TASK_SLOTS,
+    memberTaskSlots: 10,
   };
 }
 
@@ -1471,19 +1766,32 @@ function mockAdminMembershipUpgradeNoticeView(nowTs = new Date()) {
 
 function mockMembershipPackages(snapshot, data = {}) {
   const sales = mockMembershipSalesView();
-  const newPlan = mockHasUnlimitedV3(data);
-  return mockPackagesForPlan(data).map(item => {
+  const planVersion = mockPlanVersion(data);
+  let items = mockPackagesForPlan(data);
+  if (planVersion === 'two-tier-v5') {
+    if (snapshot.unlimited) items = [];
+    else if (snapshot.memberTier === 'QUOTA_10') items = items.filter(item => item.upgrade);
+    else items = items.filter(item => !item.upgrade);
+  }
+  return items.map(item => {
     const priceText = mockPriceText(item.priceFen);
-    const available = sales.purchaseEnabled && (newPlan || item.type === 'MEMBER' || snapshot.member);
+    const upgradeTooShort = item.upgrade === true && snapshot.upgradeWindowClosed === true;
+    const available = sales.purchaseEnabled
+      && !upgradeTooShort
+      && (planVersion !== 'legacy-v2' || item.type === 'MEMBER' || snapshot.member);
     return {
       ...item,
       priceText,
       available,
       actionText: !sales.purchaseEnabled
         ? sales.message
-        : (item.type === 'MEMBER'
+        : (upgradeTooShort
+          ? '会员即将到期，请到期后重新开通'
+          : item.upgrade
+          ? `补 ${priceText} 升级不限额度`
+          : (item.type === 'MEMBER'
           ? `${snapshot.member ? '续费' : '开通会员'} ${priceText}`
-          : (snapshot.member ? `加购 ${item.addedSlots} 个名额 ${priceText}` : '先开通会员')),
+          : (snapshot.member ? `加购 ${item.addedSlots} 个名额 ${priceText}` : '先开通会员'))),
     };
   });
 }
@@ -1575,11 +1883,15 @@ function mockOrderView(order) {
     outTradeNo: order.outTradeNo,
     packageId: order.packageId,
     productType: order.productType,
+    planVersion: order.planVersion || '',
+    membershipTier: order.membershipTier || '',
+    unlimited: order.unlimited === true,
+    upgrade: order.upgrade === true,
     title: order.title,
     amountFen: order.amountFen,
-    amountText: `¥${(order.amountFen / 100).toFixed(2).replace(/\.00$/, '')}`,
+    amountText: mockPriceText(order.amountFen),
     addedSlots: order.addedSlots || 0,
-    unlimitedReminders: order.unlimitedReminders === true,
+    unlimitedReminders: order.unlimitedReminders === true || order.unlimited === true,
     memberDays: order.memberDays || 0,
     status: order.status,
     statusLabel: ({ PENDING: '待支付', PAID: '已支付', CLOSED: '已关闭', REFUNDED: '已退款' })[order.status] || '处理中',
@@ -1723,7 +2035,7 @@ function mockCaseView(item) {
 
 function mockTaskLimitError(needed, data = {}) {
   const current = mockMembershipSnapshot(new Date(), data);
-  if (current.taskLimitUnlimited) return null;
+  if (current.taskLimitUnlimited || current.unlimited) return null;
   const want = Math.max(0, Number(needed) || 0);
   if (want <= current.taskRemaining) return null;
   const taskLimit = {
@@ -3123,13 +3435,21 @@ const handlers = {
 
   /* ----- 会员 / 提醒名额与售后（镜像 reminder + payment） ----- */
   'membership.status': (data) => {
-    const current = mockMembershipSnapshot(new Date(), data);
+    const preview = data && data.preview;
+    const current = preview
+      ? mockPreviewMembership(preview, new Date())
+      : mockMembershipSnapshot(new Date(), data);
     const sales = mockMembershipSalesView();
     const enforcement = mockMembershipEnforcementView();
     return {
       success: true,
       membership: current,
-      packages: mockMembershipPackages(current, data),
+      packages: mockMembershipPackages(current, preview
+        ? {
+          ...(data || {}),
+          membershipCapabilities: ['unlimited-v3', 'two-tier-v5'],
+        }
+        : data),
       sales,
       enforced: enforcement.mode === 'all',
     };
@@ -3144,6 +3464,7 @@ const handlers = {
         sales,
       };
     }
+    const planVersion = mockPlanVersion(data);
     const pkg = mockPackageOf(data.packageId, data);
     const requestId = String(data.requestId || '');
     if (!pkg || !MOCK_REQUEST_ID_PATTERN.test(requestId)) {
@@ -3171,8 +3492,14 @@ const handlers = {
       && Number(order.amountFen) === pkg.priceFen
       && Number(order.addedSlots) === pkg.addedSlots
       && Number(order.memberDays) === pkg.memberDays
-      && order.unlimitedReminders === (pkg.unlimitedReminders === true)
-      && order.specVersion === pkg.specVersion;
+      && order.specVersion === pkg.specVersion
+      && (planVersion !== 'two-tier-v5' || (
+        String(order.membershipTier || '') === String(pkg.membershipTier || '')
+        && order.unlimited === (pkg.unlimited === true)
+        && order.upgrade === (pkg.upgrade === true)
+      ))
+      && (planVersion === 'two-tier-v5'
+        || order.unlimitedReminders === (pkg.unlimitedReminders === true));
 
     Object.values(db.orders).forEach(order => {
       if (order.packageId !== data.packageId || order.status !== 'PENDING') return;
@@ -3211,6 +3538,10 @@ const handlers = {
       packageId: pkg.id,
       productType: pkg.type,
       specVersion: pkg.specVersion,
+      planVersion,
+      membershipTier: pkg.membershipTier || '',
+      unlimited: pkg.unlimited === true,
+      upgrade: pkg.upgrade === true,
       title: pkg.title,
       body: `智序准点游-${pkg.title}`,
       amountFen: pkg.priceFen,
@@ -3232,9 +3563,15 @@ const handlers = {
       amountFen: pkg.priceFen,
       packageId: pkg.id,
       unlimitedReminders: pkg.unlimitedReminders === true,
+      unlimited: pkg.unlimited === true,
+      membershipTier: pkg.membershipTier || '',
+      upgrade: pkg.upgrade === true,
     };
   },
-  'membership.orders': () => {
+  'membership.orders': (data) => {
+    if (data && data.preview) {
+      return { success: true, items: [], count: 0, sales: mockMembershipSalesView() };
+    }
     const items = Object.values(db.orders)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .map(mockOrderView);

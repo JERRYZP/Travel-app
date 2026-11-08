@@ -25,22 +25,6 @@
 .load-failed-title { color: var(--color-muted); font-size: 24rpx; }
 .retry-btn { padding: 16rpx 30rpx; border-radius: 14rpx; background: var(--color-cream); color: var(--color-text); font-size: 24rpx; }
 
-.explain-card {
-  padding: 22rpx 24rpx;
-  border-radius: 20rpx;
-  background: linear-gradient(145deg, #FFF9EB, #F7E9CE);
-  border: 1rpx solid #E8D2AA;
-}
-.explain-title { display: block; color: #4A2D23; font-size: 29rpx; font-weight: 700; line-height: 1.38; }
-.quota-pair { display: flex; align-items: center; gap: 18rpx; margin-top: 16rpx; }
-.quota-item { display: flex; flex: 1; flex-direction: column; gap: 3rpx; padding: 14rpx 16rpx; border-radius: 12rpx; background: rgba(255,255,255,.68); }
-.quota-item.highlight { background: #B8904A; }
-.quota-label { color: #8A7257; font-size: 19rpx; }
-.quota-value { color: #4A2D23; font-size: 28rpx; font-weight: 700; }
-.quota-item.highlight .quota-label, .quota-item.highlight .quota-value { color: #FFFDF7; }
-.quota-arrow { color: #A98B5F; font-size: 26rpx; }
-.explain-foot { display: block; margin-top: 14rpx; color: #765F4B; font-size: 21rpx; line-height: 1.5; }
-
 .status-band {
   margin-top: 18rpx;
   padding: 26rpx 28rpx;
@@ -49,17 +33,19 @@
   background: var(--color-surface);
   box-shadow: var(--shadow-card);
 }
-.status-band.member-first { margin-top: 0; }
+.status-band.first { margin-top: 0; }
 .status-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20rpx; }
 .status-title { display: block; color: var(--color-ink); font-size: 30rpx; font-weight: 600; }
 .status-expiry { display: block; margin-top: 7rpx; color: var(--color-muted); font-size: 22rpx; }
 .status-badge { flex-shrink: 0; padding: 6rpx 16rpx; border-radius: 999rpx; background: var(--color-cream); color: var(--color-text); font-size: 21rpx; }
 .status-badge.active { background: #F2E4C0; color: #8A5A12; }
 .usage-row { display: flex; justify-content: space-between; margin-top: 24rpx; color: var(--color-text); font-size: 23rpx; }
-.usage-unlimited { color: #9A6B22; font-weight: 600; }
+.usage-unlimited { color: var(--chip-gold-text); font-weight: 600; }
 .usage-track { height: 10rpx; margin-top: 12rpx; overflow: hidden; border-radius: 999rpx; background: #EFE8DA; }
 .usage-fill { height: 10rpx; border-radius: 999rpx; background: #B8904A; }
 .protected-note { display: block; margin-top: 16rpx; padding-top: 15rpx; border-top: 1rpx solid var(--color-border); color: #7E6238; font-size: 21rpx; line-height: 1.55; }
+
+.preview-banner { margin-bottom: 18rpx; padding: 14rpx 18rpx; border: 1rpx solid #D8C49D; border-radius: 14rpx; background: #FFF7E7; color: #7C541D; font-size: 21rpx; text-align: center; }
 
 .payment-state {
   display: flex;
@@ -92,6 +78,7 @@
 .order-entry-desc { color: var(--color-muted); font-size: 21rpx; }
 
 .section-label { display: block; margin: 34rpx 4rpx 14rpx; color: var(--color-ink); font-size: 26rpx; font-weight: 600; }
+.section-hint { display: block; margin: -6rpx 4rpx 16rpx; color: var(--color-muted); font-size: 21rpx; line-height: 1.5; }
 .benefit-list { overflow: hidden; border-radius: 20rpx; background: var(--color-surface); box-shadow: var(--shadow-card); }
 .benefit-row { display: flex; gap: 16rpx; padding: 24rpx 26rpx; border-bottom: 1rpx solid var(--color-border); }
 .benefit-row:last-child { border-bottom: none; }
@@ -111,8 +98,9 @@
 .package-lock { color: var(--color-primary); font-size: 21rpx; }
 .package-price { display: flex; align-items: center; gap: 16rpx; flex-shrink: 0; }
 .package-price-value { color: var(--color-primary); font-size: 28rpx; font-weight: 700; }
-.package-check { width: 30rpx; height: 30rpx; border: 2rpx solid var(--color-border); border-radius: 7rpx; box-sizing: border-box; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.package-check.checked { border-color: #B8904A; background: #B8904A; }
+.package-radio { box-sizing: border-box; width: 30rpx; height: 30rpx; border: 2rpx solid #E8E0C8; border-radius: 50%; background: var(--color-surface); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.package-radio.checked { border-color: #B58E44; background: #B58E44; }
+.package-tip { display: block; margin-top: 12rpx; color: var(--color-muted); font-size: 21rpx; }
 .purchase-note { margin-top: 24rpx; padding: 20rpx 22rpx; border-radius: 16rpx; background: var(--color-cream); color: var(--color-text); font-size: 21rpx; line-height: 1.65; }
 .sales-paused-card { display: flex; flex-direction: column; gap: 10rpx; margin-top: 28rpx; padding: 24rpx 22rpx; border: 1rpx solid #D8A08E; border-radius: 16rpx; background: #FFF1EC; }
 .sales-paused-title { color: #A7462B; font-size: 25rpx; font-weight: 600; }

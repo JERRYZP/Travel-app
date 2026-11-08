@@ -6,7 +6,7 @@
     </view>
     <view class="pcs-row"><text>商品</text><text>{{title}}</text></view>
     <view class="pcs-row"><text>金额</text><text class="pcs-amount">{{amount}}</text></view>
-    <view class="pcs-row"><text>生效</text><text>支付成功后立即生效</text></view>
+    <view class="pcs-row"><text>生效</text><text>{{effect || '支付成功后立即生效'}}</text></view>
     <view class="pcs-row"><text>有效期</text><text>{{expiry}}</text></view>
     <view class="pcs-rule">
       <text wx:if="{{isIosDevice}}">iOS 购买由 Apple 处理，支付成功后权益立即生效。退款申请与审核以 Apple 为准，小程序客服无法决定；如需申请，可在 App Store 购买记录中操作。</text>

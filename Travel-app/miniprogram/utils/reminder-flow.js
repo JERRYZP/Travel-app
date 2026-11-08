@@ -167,7 +167,7 @@ function resolveReminderAuth(page, result) {
 function membershipLimitOfStatus(status, needed) {
   const membership = status && status.membership;
   if (!status || status.enforced !== true || !membership) return null;
-  if (membership.taskLimitUnlimited === true) return null;
+  if (membership.taskLimitUnlimited === true || membership.unlimited === true) return null;
   const remaining = Math.max(0, Number(membership.taskRemaining) || 0);
   const requested = Math.max(0, Number(needed) || 0);
   if (requested <= remaining) return null;
@@ -744,20 +744,26 @@ function openTaskLimitPayment(page) {
     wx.showToast({ title: limit.salesMessage || '会员购买暂停中', icon: 'none' });
     return false;
   }
-  const confirm = membershipEntry.payConfirmOf(limit);
-  if (!confirm) {
-    wx.showToast({ title: '套餐信息加载失败，请稍后重试', icon: 'none' });
+  if (limit.upgradeWindowClosed === true) {
+    wx.showToast({ title: '会员即将到期，请到期后重新开通', icon: 'none' });
     return false;
   }
-  const mode = page._taskLimitPayMode;
-  const buttonText = mode === 'resume'
-    ? '继续设置提醒'
-    : (mode === 'status' ? '继续确认支付结果' : (mode === 'blocked' ? '暂不可继续' : `支付 ${confirm.amount}`));
-  page.setData({
-    taskLimitPayConfirm: confirm,
-    taskLimitPayButtonText: buttonText,
-    taskLimitPayDisabled: mode === 'blocked',
-    taskLimitPayFeedback: '',
+  membershipEntry.showUpgradeWindowWarning(limit, () => {
+    const confirm = membershipEntry.payConfirmOf(limit);
+    if (!confirm) {
+      wx.showToast({ title: '套餐信息加载失败，请稍后重试', icon: 'none' });
+      return;
+    }
+    const mode = page._taskLimitPayMode;
+    const buttonText = mode === 'resume'
+      ? '继续设置提醒'
+      : (mode === 'status' ? '继续确认支付结果' : (mode === 'blocked' ? '暂不可继续' : `支付 ${confirm.amount}`));
+    page.setData({
+      taskLimitPayConfirm: confirm,
+      taskLimitPayButtonText: buttonText,
+      taskLimitPayDisabled: mode === 'blocked',
+      taskLimitPayFeedback: '',
+    });
   });
   return true;
 }

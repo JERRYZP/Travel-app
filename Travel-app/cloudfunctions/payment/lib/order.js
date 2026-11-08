@@ -16,8 +16,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const ORDER_TTL_MS = 15 * 60 * 1000;
 const REFUND_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DUPLICATE_WINDOW_MS = 60 * 1000;
+const SAME_EXPIRY_TOLERANCE_MS = 1000;
 const LEGACY_TASK_PACK_SIZE = 5;
 const GRANT_SCHEMA_VERSION = 2;
+const MemberTier = Object.freeze({
+  LEGACY_UNLIMITED: 'LEGACY_UNLIMITED',
+  QUOTA_10: 'QUOTA_10',
+  UNLIMITED: 'UNLIMITED',
+});
 
 function amountOf(payment = {}) {
   const raw = payment.amount && typeof payment.amount === 'object'
@@ -30,6 +36,40 @@ function amountOf(payment = {}) {
 function dateMs(value) {
   const ms = new Date(value || 0).getTime();
   return Number.isFinite(ms) ? ms : 0;
+}
+
+function effectiveMemberTierOf(user = {}, now = new Date()) {
+  const expiryMs = dateMs(user.memberExpiresAt);
+  if (!expiryMs || expiryMs <= new Date(now).getTime()) return '';
+  const raw = String(user.memberTier || '').trim().toUpperCase();
+  if (raw === MemberTier.QUOTA_10 || raw === MemberTier.UNLIMITED) return raw;
+  return MemberTier.LEGACY_UNLIMITED;
+}
+
+function grantTierOf(order = {}) {
+  if (order.productType !== 'MEMBER') return '';
+  const raw = String(order.membershipTier || '').trim().toUpperCase();
+  if (raw === MemberTier.QUOTA_10 || raw === MemberTier.UNLIMITED) return raw;
+  if (order.unlimitedReminders === true
+    || /^member-unlimited-30d-v[34]$/.test(String(order.specVersion || ''))) {
+    return MemberTier.UNLIMITED;
+  }
+  return '';
+}
+
+function isUnlimitedUpgradeOrder(order = {}) {
+  return order.productType === 'MEMBER'
+    && (order.upgrade === true || order.packageId === 'member_unlimited_upgrade');
+}
+
+function isKeepExpiryUpgradeOrder(order = {}) {
+  return isUnlimitedUpgradeOrder(order)
+    && (String(order.specVersion || '') === 'member-unlimited-upgrade-v4'
+      || dateMs(order.upgradeExpiresAt) > 0);
+}
+
+function sameExpiryWindow(a, b) {
+  return Math.abs(dateMs(a) - dateMs(b)) <= SAME_EXPIRY_TOLERANCE_MS;
 }
 
 function docDataOf(result) {
@@ -118,6 +158,9 @@ function paymentViewOf(order = {}) {
     taskPackCount: Math.max(0, Number(order.taskPackCount) || 0),
     taskPackSlots: Math.max(0, Number(order.taskPackSlots) || 0),
     unlimitedReminders: order.unlimitedReminders === true,
+    unlimited: order.unlimited === true,
+    membershipTier: order.membershipTier || '',
+    upgrade: order.upgrade === true,
     isExpired: isOrderExpired(order),
   };
 }
@@ -270,14 +313,29 @@ async function fulfillOrder(db, order, payment = {}) {
       const memberFloorDays = Math.max(0, Number(latestOrder.memberFloorDays) || 0);
       const taskPackCountAdded = taskPackCountAddedOf(latestOrder);
       const taskPackSlotsAdded = taskPackSlotsAddedOf(latestOrder);
+      const beforeTier = effectiveMemberTierOf(latestUser, nowTs);
+      const orderTier = grantTierOf(latestOrder);
+      const afterTier = orderTier || beforeTier;
+      const upgrade = isUnlimitedUpgradeOrder(latestOrder);
+      const keepExpiryUpgrade = isKeepExpiryUpgradeOrder(latestOrder);
       const currentExpiryMs = dateMs(latestUser.memberExpiresAt);
+      if (keepExpiryUpgrade && (
+        beforeTier !== MemberTier.QUOTA_10
+        || currentExpiryMs <= nowTs.getTime()
+        || (dateMs(latestOrder.upgradeExpiresAt) > 0
+          && !sameExpiryWindow(latestOrder.upgradeExpiresAt, currentExpiryMs))
+      )) {
+        throw new Error('会员已到期或会员期已变化，升级单需退款或人工处理');
+      }
       const validCurrentExpiry = currentExpiryMs > nowTs.getTime() ? currentExpiryMs : nowTs.getTime();
       const expiryCandidates = [
         memberDays > 0 ? validCurrentExpiry + memberDays * DAY_MS : 0,
         memberFloorDays > 0 ? nowTs.getTime() + memberFloorDays * DAY_MS : 0,
         currentExpiryMs > 0 ? currentExpiryMs : 0,
       ];
-      const nextExpiryMs = Math.max(...expiryCandidates);
+      const nextExpiryMs = keepExpiryUpgrade
+        ? currentExpiryMs
+        : Math.max(...expiryCandidates);
       entitlementGrant = {
         beforeExpiresAt: currentExpiryMs ? new Date(currentExpiryMs) : null,
         afterExpiresAt: new Date(nextExpiryMs),
@@ -285,7 +343,13 @@ async function fulfillOrder(db, order, payment = {}) {
         taskPackDelta: taskPackCountAdded,
         taskPackCountAdded,
         taskPackSlotsAdded,
-        unlimitedReminders: latestOrder.unlimitedReminders === true,
+        unlimitedReminders: latestOrder.unlimitedReminders === true
+          || latestOrder.unlimited === true,
+        beforeTier,
+        afterTier,
+        beforeTierOrderId: latestUser.memberTierOrderId || '',
+        tierChanged: !!orderTier && orderTier !== beforeTier,
+        upgrade,
         specVersion: latestOrder.specVersion || '',
         appliedAt: nowTs,
         revertedAt: null,
@@ -299,6 +363,10 @@ async function fulfillOrder(db, order, payment = {}) {
         lastMembershipGrantId: order._id,
         lastMembershipGrantType: 'ORDER',
       };
+      if (orderTier) {
+        userPatch.memberTier = afterTier;
+        userPatch.memberTierOrderId = order._id;
+      }
       if (taskPackCountAdded > 0) {
         const currentPackCount = Math.max(0, parseInt(latestUser.taskPackCount, 10) || 0);
         const currentPackSlots = latestUser.taskPackSlots != null
@@ -457,12 +525,26 @@ async function reverseOrderEntitlement(db, order, refundedAmountFen) {
       const nextPackCount = Math.max(0, currentPackCount - taskPackCountAdded);
       const nextPackSlots = Math.max(0, currentPackSlots - taskPackSlotsAdded);
       const member = nextExpiryMs > nowTs.getTime();
+      let nextTier = effectiveMemberTierOf(latestUser, nowTs);
+      let nextTierOrderId = latestUser.memberTierOrderId || '';
+      if (latestUser.memberTierOrderId === latestOrder._id) {
+        nextTier = grant.beforeTier || '';
+        nextTierOrderId = grant.beforeTierOrderId || '';
+      }
+      if (!member) {
+        nextTier = '';
+        nextTierOrderId = '';
+      }
       const userPatch = {
         memberExpiresAt: new Date(nextExpiryMs),
         memberLevel: member ? MemberLevel.MEMBER : MemberLevel.NORMAL,
         taskPackCount: nextPackCount,
         taskPackSlots: nextPackSlots,
       };
+      if (latestOrder.productType === 'MEMBER') {
+        userPatch.memberTier = nextTier || null;
+        userPatch.memberTierOrderId = nextTierOrderId || null;
+      }
       await transaction.collection(COLLECTIONS.USERS).doc(user._id).update({ data: userPatch });
       await transaction.collection(COLLECTIONS.ORDERS).doc(latestOrder._id).update({
         data: {
@@ -476,6 +558,7 @@ async function reverseOrderEntitlement(db, order, refundedAmountFen) {
             taskPackDelta: taskPackCountAdded,
             taskPackCountAdded,
             taskPackSlotsAdded,
+            revertedTier: nextTier || '',
             legacyBackfill: !hasMemberSnapshot || grant.taskPackSlotsAdded == null,
             revertedAt: nowTs,
           },
@@ -529,8 +612,12 @@ module.exports = {
   DUPLICATE_WINDOW_MS,
   LEGACY_TASK_PACK_SIZE,
   GRANT_SCHEMA_VERSION,
+  MemberTier,
   amountOf,
   dateMs,
+  effectiveMemberTierOf,
+  grantTierOf,
+  isUnlimitedUpgradeOrder,
   orderExpiresAtMs,
   isOrderExpired,
   findOrderById,

@@ -15,9 +15,10 @@ paths:
 
 会员改版必须复用现有 `MEMBERSHIP_ENFORCEMENT_MODE` 白名单机制：
 
-- 客户端必须在 `reminder` 请求中显式声明 `membershipCapabilities: ['unlimited-v3']`；未声明能力的旧客户端永久继续 `legacy-v2`。
+- 客户端必须在 `reminder` 请求中显式声明 `membershipCapabilities: ['unlimited-v3', 'two-tier-v5']`；未声明 `unlimited-v3` 的旧客户端永久继续 `legacy-v2`。
 - `test`：只有 `MEMBERSHIP_TEST_OPENIDS` 命中且声明能力的请求返回新会员方案；其他请求必须继续旧价格、旧额度和旧加量包契约。
 - `all`：仅在用户明确授权后使用，只对所有声明能力的新客户端开放；不再依赖旧包覆盖率归零。
+- `two-tier-v5` 是独立候选定价契约，必须同时声明能力且 OpenID 命中 `MEMBERSHIP_TEST_OPENIDS`；即使生产数据库额度模式为 `all`，非白名单也只能回退现有 `unlimited-v3`，不能看到 ¥3 / ¥4.9 / ¥1.9。
 - `taskLimit=10000` 只能作为新方案内部兼容投影，禁止让未声明能力的旧客户端消费或展示。
 - 部署前先确认环境变量为 `test` 且白名单包含验收账号；部署后分别验证新能力白名单命中、新能力普通账号未命中、旧客户端无能力声明三种响应。
 - 任何 API 契约、价格权益、默认值或字段语义变更，先按 `docs/engineering/client-version-compatibility.md` 写出旧契约、新契约、能力门禁和发布矩阵；不得依赖等待旧客户端覆盖率归零。
@@ -42,7 +43,7 @@ paths:
 
 - 先数据与索引，再业务云函数。
 - 同时影响 `reminder` 与 `notifier` 的改动必须分别确认。
-- 会员 / 提醒名额上线需部署 `payment`。缺省通道仍是微信支付 API v3，环境变量见 `docs/engineering/payment-v3-runbook.md`；只有设置 `PAYMENT_PROVIDER=VIRTUAL_PAY` 才开放小程序虚拟支付。灰度联调必须同时设置 `PAYMENT_VIRTUAL_PAY_TEST_OPENIDS`，此时非白名单用户继续 API v3；删除该白名单才表示支付全量。变量、道具、消息推送和 iOS 限制见 `docs/engineering/payment-virtual-runbook.md`。旧 API v3 代码、配置说明和 Runbook 必须保留，不得在虚拟支付接入时删除。
+- 会员 / 提醒名额上线需部署 `payment`。缺省通道仍是微信支付 API v3，环境变量见 `docs/engineering/payment-v3-runbook.md`；只有设置 `PAYMENT_PROVIDER=VIRTUAL_PAY` 才开放小程序虚拟支付。灰度联调必须同时设置 `PAYMENT_VIRTUAL_PAY_TEST_OPENIDS`，此时非白名单用户继续 API v3；删除该白名单才表示支付全量。两档候选另需 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_QUOTA_10`、`WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_TWO_TIER_UNLIMITED`、`WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_UPGRADE`。变量、道具、消息推送和 iOS 限制见 `docs/engineering/payment-virtual-runbook.md`。旧 API v3 代码、配置说明和 Runbook 必须保留，不得在虚拟支付接入时删除。
 - `payment` 的公网回调必须走 CloudBase HTTP 网关：`/payment/notify` 与 `/payment/refund-notify` 分别指向云函数 `payment`，关闭身份认证、跨域和路径透传，并保留原始 body；默认域名只能用于测试，正式回调使用备案自定义域名。
 - 虚拟支付推荐使用云开发「设置 → 其他设置 → 消息推送 → 云函数」，分别把 `xpay_goods_deliver_notify`、`xpay_refund_notify`、`xpay_subscribe_ios_refund_query_notify` 推送到 `payment`。不要只配置 `/payment/virtual-notify` HTTP 兼容路由。
 - `payment` 含每 2 分钟定时补偿触发器；部署前确认 `cloudfunctions/payment/config.json` 随函数生效，并先创建 `payment_reconcile_state` 及补偿游标索引。

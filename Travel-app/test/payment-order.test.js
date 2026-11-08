@@ -8,7 +8,8 @@ const {
   COLLECTIONS, MemberLevel, OrderStatus, GrantStatus, RefundStatus,
 } = require('../cloudfunctions/payment/lib/schema');
 const {
-  findOrderById, fulfillOrder, markOrderClosed, isCallbackPaidResult, isQueryPaidResult,
+  findOrderById, fulfillOrder, markOrderClosed, reverseOrderEntitlement,
+  isCallbackPaidResult, isQueryPaidResult,
 } = require('../cloudfunctions/payment/lib/order');
 
 const USER = 'openid_pay_001';
@@ -20,13 +21,14 @@ const eq = (a, b, m) => {
   else console.log('ok  ', m, '=', a);
 };
 
-function seedUser(db) {
+function seedUser(db, patch = {}) {
   db._seed(COLLECTIONS.USERS, [{
     _id: 'user_pay_001',
     openId: USER,
     memberLevel: MemberLevel.NORMAL,
     taskPackCount: 0,
     memberExpiresAt: null,
+    ...patch,
   }]);
 }
 
@@ -82,6 +84,87 @@ async function run() {
   eq(order.entitlementGrant.unlimitedReminders, false, '旧订单不伪造新权益快照');
   eq(new Date(db._dump(COLLECTIONS.USERS)[0].memberExpiresAt).getTime() >= Date.now() + 29 * 86400000,
     true, '旧价会员订单仍按快照发放 30 天会员时长');
+
+  console.log('\n=== 1c. 两档会员与 1.9 元升级 ===');
+  db = createDb();
+  seedUser(db);
+  added = await addOrder(db, {
+    packageId: 'member_quota_10',
+    planVersion: 'two-tier-v5',
+    membershipTier: 'QUOTA_10',
+    unlimited: false,
+    upgrade: false,
+    amountFen: 300,
+    unlimitedReminders: false,
+    specVersion: 'member-quota-10-30d-v3',
+    memberDays: 30,
+    memberFloorDays: 30,
+  });
+  order = await findOrderById(db, added._id);
+  paid = await fulfillOrder(db, order, { totalFee: 300 });
+  eq(paid.success, true, '3 元档订单发放成功');
+  user = db._dump(COLLECTIONS.USERS)[0];
+  eq(user.memberTier, 'QUOTA_10', '3 元档写入 QUOTA_10');
+
+  const quotaExpiry = new Date(Date.now() + 20 * 86400000);
+  await db.collection(COLLECTIONS.USERS).doc('user_pay_001').update({
+    data: { memberExpiresAt: quotaExpiry, memberTier: 'QUOTA_10', memberTierOrderId: added._id },
+  });
+  added = await addOrder(db, {
+    packageId: 'member_unlimited_upgrade',
+    planVersion: 'two-tier-v5',
+    membershipTier: 'UNLIMITED',
+    unlimited: true,
+    upgrade: true,
+    amountFen: 190,
+    unlimitedReminders: false,
+    specVersion: 'member-unlimited-upgrade-v4',
+    memberDays: 0,
+    memberFloorDays: 0,
+    upgradeExpiresAt: quotaExpiry,
+  });
+  order = await findOrderById(db, added._id);
+  paid = await fulfillOrder(db, order, { totalFee: 190 });
+  eq(paid.success, true, '1.9 元升级单发放成功');
+  user = db._dump(COLLECTIONS.USERS)[0];
+  order = await findOrderById(db, added._id);
+  eq(user.memberTier, 'UNLIMITED', '升级后写入 UNLIMITED');
+  eq(new Date(user.memberExpiresAt).getTime(), quotaExpiry.getTime(),
+    '升级保持原会员到期时间');
+  eq(order.entitlementGrant.memberDaysAddedMs, 0, '升级不增加会员时长');
+  const reversed = await reverseOrderEntitlement(db, order, 190);
+  eq(reversed.success, true, '升级单可退款回收');
+  user = db._dump(COLLECTIONS.USERS)[0];
+  eq(user.memberTier, 'QUOTA_10', '退款升级单后恢复 QUOTA_10');
+  eq(new Date(user.memberExpiresAt).getTime(), quotaExpiry.getTime(),
+    '退款升级单不改变原会员期限');
+
+  db = createDb();
+  seedUser(db, {
+    memberLevel: MemberLevel.MEMBER,
+    memberTier: 'QUOTA_10',
+    memberExpiresAt: new Date(Date.now() - 1000),
+  });
+  added = await addOrder(db, {
+    packageId: 'member_unlimited_upgrade',
+    planVersion: 'two-tier-v5',
+    membershipTier: 'UNLIMITED',
+    unlimited: true,
+    upgrade: true,
+    amountFen: 190,
+    unlimitedReminders: false,
+    specVersion: 'member-unlimited-upgrade-v4',
+    memberDays: 0,
+    memberFloorDays: 0,
+    upgradeExpiresAt: new Date(Date.now() - 1000),
+  });
+  order = await findOrderById(db, added._id);
+  paid = await fulfillOrder(db, order, { totalFee: 190 });
+  eq(paid.success, false, '会员过期后升级单不发放权益');
+  order = await findOrderById(db, added._id);
+  eq(order.grantStatus, GrantStatus.FAILED, '过期升级单进入权益补救队列');
+  eq(db._dump(COLLECTIONS.USERS)[0].memberTier, 'QUOTA_10',
+    '过期升级单不回写 UNLIMITED');
 
   console.log('\n=== 2. 重复回调幂等 ===');
   db = createDb();

@@ -1,7 +1,17 @@
 const app = getApp();
 const api = require('../../utils/api.js');
 const membershipPay = require('../../utils/membership-pay.js');
+const membershipEntry = require('../../utils/membership-entry.js');
 const orderRefresh = require('../../utils/order-refresh.js');
+
+const PREVIEW_LABELS = Object.freeze({
+  nonmember: '静态预览 · 非会员用户',
+  quota: '静态预览 · 3 元档会员',
+  quota_short: '静态预览 · 3 元档会员（不足5天）',
+  quota_closed: '静态预览 · 3 元档会员（不足15分钟）',
+  unlimited: '静态预览 · 新不限额度会员',
+  legacy: '静态预览 · 老会员用户',
+});
 
 function usagePercentOf(used, limit) {
   if (!limit) return 0;
@@ -87,9 +97,14 @@ function expectedExpiryOf(pkg, membership, now = Date.now()) {
 }
 
 function defaultPackageIdOf(membership, available) {
-  if (membership && membership.member === true) return '';
   const packages = available || [];
-  const preferred = packages.find(item => item && item.type === 'MEMBER')
+  if (membership && membership.planVersion === 'unlimited-v3' && membership.member === true) {
+    return '';
+  }
+  const preferred = packages.find(item =>
+    membership && membership.memberTier === 'QUOTA_10' && item.upgrade === true)
+    || packages.find(item => item && item.type === 'MEMBER' && item.upgrade !== true)
+    || packages.find(item => item && item.type === 'MEMBER')
     || packages[0];
   return preferred ? preferred.id : '';
 }
@@ -122,12 +137,18 @@ Page({
     confirmEffect: '',
     confirmExpiry: '',
     confirmPayButtonText: '',
+    previewMode: '',
+    previewLabel: '',
   },
 
   onLoad(options) {
     const g = app.globalData;
     const requestedPackageId = String((options && options.packageId) || '');
+    const requestedPreview = String((options && options.preview) || '');
     this._preferredPackageId = requestedPackageId;
+    this._previewMode = Object.prototype.hasOwnProperty.call(PREVIEW_LABELS, requestedPreview)
+      ? requestedPreview
+      : '';
     const ios = isIosDevice();
     this.setData({
       statusBarHeight: g.statusBarHeight,
@@ -135,6 +156,8 @@ Page({
       isIosDevice: ios,
       payCapability: membershipPay.virtualPayCapability(),
       payUnsupportedTip: payUnsupportedTipOf(ios),
+      previewMode: this._previewMode,
+      previewLabel: PREVIEW_LABELS[this._previewMode] || '',
     });
   },
 
@@ -142,7 +165,7 @@ Page({
     this._pageVisible = true;
     const preferredId = this.data.selectedPackageId || this._preferredPackageId || undefined;
     this.loadStatus(preferredId, { silent: !!this.data.membership });
-    this.restorePendingPayment();
+    if (!this._previewMode) this.restorePendingPayment();
   },
 
   onHide() {
@@ -236,28 +259,28 @@ Page({
   loadStatus(preferredId, options) {
     const silent = !!(options && options.silent);
     if (!silent) this.setData({ loading: true, loadFailed: false });
-    return Promise.all([
-      api.reminder.membership.status(),
-      api.reminder.membership.orders().catch(() => null),
-    ]).then(([res, orderRes]) => {
+    const statusRequest = this._previewMode
+      ? api.reminder.membership.previewStatus(this._previewMode)
+      : api.reminder.membership.status();
+    const ordersRequest = this._previewMode
+      ? api.reminder.membership.previewOrders().catch(() => null)
+      : api.reminder.membership.orders().catch(() => null);
+    return Promise.all([statusRequest, ordersRequest]).then(([res, orderRes]) => {
       const membership = res.membership || {};
       const sales = res.sales || { state: 'OPEN', purchaseEnabled: true, message: '' };
       const packages = (res.packages || []).map(item => ({ ...item }));
-      const memberPackage = packages.find(item => item && item.type === 'MEMBER') || null;
-      const membershipView = {
-        ...membership,
-        memberPackagePriceText: (memberPackage && memberPackage.priceText) || '',
-      };
-      const visible = packages.filter(item => item.type === 'MEMBER');
+      const membershipView = { ...membership };
+      const pricingVisible = membership.pricingVisible !== false;
+      const visible = pricingVisible ? packages : [];
       const available = visible.filter(item => item.available);
-      let selectedId = preferredId;
-      if (!selectedId || !available.some(item => item.id === selectedId)) {
+      let selectedId = pricingVisible ? preferredId : '';
+      if (pricingVisible && (!selectedId || !available.some(item => item.id === selectedId))) {
         selectedId = this.defaultPackageIdOf(membership, available);
       }
       const selectedPackage = visible.find(item => item.id === selectedId) || null;
       const used = Number(membership.taskUsed) || 0;
-      const limit = Number(membership.taskLimit) || 0;
-      const unlimited = membership.taskLimitUnlimited === true;
+      const limit = membership.taskLimit == null ? null : Number(membership.taskLimit) || 0;
+      const unlimited = membership.unlimited === true || membership.taskLimitUnlimited === true;
       const freeSlots = Math.max(0, Number(membership.freeTaskSlots) || 0);
       this.setData({
         loading: false,
@@ -269,7 +292,7 @@ Page({
         selectedPackageId: selectedId,
         selectedPackage,
         payButtonText: this.payButtonOf(selectedPackage, membership),
-        usagePercent: unlimited ? 100 : usagePercentOf(used, limit),
+        usagePercent: unlimited ? 0 : usagePercentOf(used, limit),
         memberStateText: membership.member ? '会员生效中' : '免费版',
         expiryText: membership.member
           ? `有效期至 ${membership.memberExpiresAtText}`
@@ -392,6 +415,14 @@ Page({
   markPackages(packages, selectedId) {
     return (packages || []).map(item => ({
       ...item,
+      _optionTitle: (item.unlimited || item.unlimitedReminders)
+        ? '不限提醒名额'
+        : `${Math.max(0, Number(item.taskSlots) || 0)} 个提醒名额`,
+      _optionDesc: item.upgrade
+        ? '仅当前会员期内生效，不延长有效期'
+        : ((item.unlimited || item.unlimitedReminders)
+          ? `有效期${Math.max(0, Number(item.memberDays) || 0)}天，不限额度`
+          : `有效期${Math.max(0, Number(item.memberDays) || 0)}天，${Math.max(0, Number(item.taskSlots) || 0)}个提醒额度`),
       _selected: item.id === selectedId,
       _available: item.available === true,
     }));
@@ -401,17 +432,17 @@ Page({
 
   payButtonOf(pkg, membership) {
     const current = membership || this.data.membership || {};
-    if (current.member === true) {
-      const days = Math.max(0, Number(current.memberDurationDays)
-        || Number(pkg && pkg.memberDays) || 30);
-      return `续费${days}天会员`;
+    if (!pkg) {
+      return current.member && current.planVersion === 'unlimited-v3'
+        ? '续费30天会员'
+        : '请先选择会员套餐';
     }
-    if (!pkg) return '请先选择会员套餐';
-    if (pkg.type === 'MEMBER') {
-      const days = Math.max(0, Number(pkg.memberDays) || 0);
-      return `支付 ${pkg.priceText}，开通 ${days} 天会员并继续`;
+    if (pkg.upgrade) return `补 ${pkg.priceText}，升级不限额度`;
+    const days = Math.max(0, Number(pkg.memberDays) || 0);
+    if (pkg.unlimited || pkg.unlimitedReminders) {
+      return `支付 ${pkg.priceText}，${current.member ? `续费 ${days} 天不限额度` : `开通 ${days} 天不限额度`}`;
     }
-    return '暂无可购买项';
+    return `支付 ${pkg.priceText}，开通 ${days} 天 ${Math.max(0, Number(pkg.taskSlots) || 0)} 个提醒名额`;
   },
 
   onPackageTap(e) {
@@ -422,20 +453,21 @@ Page({
       wx.showToast({ title: pkg.actionText, icon: 'none' });
       return;
     }
-    const selectedId = this.data.selectedPackageId === id ? '' : id;
-    const selectedPackage = selectedId
-      ? (this.data.packages.find(item => item.id === selectedId) || pkg)
-      : null;
+    const selectedPackage = this.data.packages.find(item => item.id === id) || pkg;
     this.setData({
-      selectedPackageId: selectedId,
+      selectedPackageId: id,
       selectedPackage,
-      packages: this.markPackages(this.data.packages, selectedId),
-      visiblePackages: this.markPackages(this.data.visiblePackages, selectedId),
+      packages: this.markPackages(this.data.packages, id),
+      visiblePackages: this.markPackages(this.data.visiblePackages, id),
       payButtonText: this.payButtonOf(selectedPackage, this.data.membership),
     });
   },
 
   onOrders() {
+    if (this._previewMode) {
+      wx.showToast({ title: '静态预览，不进入真实订单', icon: 'none' });
+      return;
+    }
     wx.navigateTo({ url: '/pages/membership-orders/membership-orders' });
   },
 
@@ -455,7 +487,7 @@ Page({
   },
 
   onPay() {
-    if (this.data.purchasing || !this.data.selectedPackage) return;
+    if (this.data.purchasing) return;
     if (this.data.sales && this.data.sales.purchaseEnabled === false) {
       wx.showToast({ title: this.data.sales.message || '会员购买暂停中', icon: 'none' });
       return;
@@ -465,12 +497,33 @@ Page({
       return;
     }
     const pkg = this.data.selectedPackage;
+    if (!pkg) return;
+    const current = this.data.membership || {};
+    membershipEntry.showUpgradeWindowWarning({
+      upgrade: pkg.upgrade === true,
+      upgradeShortWindow: current.upgradeShortWindow === true,
+      memberExpiresAtText: current.memberExpiresAtText || '',
+    }, () => this.openPayConfirm(pkg));
+  },
+
+  openPayConfirm(pkg) {
     const expiry = expectedExpiryOf(pkg, this.data.membership);
+    const memberSlots = Math.max(0, Number(this.data.membership && this.data.membership.memberTaskSlots) || 0);
+    const isUpgrade = pkg.upgrade === true;
+    const isUnlimited = pkg.unlimited === true || pkg.unlimitedReminders === true;
     this.setData({
       showPayConfirm: true,
-      confirmTitle: `${Number(pkg.memberDays) || 0} 天会员`,
+      confirmTitle: isUpgrade
+        ? '升级不限提醒名额'
+        : (isUnlimited
+          ? `${Number(pkg.memberDays) || 0} 天不限提醒名额`
+          : `${Number(pkg.memberDays) || 0} 天 ${Math.max(0, Number(pkg.taskSlots) || 0)} 个提醒名额`),
       confirmAmount: pkg.priceText,
-      confirmEffect: '支付成功后立即生效，会员有效期内不限提醒名额',
+      confirmEffect: isUpgrade
+        ? '支付成功后立即升级为不限提醒名额，不延长会员有效期'
+        : (isUnlimited
+          ? '支付成功后 30 天内不限制提醒名额'
+          : `支付成功后 30 天内最多 ${memberSlots} 个提醒名额`),
       confirmExpiry: `会员有效期至 ${formatBeijingDate(expiry)}`,
       confirmPayButtonText: `支付 ${pkg.priceText}`,
     });
@@ -493,6 +546,11 @@ Page({
 
   onConfirmPay() {
     if (this.data.purchasing || !this.data.selectedPackage) return;
+    if (this._previewMode) {
+      this.setData({ showPayConfirm: false });
+      wx.showToast({ title: '静态预览，未发起支付', icon: 'none' });
+      return;
+    }
     const pkg = this.data.selectedPackage;
     this.setData({ purchasing: true, showPayConfirm: false });
     this.setPaymentState('PENDING', '正在准备支付', '请确认商品、金额和生效时间。');

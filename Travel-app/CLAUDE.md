@@ -22,6 +22,7 @@
 - 2026-10-28 已完成非会员修复收口：授权额度、提醒回滚、清单收敛、随买随用、强提醒与景点页搜索均已提交；部署范围与真机状态仍按 `docs/engineering/current-state.md` 分别判断。
 - 会员付费客户端与生产账本已全量运行。会员限制模式已由 `payment_config/membership_enforcement={mode:"all"}` 接管，后台切换无需重新部署；`MEMBERSHIP_ENFORCEMENT_MODE=all` 只保留为配置缺失或读取失败时的兜底。
 - 2026-11-06 客户端 `2.3.7` 已正式发布；新会员方案的全量门槛已按要求把 `reminder` 的 `MEMBERSHIP_ENFORCEMENT_MODE` 从 `test` 切为 `all`，数据库额度配置保持 `all`。新客户端通过 `unlimited-v3` 能力声明获得 ¥6 / 30 天 / 不限提醒方案，旧客户端仍走 `legacy-v2`。
+- 2026-11-08 两档会员候选在独立分支验证：`two-tier-v5` 只对 `MEMBERSHIP_TEST_OPENIDS` 生效，非白名单继续 `unlimited-v3`；部署与体验版上传必须分别授权。
 - 2026-11-02 会员购买断路器已部署：`payment_config/membership_sales` 为 `OPEN` 且仅管理端可读写，`payment` 与 `reminder` 已更新；管理页客户端已全量发布，业务停售状态未切换。
 - 2026-11-02 客服工作台后端已部署：会员购买开关置顶，会员订单 / 售后双页签，支持昵称与完整 OpenID、订单搜索、订单详情和关联售后，并包含当日统计与 7 / 30 / 90 天 / 全部时间筛选；`payment` 与 `reminder` 已更新并通过管理员冒烟。
 - 2026-11-02 客户端 `2.1.1` 已从 `main@af05573` / `v2.1.1-rc.2` 完成体验验收、送审和全量发布，新功能已在正式版可见；首开仍可能命中旧包，需冷启动等待微信完成版本切换。

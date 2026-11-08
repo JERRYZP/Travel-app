@@ -69,6 +69,15 @@ function configOf(env = process.env) {
     memberUnlimitedProductId: String(env.WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED || '').trim(),
     memberUnlimitedV6ProductId: String(env.WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_V6 || '').trim(),
     taskPackProductId: String(env.WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK || '').trim(),
+    memberQuota10ProductId: String(
+      env.WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_QUOTA_10 || ''
+    ).trim(),
+    memberTwoTierUnlimitedProductId: String(
+      env.WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_TWO_TIER_UNLIMITED || ''
+    ).trim(),
+    memberUnlimitedUpgradeProductId: String(
+      env.WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_UPGRADE || ''
+    ).trim(),
   };
 }
 
@@ -104,6 +113,13 @@ function hasApiConfig(config = {}) {
 }
 
 function expectedProductIdOf(order = {}, config = {}) {
+  if (order.packageId === 'member_quota_10') return config.memberQuota10ProductId || '';
+  if (order.packageId === 'member_unlimited') {
+    return config.memberTwoTierUnlimitedProductId || '';
+  }
+  if (order.packageId === 'member_unlimited_upgrade') {
+    return config.memberUnlimitedUpgradeProductId || '';
+  }
   if (order.productType === 'MEMBER') {
     const unlimited = order.unlimitedReminders === true
       || /^member-unlimited-30d-v[34]$/.test(String(order.specVersion || ''));

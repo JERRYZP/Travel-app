@@ -53,7 +53,7 @@
 - 行程项开启提醒收到 `1008` 时不能从异步 catch 里直接调用 `wx.requestSubscribeMessage`，此时已丢失用户手势上下文；保留原状态并提示用户重新点击，由下一次点击重新走授权闸门。
 - PAGE-008 的会员名额不足与授权不足是两道独立硬闸门：底部主按钮必须同时置灰并进入 `onSubmit` 逻辑闸门，不能只改 class；会员卡支付按钮必须与“查看权益”入口分开，避免长文案和跳转动作互相抢占。
 - `wx.requestPayment` 的 success 只代表客户端流程完成，会员权益必须等 `payment.query` 或支付回调返回 `PAID` 后才显示已生效。
-- 金额、有效期和不限权益全部读服务端返回，页面不能写死价格或自行计算权益；`taskLimitUnlimited=true` 时必须跳过会员名额拦截，但微信订阅授权闸门照常执行。`taskLimit/taskRemaining/memberTaskSlots=10000` 只是旧客户端兼容投影，不是业务上限。
+- 金额、有效期、档位和不限权益全部读服务端返回，页面不能写死价格或自行计算权益；`taskLimitUnlimited=true` 或 `unlimited=true` 时必须跳过会员名额拦截，但微信订阅授权闸门照常执行。`taskLimit/taskRemaining/memberTaskSlots=10000` 只是 `unlimited-v3` 的旧客户端兼容投影；`two-tier-v5` 不限会员返回 `null`，3 元档返回真实 10 个额度。v5 升级只换档、不延期，剩余不足 5 天先提示，不足 15 分钟不可支付。
 - 订单列表只消费 `membership.orders`，订单详情和售后申请只消费 `membership.orderDetail` 的脱敏展示字段；不得把 `paymentResult`、微信交易号、签名参数或密钥渲染到客户端。
 - 微信后台智能自动广告没有按会员关闭能力，页面、协议和客服话术都不得承诺“会员免广告”。
 

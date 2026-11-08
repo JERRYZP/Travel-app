@@ -152,6 +152,7 @@
   title="{{upgradeConfirmTitle}}"
   amount="{{upgradeConfirmAmount}}"
   expiry="{{upgradeConfirmExpiry}}"
+  effect="{{upgradeConfirmDesc}}"
   button-text="支付 {{upgradeConfirmAmount}}"
   bind:close="onCloseUpgradeConfirm"
   bind:confirm="onConfirmUpgrade"

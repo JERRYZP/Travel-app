@@ -32,7 +32,7 @@ const READ_ACTIONS = new Set([
 const inflightReads = new Map();
 const failedReads = new Map();
 const READ_RETRY_BACKOFF_MS = 1500;
-const MEMBERSHIP_CAPABILITIES = Object.freeze(['unlimited-v3']);
+const MEMBERSHIP_CAPABILITIES = Object.freeze(['unlimited-v3', 'two-tier-v5']);
 
 /**
  * 会员契约能力声明由客户端统一注入。老版本不会带此字段，服务端因此继续返回
@@ -212,6 +212,8 @@ const reminder = {
   },
   membership: {
     status: () => call('reminder', { action: 'membership.status' }),
+    previewStatus: (preview) => mockCall('membership.status', { preview }),
+    previewOrders: () => mockCall('membership.orders', { preview: true }),
     createOrder: (p) => call('reminder', { action: 'membership.createOrder', ...(p || {}) }),
     orders: () => call('reminder', { action: 'membership.orders' }),
     orderDetail: (orderId) => call('reminder', { action: 'membership.orderDetail', orderId }),

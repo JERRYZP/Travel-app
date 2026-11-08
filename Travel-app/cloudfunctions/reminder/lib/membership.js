@@ -3,7 +3,9 @@
  *
  * 这里是小程序端唯一可以消费的提醒名额口径：
  * - 免费用户最多保留 5 个未来待发送提醒任务；
- * - 6 元会员有效 30 天，会员期内不限提醒名额；
+ * - 现有 unlimited-v3 契约继续保留；
+ * - two-tier-v5 白名单使用 3 元 / 10 个额度与 4.9 元 / 不限额度两档；
+ * - 3 元档超额只允许补 1.9 元升级为不限额度；
  * - 提醒加量包已停售，历史订单和退款快照继续兼容；
  * - 会员到期后回到免费 5 个提醒名额，已有提醒任务继续发送。
  *
@@ -23,18 +25,36 @@ const membershipEnforcement = require('./membership-enforcement');
 const upgradeNotice = require('./membership-upgrade-notice');
 
 const FREE_TASK_SLOTS = 5;
+const MEMBER_TASK_SLOTS = 10;
 const MEMBER_PRICE_FEN = 600;
+const TWO_TIER_MEMBER_PRICE_FEN = 300;
+const TWO_TIER_UNLIMITED_PRICE_FEN = 490;
+const TWO_TIER_UPGRADE_PRICE_FEN = 190;
 const LEGACY_MEMBER_PRICE_FEN = 300;
 const LEGACY_MEMBER_TASK_SLOTS = 15;
 const LEGACY_CURRENT_TASK_PACK_SIZE = 10;
 const MEMBER_DURATION_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const UPGRADE_MIN_REMAINING_MS = 15 * 60 * 1000;
+const UPGRADE_WARNING_WINDOW_MS = 5 * DAY_MS;
+const SAME_EXPIRY_TOLERANCE_MS = 1000;
 const LEGACY_TASK_PACK_SIZE = 5;
 const MEMBERSHIP_CAPABILITY_UNLIMITED_V3 = 'unlimited-v3';
+const MEMBERSHIP_CAPABILITY_TWO_TIER_V5 = 'two-tier-v5';
 /* 仅用于旧客户端兼容：旧版本仍读取有限数字并据此做前端预检。 */
 const LEGACY_CLIENT_UNLIMITED_TASK_LIMIT = 10000;
 const ORDER_GRANT_SCHEMA_VERSION = 2;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
+const PlanVersion = Object.freeze({
+  LEGACY: 'legacy-v2',
+  UNLIMITED: 'unlimited-v3',
+  TWO_TIER: 'two-tier-v5',
+});
+const MemberTier = Object.freeze({
+  LEGACY_UNLIMITED: 'LEGACY_UNLIMITED',
+  QUOTA_10: 'QUOTA_10',
+  UNLIMITED: 'UNLIMITED',
+});
 const PaymentChannel = Object.freeze({
   APPLE: 'APPLE',
   WECHAT_VIRTUAL: 'WECHAT_VIRTUAL',
@@ -85,6 +105,60 @@ const PACKAGES = Object.freeze([
   },
 ]);
 
+const TWO_TIER_PACKAGES = Object.freeze([
+  {
+    id: 'member_quota_10',
+    type: 'MEMBER',
+    membershipTier: MemberTier.QUOTA_10,
+    title: '10 个提醒名额 · 30 天',
+    priceFen: TWO_TIER_MEMBER_PRICE_FEN,
+    priceText: '¥3',
+    taskSlots: MEMBER_TASK_SLOTS,
+    addedSlots: MEMBER_TASK_SLOTS - FREE_TASK_SLOTS,
+    unlimited: false,
+    upgrade: false,
+    memberDays: MEMBER_DURATION_DAYS,
+    memberFloorDays: MEMBER_DURATION_DAYS,
+    description: `30 天内最多 ${MEMBER_TASK_SLOTS} 个提醒名额`,
+    badge: '',
+    specVersion: 'member-quota-10-30d-v3',
+  },
+  {
+    id: 'member_unlimited',
+    type: 'MEMBER',
+    membershipTier: MemberTier.UNLIMITED,
+    title: '不限提醒名额 · 30 天',
+    priceFen: TWO_TIER_UNLIMITED_PRICE_FEN,
+    priceText: '¥4.9',
+    taskSlots: null,
+    addedSlots: 0,
+    unlimited: true,
+    upgrade: false,
+    memberDays: MEMBER_DURATION_DAYS,
+    memberFloorDays: MEMBER_DURATION_DAYS,
+    description: '30 天内不限提醒名额',
+    badge: '',
+    specVersion: 'member-unlimited-30d-v5',
+  },
+  {
+    id: 'member_unlimited_upgrade',
+    type: 'MEMBER',
+    membershipTier: MemberTier.UNLIMITED,
+    title: '升级不限提醒名额',
+    priceFen: TWO_TIER_UPGRADE_PRICE_FEN,
+    priceText: '¥1.9',
+    taskSlots: null,
+    addedSlots: 0,
+    unlimited: true,
+    upgrade: true,
+    memberDays: 0,
+    memberFloorDays: 0,
+    description: '补差价升级，仅当前会员期内生效，不延长有效期',
+    badge: '',
+    specVersion: 'member-unlimited-upgrade-v4',
+  },
+]);
+
 const LEGACY_PACKAGES = Object.freeze([
   {
     id: 'member',
@@ -118,12 +192,16 @@ const LEGACY_PACKAGES = Object.freeze([
   },
 ]);
 
-function packagesForPlan(newPlan) {
-  return newPlan ? PACKAGES : LEGACY_PACKAGES;
+function packagesForPlan(planVersion = PlanVersion.LEGACY) {
+  if (planVersion === PlanVersion.TWO_TIER) return TWO_TIER_PACKAGES;
+  if (planVersion === PlanVersion.UNLIMITED) return PACKAGES;
+  return LEGACY_PACKAGES;
 }
 
 function packageOf(packageId, options = {}) {
-  return packagesForPlan(options.newPlan === true)
+  const planVersion = options.planVersion
+    || (options.newPlan === true ? PlanVersion.UNLIMITED : PlanVersion.LEGACY);
+  return packagesForPlan(planVersion)
     .find(item => item.id === packageId) || null;
 }
 
@@ -178,6 +256,23 @@ function isNewPlanEnabledFor(userId, source = {}) {
   if (mode === 'all') return true;
   if (mode === 'test' && userId) return testOpenIdsOf().has(userId);
   return false;
+}
+
+/**
+ * 两档会员是独立实验契约，不受当前生产 MEMBERSHIP_ENFORCEMENT_MODE=all 影响。
+ * 只有显式声明 two-tier-v5 且 OpenID 命中测试名单时才返回新价格与新权益；
+ * 同一客户端携带 unlimited-v3 时，非白名单会继续回退现有 ¥6 方案。
+ */
+function isTwoTierPlanEnabledFor(userId, source = {}) {
+  if (!userId) return false;
+  if (!hasMembershipCapability(source, MEMBERSHIP_CAPABILITY_TWO_TIER_V5)) return false;
+  return testOpenIdsOf().has(userId);
+}
+
+function planVersionFor(userId, source = {}) {
+  if (isTwoTierPlanEnabledFor(userId, source)) return PlanVersion.TWO_TIER;
+  if (isNewPlanEnabledFor(userId, source)) return PlanVersion.UNLIMITED;
+  return PlanVersion.LEGACY;
 }
 
 function shouldEnforceFor(userId) {
@@ -248,6 +343,24 @@ function isMemberAt(user, nowTs = time.now()) {
   return Number.isFinite(expiryMs) && expiryMs > new Date(nowTs).getTime();
 }
 
+function effectiveMemberTierOf(user = {}, nowTs = time.now()) {
+  if (!isMemberAt(user, nowTs)) return '';
+  const raw = String(user.memberTier || '').trim().toUpperCase();
+  if (raw === MemberTier.QUOTA_10 || raw === MemberTier.UNLIMITED) return raw;
+  // 两档方案上线前已经生效、没有档位字段的会员继续按不限权益保护。
+  return MemberTier.LEGACY_UNLIMITED;
+}
+
+function isUnlimitedTier(tier) {
+  return tier === MemberTier.LEGACY_UNLIMITED || tier === MemberTier.UNLIMITED;
+}
+
+function sameExpiryWindow(a, b) {
+  const aMs = new Date(a || 0).getTime();
+  const bMs = new Date(b || 0).getTime();
+  return Math.abs(aMs - bMs) <= SAME_EXPIRY_TOLERANCE_MS;
+}
+
 function memberExpiryText(expiresAt) {
   const ms = new Date(expiresAt).getTime();
   if (!Number.isFinite(ms) || ms <= 0) return '';
@@ -266,7 +379,7 @@ function orderTimeText(value) {
 
 function amountTextOf(amountFen) {
   const fen = Math.max(0, Number(amountFen) || 0);
-  return `¥${(fen / 100).toFixed(2).replace(/\.00$/, '')}`;
+  return `¥${(fen / 100).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}`;
 }
 
 function refundEligibilityOf(order = {}, user = {}, nowTs = time.now()) {
@@ -300,7 +413,13 @@ function orderDisplayTitleOf(order = {}) {
     const slots = Math.max(0, Number(order.addedSlots) || LEGACY_TASK_PACK_SIZE);
     return `${slots} 个提醒名额`;
   }
-  if (order.productType === 'MEMBER') return '会员 30 天';
+  if (order.productType === 'MEMBER') {
+    if (order.membershipTier === MemberTier.UNLIMITED) {
+      return order.upgrade ? '升级不限提醒名额' : '不限提醒名额 · 30 天';
+    }
+    if (order.membershipTier === MemberTier.QUOTA_10) return '10 个提醒名额 · 30 天';
+    return order.title || '会员 30 天';
+  }
   return order.title || '会员服务';
 }
 
@@ -377,6 +496,12 @@ function orderViewOf(order = {}, user = {}, nowTs = time.now(), sales = null) {
     outTradeNo: order.outTradeNo || '',
     packageId: order.packageId || '',
     productType: order.productType || '',
+    planVersion: order.planVersion || '',
+    membershipTier: order.membershipTier || '',
+    unlimited: order.unlimited === true,
+    unlimitedReminders: order.unlimitedReminders === true
+      || order.unlimited === true,
+    upgrade: order.upgrade === true,
     title: orderDisplayTitleOf(order),
     amountFen: Math.max(0, Number(order.amountFen) || 0),
     amountText: amountTextOf(order.amountFen),
@@ -398,7 +523,8 @@ function orderViewOf(order = {}, user = {}, nowTs = time.now(), sales = null) {
       memberDaysAddedMs: Math.max(0, Number(order.entitlementGrant.memberDaysAddedMs) || 0),
       taskPackDelta: Math.max(0, Number(order.entitlementGrant.taskPackDelta) || 0),
       unlimitedReminders: order.entitlementGrant.unlimitedReminders === true
-        || order.unlimitedReminders === true,
+        || order.unlimitedReminders === true
+        || order.unlimited === true,
       appliedAt: order.entitlementGrant.appliedAt || null,
       revertedAt: order.entitlementGrant.revertedAt || null,
     } : null,
@@ -415,9 +541,82 @@ function orderViewOf(order = {}, user = {}, nowTs = time.now(), sales = null) {
   };
 }
 
+function normalizeTwoTierUser(user = {}, nowTs = time.now()) {
+  const isMember = isMemberAt(user, nowTs);
+  const memberTier = effectiveMemberTierOf(user, nowTs);
+  const unlimited = isMember && isUnlimitedTier(memberTier);
+  const legacyUnlimited = isMember && memberTier === MemberTier.LEGACY_UNLIMITED;
+  const purchasedPackCount = Math.max(0, parseInt(user.taskPackCount, 10) || 0);
+  const purchasedPackSlots = user.taskPackSlots != null
+    ? Math.max(0, parseInt(user.taskPackSlots, 10) || 0)
+    : purchasedPackCount * LEGACY_TASK_PACK_SIZE;
+  const taskPackCount = isMember ? purchasedPackCount : 0;
+  const taskPackSlots = isMember ? purchasedPackSlots : 0;
+  const memberExpiresAt = user.memberExpiresAt || null;
+  const memberExpiresMs = expiryMsOf(user);
+  const nowMs = new Date(nowTs).getTime();
+  const memberRemainingMs = isMember ? Math.max(0, memberExpiresMs - nowMs) : 0;
+  const protectedTaskQuota = Math.max(
+    FREE_TASK_SLOTS,
+    parseInt(user.protectedTaskQuota, 10) || FREE_TASK_SLOTS
+  );
+  const entitlementTaskLimit = unlimited
+    ? null
+    : FREE_TASK_SLOTS
+      + (memberTier === MemberTier.QUOTA_10 ? MEMBER_TASK_SLOTS - FREE_TASK_SLOTS : 0)
+      + taskPackSlots;
+  const memberPlanId = unlimited
+    ? (legacyUnlimited ? 'legacy_unlimited' : 'member_unlimited')
+    : (memberTier === MemberTier.QUOTA_10 ? 'member_quota_10' : '');
+  return {
+    member: isMember,
+    memberLevel: isMember ? MemberLevel.MEMBER : MemberLevel.NORMAL,
+    memberTier,
+    memberPlanId,
+    memberPlanLabel: unlimited
+      ? (legacyUnlimited ? '老会员不限额度' : '不限额度会员')
+      : (memberTier === MemberTier.QUOTA_10 ? `${MEMBER_TASK_SLOTS} 个提醒名额` : ''),
+    unlimited,
+    legacyUnlimited,
+    pricingVisible: !unlimited,
+    upgradeAvailable: memberTier === MemberTier.QUOTA_10
+      && memberRemainingMs > UPGRADE_MIN_REMAINING_MS,
+    upgradeShortWindow: memberTier === MemberTier.QUOTA_10
+      && memberRemainingMs > UPGRADE_MIN_REMAINING_MS
+      && memberRemainingMs < UPGRADE_WARNING_WINDOW_MS,
+    upgradeWindowClosed: memberTier === MemberTier.QUOTA_10
+      && memberRemainingMs <= UPGRADE_MIN_REMAINING_MS,
+    memberExpiresAt,
+    memberExpiresAtText: memberExpiryText(memberExpiresAt),
+    memberDaysRemaining: isMember
+      ? Math.max(1, Math.ceil((memberExpiresMs - nowMs) / DAY_MS))
+      : 0,
+    memberRemainingMs,
+    taskLimitUnlimited: unlimited,
+    planVersion: PlanVersion.TWO_TIER,
+    taskLimit: entitlementTaskLimit,
+    entitlementTaskLimit,
+    protectedTaskQuota,
+    taskPackCount,
+    taskPackSlots,
+    ownedTaskPackCount: purchasedPackCount,
+    ownedTaskPackSlots: purchasedPackSlots,
+    memberDurationDays: MEMBER_DURATION_DAYS,
+    freeTaskSlots: FREE_TASK_SLOTS,
+    memberTaskSlots: MEMBER_TASK_SLOTS,
+    taskPackSize: 0,
+    quotaPlanPriceText: amountTextOf(TWO_TIER_MEMBER_PRICE_FEN),
+    unlimitedPlanPriceText: amountTextOf(TWO_TIER_UNLIMITED_PRICE_FEN),
+    upgradePlanPriceText: amountTextOf(TWO_TIER_UPGRADE_PRICE_FEN),
+  };
+}
+
 /** 用户资料容错：会员是否生效只看 memberExpiresAt。 */
 function normalizeUser(user = {}, nowTs = time.now(), options = {}) {
-  const newPlan = options.newPlan === true;
+  const planVersion = options.planVersion
+    || (options.newPlan === true ? PlanVersion.UNLIMITED : PlanVersion.LEGACY);
+  if (planVersion === PlanVersion.TWO_TIER) return normalizeTwoTierUser(user, nowTs);
+
   const isMember = isMemberAt(user, nowTs);
   const purchasedPackCount = Math.max(0, parseInt(user.taskPackCount, 10) || 0);
   const purchasedPackSlots = user.taskPackSlots != null
@@ -432,21 +631,32 @@ function normalizeUser(user = {}, nowTs = time.now(), options = {}) {
     FREE_TASK_SLOTS,
     parseInt(user.protectedTaskQuota, 10) || FREE_TASK_SLOTS
   );
-  const entitlementTaskLimit = newPlan
-    ? (isMember ? LEGACY_CLIENT_UNLIMITED_TASK_LIMIT : FREE_TASK_SLOTS)
+  const unlimited = planVersion === PlanVersion.UNLIMITED && isMember;
+  const entitlementTaskLimit = unlimited
+    ? LEGACY_CLIENT_UNLIMITED_TASK_LIMIT
     : FREE_TASK_SLOTS
       + (isMember ? LEGACY_MEMBER_TASK_SLOTS - FREE_TASK_SLOTS : 0)
       + taskPackSlots;
   return {
     member: isMember,
     memberLevel: isMember ? MemberLevel.MEMBER : MemberLevel.NORMAL,
+    memberTier: unlimited ? MemberTier.LEGACY_UNLIMITED : '',
+    memberPlanId: unlimited ? 'legacy_unlimited' : (isMember ? 'legacy_member_15' : ''),
+    memberPlanLabel: unlimited ? '现有不限额度会员' : (isMember ? '15 个提醒名额' : ''),
+    unlimited,
+    legacyUnlimited: unlimited,
+    pricingVisible: true,
+    upgradeAvailable: false,
+    upgradeShortWindow: false,
+    upgradeWindowClosed: false,
     memberExpiresAt,
     memberExpiresAtText: memberExpiryText(memberExpiresAt),
     memberDaysRemaining: isMember
       ? Math.max(1, Math.ceil((memberExpiresMs - nowMs) / DAY_MS))
       : 0,
-    taskLimitUnlimited: newPlan && isMember,
-    planVersion: newPlan ? 'unlimited-v3' : 'legacy-v2',
+    memberRemainingMs: isMember ? Math.max(0, memberExpiresMs - nowMs) : 0,
+    taskLimitUnlimited: unlimited,
+    planVersion,
     taskLimit: entitlementTaskLimit,
     entitlementTaskLimit,
     protectedTaskQuota,
@@ -456,8 +666,8 @@ function normalizeUser(user = {}, nowTs = time.now(), options = {}) {
     ownedTaskPackSlots: purchasedPackSlots,
     memberDurationDays: MEMBER_DURATION_DAYS,
     freeTaskSlots: FREE_TASK_SLOTS,
-    memberTaskSlots: newPlan ? LEGACY_CLIENT_UNLIMITED_TASK_LIMIT : LEGACY_MEMBER_TASK_SLOTS,
-    taskPackSize: newPlan ? 0 : LEGACY_CURRENT_TASK_PACK_SIZE,
+    memberTaskSlots: unlimited ? LEGACY_CLIENT_UNLIMITED_TASK_LIMIT : LEGACY_MEMBER_TASK_SLOTS,
+    taskPackSize: unlimited ? 0 : LEGACY_CURRENT_TASK_PACK_SIZE,
   };
 }
 
@@ -474,13 +684,44 @@ function snapshotFromTasks(user, tasks, nowTs = time.now(), options = {}) {
     protectedTaskUsed,
     entitlementTaskUsed: taskUsed,
     protectedTaskQuota: Math.max(base.protectedTaskQuota, protectedTaskUsed),
-    taskRemaining: Math.max(0, base.taskLimit - taskUsed),
+    taskRemaining: base.taskLimit == null
+      ? null
+      : Math.max(0, base.taskLimit - taskUsed),
   };
 }
 
-function packageViews(snapshot, sales = null, newPlan = false) {
+function packageViews(snapshot, sales = null, planVersion = PlanVersion.LEGACY) {
   const purchaseEnabled = !sales || sales.purchaseEnabled === true;
-  return packagesForPlan(newPlan).map(item => {
+  if (planVersion === PlanVersion.TWO_TIER) {
+    let items = TWO_TIER_PACKAGES;
+    if (snapshot.unlimited) {
+      items = [];
+    } else if (snapshot.memberTier === MemberTier.QUOTA_10) {
+      items = TWO_TIER_PACKAGES.filter(item => item.upgrade);
+    } else {
+      items = TWO_TIER_PACKAGES.filter(item => !item.upgrade);
+    }
+    return items.map(item => {
+      const upgradeTooShort = item.upgrade
+        && snapshot.memberRemainingMs <= UPGRADE_MIN_REMAINING_MS;
+      const available = purchaseEnabled && !upgradeTooShort;
+      return {
+        ...item,
+        available,
+        actionText: !purchaseEnabled
+          ? (sales && sales.message) || '会员购买暂停中'
+          : (upgradeTooShort
+            ? '会员即将到期，请到期后重新开通'
+            : (item.upgrade
+              ? `补 ${item.priceText} 升级不限额度`
+              : (snapshot.member
+                ? `续费 ${item.memberDays} 天 ${item.priceText}`
+                : `开通 ${item.memberDays} 天 ${item.priceText}`))),
+      };
+    });
+  }
+  const newPlan = planVersion === PlanVersion.UNLIMITED;
+  return packagesForPlan(planVersion).map(item => {
     const isMemberPackage = item.type === 'MEMBER';
     const available = purchaseEnabled && (newPlan ? isMemberPackage : (isMemberPackage || snapshot.member));
     return {
@@ -564,8 +805,9 @@ async function status(db, userId, nowTs = time.now(), options = {}) {
     await db.collection(COLLECTIONS.USERS).doc(user._id).update({ data: migrationPatch });
     Object.assign(user, migrationPatch);
   }
-  const newPlan = isNewPlanEnabledFor(userId, options);
-  const snapshot = snapshotFromTasks(user, activeTasks, nowTs, { newPlan });
+  const planVersion = planVersionFor(userId, options);
+  const newPlan = planVersion === PlanVersion.UNLIMITED;
+  const snapshot = snapshotFromTasks(user, activeTasks, nowTs, { planVersion });
   const salesView = membershipSales.publicView(sales);
   const upgradeNoticeView = upgradeNotice.publicViewOf(noticeConfig, nowTs, {
     newPlan,
@@ -574,7 +816,7 @@ async function status(db, userId, nowTs = time.now(), options = {}) {
   });
   return ok({
     membership: snapshot,
-    packages: packageViews(snapshot, salesView, newPlan),
+    packages: packageViews(snapshot, salesView, planVersion),
     sales: salesView,
     enforced: shouldEnforceForState(enforcement, userId),
     ...(upgradeNoticeView ? { upgradeNotice: upgradeNoticeView } : {}),
@@ -597,7 +839,7 @@ async function capacityError(db, userId, neededTasks, nowTs = time.now(), option
     membershipCapabilities: options.membershipCapabilities,
   });
   const membership = res.membership;
-  if (membership.taskLimitUnlimited) return null;
+  if (membership.taskLimitUnlimited || membership.unlimited) return null;
   if (needed <= membership.taskRemaining) return null;
 
   return fail(ERRORS.TASK_LIMIT_EXCEEDED, {
@@ -630,19 +872,37 @@ function orderIdOfRequest(hash) {
   return `ord_${String(hash).slice(0, 28)}`;
 }
 
-function orderSpecMatches(order, pkg) {
+function orderSpecMatches(order, pkg, snapshot = null) {
+  if (!order) return false;
+  const twoTier = order.planVersion === PlanVersion.TWO_TIER;
   return order
     && order.productType === pkg.type
     && order.packageId === pkg.id
     && Number(order.amountFen) === pkg.priceFen
     && Number(order.addedSlots) === pkg.addedSlots
     && Number(order.memberDays) === pkg.memberDays
-    && (order.unlimitedReminders === true) === (pkg.unlimitedReminders === true)
-    && order.specVersion === pkg.specVersion;
+    && order.specVersion === pkg.specVersion
+    && (!twoTier || (
+      String(order.membershipTier || '') === String(pkg.membershipTier || '')
+      && order.unlimited === (pkg.unlimited === true)
+      && order.upgrade === (pkg.upgrade === true)
+      && (!pkg.upgrade
+        || sameExpiryWindow(order.upgradeExpiresAt, snapshot && snapshot.memberExpiresAt))
+    ))
+    && (twoTier || (order.unlimitedReminders === true) === (pkg.unlimitedReminders === true));
 }
 
-function staleOrderCloseReasonOf(order, pkg) {
+function staleOrderCloseReasonOf(order, pkg, snapshot = null) {
   return Number(order.amountFen) !== pkg.priceFen ? 'PRICE_CHANGED' : 'SPEC_CHANGED';
+}
+
+function packageAllowedFor(snapshot, pkg) {
+  if (!pkg || snapshot.unlimited) return false;
+  if (snapshot.memberTier === MemberTier.QUOTA_10) return pkg.upgrade === true;
+  if (snapshot.memberTier === MemberTier.UNLIMITED) {
+    return pkg.unlimited === true && pkg.upgrade !== true;
+  }
+  return pkg.upgrade !== true;
 }
 
 function docDataOf(result) {
@@ -657,16 +917,26 @@ function orderResponseOf(order, reused = false) {
     outTradeNo: order.outTradeNo,
     amountFen: order.amountFen,
     packageId: order.packageId,
+    productType: order.productType,
+    planVersion: order.planVersion || '',
+    membershipTier: order.membershipTier || '',
+    unlimited: order.unlimited === true,
+    unlimitedReminders: order.unlimitedReminders === true
+      || order.unlimited === true,
+    upgrade: order.upgrade === true,
     title: order.title,
-    unlimitedReminders: order.unlimitedReminders === true,
+    specVersion: order.specVersion,
+    addedSlots: order.addedSlots,
+    memberDays: order.memberDays,
+    upgradeExpiresAt: order.upgradeExpiresAt || null,
     ...(reused ? { reused: true } : {}),
   });
 }
 
 async function createOrder(db, userId, event = {}) {
   const { packageId, requestId } = event;
-  const newPlan = isNewPlanEnabledFor(userId, event);
-  const pkg = packageOf(packageId, { newPlan });
+  const planVersion = planVersionFor(userId, event);
+  const pkg = packageOf(packageId, { planVersion });
   if (!pkg || !REQUEST_ID_PATTERN.test(String(requestId || ''))) return fail(ERRORS.BAD_PARAM);
   const requestHash = requestIdHashOf(userId, requestId);
   const deterministicOrderId = orderIdOfRequest(requestHash);
@@ -681,6 +951,23 @@ async function createOrder(db, userId, event = {}) {
       });
     }
     if (pkg.type === 'TASK_PACK' && !current.membership.member) return fail(ERRORS.MEMBERSHIP_REQUIRED);
+    if (planVersion === PlanVersion.TWO_TIER) {
+      if (pkg.upgrade
+        && current.membership.memberRemainingMs <= UPGRADE_MIN_REMAINING_MS) {
+        return fail({
+          code: ERRORS.BAD_PARAM.code,
+          message: '会员即将到期，请到期后重新开通',
+        });
+      }
+      if (!packageAllowedFor(current.membership, pkg)) {
+        return fail({
+          code: ERRORS.BAD_PARAM.code,
+          message: current.membership.unlimited
+            ? '不限额度会员有效期内无需再次购买，到期后再选择新方案'
+            : '当前会员方案不支持购买该商品',
+        });
+      }
+    }
 
     // 同一 requestId 的重试也可能早于用户资料首次落库，先确保支付成功后能找到同一用户。
     const user = await userDomain.ensureUser(db, userId);
@@ -696,7 +983,7 @@ async function createOrder(db, userId, event = {}) {
       if (requestOrder.userId !== userId || requestOrder.requestIdHash !== requestHash) {
         return fail(ERRORS.BAD_PARAM);
       }
-      if (!orderSpecMatches(requestOrder, pkg)) {
+      if (!orderSpecMatches(requestOrder, pkg, current.membership)) {
         return fail({ code: ERRORS.BAD_PARAM.code, message: '同一支付请求不能变更商品规格' });
       }
       return orderResponseOf(requestOrder, true);
@@ -710,12 +997,13 @@ async function createOrder(db, userId, event = {}) {
       .get();
     const pendingOrders = recentRes.data || [];
     const stalePending = pendingOrders
-      .filter(order => isExpiredOrder(order, nowTs) || !orderSpecMatches(order, pkg))
+      .filter(order => isExpiredOrder(order, nowTs)
+        || !orderSpecMatches(order, pkg, current.membership))
       .map(order => ({
         order,
         closeReason: isExpiredOrder(order, nowTs)
           ? 'EXPIRED_LOCAL'
-          : staleOrderCloseReasonOf(order, pkg),
+          : staleOrderCloseReasonOf(order, pkg, current.membership),
       }));
     await Promise.all(stalePending.map(({ order, closeReason }) =>
       db.collection(COLLECTIONS.ORDERS).where({
@@ -731,7 +1019,8 @@ async function createOrder(db, userId, event = {}) {
       })
     ));
     const reusable = pendingOrders.find(order =>
-      !isExpiredOrder(order, nowTs) && orderSpecMatches(order, pkg)
+      !isExpiredOrder(order, nowTs)
+      && orderSpecMatches(order, pkg, current.membership)
     );
     if (reusable) return orderResponseOf(reusable, true);
 
@@ -744,6 +1033,10 @@ async function createOrder(db, userId, event = {}) {
       packageId: pkg.id,
       productType: pkg.type,
       specVersion: pkg.specVersion,
+      planVersion,
+      membershipTier: pkg.membershipTier || '',
+      unlimited: pkg.unlimited === true,
+      upgrade: pkg.upgrade === true,
       title: pkg.title,
       body: `智序准点游-${pkg.title}`,
       amountFen: pkg.priceFen,
@@ -751,6 +1044,7 @@ async function createOrder(db, userId, event = {}) {
       unlimitedReminders: pkg.unlimitedReminders === true,
       memberDays: pkg.memberDays,
       memberFloorDays: pkg.memberFloorDays || 0,
+      upgradeExpiresAt: pkg.upgrade ? current.membership.memberExpiresAt : null,
       status: OrderStatus.PENDING,
       refundStatus: 'NONE',
       grantStatus: 'NONE',
@@ -863,11 +1157,18 @@ async function orderDetail(db, userId, orderId) {
 
 module.exports = {
   FREE_TASK_SLOTS,
+  MEMBER_TASK_SLOTS,
   LEGACY_TASK_PACK_SIZE,
   MEMBERSHIP_CAPABILITY_UNLIMITED_V3,
+  MEMBERSHIP_CAPABILITY_TWO_TIER_V5,
   LEGACY_CLIENT_UNLIMITED_TASK_LIMIT,
   ORDER_GRANT_SCHEMA_VERSION,
+  PlanVersion,
+  MemberTier,
   MEMBER_PRICE_FEN,
+  TWO_TIER_MEMBER_PRICE_FEN,
+  TWO_TIER_UNLIMITED_PRICE_FEN,
+  TWO_TIER_UPGRADE_PRICE_FEN,
   LEGACY_MEMBER_PRICE_FEN,
   LEGACY_MEMBER_TASK_SLOTS,
   LEGACY_CURRENT_TASK_PACK_SIZE,
@@ -875,17 +1176,23 @@ module.exports = {
   TASK_QUOTA_POOL,
   PACKAGES,
   LEGACY_PACKAGES,
+  TWO_TIER_PACKAGES,
   packageOf,
   packagesForPlan,
   hasMembershipCapability,
   isNewPlanEnabledFor,
+  isTwoTierPlanEnabledFor,
+  planVersionFor,
   enforcementModeOf,
   enforcementState,
   shouldEnforceFor,
   shouldEnforceForState,
   DEFAULT_TEST_OPENIDS,
   isMemberAt,
+  effectiveMemberTierOf,
+  isUnlimitedTier,
   normalizeUser,
+  normalizeTwoTierUser,
   countActiveTasks,
   quotaPoolOfTask,
   newTaskQuotaPoolOf,
@@ -905,6 +1212,7 @@ module.exports = {
   isExpiredOrder,
   requestIdHashOf,
   orderSpecMatches,
+  packageAllowedFor,
   withQuotaLock: quotaLock.withQuotaLock,
   SAME_PACKAGE_PENDING_REUSE_MS,
   REFUND_WINDOW_MS,

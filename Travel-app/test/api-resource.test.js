@@ -24,7 +24,7 @@ async function run() {
   assert.strictEqual(cloudCalls, 1, '并发相同只读请求只调用一次云函数');
   assert.deepStrictEqual(
     pending.data.membershipCapabilities,
-    ['unlimited-v3'],
+    ['unlimited-v3', 'two-tier-v5'],
     '新客户端对 reminder 请求显式声明会员契约能力'
   );
   pending.success({ result: { success: true, runtimeVersion: 'test' } });
@@ -46,7 +46,7 @@ async function run() {
   assert.strictEqual(cloudCalls, beforeFailure + 1);
   assert.deepStrictEqual(
     pending.data.membershipCapabilities,
-    ['unlimited-v3'],
+    ['unlimited-v3', 'two-tier-v5'],
     '会员状态入口同样携带能力声明'
   );
   pending.fail(new Error('network down'));

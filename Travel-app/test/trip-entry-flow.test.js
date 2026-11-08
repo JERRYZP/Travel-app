@@ -727,11 +727,11 @@ function instantiateComponent(def) {
   eq(hub.data.membershipLimit.remaining, 1, '浮层展示服务端剩余额度');
   eq(hub.data.membershipLimit.requested, 3, '浮层展示本次新建数');
   eq(hub.data.membershipLimit.actionText, '开通会员 ¥6', '主按钮文案直接复用服务端套餐');
-  eq(hub.data.membershipLimit.payText, '支付 ¥6，购买会员并继续',
+  eq(hub.data.membershipLimit.payText, '支付 ¥6，开通不限额度并继续',
     '名额主按钮直接说明支付后继续完成提醒');
   eq(calls.navigations.length, 0, '关闭说明前不自动跳会员页');
   await hub.onReminderAuthPay();
-  eq(hub.data.taskLimitPayConfirm.title, '30 天会员', '主按钮在原浮层内打开支付确认');
+  eq(hub.data.taskLimitPayConfirm.title, '30 天不限提醒名额', '主按钮在原浮层内打开支付确认');
   eq(hub.data.taskLimitPayConfirm.amount, '¥6', '支付确认展示服务端金额');
   eq(hub.data.taskLimitPayButtonText, '支付 ¥6', '支付确认按钮明确金额');
   eq(calls.navigations.length, 0, '支付确认不跳会员页');

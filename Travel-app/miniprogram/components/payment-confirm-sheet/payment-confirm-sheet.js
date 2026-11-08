@@ -17,6 +17,7 @@ Component({
     title: { type: String, value: '' },
     amount: { type: String, value: '' },
     expiry: { type: String, value: '' },
+    effect: { type: String, value: '' },
     buttonText: { type: String, value: '' },
     paying: { type: Boolean, value: false },
     disabled: { type: Boolean, value: false },

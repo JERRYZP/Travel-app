@@ -90,6 +90,7 @@
       title="{{payConfirm.title}}"
       amount="{{payConfirm.amount}}"
       expiry="{{payConfirm.expiry}}"
+      effect="{{payConfirm.effect}}"
       button-text="{{payButtonText}}"
       paying="{{paying}}"
       disabled="{{payDisabled}}"

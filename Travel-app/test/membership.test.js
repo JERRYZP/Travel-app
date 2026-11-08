@@ -18,6 +18,9 @@ const TEST_OPENID_A = 'oZ6IFxvYK1mKzBaehMcOPIl_CgN0';
 const TEST_OPENID_B = 'oZ6IFxmYI3grd17Aa2rEem2SMqNo';
 const TEST_OPENID_ANDROID = 'oZ6IFxi1K98ihzn5DH6KP5Jx9_bs';
 const NEW_PLAN = Object.freeze({ membershipCapabilities: Object.freeze(['unlimited-v3']) });
+const TWO_TIER_PLAN = Object.freeze({
+  membershipCapabilities: Object.freeze(['unlimited-v3', 'two-tier-v5']),
+});
 
 let fail = 0;
 const eq = (a, b, m) => {
@@ -247,6 +250,87 @@ async function run() {
   eq(legacyOrder.amountFen, 300, '非白名单创建旧价会员订单');
   eq(legacyOrder.unlimitedReminders, false, '旧方案订单不携带不限权益');
   process.env.MEMBERSHIP_ENFORCEMENT_MODE = 'all';
+  delete process.env.MEMBERSHIP_TEST_OPENIDS;
+
+  console.log('\n=== 1.2 two-tier-v5 白名单：3 元 / 4.9 元 / 1.9 元升级 ===');
+  process.env.MEMBERSHIP_TEST_OPENIDS = TEST_OPENID_A;
+  const twoTierDb = createDb();
+  twoTierDb._seed(COLLECTIONS.USERS, [{
+    _id: 'user_two_tier_001',
+    openId: TEST_OPENID_A,
+    memberLevel: MemberLevel.NORMAL,
+    taskPackCount: 0,
+  }]);
+  const freeTwoTier = await membership.status(twoTierDb, TEST_OPENID_A, undefined, TWO_TIER_PLAN);
+  eq(freeTwoTier.membership.planVersion, 'two-tier-v5', '白名单新客户端进入两档契约');
+  eq(freeTwoTier.packages.map(item => item.id).join(','),
+    'member_quota_10,member_unlimited', '免费用户看到 3 元和 4.9 元两档');
+  eq(freeTwoTier.packages.find(item => item.id === 'member_quota_10').priceFen, 300,
+    '3 元档价格为 300 分');
+  eq(freeTwoTier.packages.find(item => item.id === 'member_unlimited').priceFen, 490,
+    '4.9 元档价格为 490 分');
+  eq(freeTwoTier.packages.find(item => item.id === 'member_unlimited').priceText, '¥4.9',
+    '4.9 元价格不丢尾数');
+
+  const nonWhitelistTwoTier = await membership.status(twoTierDb, USER, undefined, TWO_TIER_PLAN);
+  eq(nonWhitelistTwoTier.membership.planVersion, 'unlimited-v3',
+    '非白名单即使声明 v5 也回退现有 unlimited-v3');
+  eq(nonWhitelistTwoTier.packages.map(item => item.id).join(','), 'member',
+    '非白名单继续只看到当前 ¥6 套餐');
+
+  const quotaOrder = await membership.createOrder(twoTierDb, TEST_OPENID_A, {
+    packageId: 'member_quota_10',
+    requestId: 'req_two_tier_quota_001',
+    membershipCapabilities: ['unlimited-v3', 'two-tier-v5'],
+  });
+  eq(quotaOrder.success, true, '白名单可创建 3 元档订单');
+  eq(quotaOrder.amountFen, 300, '3 元档订单金额正确');
+  eq(quotaOrder.membershipTier, 'QUOTA_10', '3 元档订单固化 QUOTA_10');
+
+  const twoTierExpiry = new Date(Date.now() + 20 * DAY_MS);
+  await twoTierDb.collection(COLLECTIONS.USERS).where({ openId: TEST_OPENID_A }).update({
+    data: {
+      memberLevel: MemberLevel.MEMBER,
+      memberTier: 'QUOTA_10',
+      memberExpiresAt: twoTierExpiry,
+    },
+  });
+  const quotaStatus = await membership.status(twoTierDb, TEST_OPENID_A, undefined, TWO_TIER_PLAN);
+  eq(quotaStatus.membership.memberTier, 'QUOTA_10', '3 元会员显示 QUOTA_10');
+  eq(quotaStatus.membership.taskLimit, 10, '3 元会员总额度 10');
+  eq(quotaStatus.packages.map(item => item.id).join(','), 'member_unlimited_upgrade',
+    '3 元会员只看到 1.9 元升级包');
+
+  const upgradeOrder = await membership.createOrder(twoTierDb, TEST_OPENID_A, {
+    packageId: 'member_unlimited_upgrade',
+    requestId: 'req_two_tier_upgrade_001',
+    membershipCapabilities: ['unlimited-v3', 'two-tier-v5'],
+  });
+  eq(upgradeOrder.success, true, '3 元会员可创建 1.9 元升级单');
+  eq(upgradeOrder.amountFen, 190, '升级单金额为 190 分');
+  eq(new Date(upgradeOrder.upgradeExpiresAt).getTime(), twoTierExpiry.getTime(),
+    '升级单冻结当前会员到期时间');
+
+  await twoTierDb.collection(COLLECTIONS.USERS).where({ openId: TEST_OPENID_A }).update({
+    data: { memberExpiresAt: new Date(Date.now() + 10 * 60 * 1000) },
+  });
+  const closedUpgrade = await membership.createOrder(twoTierDb, TEST_OPENID_A, {
+    packageId: 'member_unlimited_upgrade',
+    requestId: 'req_two_tier_upgrade_closed_001',
+    membershipCapabilities: ['unlimited-v3', 'two-tier-v5'],
+  });
+  eq(closedUpgrade.success, false, '不足 15 分钟不允许创建升级单');
+
+  await twoTierDb.collection(COLLECTIONS.USERS).where({ openId: TEST_OPENID_A }).update({
+    data: {
+      memberTier: 'UNLIMITED',
+      memberExpiresAt: new Date(Date.now() + 20 * DAY_MS),
+    },
+  });
+  const unlimitedTwoTier = await membership.status(twoTierDb, TEST_OPENID_A, undefined, TWO_TIER_PLAN);
+  eq(unlimitedTwoTier.membership.unlimited, true, '4.9 元会员为不限额度');
+  eq(unlimitedTwoTier.membership.pricingVisible, false, '不限额度会员隐藏价格区');
+  eq(unlimitedTwoTier.packages.length, 0, '不限额度会员不返回购买套餐');
   delete process.env.MEMBERSHIP_TEST_OPENIDS;
 
   console.log('\n=== 2. 过期任务不占新提醒名额 ===');

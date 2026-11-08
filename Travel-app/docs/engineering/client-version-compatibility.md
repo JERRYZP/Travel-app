@@ -214,21 +214,22 @@ return newContract ? buildNewContract() : buildLegacyContract();
 
 本轮会员升级可以作为标准案例：
 
-| 维度 | 旧契约 | 新契约 |
-|---|---|---|
-| 能力声明 | 不声明 | `unlimited-v3` |
-| 方案版本 | `legacy-v2` | `unlimited-v3` |
-| 价格 | ¥3 | ¥6 |
-| 有效期 | 30 天 | 30 天 |
-| 提醒额度 | 15 个，可购买加量包 | 有效期内不限 |
-| 商品 | `member`、`task_pack_5` | 仅 `member` |
+| 维度 | 旧契约 | 现有契约 | 两档候选 |
+|---|---|---|---|
+| 能力声明 | 不声明 | `unlimited-v3` | `unlimited-v3 + two-tier-v5` |
+| 方案版本 | `legacy-v2` | `unlimited-v3` | `two-tier-v5` |
+| 价格 | ¥3 | ¥6 | ¥3 / ¥4.9 / 升级 ¥1.9 |
+| 有效期 | 30 天 | 30 天 | 30 天；升级不延期 |
+| 提醒额度 | 15 个，可购买加量包 | 有效期内不限 | 10 个或不限 |
+| 商品 | `member`、`task_pack_5` | 仅 `member` | `member_quota_10`、`member_unlimited`、`member_unlimited_upgrade` |
 
 关键实现约束：
 
-- 新客户端在 `reminder` 请求中声明 `membershipCapabilities: ['unlimited-v3']`。
-- 服务端先检查能力，再检查 `MEMBERSHIP_ENFORCEMENT_MODE` 和 `MEMBERSHIP_TEST_OPENIDS`。
+- 新客户端在 `reminder` 请求中声明 `membershipCapabilities: ['unlimited-v3', 'two-tier-v5']`。
+- 服务端先检查 `two-tier-v5` 与 `MEMBERSHIP_TEST_OPENIDS`；未命中时再按现有 `unlimited-v3` 路由；最后回退 `legacy-v2`。
+- `two-tier-v5` 的定价灰度不再依赖当前生产额度模式 `all`，避免为了测试价格改动所有用户的额度限制。
 - 旧客户端永远返回旧套餐、旧价格和旧额度，即使模式为 `all`。
-- 新契约有效会员返回兼容字段 `taskLimit/taskRemaining/memberTaskSlots=10000`，但服务端先判断 `taskLimitUnlimited`，新客户端不展示这个数字。
+- `unlimited-v3` 有效会员继续返回兼容字段 `taskLimit/taskRemaining/memberTaskSlots=10000`；`two-tier-v5` 不限会员返回 `taskLimit/taskRemaining=null`，3 元档返回真实 `taskLimit=10`。
 - 会员升级横幅、公告接口和所有相关 bootstrap 接口都消费同一能力判断。
 - 历史订单、旧加量包、退款和售后继续按订单快照处理。
 

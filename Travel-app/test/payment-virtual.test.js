@@ -126,6 +126,9 @@ async function testProviderAndSignatures() {
     WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED: 'member-unlimited-product',
     WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_V6: 'member-unlimited-v6-product',
     WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK: 'pack-product',
+    WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_QUOTA_10: 'travel_task_vip_3',
+    WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_TWO_TIER_UNLIMITED: 'travel_task_vip_4_9',
+    WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_UPGRADE: 'travel_task_vip_1_9',
   });
   eq(virtualPay.hasPaymentConfig(config), true, '完整虚拟支付配置判定为可用');
   eq(virtualPay.hasApiConfig({ ...config, memberProductId: '', taskPackProductId: '' }), true,
@@ -195,6 +198,48 @@ async function testProviderAndSignatures() {
     '历史 8 元订单继续使用原固定道具');
   eq(JSON.parse(legacyUnlimitedClient.signData).goodsPrice, 800,
     '历史 8 元订单金额保持订单快照');
+  const twoTierQuotaClient = virtualPay.createClientPayment({
+    order: {
+      _id: 'order-virtual-two-tier-quota',
+      outTradeNo: 'TVIRTTWOTIERQUOTA',
+      packageId: 'member_quota_10',
+      productType: 'MEMBER',
+      planVersion: 'two-tier-v5',
+      amountFen: 300,
+    },
+    sessionKey: '9hAb/NEYUlkaMBEsmFgzig==',
+    config,
+  });
+  eq(JSON.parse(twoTierQuotaClient.signData).productId, 'travel_task_vip_3',
+    '3 元档映射 travel_task_vip_3');
+  const twoTierUnlimitedClient = virtualPay.createClientPayment({
+    order: {
+      _id: 'order-virtual-two-tier-unlimited',
+      outTradeNo: 'TVIRTTWOTIERUNLIMITED',
+      packageId: 'member_unlimited',
+      productType: 'MEMBER',
+      planVersion: 'two-tier-v5',
+      amountFen: 490,
+    },
+    sessionKey: '9hAb/NEYUlkaMBEsmFgzig==',
+    config,
+  });
+  eq(JSON.parse(twoTierUnlimitedClient.signData).productId, 'travel_task_vip_4_9',
+    '4.9 元档映射 travel_task_vip_4_9');
+  const twoTierUpgradeClient = virtualPay.createClientPayment({
+    order: {
+      _id: 'order-virtual-two-tier-upgrade',
+      outTradeNo: 'TVIRTTWOTIERUPGRADE',
+      packageId: 'member_unlimited_upgrade',
+      productType: 'MEMBER',
+      planVersion: 'two-tier-v5',
+      amountFen: 190,
+    },
+    sessionKey: '9hAb/NEYUlkaMBEsmFgzig==',
+    config,
+  });
+  eq(JSON.parse(twoTierUpgradeClient.signData).productId, 'travel_task_vip_1_9',
+    '1.9 元升级包映射 travel_task_vip_1_9');
   let missingV6Product = false;
   try {
     virtualPay.createClientPayment({

@@ -655,6 +655,15 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     eq(initial.membership.planVersion, 'unlimited-v3', 'mock 使用白名单新方案版本');
     eq(initial.membership.taskLimitUnlimited, false, 'mock 免费用户没有不限权益');
     eq(initial.membership.memberTaskSlots, 10000, 'mock 旧客户端兼容字段与云端一致');
+    const twoTierPlan = {
+      membershipCapabilities: ['unlimited-v3', 'two-tier-v5'],
+    };
+    const twoTier = await c('membership.status', twoTierPlan);
+    eq(twoTier.membership.planVersion, 'two-tier-v5', 'mock 支持两档会员契约');
+    eq(twoTier.packages.map(item => item.id).join(','),
+      'member_quota_10,member_unlimited', 'mock 免费用户返回 3 元和 4.9 元两档');
+    eq(twoTier.packages.find(item => item.id === 'member_unlimited').priceText, '¥4.9',
+      'mock 保留 4.9 元价格尾数');
     const freeProfile = await c('user.profile', newPlan);
     eq(freeProfile.membershipUpgradeNotice, undefined, 'mock 免费用户资料不返回临时会员升级公告');
     const freeBootstrap = await c('user.bootstrap', newPlan);
