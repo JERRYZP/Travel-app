@@ -112,6 +112,7 @@ PENDING / BOOKABLE / SUCCESS / FAILED / UNMARKED / NO_RESERVATION
 - iOS 虚拟支付订单由用户在 Apple App Store 购买记录发起退款，小程序内不重复受理退款申请。Apple 审核期间会员权益保持有效；Apple 拒绝退款时不回收权益，确认退款并推送结果后由服务端查单确认，再按本单快照回收。最终结果与到账时间以 Apple 为准。
 - 会员购买总开关唯一真身为 `payment_config/membership_sales`，与会员限制模式完全独立。暂停只阻止新下单和待支付订单新发起支付；已打开的外部支付窗口可完成，支付回调、主动查单、权益发放、退款和售后必须继续。读取配置失败时新购买按暂停处理，但会员状态和订单读取不得失败。
 - 会员限制模式唯一真身为 `payment_config/membership_enforcement`，`mode=off|test|all`。切换只影响之后新建任务的 `quotaPool`，已有任务不追溯重算；`all` 必须同时通过保护额度与权益账本迁移检查。`MEMBERSHIP_ENFORCEMENT_MODE` 只在配置缺失、非法或读取失败时兜底，不能与后台配置形成第二套真身。
+- 两档定价唯一真身为 `payment_config/membership_pricing`，`mode=test|all`，默认和读取失败均为 `test`。`test` 只对 `MEMBERSHIP_TEST_OPENIDS` 开放，`all` 对所有声明 `two-tier-v5` 的新客户端开放；该开关与额度限制模式完全独立。
 
 ## 景点规则数据
 

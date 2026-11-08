@@ -19,7 +19,7 @@
 - 会员不是抢票服务，而是 **30 天提醒名额扩容**。
 - 免费版：5 个提醒名额。
 - 现有生产新订单仍为 ¥6 / 30 天不限；`two-tier-v5` 白名单新订单为 ¥3 / 30 天 / 总额度 10、¥4.9 / 30 天不限。新购买或续费在原有效期末尾增加 30 天；已过期会员从支付成功时起算 30 天。
-- 方案路由顺序为 `two-tier-v5 → unlimited-v3 → legacy-v2`。`two-tier-v5` 必须同时声明能力且命中 `MEMBERSHIP_TEST_OPENIDS`，不依赖生产 `MEMBERSHIP_ENFORCEMENT_MODE=all`。非白名单仍走现有 `unlimited-v3`；旧客户端继续 `legacy-v2` 的 `¥3 / 15 个 / task_pack_5`。
+- 方案路由顺序为 `two-tier-v5 → unlimited-v3 → legacy-v2`。`two-tier-v5` 同时要求客户端声明能力，并读取独立定价开关 `payment_config/membership_pricing`：`test` 只开放 `MEMBERSHIP_TEST_OPENIDS`，`all` 开放所有新客户端；缺省、非法或读取失败回退 `test`。非命中用户仍走现有 `unlimited-v3`；旧客户端继续 `legacy-v2` 的 `¥3 / 15 个 / task_pack_5`。
 - 当前有效老会员自动获得不限权益，`memberExpiresAt` 不变。`two-tier-v5` 中缺少 `memberTier` 的有效老会员按 `LEGACY_UNLIMITED` 保护；到期后才展示两档价格。
 - 3 元档超额只创建 `member_unlimited_upgrade`。订单冻结 `upgradeExpiresAt`，支付只把 `QUOTA_10` 改为 `UNLIMITED`，`memberDays=0`、`memberFloorDays=0`，不延期；不足 15 分钟服务端拒绝创单。
 - 3 元会员单与 ¥1.9 升级单是父子权益。升级单仍有效且退款会移除当前会员时，用户售后提交和客服批准都返回 `1034`，必须先退升级单。
@@ -100,6 +100,13 @@ iOS Apple 内购订单在订单展示接口中返回 `paymentChannel=APPLE`。�
 - 切 `all` 前服务端强制检查保护额度迁移和权益账本迁移，任一未完成返回 `1033`。所有切换写 `SET_MEMBERSHIP_ENFORCEMENT` 审计。
 - 配置缺失、非法或读取失败时，`reminder` 回退 `MEMBERSHIP_ENFORCEMENT_MODE`。后台显示“环境变量兜底”，不猜测当前有效模式。
 - 客服工作台顺序固定为会员购买开关、会员限制模式、资金阻断、页签与列表；购买开关保持在页面最顶部。
+
+### 两档定价开关
+
+- `payment_config/membership_pricing` 是两档价格范围的唯一真身，`mode=test|all`。它独立于 `membership_enforcement`，不能复用额度限制开关。
+- `test` 只对 `MEMBERSHIP_TEST_OPENIDS` 中声明 `two-tier-v5` 的账号开放；`all` 对所有声明该能力的新客户端开放。未声明能力的旧客户端永久走旧契约。
+- 配置缺失、非法或读取失败时回退 `test`，不会因为额度模式为 `all` 而意外全量调价。
+- 管理员切换写 `SET_MEMBERSHIP_PRICING` 审计，服务端缓存立即失效；不需要部署云函数，也不重算已有提醒任务。
 
 ### 会员升级临时公告
 

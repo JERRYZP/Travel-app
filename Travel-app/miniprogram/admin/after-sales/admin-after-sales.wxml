@@ -80,6 +80,29 @@
       </view>
     </view>
 
+    <view wx:if="{{membershipPricing}}" class="admin-control-card pricing-card">
+      <view class="enforcement-main">
+        <view class="enforcement-title-row">
+          <text class="enforcement-title">两档定价</text>
+          <text class="enforcement-source">{{membershipPricing.sourceLabel}}</text>
+        </view>
+        <text class="enforcement-desc {{membershipPricing.readError ? 'warning' : ''}}">{{membershipPricing.shortDescription || membershipPricing.description}}</text>
+      </view>
+      <picker
+        class="enforcement-picker"
+        mode="selector"
+        range="{{pricingPickerLabels}}"
+        value="{{pricingPickerIndex}}"
+        disabled="{{pricingSaving || membershipPricing.unavailable}}"
+        bindchange="onPricingModeChange"
+      >
+        <view class="enforcement-select {{pricingSaving || membershipPricing.unavailable ? 'disabled' : ''}}">
+          <text class="enforcement-select-value">{{pricingSaving ? '处理中' : membershipPricing.modeLabel}}</text>
+          <svg-icon name="chevron-down-muted" size="10px" />
+        </view>
+      </picker>
+    </view>
+
     <view
       wx:if="{{membershipUpgradeNotice}}"
       class="admin-control-card sales-card upgrade-notice-card {{membershipUpgradeNotice.active ? 'active' : ''}} {{membershipUpgradeNotice.readError ? 'paused' : ''}}"

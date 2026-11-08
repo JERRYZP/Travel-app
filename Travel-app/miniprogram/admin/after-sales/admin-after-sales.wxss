@@ -65,6 +65,7 @@
 .enforcement-select { width: 112rpx; height: 54rpx; padding: 0 9rpx; border: 1rpx solid #D8CBB3; border-radius: 11rpx; box-sizing: border-box; background: #F7F2E8; color: var(--color-text); display: flex; align-items: center; justify-content: space-between; gap: 5rpx; }
 .enforcement-select.disabled { opacity: .55; }
 .enforcement-select-value { min-width: 0; overflow: hidden; font-size: 18rpx; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.pricing-card { margin-bottom: 18rpx; padding: 18rpx 20rpx; }
 .upgrade-notice-card { margin-bottom: 18rpx; padding: 18rpx 20rpx; }
 .upgrade-notice-card.active { border-color: #E2C896; background: #FFF9EA; }
 .upgrade-notice-card.active .upgrade-notice-status { background: #F7ECD4; color: #8A5A12; }

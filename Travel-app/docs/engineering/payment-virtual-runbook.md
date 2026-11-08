@@ -186,8 +186,9 @@ Access Token 使用内存缓存并提前 5 分钟刷新；微信返回 `40001/40
 4. 分批调用 `{ action: 'afterSales.adminMigrateEntitlementLedger', dryRun: true, cursor? }`，直到 `hasMore=false`；保存差异报告，确认历史 5 个包与新 10 个包混算结果。
 5. 以 `dryRun=false` 重新从头执行同一迁移。每批最多 50 人，必须沿返回的 `nextCursor` 继续到 `hasMore=false`；不可跳批，也不能把 dry-run 的游标当作已写入结果。
 6. 保持 `MEMBERSHIP_ENFORCEMENT_MODE=test`，用白名单 OpenID 真机验证支付、权益到账、退款回收、并发提醒和恢复支付。
+  两档价格只由 `payment_config/membership_pricing=test` 控制白名单范围；验收通过后在客服工作台单独切 `all`，不得通过会员限制模式放开价格。
 7. 上传体验版并提交审核；审核等待期和发布初期继续保持 `test`，非白名单任务进入历史保护池。
-8. 支付白名单已于 2026-11-01 删除，新版客户端新订单全量使用虚拟支付；完成正式版覆盖与支付验收后，再另行评估通过客服工作台把 `payment_config/membership_enforcement.mode` 切到 `all`。若后台开关尚未部署，才由 `MEMBERSHIP_ENFORCEMENT_MODE` 兜底。
+8. 支付白名单已于 2026-11-01 删除，新版客户端新订单全量使用虚拟支付；两档定价验收完成后通过客服工作台 `membership_pricing` 切 `all`。`membership_enforcement.mode` 只控制额度限制，不能代替定价开关。
 
 ## 8. 测试顺序
 

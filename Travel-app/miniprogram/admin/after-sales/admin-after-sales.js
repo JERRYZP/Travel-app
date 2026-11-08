@@ -15,6 +15,10 @@ const ENFORCEMENT_OPTIONS = [
   { mode: 'test', label: '测试' },
   { mode: 'all', label: '全量' },
 ];
+const PRICING_OPTIONS = [
+  { mode: 'test', label: '测试' },
+  { mode: 'all', label: '全量' },
+];
 const ORDER_TIME_RANGES = [
   { key: '7d', label: '近 7 天' },
   { key: '30d', label: '近 30 天' },
@@ -55,6 +59,39 @@ function enforcementViewOf(res) {
   if (!res || res.isAdmin !== true) return null;
   return {
     mode: '',
+    modeLabel: '待部署',
+    shortDescription: '服务端尚未更新，暂不可切换',
+    source: 'UNAVAILABLE',
+    sourceLabel: '待部署',
+    readError: false,
+    unavailable: true,
+  };
+}
+
+function pricingPickerOf(current) {
+  const activeMode = current && current.mode;
+  const index = PRICING_OPTIONS.findIndex(item => item.mode === activeMode);
+  return {
+    labels: PRICING_OPTIONS.map(item => item.label),
+    index: index >= 0 ? index : 0,
+  };
+}
+
+function pricingViewOf(res) {
+  const current = res && res.membershipPricing;
+  if (current) {
+    const sourceLabel = current.source === 'DB'
+      ? '后台配置'
+      : (current.readError || current.source === 'INVALID' ? '配置异常，默认测试' : '默认测试');
+    return {
+      ...current,
+      sourceLabel,
+      unavailable: current.unavailable === true,
+    };
+  }
+  if (!res || res.isAdmin !== true) return null;
+  return {
+    mode: 'test',
     modeLabel: '待部署',
     shortDescription: '服务端尚未更新，暂不可切换',
     source: 'UNAVAILABLE',
@@ -209,6 +246,10 @@ Page({
     enforcementPickerLabels: ENFORCEMENT_OPTIONS.map(item => item.label),
     enforcementPickerIndex: 0,
     enforcementSaving: false,
+    membershipPricing: null,
+    pricingPickerLabels: PRICING_OPTIONS.map(item => item.label),
+    pricingPickerIndex: 0,
+    pricingSaving: false,
     entitlementMigrationCompleted: false,
   },
 
@@ -378,9 +419,11 @@ Page({
 
   applyStatus(res) {
     const membershipEnforcement = enforcementViewOf(res);
+    const membershipPricing = pricingViewOf(res);
     const migrationCompleted = !!(res && res.migrationCompleted);
     const entitlementMigrationCompleted = !!(res && res.entitlementMigrationCompleted);
     const enforcementPicker = enforcementPickerOf(membershipEnforcement);
+    const pricingPicker = pricingPickerOf(membershipPricing);
     this.setData({
       migrationCompleted,
       entitlementMigrationCompleted,
@@ -391,6 +434,9 @@ Page({
       membershipEnforcement,
       enforcementPickerLabels: enforcementPicker.labels,
       enforcementPickerIndex: enforcementPicker.index,
+      membershipPricing,
+      pricingPickerLabels: pricingPicker.labels,
+      pricingPickerIndex: pricingPicker.index,
     });
   },
 
@@ -553,6 +599,58 @@ Page({
       })
       .catch(err => {
         this.setData({ enforcementSaving: false });
+        api.toastError(err);
+        return false;
+      });
+  },
+
+  onPricingModeChange(e) {
+    if (this.data.pricingSaving || !this.data.membershipPricing) return;
+    if (this.data.membershipPricing.unavailable) {
+      wx.showToast({ title: '服务端尚未更新，暂不可切换', icon: 'none' });
+      return;
+    }
+    const selectedIndex = Number(e && e.detail && e.detail.value);
+    const currentPicker = pricingPickerOf(this.data.membershipPricing);
+    this.setData({ pricingPickerIndex: currentPicker.index });
+    const option = PRICING_OPTIONS[selectedIndex];
+    if (!option || this.data.membershipPricing.mode === option.mode) return;
+    const impact = option.mode === 'all'
+      ? '所有声明 two-tier-v5 能力的新客户端将使用 ¥3 / ¥4.9 / ¥1.9；旧客户端继续原契约。'
+      : '只有测试 OpenID 使用 ¥3 / ¥4.9 / ¥1.9，其他用户继续现有 ¥6 方案。';
+    wx.showModal({
+      title: `两档定价切为${option.label}`,
+      content: impact,
+      confirmText: '确认切换',
+      confirmColor: '#8A5A12',
+      success: res => {
+        if (res.confirm) this.setMembershipPricing(option.mode);
+      },
+    });
+  },
+
+  setMembershipPricing(mode) {
+    if (this.data.pricingSaving) return Promise.resolve(false);
+    this.setData({ pricingSaving: true });
+    return api.payment.afterSales.adminSetMembershipPricing({ mode })
+      .then(result => {
+        const membershipPricing = pricingViewOf(result);
+        const nextPricing = membershipPricing || this.data.membershipPricing;
+        const picker = pricingPickerOf(nextPricing);
+        this.setData({
+          pricingSaving: false,
+          membershipPricing: nextPricing,
+          pricingPickerLabels: picker.labels,
+          pricingPickerIndex: picker.index,
+        });
+        wx.showToast({
+          title: `两档定价已切为${nextPricing ? nextPricing.modeLabel : '新模式'}`,
+          icon: 'none',
+        });
+        return true;
+      })
+      .catch(err => {
+        this.setData({ pricingSaving: false });
         api.toastError(err);
         return false;
       });

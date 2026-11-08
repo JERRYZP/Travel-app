@@ -22,6 +22,7 @@ const userDomain = require('./user');
 const quotaLock = require('./quota-lock');
 const membershipSales = require('./membership-sales');
 const membershipEnforcement = require('./membership-enforcement');
+const membershipPricing = require('./membership-pricing');
 const upgradeNotice = require('./membership-upgrade-notice');
 const membershipCredit = require('./membership-credit');
 
@@ -260,18 +261,18 @@ function isNewPlanEnabledFor(userId, source = {}) {
 }
 
 /**
- * 两档会员是独立实验契约，不受当前生产 MEMBERSHIP_ENFORCEMENT_MODE=all 影响。
- * 只有显式声明 two-tier-v5 且 OpenID 命中测试名单时才返回新价格与新权益；
- * 同一客户端携带 unlimited-v3 时，非白名单会继续回退现有 ¥6 方案。
+ * 两档会员是独立定价契约，不受会员限制模式 all 影响。
+ * membership_pricing=test 时只看测试名单；=all 时所有声明能力的新客户端开放。
  */
-function isTwoTierPlanEnabledFor(userId, source = {}) {
+function isTwoTierPlanEnabledFor(userId, source = {}, pricingState = null) {
   if (!userId) return false;
   if (!hasMembershipCapability(source, MEMBERSHIP_CAPABILITY_TWO_TIER_V5)) return false;
+  if (membershipPricing.isAll(pricingState)) return true;
   return testOpenIdsOf().has(userId);
 }
 
-function planVersionFor(userId, source = {}) {
-  if (isTwoTierPlanEnabledFor(userId, source)) return PlanVersion.TWO_TIER;
+function planVersionFor(userId, source = {}, pricingState = null) {
+  if (isTwoTierPlanEnabledFor(userId, source, pricingState)) return PlanVersion.TWO_TIER;
   if (isNewPlanEnabledFor(userId, source)) return PlanVersion.UNLIMITED;
   return PlanVersion.LEGACY;
 }
@@ -772,7 +773,9 @@ function packageViews(snapshot, sales = null, planVersion = PlanVersion.LEGACY) 
 }
 
 async function status(db, userId, nowTs = time.now(), options = {}) {
-  const planVersion = planVersionFor(userId, options);
+  const pricingState = options.pricingState
+    || await membershipPricing.read(db, { cache: options.configCache === true });
+  const planVersion = planVersionFor(userId, options, pricingState);
   const enforcementPromise = options.enforcementState
     ? Promise.resolve(options.enforcementState)
     : enforcementState(db, { cache: options.configCache === true });
@@ -976,7 +979,8 @@ function orderResponseOf(order, reused = false) {
 
 async function createOrder(db, userId, event = {}) {
   const { packageId, requestId } = event;
-  const planVersion = planVersionFor(userId, event);
+  const pricingState = await membershipPricing.read(db, { cache: true });
+  const planVersion = planVersionFor(userId, event, pricingState);
   const pkg = packageOf(packageId, { planVersion });
   if (!pkg || !REQUEST_ID_PATTERN.test(String(requestId || ''))) return fail(ERRORS.BAD_PARAM);
   const requestHash = requestIdHashOf(userId, requestId);
@@ -985,6 +989,7 @@ async function createOrder(db, userId, event = {}) {
   return quotaLock.withQuotaLock(db, userId, async () => {
     const current = await status(db, userId, undefined, {
       membershipCapabilities: event.membershipCapabilities,
+      pricingState,
     });
     const credit = current.membership.upgradeCreditAvailable
       ? await membershipCredit.read(db, userId)
@@ -1265,6 +1270,7 @@ module.exports = {
   isNewPlanEnabledFor,
   isTwoTierPlanEnabledFor,
   planVersionFor,
+  membershipPricing,
   enforcementModeOf,
   enforcementState,
   shouldEnforceFor,

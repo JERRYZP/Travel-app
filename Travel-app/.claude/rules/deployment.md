@@ -18,9 +18,9 @@ paths:
 - 客户端必须在 `reminder` 请求中显式声明 `membershipCapabilities: ['unlimited-v3', 'two-tier-v5']`；未声明 `unlimited-v3` 的旧客户端永久继续 `legacy-v2`。
 - `test`：只有 `MEMBERSHIP_TEST_OPENIDS` 命中且声明能力的请求返回新会员方案；其他请求必须继续旧价格、旧额度和旧加量包契约。
 - `all`：仅在用户明确授权后使用，只对所有声明能力的新客户端开放；不再依赖旧包覆盖率归零。
-- `two-tier-v5` 是独立候选定价契约，必须同时声明能力且 OpenID 命中 `MEMBERSHIP_TEST_OPENIDS`；即使生产数据库额度模式为 `all`，非白名单也只能回退现有 `unlimited-v3`，不能看到 ¥3 / ¥4.9 / ¥1.9。
+- `two-tier-v5` 是独立定价契约，由 `payment_config/membership_pricing` 的 `mode=test|all` 控制。`test` 必须同时声明能力且 OpenID 命中 `MEMBERSHIP_TEST_OPENIDS`；`all` 对所有声明能力的新客户端开放。配置缺失、非法或读取失败必须回退 `test`。即使额度模式为 `all`，也不得用 `membership_enforcement` 代替定价开关。
 - `taskLimit=10000` 只能作为新方案内部兼容投影，禁止让未声明能力的旧客户端消费或展示。
-- 部署前先确认环境变量为 `test` 且白名单包含验收账号；部署后分别验证新能力白名单命中、新能力普通账号未命中、旧客户端无能力声明三种响应。
+- 部署前先确认 `membership_pricing` 为 `test`（或配置缺失）且白名单包含验收账号；部署后分别验证新能力白名单命中、新能力普通账号未命中、旧客户端无能力声明三种响应。全量定价必须通过后台独立开关切换。
 - 任何 API 契约、价格权益、默认值或字段语义变更，先按 `docs/engineering/client-version-compatibility.md` 写出旧契约、新契约、能力门禁和发布矩阵；不得依赖等待旧客户端覆盖率归零。
 多放票时段能力必须保留 `supportsMultiRelease` 请求级能力门禁：旧客户端不传时，`reminder` 继续使用顶层 `advanceDays + releaseTime` 创建单任务；新客户端传 `true` 后才读取 `releaseSlots`。当前清华、军博的规则已收敛为每个出行日一条任务，部署时必须一并更新 `data/rules.json`、函数内规则副本和静态快照。更新数据库规则前必须先备份并逐字段比较线上 `release_rules` 与 `spots`：`admin.seed` 会同时 upsert 全部景点和规则，只有两张表都与种子一致或差异均经明确确认时才可执行；存在无关漂移时，只对目标 `spotId` 做精确更新。上线顺序为部署带门禁的 `reminder`、更新规则与快照、核验数据库仅目标数据变化，再发布新客户端；不得只发客户端或只上传函数代码而漏掉规则数据。
 

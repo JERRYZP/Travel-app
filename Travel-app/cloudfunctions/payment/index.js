@@ -49,6 +49,7 @@ const {
 const afterSales = require('./lib/after-sales');
 const membershipSales = require('./lib/membership-sales');
 const membershipEnforcement = require('./lib/membership-enforcement');
+const membershipPricing = require('./lib/membership-pricing');
 const membershipUpgradeNotice = require('./lib/membership-upgrade-notice');
 const adminOrders = require('./lib/admin-orders');
 const adminReminderQuality = require('./lib/admin-reminder-quality');
@@ -1142,6 +1143,39 @@ async function setMembershipEnforcement(context, event) {
   membershipEnforcement.invalidate(db);
   const current = await membershipEnforcement.read(db);
   return ok({ membershipEnforcement: membershipEnforcement.adminView(current) });
+}
+
+async function setMembershipPricing(context, event) {
+  const denied = adminRequired(context);
+  if (denied) return denied;
+  const mode = membershipPricing.normalizedMode(event.mode);
+  if (!mode) return fail(ERRORS.BAD_PARAM);
+
+  const previous = await membershipPricing.read(db);
+  const nowTs = new Date();
+  await db.runTransaction(async transaction => {
+    await membershipPricing.write(transaction, {
+      mode,
+      updatedBy: context.OPENID,
+      now: nowTs,
+    });
+    await transaction.collection(COLLECTIONS.ADMIN_AUDIT_LOGS).add({
+      data: {
+        adminOpenId: context.OPENID,
+        action: 'SET_MEMBERSHIP_PRICING',
+        caseId: '',
+        orderId: '',
+        details: {
+          mode,
+          previousMode: previous.mode || '',
+        },
+        createdAt: nowTs,
+      },
+    });
+  });
+  membershipPricing.invalidate(db);
+  const current = await membershipPricing.read(db);
+  return ok({ membershipPricing: membershipPricing.adminView(current) });
 }
 
 async function setMembershipUpgradeNotice(context, event) {
@@ -2508,6 +2542,7 @@ async function main(event = {}) {
           fundingBlockedCount,
           sales,
           enforcement,
+          pricing,
           upgradeNotice,
         ] = await Promise.all([
           protectionMigrationCompleted(db).catch(() => false),
@@ -2516,6 +2551,7 @@ async function main(event = {}) {
           afterSales.countFundingBlockedCases(db).catch(() => 0),
           membershipSales.read(db),
           membershipEnforcement.read(db),
+          membershipPricing.read(db),
           membershipUpgradeNotice.read(db),
         ]);
         return ok({
@@ -2526,6 +2562,7 @@ async function main(event = {}) {
           fundingBlockedCount,
           membershipSales: membershipSales.adminView(sales),
           membershipEnforcement: membershipEnforcement.adminView(enforcement),
+          membershipPricing: membershipPricing.adminView(pricing),
           membershipUpgradeNotice: membershipUpgradeNotice.adminViewOf(upgradeNotice),
         });
       }
@@ -2533,6 +2570,8 @@ async function main(event = {}) {
         return await setMembershipSales(context, event);
       case 'afterSales.adminSetMembershipEnforcement':
         return await setMembershipEnforcement(context, event);
+      case 'afterSales.adminSetMembershipPricing':
+        return await setMembershipPricing(context, event);
       case 'afterSales.adminSetMembershipUpgradeNotice':
         return await setMembershipUpgradeNotice(context, event);
       case 'adminOrders.list':

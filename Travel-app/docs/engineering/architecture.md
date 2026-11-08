@@ -112,7 +112,7 @@ reminder.membership.createOrder
 
 - 免费用户 5 个提醒名额。现有 `unlimited-v3` 为 ¥6/30 天不限；候选 `two-tier-v5` 为 ¥3/30 天总额度 10 和 ¥4.9/30 天不限，3 元档超额只补 ¥1.9 升级。当前有效老会员保持原到期时间和不限权益；历史订单按快照兼容。微信订阅授权仍按条校验，不受会员身份替代。
 - ¥1.9 升级单依赖 3 元主会员单。先退主会员返回 `1034`；平台强制先退时，仍有效的升级单转 `membership_credits` 一次性权益券，只能随下一笔 3 元会员单原子消费，3 元单退款后恢复。
-- 会员方案采用三级能力路由：新客户端声明 `membershipCapabilities=['unlimited-v3','two-tier-v5']`。`two-tier-v5` 只对 `MEMBERSHIP_TEST_OPENIDS` 生效；未命中时回退现有 `unlimited-v3`；未声明 `unlimited-v3` 的旧包继续 `legacy-v2`。数据库 `membership_enforcement.mode=all` 只控制额度限制，不控制候选定价。
+- 会员方案采用三级能力路由：新客户端声明 `membershipCapabilities=['unlimited-v3','two-tier-v5']`。`two-tier-v5` 读取独立 `payment_config/membership_pricing`：`test` 只对 `MEMBERSHIP_TEST_OPENIDS` 生效，`all` 对新客户端全量生效；未命中时回退现有 `unlimited-v3`；旧包继续 `legacy-v2`。`membership_enforcement.mode=all` 只控制额度限制，不控制定价。
 - 用户权益账本继续保存历史 `taskPackCount` 与 `taskPackSlots`，但不再参与会员额度计算；创建订单、提醒提交、行程项重新开启提醒、权益发放和退款回收共用用户级短期额度锁，锁内重读容量后事务提交。
 - 唯一规则在 `cloudfunctions/reminder/lib/membership.js`；`cart.commit` 与 `tripItem.updateReminder` 都必须过同一服务端闸门。
 - 老用户历史保护池 `protectedTaskQuota=max(5, 迁移时未来 WAITING 提醒数)`，迁移由管理员分批触发。是否占用新增池由任务创建时的会员灰度决定：`off` / `test` 非白名单写入保护池，`test` 白名单 / `all` 才写新增池。

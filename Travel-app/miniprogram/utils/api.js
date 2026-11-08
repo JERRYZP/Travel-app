@@ -266,6 +266,9 @@ const payment = {
     adminSetMembershipEnforcement: (p) => call('payment', {
       action: 'afterSales.adminSetMembershipEnforcement', ...(p || {}),
     }),
+    adminSetMembershipPricing: (p) => call('payment', {
+      action: 'afterSales.adminSetMembershipPricing', ...(p || {}),
+    }),
     adminSetMembershipUpgradeNotice: (p) => call('payment', {
       action: 'afterSales.adminSetMembershipUpgradeNotice', ...(p || {}),
     }),

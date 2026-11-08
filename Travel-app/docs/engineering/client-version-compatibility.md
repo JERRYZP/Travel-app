@@ -227,8 +227,8 @@ return newContract ? buildNewContract() : buildLegacyContract();
 关键实现约束：
 
 - 新客户端在 `reminder` 请求中声明 `membershipCapabilities: ['unlimited-v3', 'two-tier-v5']`。
-- 服务端先检查 `two-tier-v5` 与 `MEMBERSHIP_TEST_OPENIDS`；未命中时再按现有 `unlimited-v3` 路由；最后回退 `legacy-v2`。
-- `two-tier-v5` 的定价灰度不再依赖当前生产额度模式 `all`，避免为了测试价格改动所有用户的额度限制。
+- 服务端先检查 `two-tier-v5` 能力与 `payment_config/membership_pricing`；`test` 再检查 `MEMBERSHIP_TEST_OPENIDS`，`all` 对新客户端全量开放。未命中时再按现有 `unlimited-v3` 路由；最后回退 `legacy-v2`。
+- `two-tier-v5` 的定价范围不依赖当前生产额度模式 `all`；独立配置缺失或异常时回退 `test`，避免为了调价改动额度限制。
 - 旧客户端永远返回旧套餐、旧价格和旧额度，即使模式为 `all`。
 - `unlimited-v3` 有效会员继续返回兼容字段 `taskLimit/taskRemaining/memberTaskSlots=10000`；`two-tier-v5` 不限会员返回 `taskLimit/taskRemaining=null`，3 元档返回真实 `taskLimit=10`。
 - 会员升级横幅、公告接口和所有相关 bootstrap 接口都消费同一能力判断。

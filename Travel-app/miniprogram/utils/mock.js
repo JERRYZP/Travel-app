@@ -21,6 +21,7 @@ const db = {
   paymentConfig: {
     membership_sales: { state: 'OPEN', reason: '', updatedAt: null, updatedBy: '' },
     membership_enforcement: { mode: 'all', updatedAt: null, updatedBy: '' },
+    membership_pricing: { mode: 'test', updatedAt: null, updatedBy: '' },
     membership_upgrade_notice: {
       noticeId: 'membership-unlimited-upgrade', enabled: true,
       startsAt: new Date(Date.now() - 60 * 1000), endsAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
@@ -1378,7 +1379,10 @@ function mockHasTwoTierV5(data) {
 }
 
 function mockPlanVersion(data) {
-  if (mockHasTwoTierV5(data)) return 'two-tier-v5';
+  if (mockHasTwoTierV5(data)) {
+    const pricing = mockMembershipPricingView();
+    if (pricing.mode === 'all' || mockUser.openId === 'mock-user') return 'two-tier-v5';
+  }
   return mockHasUnlimitedV3(data) ? 'unlimited-v3' : 'legacy-v2';
 }
 
@@ -1748,6 +1752,26 @@ function mockMembershipEnforcementView() {
       : '尚未接管，暂按环境变量执行',
     configured: !!mode,
     source: mode ? 'DB' : 'UNSET',
+    updatedAt: current.updatedAt || null,
+    updatedBy: current.updatedBy || '',
+    readError: false,
+  };
+}
+
+function mockMembershipPricingView() {
+  const current = db.paymentConfig.membership_pricing || {};
+  const mode = ['test', 'all'].includes(current.mode) ? current.mode : 'test';
+  return {
+    mode,
+    modeLabel: mode === 'all' ? '全量用户' : '测试账号',
+    description: mode === 'all'
+      ? '所有声明 two-tier-v5 能力的新客户端使用 ¥3 / ¥4.9 / ¥1.9；旧客户端继续原契约。'
+      : '仅测试 OpenID 可见 ¥3 / ¥4.9 / ¥1.9 两档方案，其他用户继续现有 ¥6 方案。',
+    shortDescription: mode === 'all'
+      ? '新客户端全量使用两档定价'
+      : '仅测试账号使用两档定价',
+    configured: !!current.mode,
+    source: current.mode ? 'DB' : 'DEFAULT',
     updatedAt: current.updatedAt || null,
     updatedBy: current.updatedBy || '',
     readError: false,
@@ -3974,6 +3998,7 @@ const handlers = {
       fundingBlockedCount,
       membershipSales: sales,
       membershipEnforcement: mockMembershipEnforcementView(),
+      membershipPricing: mockMembershipPricingView(),
       membershipUpgradeNotice: mockAdminMembershipUpgradeNoticeView(),
     };
   },
@@ -4002,6 +4027,18 @@ const handlers = {
       updatedBy: mockUser.openId,
     };
     return { success: true, membershipEnforcement: mockMembershipEnforcementView() };
+  },
+  'afterSales.adminSetMembershipPricing': (data) => {
+    const mode = String(data.mode || '').trim().toLowerCase();
+    if (!['test', 'all'].includes(mode)) {
+      return { success: false, error: '参数不合法', errorCode: 1010 };
+    }
+    db.paymentConfig.membership_pricing = {
+      mode,
+      updatedAt: new Date(),
+      updatedBy: mockUser.openId,
+    };
+    return { success: true, membershipPricing: mockMembershipPricingView() };
   },
   'afterSales.adminSetMembershipUpgradeNotice': (data) => {
     const current = db.paymentConfig.membership_upgrade_notice || {};
