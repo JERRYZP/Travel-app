@@ -1,6 +1,6 @@
 # 会员支付、售后与提醒名额
 
-> 2026-11-08 两档候选：新增 `two-tier-v5` 契约，只对两个测试 OpenID 生效。¥3 / 30 天总额度 10 个、¥4.9 / 30 天不限额度、¥1.9 只换档不延期。非白名单继续现有 `unlimited-v3`，旧客户端继续 `legacy-v2`。`reminder` / `payment` 已部署为 `Active`，`payment` 只新增三个商品变量、`reminder` 只改测试名单；**体验版与真机验证见后续记录**。
+> 2026-11-08 两档候选：新增 `two-tier-v5` 契约，只对两个测试 OpenID 生效。¥3 / 30 天总额度 10 个、¥4.9 / 30 天不限额度、¥1.9 只换档不延期。非白名单继续现有 `unlimited-v3`，旧客户端继续 `legacy-v2`。`reminder` / `payment` 已部署为 `Active`，体验版 `2.4.0` 已从 `c857fd5` 上传；**未提审、未发布、未真机支付验证**。
 >
 > 2026-11-06 正式发布并全量生效：客户端 `2.3.7` 已上线。`reminder` 的 `MEMBERSHIP_ENFORCEMENT_MODE` 已从 `test` 切换为 `all`，完整云端配置回读确认只有该值变化；3 个 `MEMBERSHIP_TEST_OPENIDS`、超时、运行时、内存和其余环境变量不变，函数保持 `Active`。数据库额度配置 `payment_config/membership_enforcement.mode=all` 继续生效。声明 `unlimited-v3` 的新客户端全量获得 ¥6 / 30 天 / 不限提醒名额；未声明能力的旧客户端仍返回 `legacy-v2`。
 >
