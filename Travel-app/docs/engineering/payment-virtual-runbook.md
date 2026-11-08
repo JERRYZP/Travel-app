@@ -1,6 +1,6 @@
 # 小程序虚拟支付接入 Runbook
 
-> 2026-11-08 两档候选：MP 后台已发布 `travel_task_vip_3`、`travel_task_vip_4_9`、`travel_task_vip_1_9` 三个固定价道具。对应环境变量已写入 `payment`，回读确认只新增三项且原有变量无变更。候选只允许两个测试 OpenID；非白名单继续现有 ¥6 契约。
+> 2026-11-08 两档候选：MP 后台已发布 `travel_task_vip_3`、`travel_task_vip_4_9`、`travel_task_vip_1_9` 三个固定价道具。对应环境变量已写入 `payment`，回读确认只新增三项且原有变量无变更。候选只允许两个测试 OpenID；非白名单继续现有 ¥6 契约。定价全量开关模块已随 `payment` / `reminder` 增量部署，`membership_pricing` 缺省为 `test`，需上传 `2.4.2` 体验版后在客服工作台单独切换。
 >
 > 2026-11-02 当前状态：`payment` / `reminder` 已部署，`payment_reconcile_state` 与关键索引已创建核验，生产数据已备份，名额账本 dry-run 与正式迁移均完成。客户端 `2.1.0` 已审核通过并全量发布；累计观察到 8 笔已支付订单，用户完成付费流程自测且客服工作台正常，实际发布包已用 `v2.1.0` tag 固化。**`payment` 支付白名单已删除，新版客户端新订单全量使用虚拟支付；`MEMBERSHIP_ENFORCEMENT_MODE` 已于 15:10:02 切换为 `all`，其他环境变量保持不变。** Apple 自主退款最终通知已实测；仍需继续观察 Android/iOS 支付、退款问询及真实签名回调，测试通过不等于所有异常场景已经验收。
 >
