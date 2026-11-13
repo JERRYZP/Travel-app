@@ -289,7 +289,7 @@
   </view>
 </view>
 
-<!-- 悬浮新增提醒。
+<!-- 悬浮添加放票提醒。
      ⚠️ 只在**已有行程**时出现：空态本身已经有「建行程」和「单景点设提醒」
      两个明确入口，再叠一个同职责悬浮按钮只会制造选择噪音。
      也带上 !loading —— 加载期间 isBlank 还没算出来（仍是初值 false），
@@ -298,7 +298,7 @@
      但这里保留它只是为了让「预览态」与「真空态」未来分叉时不至于漏改。 -->
 <view wx:if="{{!loading && !isBlank && !previewNewUser}}" class="fab-btn" bindtap="onAddTrip">
   <svg-icon name="plus-white" size="18px" />
-  <text>新增提醒</text>
+  <text>添加放票提醒</text>
 </view>
 
 <!-- 景点详情浮窗（首页入口不渲染底部操作栏：首页即提醒动线的起点） -->

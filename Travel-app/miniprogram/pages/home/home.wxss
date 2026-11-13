@@ -440,12 +440,12 @@
 
 /* ===== 悬浮新增入口 =====
    ⚠️ 2026-09-23 改为**水平居中**（原先 right:30rpx 贴右下）：
-   left:50% + translateX(-50%) 让按钮左右居中，bottom 不变。 */
+   left:50% + translateX(-50%) 让按钮左右居中；bottom 于 2026-11-13 累计下移 12px。 */
 .fab-btn {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(150rpx + env(safe-area-inset-bottom));
+  bottom: calc(126rpx + env(safe-area-inset-bottom));
   width: 296rpx;
   box-sizing: border-box;
   z-index: 110;
