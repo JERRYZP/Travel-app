@@ -10,11 +10,18 @@ const reminderFlow = require('../../utils/reminder-flow.js');
 
 const BEIJING_WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
-/** 卡片标题后的日期行：按北京时间取，与页内所有放票推算同一时区口径。 */
+/** 顶部卡片主标题日期：只到月日与星期，按北京时间取。 */
 function buildDateText(now) {
   const p = release.beijingParts(now || new Date());
   const weekday = BEIJING_WEEKDAYS[new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay()];
-  return `${p.year}年${p.month}月${p.day}日 周${weekday}`;
+  return `${p.month}月${p.day}日 周${weekday}`;
+}
+
+function heroOf(scene) {
+  return {
+    title: buildDateText(new Date()),
+    subtitle: scene.kind === 'today' ? '今日热门景点放票情况' : scene.subtitle,
+  };
 }
 
 function orderByIds(items, ids) {
@@ -36,7 +43,6 @@ Page({
     sceneId: 'today',
     rows: [],
     entryContext: null,
-    subtitleOverride: '',
     showSpotPopup: false,
     popupSpotId: '',
     popupSpotMeta: null,
@@ -99,14 +105,10 @@ Page({
       sceneId: scene.id,
       entryType: 'scene',
     });
-    const preferred = this.data.subtitleOverride;
     this.setData({
       sceneId: scene.id,
       entryContext: context,
-      scene: Object.assign({}, scene, {
-        dateText: buildDateText(),
-        subtitle: preferred || scene.subtitle,
-      }),
+      scene: Object.assign({}, scene, heroOf(scene)),
     });
     wx.setNavigationBarTitle({ title: scene.navTitle });
     if (entry && entry.source) analytics.captureLanding(context, 'scene');
@@ -114,7 +116,13 @@ Page({
 
   loadScene() {
     const scene = scenes.getScene(this.data.sceneId);
-    this.setData({ scene, loading: true, loadFailed: false, expired: false, rows: [] });
+    this.setData({
+      scene: Object.assign({}, scene, heroOf(scene)),
+      loading: true,
+      loadFailed: false,
+      expired: false,
+      rows: [],
+    });
 
     if (!scenes.isSceneActive(scene, new Date())) {
       this.setData({ loading: false, expired: true, rows: [] });
@@ -137,19 +145,10 @@ Page({
       rows.forEach(s => {
         s._sceneVerifyText = verify.verifiedLabel(s.lastCheckedDate);
       });
-      /* 副标题只讲价值，不再重复「按北京时间/库存以官方为准」——
-         卡片已带核验日期，底部另有一行口径说明。 */
-      const subtitleOverride = scene.kind === 'today'
-        ? `${rows.length} 个热门景点，今天几点放票一目了然`
-        : '';
       this.setData({
         loading: false,
         rows,
-        subtitleOverride,
-        scene: Object.assign({}, scene, {
-          dateText: buildDateText(now),
-          subtitle: subtitleOverride || scene.subtitle,
-        }),
+        scene: Object.assign({}, scene, heroOf(scene)),
       });
     }).catch(() => {
       this.setData({ loading: false, loadFailed: true, rows: [] });

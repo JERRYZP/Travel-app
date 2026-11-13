@@ -31,12 +31,12 @@
   font-weight: 600;
   color: var(--color-ink);
 }
-/* 返回主页悬浮按钮：底部居中，距底 40px（含安全区） */
+/* 返回主页悬浮按钮：底部居中，距底 28px（含安全区） */
 .home-float {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(40px + env(safe-area-inset-bottom));
+  bottom: calc(28px + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -55,37 +55,30 @@
   letter-spacing: 1rpx;
 }
 .page-body {
-  /* 底部 176rpx：避开 88rpx 的「返回主页」悬浮按钮 + 40px 间距 */
-  padding: 24rpx 30rpx 176rpx;
+  /* 底部 152rpx：避开 88rpx 的「返回主页」悬浮按钮 + 28px 间距 */
+  padding: 24rpx 30rpx 152rpx;
 }
 
 .scene-hero {
   padding: 30rpx 28rpx;
+  border: 1rpx solid #E8D4B0;
   border-radius: 24rpx;
   background: linear-gradient(135deg, #FFF9EC 0%, #F3E3C1 100%);
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 4rpx 16rpx rgba(100, 60, 20, 0.055);
 }
 .scene-title {
   display: block;
   font-size: 40rpx;
-  line-height: 1.25;
+  line-height: 1.2;
   font-weight: 700;
   color: var(--color-ink);
 }
-.scene-date {
+.scene-subtitle {
   display: block;
   margin-top: 10rpx;
   font-size: 24rpx;
-  font-weight: 500;
-  color: #936F5B;
-  letter-spacing: 0.5rpx;
-}
-.scene-subtitle {
-  display: block;
-  margin-top: 8rpx;
-  font-size: 24rpx;
-  line-height: 1.5;
-  color: #936F5B;
+  line-height: 1.4;
+  color: #8F6B57;
 }
 
 .scene-notice {

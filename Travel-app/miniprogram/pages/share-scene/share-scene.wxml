@@ -14,7 +14,6 @@
 <view wx:if="{{scene}}" class="page-body">
   <view class="scene-hero">
     <text class="scene-title">{{scene.title}}</text>
-    <text class="scene-date">{{scene.dateText}}</text>
     <text class="scene-subtitle">{{scene.subtitle}}</text>
   </view>
 
