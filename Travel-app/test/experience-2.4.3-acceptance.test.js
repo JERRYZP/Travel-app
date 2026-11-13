@@ -68,7 +68,20 @@ eq(/\.scene-hero\s*\{[\s\S]*?padding:\s*30rpx 28rpx;[\s\S]*?border:\s*1rpx solid
 eq(/\.home-float\s*\{[^}]*bottom:\s*calc\(28px \+ env\(safe-area-inset-bottom\)\)/.test(sceneWxss), true,
   '返回主页按钮保持在 28px 位置');
 
-console.log('\n=== 5. 产品文档同步 ===');
+console.log('\n=== 5. 后台修复随候选版本 ===');
+const qualityJs = read('cloudfunctions/payment/lib/admin-reminder-quality.js');
+const afterSalesJs = read('cloudfunctions/payment/lib/after-sales.js');
+const afterSalesTest = read('test/payment-after-sales.test.js');
+eq(/SNAPSHOT_SCHEMA_VERSION\s*=\s*2/.test(qualityJs), true,
+  '提醒质量快照使用 schema v2');
+eq(/qualityFetchRanges[\s\S]*key:\s*'current'[\s\S]*key:\s*'baseline'/.test(qualityJs), true,
+  '当前窗口与 5 日基线分开查询');
+eq(/upgradeDependencyBlockingRefund/.test(afterSalesJs), true,
+  '基础会员单退款前检查有效升级单');
+eq(/errorCode,\s*1034/.test(afterSalesTest), true,
+  '1.9 元升级依赖退款拦截有回归测试');
+
+console.log('\n=== 6. 产品文档同步 ===');
 const productDoc = read('产品文档.md');
 eq(productDoc.includes('悬浮「+ 添加放票提醒」'), true, '首页悬浮入口文案已同步产品文档');
 eq(productDoc.includes('卡片保留充足内边距，并使用微弱描边与更柔和的投影'), true,
