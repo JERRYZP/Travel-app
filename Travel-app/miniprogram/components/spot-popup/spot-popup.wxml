@@ -110,7 +110,7 @@
           wx:for="{{spot.entries}}"
           wx:key="type"
           class="popup-entry"
-          bindtap="onEntryTap"
+          catchtap="onEntryTap"
           data-entry="{{item}}"
         >
           <view class="popup-entry-icon">
@@ -124,7 +124,11 @@
             <text class="popup-entry-hint">{{item.type === 'WEB' ? '复制链接后到手机浏览器打开' : (spot.reservationRequired ? item.hint : '点击打开官方购票 / 入园渠道')}}</text>
           </view>
           <view class="popup-entry-actions">
-            <view class="popup-entry-btn {{item.type === 'OFFICIAL_ACCOUNT' ? 'btn-account' : 'btn-link'}}">
+            <view
+              class="popup-entry-btn {{item.type === 'OFFICIAL_ACCOUNT' ? 'btn-account' : 'btn-link'}}"
+              catchtap="onEntryTap"
+              data-entry="{{item}}"
+            >
               {{item.type === 'OFFICIAL_ACCOUNT' ? '查看二维码' : item.type === 'WEB' ? '复制链接' : '打开链接'}}
             </view>
           </view>
@@ -178,21 +182,19 @@
     </view>
     </scroll-view>
 
-    <!-- 底部操作栏（V3.0 本期仅视觉占位，不接交互）：固定在弹窗底缘，不参与滚动。
-         首页触发的浮窗不渲染此栏（showActions=false），其余入口保持带 btn。
-         上方的 .popup-actions-fade 是白色→透明的渐隐层，正文从它下面滚过时淡出，
-         避免出现「按钮硬切在文字中间」的观感。 -->
-    <view wx:if="{{spot && !loading && showActions}}" class="popup-actions-fade"></view>
+    <!-- 底栏不参与滚动；首页 / 添加提醒页传 showActions=false。
+         渐隐层放在栏内，按钮用 catchtap，避免被上层捕获或遮住点击。 -->
     <view wx:if="{{spot && !loading && showActions}}" class="popup-actions-bar">
+      <view class="popup-actions-fade"></view>
       <view wx:if="{{!spot.remindable}}" class="popup-actions-note">
         {{spot.reservationRequired ? '暂无固定放票时刻，不设提醒' : '无需预约，随到随玩，不设提醒'}}
       </view>
       <view class="popup-actions">
         <block wx:if="{{spot.remindable}}">
-          <view class="popup-btn popup-btn-primary" bindtap="onSetReminder">设置提醒</view>
-          <view class="popup-btn popup-btn-ghost" bindtap="onAddTripOnly">仅加行程不提醒</view>
+          <view class="popup-btn popup-btn-primary" catchtap="onSetReminder">设置提醒</view>
+          <view class="popup-btn popup-btn-ghost" catchtap="onAddTripOnly">仅加行程不提醒</view>
         </block>
-        <view wx:else class="popup-btn popup-btn-primary" bindtap="onAddTripOnly">加入行程</view>
+        <view wx:else class="popup-btn popup-btn-primary" catchtap="onAddTripOnly">加入行程</view>
       </view>
     </view>
   </view>

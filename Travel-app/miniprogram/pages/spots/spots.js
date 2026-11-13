@@ -2,6 +2,7 @@ const app = getApp();
 const api = require('../../utils/api.js');
 const spotsCache = require('../../utils/spots-cache.js');
 const util = require('../../utils/util.js');
+const reminderFlow = require('../../utils/reminder-flow.js');
 
 Page({
   data: {
@@ -18,6 +19,27 @@ Page({
     showSpotPopup: false,
     popupSpotId: '',
     showClearDialog: false,
+    showDateSheet: false,
+    dateSpotName: '',
+    dateTitle: '',
+    dateTripDates: [],
+    dateBookedDates: [],
+    dateMinDate: '',
+    dateAction: null,
+    dateMultiple: false,
+    showReminderAuth: false,
+    reminderAuth: null,
+    datePlan: null,
+    reminderAuthBusy: false,
+    reminderAuthFeedback: '',
+    reminderCheckoutReady: false,
+    reminderContinueText: '开启行程放票提醒',
+    membershipLimit: null,
+    taskLimitPayConfirm: null,
+    taskLimitPayButtonText: '',
+    taskLimitPaying: false,
+    taskLimitPayDisabled: false,
+    taskLimitPayFeedback: '',
   },
 
   onLoad(options) {
@@ -33,6 +55,10 @@ Page({
       this.loadSelectedSpots(ids);
     }
     this.loadSpots();
+  },
+
+  onShow() {
+    if (this._reminderAuthResolve) reminderFlow.refreshReminderAuth(this);
   },
 
   loadSelectedSpots(ids) {
@@ -156,6 +182,77 @@ Page({
 
   onSpotNameTap(e) { this.setData({ showSpotPopup: true, popupSpotId: e.currentTarget.dataset.id }); },
   onSpotPopupClose() { this.setData({ showSpotPopup: false }); },
+
+  /* 详情浮窗按钮：设置提醒 / 仅加行程不提醒 → 日期与授权浮层。 */
+  onPopupSetReminder(e) {
+    const d = e.detail || {};
+    reminderFlow.openDateSheet(this, {
+      spotId: d.spotId,
+      spotName: d.spotName,
+      title: '设置提醒',
+      remindOn: true,
+      multiple: true,
+    });
+  },
+
+  onPopupAddTripOnly(e) {
+    const d = e.detail || {};
+    reminderFlow.openDateSheet(this, {
+      spotId: d.spotId,
+      spotName: d.spotName,
+      title: '加入行程',
+      remindOn: false,
+      multiple: true,
+    });
+  },
+
+  onDateConfirm(e) {
+    return reminderFlow.onDateConfirm(this, e);
+  },
+
+  onDateClose() {
+    reminderFlow.onDateClose(this);
+  },
+
+  onReminderAuthPrimary() {
+    return reminderFlow.requestReminderAuthOnce(this);
+  },
+
+  onReminderAuthSettings() {
+    return reminderFlow.openReminderAuthSettings(this);
+  },
+
+  onReminderAuthTripOnly() {
+    return reminderFlow.tripOnlyReminderCheckout(this);
+  },
+
+  onReminderAuthClose() {
+    return reminderFlow.closeReminderCheckout(this);
+  },
+
+  onReminderAuthContinue() {
+    return reminderFlow.continueReminderCheckout(this);
+  },
+
+  onReminderAuthReselect() {
+    return reminderFlow.reselectReminderDates(this);
+  },
+
+  onReminderAuthPay() {
+    return reminderFlow.openTaskLimitPayment(this);
+  },
+
+  onReminderAuthBenefits() {
+    return reminderFlow.openTaskLimitBenefitsPage(this);
+  },
+
+  onReminderAuthPayClose() {
+    return reminderFlow.closeTaskLimitPayment(this);
+  },
+
+  onReminderAuthPayConfirm() {
+    return reminderFlow.confirmTaskLimitPayment(this);
+  },
 
   onDone() { this.onBack(); },
 

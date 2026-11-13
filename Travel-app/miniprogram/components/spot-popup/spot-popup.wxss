@@ -438,22 +438,21 @@
   align-items: center;
 }
 
-/* ===== 底部操作栏（V3.0：本期仅视觉占位，不接交互） =====
-   flex 尾部固定，不参与滚动：正文滚到底时停在它上方留白处，不会被按钮压住。
-   顶衬满宽实底（--color-surface = #FFFEFB），左下右三边与 sheet 对齐。 */
+/* ===== 底部操作栏：固定在 sheet 尾部并高于滚动区 ===== */
 .popup-actions-bar {
+  position: relative;
+  z-index: 2;
   flex-shrink: 0;
   padding: 24rpx 32rpx calc(16px + env(safe-area-inset-bottom));
   background: var(--color-surface);
 }
 
-/* 按钮上方的白色→透明渐隐层：正文从它下面滚过时淡出，避免硬切在文字中间。
-   绝对定位在操作栏正上方，高度 48rpx，不占布局空间。 */
+/* 操作栏上方的渐隐层：只装饰，不接收点击。 */
 .popup-actions-fade {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(100% - 1rpx);
+  bottom: 100%;
   height: 48rpx;
   pointer-events: none;
   background: linear-gradient(to top, rgba(255, 254, 251, 1), rgba(255, 254, 251, 0));
