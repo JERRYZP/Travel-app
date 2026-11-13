@@ -7,7 +7,7 @@
 ## 零、客服工作台质量兜底（2026-11-02）
 
 - 客服工作台顶部使用 40 / 60 双列：左侧提醒质量卡跨满右侧会员购买、会员限制两条控制卡；右侧两卡上下等高排列。质量卡只展示 2 分钟内送达率和前 5 日均值，不通过弹层隐藏信息。
-- `payment` 的两分钟定时器在北京时间 `13:00 / 21:00` 后的首个 tick 聚合 `reminder_events` 与 `reminder_tasks`，将结果写入 `payment_config/reminder_quality_latest`。同一 `windowKey` 的后续 tick 直接读取并跳过重算；`payment.adminReminderQuality.stats` 只读取该快照，页面打开或刷新不扫原始账本。
+- `payment` 的两分钟定时器在北京时间 `13:00 / 21:00` 后的首个 tick 聚合 `reminder_events` 与 `reminder_tasks`，将结果写入 `payment_config/reminder_quality_latest`。快照 schema v2 将当前窗口与 5 日基线拆开查询，基线触发行数上限时不能再把当前窗口洗成无数据；同一 `windowKey` 且同一 `schemaVersion` 的后续 tick 直接读取并跳过重算，旧 schema 必须重算。`payment.adminReminderQuality.stats` 只读取该快照，页面打开或刷新不扫原始账本。
 - 任务的全部 offset 都在计划时间后 120 秒内成功才算准时；任一未送达、跳过、终态缺失、发送证据缺失或查询截断都会显示红色“异常”。固定北京时间 `13:00 / 21:00` 切换最近完成时段，只有当前时段送达率低于 99% 才显示红色“异常”；当前时段没有任务显示“无数据”。页面优先读本地快照，到边界后读取服务端快照；新快照尚未生成时保留旧值并重试，不主动通知。
 - 若卡片显示“待部署”，优先确认 `payment` 是否已更新；若显示“统计中”，确认定时器是否运行且 `payment_config/reminder_quality_latest` 是否已写入；若显示“不可用”，点击行内重试并检查 `payment` 日志、定时触发器、`reminder_events.releaseAt` 与 `reminder_tasks.releaseAt` 索引。不能把接口失败或待生成快照当成“质量正常”。
 - 定时器生成快照的窗口计算失败时不能阻断支付补偿队列；日志应出现 `[payment] reminder quality snapshot failed`，但支付、售后和退款补偿仍继续。快照落库是 `payment_config` 的确定性文档，不需要新增集合或自定义索引。

@@ -304,6 +304,50 @@ async function run() {
   eq(result.quality.dataTruncated, false, '未触发查询截断');
   eq(/openid|userId/i.test(JSON.stringify(result.quality)), false, '聚合响应不含敏感用户字段');
 
+  const capacityDb = createDb();
+  const capacityEvents = [];
+  const baselineReleaseAt = at('2026-10-27', '12:00');
+  for (let index = 0; index < 12; index += 1) {
+    const releaseAt = new Date(baselineReleaseAt.getTime() + index * 60 * 1000);
+    capacityEvents.push(taskEvent(`baseline_capacity_${index}`, releaseAt, releaseAt));
+  }
+  for (const [taskId, time] of [
+    ['current_capacity_on_time_1', '05:00'],
+    ['current_capacity_on_time_2', '12:00'],
+  ]) {
+    const releaseAt = at('2026-11-02', time);
+    const eventAt = new Date(releaseAt.getTime() - 4 * 60 * 1000);
+    capacityEvents.push(
+      taskEvent('TASK_CREATED', taskId, releaseAt),
+      sendSuccess(taskId, releaseAt, 5, eventAt),
+      taskEvent('TASK_TRIGGERED', taskId, releaseAt, eventAt)
+    );
+  }
+  capacityDb._seed(COLLECTIONS.REMINDER_EVENTS, capacityEvents);
+  const capacityResult = await quality.computeQualityForAdmin(capacityDb, FIXED_NOW, {
+    maxEventRows: 10,
+    maxTaskRows: 10,
+  });
+  eq(capacityResult.currentWindow.expectedCount, 2,
+    '基线查询截断时当前窗口仍独立统计');
+  eq(capacityResult.currentWindow.onTimeRate, 100,
+    '基线截断不把当前窗口洗成无数据');
+  eq(capacityResult.dataTruncated, true, '基线截断仍如实标记');
+
+  const upgradeDb = createDb();
+  seedQualityEvents(upgradeDb);
+  upgradeDb._seed(COLLECTIONS.PAYMENT_CONFIG, [{
+    _id: quality.SNAPSHOT_CONFIG_ID,
+    schemaVersion: 1,
+    windowKey: quality.windowKeyOf(FIXED_NOW),
+    quality: { currentWindow: { expectedCount: 0, status: 'EMPTY' } },
+    generatedAt: FIXED_NOW,
+  }]);
+  const upgraded = await quality.refreshSnapshot(upgradeDb, FIXED_NOW);
+  eq(upgraded.refreshed, true, '统计口径升级后同窗口旧快照失效并重算');
+  eq(upgraded.quality.currentWindow.expectedCount, 4,
+    '重算后当前窗口恢复真实数据');
+
   const readOnlyDb = createDb({
     missingCollections: [COLLECTIONS.REMINDER_EVENTS, COLLECTIONS.REMINDER_TASKS],
   });

@@ -1356,7 +1356,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
   }
   ```
 - `pending=true` 表示当前统计窗口的快照尚未由定时器写入。首次部署或新窗口尚未生成时 `quality=null`、`snapshot=null`；已有旧窗口快照时仍返回 `quality`，同时 `pending=true`、`stale=true`，让工作台保留上一份可用数据而不是清空或重新扫表。`expectedWindowKey` 是当前应读取的 `currentWindow.endAt`。
-- 质量快照由现有 `paymentReconcileEveryTwoMinutes` 定时器负责生成：北京时间 `13:00 / 21:00` 后的首个 tick 计算并写入 `payment_config/reminder_quality_latest`，同一 `windowKey` 后续 tick 直接跳过重算。工作台接口只读取该确定性文档，不读 `reminder_events`、`reminder_tasks`，不临时计算。首次快照上线前可能短暂返回 `pending=true`。
+- 质量快照由现有 `paymentReconcileEveryTwoMinutes` 定时器负责生成：北京时间 `13:00 / 21:00` 后的首个 tick 计算并写入 `payment_config/reminder_quality_latest`，同一 `windowKey` 且同一 `schemaVersion` 后续 tick 直接跳过重算。当前快照 schema 为 `2`：当前窗口与 5 日基线分开查询，避免基线占满行数上限后把当前窗口错误洗成“无数据”；旧 schema 的同窗口快照必须重算一次。工作台接口只读取该确定性文档，不读 `reminder_events`、`reminder_tasks`，不临时计算。首次快照上线前可能短暂返回 `pending=true`。
 - 质量快照计算只读 `reminder_events` 与仍在保留期内的 `reminder_tasks`，按任务而不是发送尝试计数。优先使用逐 offset 的 `SEND_SUCCEEDED.scheduledAt/eventAt`；事件缺失时，已 `TRIGGERED` 且 `sentOffsets` 覆盖全部计划 offset 的任务可用 `triggeredAt` 与最后一次计划发送时间回退计算。一个任务的全部 offset 都在各自计划时间后 120 秒内发送成功，才算 `onTime`；多 offset 任务只要一项失败或证据不完整，整项不能计入准时。
 - `currentWindow` 固定选择最近一个已完成的 8 小时时段：`13:00` 选择 `05:00-13:00`，`21:00` 选择 `13:00-21:00`；13 点前继续选择前一日 `13:00-21:00`。`nextUpdateAt` 是下一个北京时间 `13:00 / 21:00` 边界，页面在保持可见时据此刷新。
 - `status` 只有三种业务结果：当前时段没有任务为 `EMPTY`；`currentWindow.onTimeRate < 99` 为 `ALERT`；其余为 `HEALTHY`。不再返回“关注”状态。未送达、跳过和证据缺失只通过计算送达率进入结果，不得在页面额外增加与阈值无关的红色条件。

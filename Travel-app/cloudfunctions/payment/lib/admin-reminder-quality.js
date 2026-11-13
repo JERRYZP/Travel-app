@@ -24,7 +24,8 @@ const PAGE_SIZE = 100;
 const MAX_EVENT_ROWS = 20000;
 const MAX_TASK_ROWS = 10000;
 const SNAPSHOT_CONFIG_ID = 'reminder_quality_latest';
-const SNAPSHOT_SCHEMA_VERSION = 1;
+// v2：当前窗口与 5 日基线分开查询，旧算法快照必须在部署后同窗口重算一次。
+const SNAPSHOT_SCHEMA_VERSION = 2;
 
 const EVENT_TYPES = {
   TASK_CREATED: 'TASK_CREATED',
@@ -352,23 +353,63 @@ async function readSnapshot(db) {
   }
 }
 
-async function computeQualityForAdmin(db, nowTs = new Date()) {
+/**
+ * 当前窗口必须与 5 日基线分开查询。基线数据可能先占满行数上限；
+ * 若合并查询，按 releaseAt 升序返回会把当前窗口整体截掉并误显示“无数据”。
+ */
+function qualityFetchRanges(windows) {
+  const baselineStart = new Date(`${windows.baselineStartDate}T00:00:00+08:00`);
+  const baselineEnd = new Date(`${windows.baselineEndDate}T00:00:00+08:00`);
+  baselineEnd.setTime(baselineEnd.getTime() + DAY_MS);
+  return [
+    {
+      key: 'current',
+      start: windows.currentWindow.start,
+      end: windows.currentWindow.end,
+    },
+    {
+      key: 'baseline',
+      start: baselineStart,
+      end: baselineEnd,
+    },
+  ];
+}
+
+async function fetchQualityRangeRows(db, range, limits) {
   const _ = db.command;
-  const windows = qualityWindows(nowTs);
   const eventQuery = db.collection(COLLECTIONS.REMINDER_EVENTS)
-    .where({ releaseAt: _.gte(windows.start).and(_.lt(windows.end)) })
+    .where({ releaseAt: _.gte(range.start).and(_.lt(range.end)) })
     .orderBy('releaseAt', 'asc');
   const taskQuery = db.collection(COLLECTIONS.REMINDER_TASKS)
-    .where({ releaseAt: _.gte(windows.start).and(_.lt(windows.end)) })
+    .where({ releaseAt: _.gte(range.start).and(_.lt(range.end)) })
     .orderBy('releaseAt', 'asc');
   const [eventResult, taskResult] = await Promise.all([
-    fetchAll(eventQuery, MAX_EVENT_ROWS),
-    fetchAll(taskQuery, MAX_TASK_ROWS),
+    fetchAll(eventQuery, limits.maxEventRows),
+    fetchAll(taskQuery, limits.maxTaskRows),
   ]);
-  const dataTruncated = eventResult.truncated || taskResult.truncated;
+  return {
+    key: range.key,
+    events: eventResult.rows,
+    tasks: taskResult.rows,
+    truncated: eventResult.truncated || taskResult.truncated,
+  };
+}
+
+async function computeQualityForAdmin(db, nowTs = new Date(), options = {}) {
+  const windows = qualityWindows(nowTs);
+  const limits = {
+    maxEventRows: Math.max(1, Number(options.maxEventRows) || MAX_EVENT_ROWS),
+    maxTaskRows: Math.max(1, Number(options.maxTaskRows) || MAX_TASK_ROWS),
+  };
+  const rangeResults = await Promise.all(
+    qualityFetchRanges(windows).map(range => fetchQualityRangeRows(db, range, limits))
+  );
+  const eventRows = rangeResults.reduce((rows, result) => rows.concat(result.events), []);
+  const taskRows = rangeResults.reduce((rows, result) => rows.concat(result.tasks), []);
+  const dataTruncated = rangeResults.some(result => result.truncated);
 
   const tasksById = new Map();
-  for (const task of taskResult.rows) {
+  for (const task of taskRows) {
     const id = String(task._id || '');
     if (id) tasksById.set(id, task);
   }
@@ -376,7 +417,7 @@ async function computeQualityForAdmin(db, nowTs = new Date()) {
   const eventsByTask = new Map();
   const rebuildsByItem = new Map();
   const expected = new Map();
-  for (const event of eventResult.rows) {
+  for (const event of eventRows) {
     const taskId = String(event.taskId || '');
     if (!taskId) continue;
     if (!eventsByTask.has(taskId)) eventsByTask.set(taskId, []);
