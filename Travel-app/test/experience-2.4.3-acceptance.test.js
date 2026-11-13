@@ -72,6 +72,7 @@ console.log('\n=== 5. 后台修复随候选版本 ===');
 const qualityJs = read('cloudfunctions/payment/lib/admin-reminder-quality.js');
 const afterSalesJs = read('cloudfunctions/payment/lib/after-sales.js');
 const afterSalesTest = read('test/payment-after-sales.test.js');
+const adminWorkbenchWxml = read('miniprogram/admin/after-sales/admin-after-sales.wxml');
 eq(/SNAPSHOT_SCHEMA_VERSION\s*=\s*2/.test(qualityJs), true,
   '提醒质量快照使用 schema v2');
 eq(/qualityFetchRanges[\s\S]*key:\s*'current'[\s\S]*key:\s*'baseline'/.test(qualityJs), true,
@@ -80,6 +81,10 @@ eq(/upgradeDependencyBlockingRefund/.test(afterSalesJs), true,
   '基础会员单退款前检查有效升级单');
 eq(/errorCode,\s*1034/.test(afterSalesTest), true,
   '1.9 元升级依赖退款拦截有回归测试');
+eq(/class="admin-control-card pricing-card"/.test(adminWorkbenchWxml), true,
+  '工作台保留两档定价控制卡');
+eq(adminWorkbenchWxml.includes('会员升级公告'), false,
+  '工作台隐藏会员升级公告控制卡');
 
 console.log('\n=== 6. 产品文档同步 ===');
 const productDoc = read('产品文档.md');

@@ -344,17 +344,17 @@ async function testProfileCopyAndDismissal() {
 }
 
 async function testAdminUi() {
-  console.log('\n=== 5. 客服工作台提供快速下架入口 ===');
+  console.log('\n=== 5. 客服工作台隐藏公告控制卡，后端能力保留 ===');
   const wxml = fs.readFileSync(
     path.join(ROOT, 'miniprogram/admin/after-sales/admin-after-sales.wxml'),
     'utf8'
   );
-  eq(wxml.includes('会员升级公告'), true, '工作台展示公告控制卡');
-  eq(wxml.includes('onToggleMembershipUpgradeNotice'), true, '工作台提供公告开关动作');
-  eq(wxml.includes('membershipUpgradeNotice.actionText'), true, '按钮文案由展示状态决定');
+  eq(wxml.includes('会员升级公告'), false, '工作台不再展示公告控制卡');
+  eq(wxml.includes('onToggleMembershipUpgradeNotice'), false, '工作台不再渲染公告开关动作');
+  eq(wxml.includes('membershipUpgradeNotice.actionText'), false, '公告按钮文案不再进入工作台模板');
   const api = fs.readFileSync(path.join(ROOT, 'miniprogram/utils/api.js'), 'utf8');
   eq(api.includes('afterSales.adminSetMembershipUpgradeNotice'), true,
-    '客户端 API 已接入公告开关');
+    '后端管理与客户端 API 能力保留');
 }
 
 (async () => {

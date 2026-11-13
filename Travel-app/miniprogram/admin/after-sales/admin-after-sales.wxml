@@ -103,24 +103,6 @@
       </picker>
     </view>
 
-    <view
-      wx:if="{{membershipUpgradeNotice}}"
-      class="admin-control-card sales-card upgrade-notice-card {{membershipUpgradeNotice.active ? 'active' : ''}} {{membershipUpgradeNotice.readError ? 'paused' : ''}}"
-    >
-      <view class="sales-main">
-        <view class="sales-title-row">
-          <text class="sales-title">会员升级公告</text>
-          <text class="sales-status upgrade-notice-status {{membershipUpgradeNotice.readError ? 'paused' : (membershipUpgradeNotice.active ? '' : 'upgrade-inactive')}}">{{membershipUpgradeNotice.statusLabel}}</text>
-          <text wx:if="{{membershipUpgradeNotice.active && membershipUpgradeNotice.endsAtText}}" class="upgrade-notice-time">至 {{membershipUpgradeNotice.endsAtText}}</text>
-        </view>
-        <text class="sales-desc {{membershipUpgradeNotice.readError ? 'sales-warning' : ''}}">{{membershipUpgradeNotice.description}}</text>
-      </view>
-      <view
-        class="sales-action upgrade-notice-action {{membershipUpgradeNoticeSaving || membershipUpgradeNotice.unavailable ? 'disabled' : ''}}"
-        bindtap="onToggleMembershipUpgradeNotice"
-      >{{membershipUpgradeNoticeSaving ? '处理中' : membershipUpgradeNotice.actionText}}</view>
-    </view>
-
     <view wx:if="{{fundingBlockedCount > 0}}" class="funding-alert">
       <view class="funding-alert-copy">
         <text class="funding-alert-title">退款资金阻断</text>
