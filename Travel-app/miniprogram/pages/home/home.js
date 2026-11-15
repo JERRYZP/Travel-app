@@ -278,6 +278,14 @@ Page({
     if (wx.showToast) wx.showToast({ title: '悬浮时钟验收已开始', icon: 'none' });
   },
 
+  onTestFloatingClockVibration() {
+    const ok = floatingClock.testVibration();
+    if (wx.showToast) wx.showToast({
+      title: ok ? '已触发震动' : '当前设备不支持震动',
+      icon: 'none',
+    });
+  },
+
   onPullDownRefresh() {
     /* 主动刷新永远绕过复用窗口；完成或失败后都必须收起系统刷新态。 */
     this._pullDownRefreshing = true;

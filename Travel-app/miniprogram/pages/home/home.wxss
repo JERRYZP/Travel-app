@@ -513,4 +513,5 @@
 .fcp-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4rpx; }
 .fcp-title { color: #6E4A20; font-size: 23rpx; font-weight: 600; }
 .fcp-desc { color: #9B7544; font-size: 19rpx; line-height: 1.45; }
+.fcp-test { flex: none; padding: 8rpx 12rpx; border-radius: 10rpx; background: #F2E4C0; color: #8A5A12; font-size: 20rpx; font-weight: 600; }
 .fcp-action { flex: none; color: var(--color-primary); font-size: 21rpx; font-weight: 600; }

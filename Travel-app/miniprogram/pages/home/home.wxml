@@ -43,6 +43,7 @@
       <text class="fcp-title">{{floatingClockPreviewActive ? '重新开始悬浮时钟验收' : '悬浮时钟真机验收'}}</text>
       <text class="fcp-desc">仅开发/预览包显示，点击后模拟放票前 9 分钟</text>
     </view>
+    <view class="fcp-test" catchtap="onTestFloatingClockVibration">测试震动</view>
     <text class="fcp-action">开始验收</text>
   </view>
 

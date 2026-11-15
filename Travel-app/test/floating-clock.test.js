@@ -15,9 +15,11 @@ const eq = (a, b, m) => {
 };
 
 const storage = new Map();
+let vibrateCalls = 0;
 global.wx = {
   getStorageSync(key) { return storage.has(key) ? storage.get(key) : ''; },
   setStorageSync(key, value) { storage.set(key, value); },
+  vibrateLong() { vibrateCalls += 1; },
 };
 
 const realNow = Date.now;
@@ -146,11 +148,22 @@ try {
   eq(previewView.expanded, true, '演示模式在首页自动展开');
   eq(previewView.spotName, '故宫', '演示景点可识别');
   eq(/^09:/.test(previewView.countdownText), true, '演示倒计时约 9 分钟');
+  eq(previewView.vibrationUnlocked, true, '开发阶段默认解锁震动');
+  const beforeVibrate = vibrateCalls;
+  eq(clock.testVibration(), true, '提供立即震动验收');
+  eq(vibrateCalls, beforeVibrate + 1, '调用系统长震一次');
+  clock.setVibrationUnlocked(false);
+  eq(clock.recompute().vibrationUnlocked, false, '预留后续视频解锁开关');
+  clock.setVibrationUnlocked(true);
   clock.stopPreview();
   eq(clock.recompute().visible, false, '结束演示后恢复真实状态');
   const homeSource = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.js'), 'utf8');
   eq(homeSource.includes('floatingClock.startPreview'), true, '首页提供演示触发入口');
+  eq(homeSource.includes('floatingClock.testVibration'), true, '首页提供立即震动入口');
   eq(homeSource.includes("g.envVersion === 'develop'"), true, '演示入口仅在开发/预览包显示');
+  const clockComponent = fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.js'), 'utf8');
+  eq(clockComponent.includes('clock.testVibration()'), true, '放票时刻自动触发震动');
+  eq(clockComponent.includes('this._clockPhase==="before"'), true, '只在倒计时跨过零点时震动');
 
   console.log('=== 7. 页面挂载与会员页入口 ===');
   const app = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/app.json'), 'utf8'));
