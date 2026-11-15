@@ -77,7 +77,7 @@
           <svg-icon name="clock-gold" size="16px" />
           <view class="benefit-copy">
             <text class="benefit-title">抢票悬浮时钟</text>
-            <text class="benefit-desc">放票前 10 分钟自动出现，支持拖动；关闭后收至屏幕边缘，可随时展开</text>
+            <text class="benefit-desc">放票前 10 分钟出现；倒计时 30 秒、10 秒和开抢时震动；支持拖动与贴边</text>
           </view>
           <view class="clock-switch {{floatingClockEnabled ? 'on' : ''}}" aria-role="switch" aria-checked="{{floatingClockEnabled}}">
             <view class="clock-switch-knob"></view>

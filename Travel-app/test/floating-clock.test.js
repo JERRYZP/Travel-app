@@ -64,8 +64,8 @@ try {
   eq(clock.windowPhaseOf(group, group.startMs - 1), 'hidden', 'T-10 分钟前隐藏');
   eq(clock.windowPhaseOf(group, group.startMs), 'before', 'T-10 分钟整开始展示');
   eq(clock.windowPhaseOf(group, group.releaseAtMs), 'after', '到点进入开抢态');
-  eq(clock.windowPhaseOf(group, group.endMs - 1), 'after', '放票后 1 分钟内保留');
-  eq(clock.windowPhaseOf(group, group.endMs), 'hidden', '放票满 1 分钟结束');
+  eq(clock.windowPhaseOf(group, group.endMs - 1), 'after', '放票后 30 秒内保留');
+  eq(clock.windowPhaseOf(group, group.endMs), 'hidden', '放票满 30 秒结束');
 
   console.log('=== 3. 首页自动展开、关闭贴边、下一场重新展开 ===');
   clock.resetForTest();
@@ -143,15 +143,20 @@ try {
   console.log('=== 6. 真机验收演示入口 ===');
   clock.resetForTest();
   clock.setActivePage('preview-home', true);
-  const previewView = clock.startPreview({ minutesBefore: 9, spotShort: '故宫', spotName: '故宫博物院' });
+    let shortVibrations = 0;
+  global.wx.vibrateShort = () => { shortVibrations += 1; };
+  const previewView = clock.startPreview({ secondsBefore: 45, spotShort: '故宫', spotName: '故宫博物院' });
   eq(previewView.visible, true, '演示模式立即可见');
   eq(previewView.expanded, true, '演示模式在首页自动展开');
   eq(previewView.spotName, '故宫', '演示景点可识别');
-  eq(/^09:/.test(previewView.countdownText), true, '演示倒计时约 9 分钟');
+  eq(/^00:45/.test(previewView.countdownText), true, '演示倒计时在 1 分钟内');
   eq(previewView.vibrationUnlocked, true, '开发阶段默认解锁震动');
   const beforeVibrate = vibrateCalls;
-  eq(clock.testVibration(), true, '提供立即震动验收');
-  eq(vibrateCalls, beforeVibrate + 1, '调用系统长震一次');
+  eq(clock.vibrateCue(30), true, 'T-30 秒提供短震');
+  eq(clock.vibrateCue(10), true, 'T-10 秒提供短震');
+  eq(shortVibrations, 2, '两个预警节点各短震一次');
+  eq(clock.testVibration(), true, '提供立即长震验收');
+  eq(vibrateCalls, beforeVibrate + 1, 'T-0 调用系统长震一次');
   clock.setVibrationUnlocked(false);
   eq(clock.recompute().vibrationUnlocked, false, '预留后续视频解锁开关');
   clock.setVibrationUnlocked(true);
@@ -162,8 +167,12 @@ try {
   eq(homeSource.includes('floatingClock.testVibration'), true, '首页提供立即震动入口');
   eq(homeSource.includes("g.envVersion === 'develop'"), true, '演示入口仅在开发/预览包显示');
   const clockComponent = fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.js'), 'utf8');
-  eq(clockComponent.includes('clock.testVibration()'), true, '放票时刻自动触发震动');
-  eq(clockComponent.includes('this._clockPhase==="before"'), true, '只在倒计时跨过零点时震动');
+  eq(clockComponent.includes('clock.vibrateCue(30)'), true, '倒计时 30 秒自动短震');
+  eq(clockComponent.includes('clock.vibrateCue(10)'), true, '倒计时 10 秒自动短震');
+  eq(clockComponent.includes('clock.vibrateCue(0)'), true, '开抢时刻自动长震');
+  eq(clockComponent.includes('_vibrationCues'), true, '每个震动节点只触发一次');
+  eq(homeSource.includes('membership?preview=nonmember'), true, '首页提供新会员方案验收入口');
+  eq(homeSource.includes('membership?preview=unlimited'), true, '首页提供 4.9 权益验收入口');
 
   console.log('=== 7. 页面挂载与会员页入口 ===');
   const app = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/app.json'), 'utf8'));
@@ -188,8 +197,8 @@ try {
   const memberWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership/membership.wxml'), 'utf8');
   const memberJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership/membership.js'), 'utf8');
   eq(memberWxml.includes('onFloatingClockToggle'), true, '会员页开关已绑定');
-  eq(memberWxml.includes('放票前 10 分钟自动出现'), true, '会员页说明功能');
-  eq(memberJs.includes("含抢票悬浮时钟"), true, '4.9 套餐文案含权益');
+  eq(memberWxml.includes('倒计时 30 秒、10 秒和开抢时震动'), true, '会员页说明功能与震动');
+  eq(memberJs.includes('含悬浮时钟与震动提醒'), true, '4.9 套餐文案含权益');
 } finally {
   clock.resetForTest();
   Date.now = realNow;

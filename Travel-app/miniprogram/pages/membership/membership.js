@@ -424,10 +424,11 @@ Page({
         ? '不限提醒名额'
         : `${Math.max(0, Number(item.taskSlots) || 0)} 个提醒名额`,
       _optionDesc: item.upgrade
-        ? '仅当前会员期内生效，不延长有效期'
+        ? '升级后含不限提醒名额、悬浮时钟与震动提醒，不延长有效期'
         : ((item.unlimited || item.unlimitedReminders)
-          ? `有效期${Math.max(0, Number(item.memberDays) || 0)}天，不限额度`
+          ? `有效期${Math.max(0, Number(item.memberDays) || 0)}天，不限额度，含悬浮时钟与震动提醒`
           : `有效期${Math.max(0, Number(item.memberDays) || 0)}天，${Math.max(0, Number(item.taskSlots) || 0)}个提醒额度`),
+(feat(floating-clock): add staged haptics and acceptance previews)
       _selected: item.id === selectedId,
       _available: item.available === true,
     }));

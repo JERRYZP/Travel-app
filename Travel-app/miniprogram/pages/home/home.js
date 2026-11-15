@@ -273,9 +273,9 @@ Page({
   },
 
   onFloatingClockPreview() {
-    floatingClock.startPreview({ minutesBefore: 9, spotShort: '故宫', spotName: '故宫博物院' });
+    floatingClock.startPreview({ secondsBefore: 45, spotShort: '故宫', spotName: '故宫博物院' });
     this.setData({ floatingClockPreviewActive: true });
-    if (wx.showToast) wx.showToast({ title: '悬浮时钟验收已开始', icon: 'none' });
+    if (wx.showToast) wx.showToast({ title: '45 秒震荡验收已开始', icon: 'none' });
   },
 
   onTestFloatingClockVibration() {
@@ -284,6 +284,14 @@ Page({
       title: ok ? '已触发震动' : '当前设备不支持震动',
       icon: 'none',
     });
+  },
+
+  onOpenNewMemberPlans() {
+    wx.navigateTo({ url: '/pages/membership/membership?preview=nonmember' });
+  },
+
+  onOpenUnlimitedBenefits() {
+    wx.navigateTo({ url: '/pages/membership/membership?preview=unlimited' });
   },
 
   onPullDownRefresh() {
