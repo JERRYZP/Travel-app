@@ -166,6 +166,9 @@ Component({
      *   别把这里改回纯展示——`reason` 必须跟着事件走，页面靠它区分文案。
      */
     onMissedTap() {
+      /* 四态 chip 共用这一个事件绑定。只有 MISSED 有原因可看；NOT_SET / WAITING /
+         TRIGGERED 点击必须静默返回，否则会把兜底的「未送达原因」误弹给正常状态。 */
+      if (this.data.reminderClass !== 'miss') return;
       this.triggerEvent('missedreason', {
         itemId: this.data.item.itemId,
         reason: this.data.reminderReason,

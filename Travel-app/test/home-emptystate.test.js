@@ -510,6 +510,10 @@ console.log('=== 8. 行程项卡的提醒状态（四态上卡）与菜单显示
         这是全卡唯一能触达 onMissedReason 的入口，断了 = 静默失败重新发生。 */
   eq(/bindtap="onMissedTap"/.test(CARD_WXML), true, '未送达 chip 可点');
   eq(/onMissedTap/.test(CARD_JS), true, '有点击处理器');
+  eq(/onMissedTap\(\) \{\s*if \(this\.data\.reminderClass !== 'miss'\) return;/.test(codeOf(CARD_JS)), true,
+    '只有未送达会发出原因事件，其余三态点击静默返回');
+  const ticketChip = (CARD_WXML.match(/<view class="tc-state [^"]*">/) || [''])[0];
+  eq(/bindtap|catchtap/.test(ticketChip), false, '票务状态标签仅展示，不触发弹窗');
   eq(/triggerEvent\('missedreason'/.test(CARD_JS), true, '真的抛 missedreason 事件');
   eq(/reason/.test(CARD_JS), true, 'payload 带 reason（页面靠它区分 43101 / 密钥缺失 / 兜底）');
 
