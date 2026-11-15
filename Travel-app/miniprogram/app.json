@@ -44,7 +44,8 @@
     "van-icon": "/components/vendor/vant/icon/index",
     "svg-icon": "/components/svg-icon/svg-icon",
     "van-dialog": "/components/vendor/vant/dialog/index",
-    "van-loading": "/components/vendor/vant/loading/index"
+    "van-loading": "/components/vendor/vant/loading/index",
+    "floating-clock": "/components/floating-clock/floating-clock"
   },
   "sitemapLocation": "sitemap.json",
   "lazyCodeLoading": "requiredComponents"

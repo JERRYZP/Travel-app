@@ -118,3 +118,5 @@
     <view class="refund-confirm" bindtap="onCloseIosRefundGuide">我知道了</view>
   </view>
 </view>
+
+<floating-clock />

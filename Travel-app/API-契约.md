@@ -1139,6 +1139,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - `unlimited-v3` 有效会员继续返回 `taskLimit/taskRemaining/memberTaskSlots=10000` 兼容投影，额度判断先读 `taskLimitUnlimited=true`。`two-tier-v5` 的不限会员返回 `taskLimit/taskRemaining=null`、`pricingVisible=false`、`packages=[]`；3 元档返回 `memberTier=QUOTA_10` 且只带升级包。`legacy-v2` 保持旧 `15 + 加量包` 契约。
 - 存在可用升级权益券且当前不是会员时，`packages` 只返回 `member_quota_10`，并标记 `upgradeCreditApplied=true`；此时禁止直接购买 `member_unlimited`。权益券被待支付订单预留时 `upgradeCreditPending=true`，`upgradeCreditPendingOrderId` 指向占用订单。
 
+> 抢票悬浮时钟不新增 API：客户端只消费 `home.bootstrap` 的 `serverNow`、`trips[].items[].releaseSlots` 和 `membership.unlimited`。同一放票时刻由客户端合并展示，关闭状态只存本机，不改变会员、提醒名额或任务状态。
+
 #### `membership.createOrder`
 
 ```javascript

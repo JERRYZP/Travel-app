@@ -31,3 +31,5 @@
     查看微信侧隐私保护指引
   </button>
 </view>
+
+<floating-clock />

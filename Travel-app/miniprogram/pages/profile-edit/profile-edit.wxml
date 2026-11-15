@@ -60,3 +60,5 @@
     <text>{{saving ? '保存中' : '保存'}}</text>
   </view>
 </view>
+
+<floating-clock />

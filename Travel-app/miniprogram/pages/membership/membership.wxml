@@ -73,6 +73,16 @@
             <text class="benefit-desc">免费版限{{membership.freeTaskSlots}}个提醒名额；开通会员后，有效期内不限提醒名额。只影响可同时开启的提醒数量</text>
           </view>
         </view>
+        <view class="benefit-row clock-benefit-row" bindtap="onFloatingClockToggle" hover-class="clock-benefit-hover">
+          <svg-icon name="clock-gold" size="16px" />
+          <view class="benefit-copy">
+            <text class="benefit-title">抢票悬浮时钟</text>
+            <text class="benefit-desc">放票前 10 分钟自动出现，支持拖动；关闭后收至屏幕边缘，可随时展开</text>
+          </view>
+          <view class="clock-switch {{floatingClockEnabled ? 'on' : ''}}" aria-role="switch" aria-checked="{{floatingClockEnabled}}">
+            <view class="clock-switch-knob"></view>
+          </view>
+        </view>
       </view>
     </block>
 
@@ -140,3 +150,5 @@
   bind:close="onClosePayConfirm"
   bind:confirm="onConfirmPay"
 />
+
+<floating-clock />

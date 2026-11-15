@@ -77,3 +77,5 @@
 <view wx:if="{{trip}}" class="ts-home-float" bindtap="goHome" hover-class="ts-home-float-hover">
   <text class="ts-home-float-text">返回首页</text>
 </view>
+
+<floating-clock />

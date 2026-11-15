@@ -254,3 +254,5 @@
 />
 
 <tabbar active="home" />
+
+<floating-clock />

@@ -59,3 +59,5 @@
     </view>
   </view>
 </view>
+
+<floating-clock />

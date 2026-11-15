@@ -65,3 +65,5 @@
     <text class="tips-item">3、该能力限时免费，后续因服务器压力可能需付费。</text>
   </view>
 </view>
+
+<floating-clock />

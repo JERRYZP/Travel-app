@@ -91,3 +91,5 @@
     </block>
   </block>
 </view>
+
+<floating-clock />

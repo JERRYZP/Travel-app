@@ -3,6 +3,7 @@ const api = require('../../utils/api.js');
 const membershipPay = require('../../utils/membership-pay.js');
 const membershipEntry = require('../../utils/membership-entry.js');
 const orderRefresh = require('../../utils/order-refresh.js');
+const floatingClock = require('../../utils/floating-clock.js');
 
 const PREVIEW_LABELS = Object.freeze({
   nonmember: '静态预览 · 非会员用户',
@@ -283,6 +284,8 @@ Page({
       const limit = membership.taskLimit == null ? null : Number(membership.taskLimit) || 0;
       const unlimited = membership.unlimited === true || membership.taskLimitUnlimited === true;
       const freeSlots = Math.max(0, Number(membership.freeTaskSlots) || 0);
+      if (!this._previewMode) floatingClock.setMembership(membership);
+      const floatingClockEnabled = floatingClock.enabled();
       this.setData({
         loading: false,
         loadFailed: false,
@@ -298,6 +301,7 @@ Page({
         expiryText: membership.member
           ? `有效期至 ${membership.memberExpiresAtText}`
           : `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额`,
+        floatingClockEnabled,
       });
       if (orderRes) {
         const orders = orderRes.items || [];

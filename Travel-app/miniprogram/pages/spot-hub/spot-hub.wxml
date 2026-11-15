@@ -163,3 +163,5 @@
   bind:continue="onReminderAuthContinue"
   bind:reselect="onReminderAuthReselect"
 />
+
+<floating-clock />

@@ -35,6 +35,8 @@
 - 景点页多日期必须先消费服务端 `cart.planDates` 的 `REMINDABLE / TRIP_ONLY / IN_CART / IN_TRIP`，不得用卡片的 `advanceDays/releaseTime` 在页面重推。全部只能加入行程时必须停留统一浮层明确确认，禁止只弹 Toast 后自动提交；部分失效时必须按具体日期列出“可设提醒”和“仅加入行程”，不能只给数量汇总。
 - 首页票务态和提醒态全部消费服务端结果，不在页面侧重新按时间推导。
 - 摘要卡在**全部行程都已结束**时展示最近一段过往行程（副标题「已结束」，见 `HOME-RULE-008`），但**预填/提交类逻辑一律不认它**：`summaryTrip` 只喂 `trip-summary-card`，`onAddTrip` 的预填只读 `primaryTrip`（未结束行程）。把摘要卡那趟的日期段带进 PAGE-005 会预填出一个过去的时间范围，提交时被判 1016。退化的“哪一趟”也只沿服务端数组序（`trips[0]` → `history[0]`）回退，页面不重判结束状态。回归见 `test/home-past-trip-card.test.js`。
+- 抢票悬浮时钟只消费 `home.bootstrap.trips[].items[].releaseSlots` 与 `membership.unlimited`，不得从 `releaseTime/advanceDays` 重推放票时刻。有效窗口固定为 `[T-10 分钟, T+1 分钟)`；首页自动展开、其他页面首次贴边、关闭只抑制当前事件。组件必须在全部正式用户页面挂载，管理员页和支付测试页除外；静态回归见 `test/floating-clock.test.js`。
+- 悬浮时钟层级固定为 `z-index:160`：高于导航、TabBar 和首页 FAB，低于 200 起的阻断式弹层，避免遮挡提醒授权或支付确认。
 - `MISSED` 必须覆盖普通票务态显示。
 - 首页空态与悬浮新增入口互斥，不能同屏出现两个同职责 CTA。
 - 首页新用户空态的提醒区域只提供真实样式入口，不伪造微信通知内容。
@@ -87,7 +89,7 @@
   - 护栏：`scripts/check-miniprogram.py` 的 `check_wxs_cloud_literal()`，扫到字面量参数即失败。
   - 反向护栏：`check_bundled_images_exist()` 扫 WXML 里写死的 `/images/...`，文件不在包内即失败（带 `{{}}` 的运行期路径跳过，图标名另有 `check_icons()` 兜底）。2026-10-26 就是 banner 换成 jpg 而 wxml 还指着 png。
   - 同一把锁的另一半：`check_js_bundled_images()` 扫 JS 里 `imageUrl: '/images/...'` 的分享封面字面量。WXML 扫描管不到 JS，2026-10-26 包内 `images/spots/` 下云后国庆场景封面仍指着 `gugong.jpg`，三道检查全没报警——因为过期期间分享回退 `today` 把问题藏住了。刻意**不泛扫**所有 `/images/` 字符串：`official-account.js` 的二维码和 `mock.js` 的头像走云存储，本来就允许包内没有文件。
-- 分享封面 **700×560 / q65 / 4:4:4（`subsampling=0`）** 是 200KB 硬线下的上限（2026-10-26 复核）。两张共 108.4KB，全包图片/音频 191.3KB，只剩约 8.7KB。
+- 分享封面 **600×480 / q65 / 4:4:4（`subsampling=0`）** 是当前 200KB 硬线与主包 1536KB 线下的平衡值（2026-11-15 因全局悬浮时钟占用主包空间复核）。两张共约 85.7KB；视觉仍高于分享卡实际显示所需的 2 倍像素。
   - 再往上（700px q68 = 197.2KB、720px q65 = 196.7KB）就是贴着线走，加任何一张图都会超。
   - 卡住的是分辨率不是质量：分享卡在微信里只显示约 240×192，但用户点开是满屏看文案，所以优先保 **4:4:4 色度**——红字、金字的边缘发糊主要是默认 4:2:0 色度抽样造成的，降质量参数反而没那么明显。
   - 想再提清晰度只能从结构上省：`spots.svg`/`spots-active.svg` 各 4.0KB 和 30 多个小图标合计约 60KB，合并成单文件 symbol 版后能省出 20–30KB 给封面。这是独立改动，未做。

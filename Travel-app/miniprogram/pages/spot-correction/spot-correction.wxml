@@ -79,3 +79,5 @@
     <text>提交</text>
   </view>
 </view>
+
+<floating-clock />

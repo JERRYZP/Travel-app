@@ -15,6 +15,7 @@ const emptyPreview = require('../../utils/empty-preview.js');
 const reminderFlow = require('../../utils/reminder-flow.js');
 const tripShareCover = require('../../utils/trip-share-cover.js');
 const homeLayout = require('../../utils/home-layout.js');
+const floatingClock = require('../../utils/floating-clock.js');
 /* 滚多少像素把导航栏底色从全透明推到不透明 */
 const NAV_FADE_PX = 50;
 const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
@@ -446,6 +447,7 @@ Page({
          才能和云端算出的放票状态一致。 */
       const serverMs = parseTimeMs(res.serverNow);
       if (serverMs) app.globalData.serverSkewMs = serverMs - Date.now();
+      floatingClock.ingestHomeBootstrap(res);
       homeCache.write(res);
       const patch = buildHomeData(res, resolveNow(), { silent });
       /* 记下这次成功的时刻，作为 onShow 复用窗口的起点。

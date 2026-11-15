@@ -121,3 +121,5 @@
 <oa-follow-sheet show="{{showOaSheet}}" bind:close="onCloseOaSheet" />
 
 <tabbar active="profile" />
+
+<floating-clock />

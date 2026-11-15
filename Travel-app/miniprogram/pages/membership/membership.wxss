@@ -132,3 +132,28 @@
   border-radius: 50%;
   background: #5D93B2;
 }
+
+.clock-benefit-row { align-items: center; }
+.clock-benefit-hover { background: #FCF7ED; }
+.clock-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 82rpx;
+  height: 46rpx;
+  border-radius: 999rpx;
+  background: #D9CDBA;
+  transition: background .2s ease;
+}
+.clock-switch.on { background: var(--color-primary); }
+.clock-switch-knob {
+  position: absolute;
+  left: 4rpx;
+  top: 4rpx;
+  width: 38rpx;
+  height: 38rpx;
+  border-radius: 50%;
+  background: #FFFEFB;
+  box-shadow: 0 2rpx 7rpx rgba(66, 44, 30, .22);
+  transition: transform .2s ease;
+}
+.clock-switch.on .clock-switch-knob { transform: translateX(36rpx); }
