@@ -77,11 +77,27 @@
           <svg-icon name="clock-gold" size="16px" />
           <view class="benefit-copy">
             <text class="benefit-title">抢票悬浮时钟</text>
-            <text class="benefit-desc">放票前 10 分钟出现；倒计时 30 秒、10 秒和开抢时震动；支持拖动与贴边</text>
+            <text class="benefit-desc">放票前 10 分钟自动出现，支持拖动；关闭后收至屏幕边缘，可随时展开</text>
           </view>
           <view class="clock-switch {{floatingClockEnabled ? 'on' : ''}}" aria-role="switch" aria-checked="{{floatingClockEnabled}}">
             <view class="clock-switch-knob"></view>
           </view>
+        </view>
+        <view class="benefit-row vibration-benefit-row">
+          <svg-icon name="bell-fill" size="16px" />
+          <view class="benefit-copy">
+            <text class="benefit-title">开启震动提醒</text>
+            <text class="benefit-desc">放票前 30 秒、10 秒和开抢时各强震一次，同一事件不重复震动</text>
+          </view>
+          <view class="vibration-switch-wrap" bindtap="onVibrationToggle">
+            <van-icon wx:if="{{!vibrationUnlocked}}" name="lock" size="13px" color="#9B8D7A" />
+            <view class="clock-switch {{vibrationEnabled && vibrationUnlocked ? 'on' : ''}} {{vibrationUnlocked ? '' : 'locked'}}" aria-role="switch" aria-checked="{{vibrationEnabled}}">
+              <view class="clock-switch-knob"></view>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{!vibrationUnlocked}}" class="vibration-unlock-row">
+          <button class="vibration-unlock-btn" bindtap="onUnlockVibration">看广告解锁震动功能</button>
         </view>
       </view>
     </block>
@@ -108,7 +124,12 @@
               <text class="package-title">{{item._optionTitle}}</text>
               <text wx:if="{{item.badge}}" class="package-badge">{{item.badge}}</text>
             </view>
-            <text class="package-desc">{{item._optionDesc}}</text>
+            <view class="package-benefits">
+              <view wx:for="{{item._benefits}}" wx:for-item="benefit" wx:key="text" class="package-benefit-row">
+                <text class="package-desc">{{benefit.text}}</text>
+                <text wx:if="{{benefit.isNew}}" class="package-new">New</text>
+              </view>
+            </view>
             <text wx:if="{{!item._available}}" class="package-lock">{{item.actionText}}</text>
           </view>
           <view class="package-price">

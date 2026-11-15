@@ -95,7 +95,10 @@
 .package-title-line { display: flex; align-items: center; gap: 10rpx; }
 .package-title { color: var(--color-ink); font-size: 26rpx; font-weight: 600; }
 .package-badge { padding: 3rpx 10rpx; border-radius: 6rpx; background: #F2E4C0; color: #8A5A12; font-size: 19rpx; }
+.package-benefits { display: flex; flex-direction: column; gap: 5rpx; }
+.package-benefit-row { display: flex; align-items: center; gap: 10rpx; }
 .package-desc { color: var(--color-muted); font-size: 22rpx; line-height: 1.5; }
+.package-new { flex: none; padding: 2rpx 9rpx; border-radius: 999rpx; background: var(--color-primary); color: #FFFEFB; font-size: 17rpx; font-weight: 600; line-height: 1.45; }
 .package-lock { color: var(--color-primary); font-size: 21rpx; }
 .package-price { display: flex; align-items: center; gap: 16rpx; flex-shrink: 0; }
 .package-price-value { color: var(--color-primary); font-size: 28rpx; font-weight: 700; }
@@ -157,3 +160,21 @@
   transition: transform .2s ease;
 }
 .clock-switch.on .clock-switch-knob { transform: translateX(36rpx); }
+
+.vibration-benefit-row { align-items: center; }
+.vibration-switch-wrap { display: flex; align-items: center; gap: 10rpx; flex-shrink: 0; }
+.clock-switch.locked { background: #E7E0D4; opacity: .72; }
+.vibration-unlock-row { padding: 0 26rpx 24rpx; background: var(--color-surface); }
+.vibration-unlock-btn {
+  width: 100%;
+  height: 72rpx;
+  margin: 0;
+  border: 1rpx solid #D4B77E;
+  border-radius: 14rpx;
+  background: #FFF9EA;
+  color: #8A642C;
+  font-size: 23rpx;
+  font-weight: 600;
+  line-height: 70rpx;
+}
+.vibration-unlock-btn::after { border: none; }

@@ -141,6 +141,10 @@ Page({
     confirmPayButtonText: '',
     previewMode: '',
     previewLabel: '',
+    floatingClockEnabled: true,
+    vibrationUnlocked: false,
+    vibrationEnabled: false,
+
   },
 
   onLoad(options) {
@@ -286,6 +290,8 @@ Page({
       const freeSlots = Math.max(0, Number(membership.freeTaskSlots) || 0);
       if (!this._previewMode) floatingClock.setMembership(membership);
       const floatingClockEnabled = floatingClock.enabled();
+      const vibrationUnlocked = floatingClock.vibrationUnlocked();
+      const vibrationEnabled = floatingClock.vibrationEnabled();
       this.setData({
         loading: false,
         loadFailed: false,
@@ -302,6 +308,8 @@ Page({
           ? `有效期至 ${membership.memberExpiresAtText}`
           : `因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额`,
         floatingClockEnabled,
+        vibrationUnlocked,
+        vibrationEnabled,
       });
       if (orderRes) {
         const orders = orderRes.items || [];
@@ -418,20 +426,26 @@ Page({
   },
 
   markPackages(packages, selectedId) {
-    return (packages || []).map(item => ({
-      ...item,
-      _optionTitle: (item.unlimited || item.unlimitedReminders)
-        ? '不限提醒名额'
-        : `${Math.max(0, Number(item.taskSlots) || 0)} 个提醒名额`,
-      _optionDesc: item.upgrade
-        ? '升级后含不限提醒名额、悬浮时钟与震动提醒，不延长有效期'
-        : ((item.unlimited || item.unlimitedReminders)
-          ? `有效期${Math.max(0, Number(item.memberDays) || 0)}天，不限额度，含悬浮时钟与震动提醒`
-          : `有效期${Math.max(0, Number(item.memberDays) || 0)}天，${Math.max(0, Number(item.taskSlots) || 0)}个提醒额度`),
-(feat(floating-clock): add staged haptics and acceptance previews)
-      _selected: item.id === selectedId,
-      _available: item.available === true,
-    }));
+    return (packages || []).map(item => {
+      const days = Math.max(0, Number(item.memberDays) || 0);
+      const slots = Math.max(0, Number(item.taskSlots) || 0);
+      const benefits = item.upgrade
+        ? [{ text: '升级不限提醒名额' }, { text: '悬浮时钟', isNew: true }]
+        : (item.unlimited
+        ? [{ text: `有效期${days}天，不限额度` }, { text: '悬浮时钟', isNew: true }]
+        : [{ text: `有效期${days}天，${slots}个提醒额度` }]);
+      return {
+        ...item,
+        _optionTitle: item.unlimited
+          ? '不限提醒名额'
+          : `${slots} 个提醒名额`,
+        _optionDesc: benefits.map(benefit => benefit.text).join('；'),
+        _benefits: benefits,
+        _selected: item.id === selectedId,
+        _available: item.available === true,
+      };
+    });
+
   },
 
   defaultPackageIdOf,
@@ -471,6 +485,41 @@ Page({
       payButtonText: this.payButtonOf(selectedPackage, this.data.membership),
     });
   },
+
+  onFloatingClockToggle() {
+    if (!this.data.membership || this.data.membership.unlimited !== true) return;
+    const next = !this.data.floatingClockEnabled;
+    this.setData({ floatingClockEnabled: next });
+    if (this._previewMode) {
+      wx.showToast({ title: next ? '静态预览：已开启' : '静态预览：已关闭', icon: 'none' });
+      return;
+    }
+    floatingClock.setEnabled(next);
+    if (wx.vibrateShort) wx.vibrateShort({ type: 'light' });
+  },
+
+  onVibrationToggle() {
+    if (!this.data.membership || this.data.membership.unlimited !== true) return;
+    if (!this.data.vibrationUnlocked) return;
+    const next = !this.data.vibrationEnabled;
+    this.setData({ vibrationEnabled: next });
+    if (this._previewMode) {
+      wx.showToast({ title: next ? '静态预览：震动已开启' : '静态预览：震动已关闭', icon: 'none' });
+      return;
+    }
+    floatingClock.setVibrationEnabled(next);
+    if (next && wx.vibrateShort) wx.vibrateShort({ type: 'light' });
+  },
+
+  onUnlockVibration() {
+    if (this._previewMode) {
+      this.setData({ vibrationUnlocked: true });
+      wx.showToast({ title: '静态预览：震动已解锁', icon: 'none' });
+      return;
+    }
+    wx.showToast({ title: '看广告解锁功能将在后续版本开放', icon: 'none' });
+  },
+
 
   onOrders() {
     if (this._previewMode) {
