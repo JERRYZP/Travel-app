@@ -1,1 +1,38 @@
-<view wx:if="{{visible}}" class="fc-root {{expanded ? 'is-expanded' : 'is-docked'}} {{dragging ? 'is-dragging' : ''}}" style="{{rootStyle}}" bindtouchstart="onTouchStart" catchtouchmove="onTouchMove" bindtouchend="onTouchEnd" bindtouchcancel="onTouchCancel" bindtap="onRootTap"><view wx:if="{{expanded}}" class="fc-card"><view class="fc-topline"><view class="fc-live"><view class="fc-dot"></view><text>北京抢票时间</text></view><view class="fc-close" bindtap="onClose" aria-role="button" aria-label="收起悬浮时钟"><view></view><view></view></view></view><view class="fc-clock"><text>{{clockMain}}</text><text class="fc-millis">{{clockMillis}}</text></view><view class="fc-release"><view class="fc-release-main"><text class="fc-status">{{statusText}}</text><text class="fc-countdown {{phase === 'after' ? 'is-live' : ''}}">{{countdownText}}</text></view><view class="fc-meta"><text>{{releaseTime}} 放票</text><text wx:if="{{extraCount > 0}}">同刻另有 {{extraCount}} 场</text><text class="fc-sync">{{timeLabel}}</text></view></view></view><view wx:else class="fc-edge" bindtap="onOpen" aria-role="button" aria-label="展开悬浮时钟"><view class="fc-edge-clock"><view class="fc-edge-hand"></view><view class="fc-edge-hand short"></view></view><text class="fc-edge-text">抢</text><text class="fc-edge-text">票</text></view></view>
+<view
+  wx:if="{{visible}}"
+  class="fc-root {{expanded ? 'is-expanded' : 'is-docked'}} {{dragging ? 'is-dragging' : ''}} phase-{{phase}} dock-{{dockedSide}}"
+  style="{{rootStyle}}"
+  bindtouchstart="onTouchStart"
+  catchtouchmove="onTouchMove"
+  bindtouchend="onTouchEnd"
+  bindtouchcancel="onTouchCancel"
+  bindtap="onRootTap"
+>
+  <view wx:if="{{expanded}}" class="fc-card">
+    <view class="fc-topline">
+      <view class="fc-live"><view class="fc-dot"></view><text>北京抢票时间</text></view>
+      <view class="fc-close" bindtap="onClose" aria-role="button" aria-label="收起悬浮时钟"><view></view><view></view></view>
+    </view>
+    <view class="fc-clock"><text>{{clockMain}}</text><text class="fc-millis">{{clockMillis}}</text></view>
+    <view class="fc-release">
+      <view class="fc-release-main">
+        <view class="fc-status-wrap">
+          <svg-icon name="clock-gold" size="12px" />
+          <text class="fc-status">{{statusText}}</text>
+        </view>
+        <text class="fc-countdown {{phase === 'after' ? 'is-live' : ''}}">{{countdownText}}</text>
+      </view>
+      <view class="fc-meta">
+        <text>{{releaseTime}} 放票</text>
+        <text wx:if="{{extraCount > 0}}">同刻另有 {{extraCount}} 场</text>
+        <text class="fc-sync">{{timeLabel}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:else class="fc-edge" bindtap="onOpen" aria-role="button" aria-label="展开悬浮时钟">
+    <svg-icon name="clock-gold" size="18px" />
+    <text class="fc-edge-label">{{dockedLabel}}</text>
+    <text class="fc-edge-countdown">{{dockedCountdownText}}</text>
+  </view>
+</view>

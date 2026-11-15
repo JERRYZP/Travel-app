@@ -1,1 +1,37 @@
-.fc-root{position:fixed;z-index:160;box-sizing:border-box;touch-action:none;transition:left .18s cubic-bezier(.22,1,.36,1),top .18s cubic-bezier(.22,1,.36,1),width .18s cubic-bezier(.22,1,.36,1),height .18s cubic-bezier(.22,1,.36,1)}.fc-root.is-expanded{width:180px;height:112px}.fc-root.is-dragging{transition:none}.fc-root.is-docked{width:30px;height:112px}.fc-card{position:relative;width:100%;height:100%;padding:10px 12px 9px;overflow:hidden;border:1px solid rgba(237,229,210,.18);border-radius:14px;background:linear-gradient(145deg,#231a18,#35231f 74%,#4a2822);box-shadow:0 10px 28px rgba(38,22,18,.28),inset 0 1px 0 rgba(255,255,255,.06);box-sizing:border-box}.fc-card::after{content:'';position:absolute;right:-28px;bottom:-34px;width:100px;height:100px;border-radius:50%;background:radial-gradient(circle,rgba(192,71,42,.2),rgba(192,71,42,0));pointer-events:none}.fc-live,.fc-meta,.fc-release-main,.fc-topline{display:flex;align-items:center}.fc-topline{justify-content:space-between;height:14px}.fc-live{gap:5px;color:rgba(255,248,236,.66);font-size:9px;letter-spacing:.4px}.fc-dot{width:5px;height:5px;border-radius:50%;background:#d96146;box-shadow:0 0 0 3px rgba(217,97,70,.14)}.fc-close{position:relative;width:24px;height:24px;margin:-5px -7px -5px 0}.fc-close view{position:absolute;left:7px;top:11px;width:10px;height:1px;background:rgba(255,248,236,.62)}.fc-close view:first-child{transform:rotate(45deg)}.fc-close view:last-child{transform:rotate(-45deg)}.fc-clock{display:flex;align-items:baseline;margin-top:1px;color:#fff8ec;font-family:'DIN Alternate','SF Pro Display','PingFang SC',sans-serif;font-size:28px;font-weight:700;line-height:1.12;letter-spacing:-.8px;font-variant-numeric:tabular-nums}.fc-millis{color:#e36a4d;font-size:17px;letter-spacing:-.3px}.fc-release{margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,248,236,.1)}.fc-release-main{justify-content:space-between;gap:8px}.fc-status{min-width:0;overflow:hidden;color:rgba(255,248,236,.72);font-size:10px;line-height:1.3;text-overflow:ellipsis;white-space:nowrap}.fc-countdown{flex:none;color:#f2d38c;font-family:'DIN Alternate','SF Pro Display','PingFang SC',sans-serif;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}.fc-countdown.is-live{color:#f07b5d}.fc-meta{justify-content:space-between;gap:6px;margin-top:2px;color:rgba(255,248,236,.38);font-size:8px;white-space:nowrap}.fc-sync{margin-left:auto}.fc-edge{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:100%;height:100%;border:1px solid rgba(237,229,210,.18);border-radius:0 13px 13px 0;background:linear-gradient(165deg,#231a18,#4a2822);box-shadow:0 8px 20px rgba(38,22,18,.24);box-sizing:border-box}.fc-edge-clock{position:relative;width:14px;height:14px;margin-bottom:4px;border:1px solid rgba(242,211,140,.76);border-radius:50%}.fc-edge-hand{position:absolute;left:6px;top:3px;width:1px;height:4px;background:#f2d38c;transform-origin:50% 100%}.fc-edge-hand.short{top:6px;height:3px;transform:rotate(125deg)}.fc-edge-text{color:#f2d38c;font-size:10px;font-weight:600;line-height:1.15}
+.fc-root { position: fixed; z-index: 160; box-sizing: border-box; touch-action: none; transition: left .18s cubic-bezier(.22,1,.36,1), top .18s cubic-bezier(.22,1,.36,1), width .18s cubic-bezier(.22,1,.36,1), height .18s cubic-bezier(.22,1,.36,1); }
+.fc-root.is-expanded { width: 180px; height: 112px; }
+.fc-root.is-docked { width: 62px; height: 112px; }
+.fc-root.is-dragging { transition: none; }
+
+.fc-card { position: relative; width: 100%; height: 100%; padding: 10px 12px 9px; overflow: hidden; border: 1px solid rgba(237,229,210,.18); border-radius: 14px; background: linear-gradient(145deg,#231a18,#35231f 74%,#4a2822); box-shadow: 0 10px 28px rgba(38,22,18,.28), inset 0 1px 0 rgba(255,255,255,.06); box-sizing: border-box; transition: background .2s ease, border-color .2s ease; }
+.fc-card::after { content: ''; position: absolute; right: -28px; bottom: -34px; width: 100px; height: 100px; border-radius: 50%; background: radial-gradient(circle,rgba(192,71,42,.2),rgba(192,71,42,0)); pointer-events: none; }
+.fc-topline, .fc-live, .fc-release-main, .fc-status-wrap, .fc-meta { display: flex; align-items: center; }
+.fc-topline { justify-content: space-between; height: 14px; }
+.fc-live { gap: 5px; color: rgba(255,248,236,.66); font-size: 9px; letter-spacing: .4px; }
+.fc-dot { width: 5px; height: 5px; border-radius: 50%; background: #d96146; box-shadow: 0 0 0 3px rgba(217,97,70,.14); }
+.fc-close { position: relative; width: 24px; height: 24px; margin: -5px -7px -5px 0; }
+.fc-close view { position: absolute; left: 7px; top: 11px; width: 10px; height: 1px; background: rgba(255,248,236,.62); }
+.fc-close view:first-child { transform: rotate(45deg); }
+.fc-close view:last-child { transform: rotate(-45deg); }
+.fc-clock { display: flex; align-items: baseline; margin-top: 1px; color: #fff8ec; font-family: 'DIN Alternate', 'SF Pro Display', 'PingFang SC', sans-serif; font-size: 28px; font-weight: 700; line-height: 1.12; letter-spacing: -.8px; font-variant-numeric: tabular-nums; }
+.fc-millis { color: #e36a4d; font-size: 17px; letter-spacing: -.3px; }
+.fc-release { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,248,236,.1); }
+.fc-release-main { justify-content: space-between; gap: 8px; }
+.fc-status-wrap { min-width: 0; gap: 4px; }
+.fc-status { min-width: 0; overflow: hidden; color: rgba(255,248,236,.72); font-size: 10px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.fc-countdown { flex: none; color: #f2d38c; font-family: 'DIN Alternate', 'SF Pro Display', 'PingFang SC', sans-serif; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fc-countdown.is-live { color: #fff8ec; }
+.fc-meta { justify-content: space-between; gap: 6px; margin-top: 2px; color: rgba(255,248,236,.38); font-size: 8px; white-space: nowrap; }
+.fc-sync { margin-left: auto; }
+
+.fc-edge { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; width: 100%; height: 100%; padding: 7px 4px; border: 1px solid rgba(237,229,210,.18); border-radius: 0 13px 13px 0; background: linear-gradient(165deg,#231a18,#4a2822); box-shadow: 0 8px 20px rgba(38,22,18,.24); box-sizing: border-box; transition: background .2s ease, border-color .2s ease; }
+.dock-left .fc-edge { border-radius: 13px 0 0 13px; }
+.fc-edge-label { color: rgba(242,211,140,.72); font-size: 8px; line-height: 1.2; text-align: center; white-space: nowrap; }
+.fc-edge-countdown { color: #f2d38c; font-family: 'DIN Alternate', 'SF Pro Display', 'PingFang SC', sans-serif; font-size: 13px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.fc-root.phase-after .fc-card { border-color: rgba(255,225,180,.35); background: linear-gradient(145deg,#4b1714,#8f2d20 68%,#c0472a); }
+.fc-root.phase-after .fc-edge { border-color: rgba(255,225,180,.46); background: linear-gradient(165deg,#6c1f18,#c0472a); }
+.fc-root.phase-after .fc-dot { background: #fff8ec; box-shadow: 0 0 0 3px rgba(255,248,236,.18); animation: fc-pulse .8s ease-in-out infinite alternate; }
+.fc-root.phase-after .fc-millis, .fc-root.phase-after .fc-countdown, .fc-root.phase-after .fc-edge-label, .fc-root.phase-after .fc-edge-countdown { color: #fff8ec; }
+.fc-root.phase-after .fc-release { border-top-color: rgba(255,248,236,.22); }
+@keyframes fc-pulse { from { opacity: .55; } to { opacity: 1; } }

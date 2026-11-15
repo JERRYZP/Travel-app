@@ -96,7 +96,8 @@
 .package-title { color: var(--color-ink); font-size: 26rpx; font-weight: 600; }
 .package-badge { padding: 3rpx 10rpx; border-radius: 6rpx; background: #F2E4C0; color: #8A5A12; font-size: 19rpx; }
 .package-benefits { display: flex; flex-direction: column; gap: 5rpx; }
-.package-benefit-row { display: flex; align-items: center; gap: 10rpx; }
+.package-benefit-row { display: flex; align-items: center; gap: 8rpx; }
+.package-benefit-mark { flex: none; color: var(--color-primary); font-size: 22rpx; line-height: 1; }
 .package-desc { color: var(--color-muted); font-size: 22rpx; line-height: 1.5; }
 .package-new { flex: none; padding: 2rpx 9rpx; border-radius: 999rpx; background: var(--color-primary); color: #FFFEFB; font-size: 17rpx; font-weight: 600; line-height: 1.45; }
 .package-lock { color: var(--color-primary); font-size: 21rpx; }

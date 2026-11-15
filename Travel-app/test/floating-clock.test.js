@@ -148,6 +148,8 @@ try {
   eq(previewView.expanded, true, '演示模式在首页自动展开');
   eq(previewView.spotName, '故宫', '演示景点可识别');
   eq(/^00:45/.test(previewView.countdownText), true, '演示倒计时在 1 分钟内');
+  eq(/^4[45]秒$/.test(previewView.dockedCountdownText), true, '贴边态显示秒级抢票倒计时');
+  eq(previewView.dockedLabel, '抢票倒计时', '贴边态显示倒计时标签');
   eq(previewView.vibrationUnlocked, true, '开发预览临时解锁震动');
   const beforeVibrate = vibrateCalls;
   eq(clock.vibrateCue(30), true, 'T-30 秒提供强震');
@@ -196,13 +198,19 @@ try {
   const memberWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership/membership.wxml'), 'utf8');
   const memberJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership/membership.js'), 'utf8');
   eq(memberWxml.includes('onFloatingClockToggle'), true, '会员页开关已绑定');
+  eq(memberWxml.includes('开抢倒计时震动提醒'), true, '会员页使用新的震动权益标题');
   eq(memberWxml.includes('放票前 30 秒、10 秒和开抢时各强震一次'), true, '会员页单独说明震动权益');
-  eq(memberWxml.includes('看广告解锁震动功能'), true, '会员页提供广告解锁按钮');
+  eq(memberWxml.includes('看视频解锁震动功能'), true, '会员页提供视频解锁按钮');
+  eq(memberWxml.includes('name="bell-line"'), true, '震动权益使用线性图标');
+  eq(memberWxml.includes('package-benefit-mark'), true, '套餐权益带圆点标识');
   eq(memberWxml.includes('name="lock"'), true, '震动开关默认带锁');
-  eq(memberJs.includes("text: '悬浮时钟', isNew: true"), true, '4.9 套餐悬浮时钟带 New 标签');
+  eq(memberJs.includes("text: '浮时钟展示放票倒计时', isNew: true"), true, '4.9 套餐放票倒计时展示带 New 标签');
   const clockWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.wxml'), 'utf8');
   eq(clockWxml.includes('bindtap="onClose"'), true, '关闭按钮绑定点击事件');
   eq(clockWxml.includes('bindtap="onOpen"'), true, '贴边入口绑定展开事件');
+  eq(clockWxml.includes('fc-edge-countdown'), true, '贴边态展示秒级倒计时');
+  eq(clockWxml.includes('name="clock-gold"'), true, '倒计时使用线性时钟图标');
+  eq(clockWxml.includes('phase-{{phase}}'), true, '开抢时切换浮窗状态样式');
 } finally {
   clock.resetForTest();
   Date.now = realNow;
