@@ -31,8 +31,11 @@
   </view>
 
   <view wx:else class="fc-edge" bindtap="onOpen" aria-role="button" aria-label="展开悬浮时钟">
-    <svg-icon name="clock-gold" size="18px" />
-    <text class="fc-edge-label">{{dockedLabel}}</text>
-    <text class="fc-edge-countdown">{{dockedCountdownText}}</text>
+    <svg-icon name="clock-gold" size="16px" />
+    <view class="fc-edge-title"><text>抢</text><text>票</text></view>
+    <view class="fc-edge-time">
+      <text class="fc-edge-number">{{dockedCountdownNumber}}</text>
+      <text wx:if="{{dockedCountdownUnit}}" class="fc-edge-unit">{{dockedCountdownUnit}}</text>
+    </view>
   </view>
 </view>

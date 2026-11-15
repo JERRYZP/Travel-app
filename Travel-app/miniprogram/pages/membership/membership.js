@@ -430,9 +430,9 @@ Page({
       const days = Math.max(0, Number(item.memberDays) || 0);
       const slots = Math.max(0, Number(item.taskSlots) || 0);
       const benefits = item.upgrade
-        ? [{ text: '升级不限提醒名额' }, { text: '浮时钟展示放票倒计时', isNew: true }]
+        ? [{ text: '升级不限提醒名额' }, { text: '悬浮时钟展示放票倒计时', isNew: true }]
         : (item.unlimited
-        ? [{ text: `有效期${days}天，不限额度` }, { text: '浮时钟展示放票倒计时', isNew: true }]
+        ? [{ text: `有效期${days}天，不限额度` }, { text: '悬浮时钟展示放票倒计时', isNew: true }]
         : [{ text: `有效期${days}天，${slots}个提醒额度` }]);
       return {
         ...item,
@@ -513,8 +513,8 @@ Page({
 
   onUnlockVibration() {
     if (this._previewMode) {
-      this.setData({ vibrationUnlocked: true });
-      wx.showToast({ title: '静态预览：震动已解锁', icon: 'none' });
+      this.setData({ vibrationUnlocked: true, vibrationEnabled: true });
+      wx.showToast({ title: '静态预览：已解锁并开启震动', icon: 'none' });
       return;
     }
     wx.showToast({ title: '看视频解锁功能将在后续版本开放', icon: 'none' });
