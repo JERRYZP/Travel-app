@@ -138,7 +138,21 @@ try {
   eq(clock.updateLayout({ xRatio: 2, yRatio: -1, side: 'left' }).xRatio, 1, '横向比例夹紧');
   eq(clock.layout().yRatio, 0, '纵向比例夹紧');
 
-  console.log('=== 6. 页面挂载与会员页入口 ===');
+  console.log('=== 6. 真机验收演示入口 ===');
+  clock.resetForTest();
+  clock.setActivePage('preview-home', true);
+  const previewView = clock.startPreview({ minutesBefore: 9, spotShort: '故宫', spotName: '故宫博物院' });
+  eq(previewView.visible, true, '演示模式立即可见');
+  eq(previewView.expanded, true, '演示模式在首页自动展开');
+  eq(previewView.spotName, '故宫', '演示景点可识别');
+  eq(/^09:/.test(previewView.countdownText), true, '演示倒计时约 9 分钟');
+  clock.stopPreview();
+  eq(clock.recompute().visible, false, '结束演示后恢复真实状态');
+  const homeSource = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.js'), 'utf8');
+  eq(homeSource.includes('floatingClock.startPreview'), true, '首页提供演示触发入口');
+  eq(homeSource.includes("g.envVersion === 'develop'"), true, '演示入口仅在开发/预览包显示');
+
+  console.log('=== 7. 页面挂载与会员页入口 ===');
   const app = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/app.json'), 'utf8'));
   eq(app.usingComponents['floating-clock'], '/components/floating-clock/floating-clock', '组件全局注册');
   const excluded = new Set([

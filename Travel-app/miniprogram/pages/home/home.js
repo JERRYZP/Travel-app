@@ -178,6 +178,8 @@ Page({
        两个明确入口，所以要把悬浮新增按钮藏掉，避免同职责入口重复。 */
     isBlank: false,
     previewNewUser: false,
+    showFloatingClockPreview: false,
+    floatingClockPreviewActive: false,
     /* 新用户空态的内容证据：一张真实规则预览 + 3 个近期热门景点放票节点。
        数据来自 home.bootstrap 已返回的 hotSpots，不额外请求接口。 */
     emptyReleaseRows: [],
@@ -252,6 +254,13 @@ Page({
        标记入口**不在浮窗里**——等用户回到首页才在行程卡片上看到（决策文档 4.1）。 */
     const spotId = options && options.spotId;
     if (spotId) this.openSpotPopup(decodeURIComponent(spotId));
+
+    const explicitClockPreview = String((options && options.floatingClockPreview) || '') === '1';
+    const showFloatingClockPreview = explicitClockPreview
+      || g.envVersion === 'develop'
+      || g.envVersion === '';
+    this.setData({ showFloatingClockPreview });
+    if (explicitClockPreview) this.onFloatingClockPreview();
   },
 
   onShow() {
@@ -261,6 +270,12 @@ Page({
        新状态的唯一来源，永远要发请求。这里省掉的只是「用户什么都没干、切出去又切回来」。 */
     this.loadHome({ allowTtlReuse: true });
     if (this._reminderAuthResolve) reminderFlow.refreshReminderAuth(this);
+  },
+
+  onFloatingClockPreview() {
+    floatingClock.startPreview({ minutesBefore: 9, spotShort: '故宫', spotName: '故宫博物院' });
+    this.setData({ floatingClockPreviewActive: true });
+    if (wx.showToast) wx.showToast({ title: '悬浮时钟验收已开始', icon: 'none' });
   },
 
   onPullDownRefresh() {

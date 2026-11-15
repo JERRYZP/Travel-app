@@ -497,3 +497,20 @@
   pointer-events: none;
   opacity: 0;
 }
+
+/* 仅开发/预览包可见：固定触发一次“放票前 9 分钟”的悬浮时钟，不依赖真实提醒。 */
+.floating-clock-preview-entry {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  margin-top: 12rpx;
+  margin-bottom: 12rpx;
+  padding: 18rpx 20rpx;
+  border: 1rpx dashed #C89A55;
+  border-radius: 16rpx;
+  background: #FFF7E7;
+}
+.fcp-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4rpx; }
+.fcp-title { color: #6E4A20; font-size: 23rpx; font-weight: 600; }
+.fcp-desc { color: #9B7544; font-size: 19rpx; line-height: 1.45; }
+.fcp-action { flex: none; color: var(--color-primary); font-size: 21rpx; font-weight: 600; }

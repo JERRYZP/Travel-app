@@ -38,6 +38,14 @@
           2026-09-28 顶部基准不再额外留白，别再按旧口径加 margin。 -->
   <!-- ⚠️ 没有 `&& !hideBanner` 这类收起条件：它跟着内容滚，滑下去自然被导航栏盖住。
        按滚动阈值把它摘出文档流会让下面的内容跳一个横幅高，别再加回来。 -->
+  <view wx:if="{{showFloatingClockPreview}}" class="floating-clock-preview-entry" bindtap="onFloatingClockPreview">
+    <view class="fcp-copy">
+      <text class="fcp-title">{{floatingClockPreviewActive ? '重新开始悬浮时钟验收' : '悬浮时钟真机验收'}}</text>
+      <text class="fcp-desc">仅开发/预览包显示，点击后模拟放票前 9 分钟</text>
+    </view>
+    <text class="fcp-action">开始验收</text>
+  </view>
+
   <view wx:if="{{banner}}" class="sticky-banner {{showReminderQuotaWarning ? 'sticky-banner--after-warning' : ''}}">
     <release-banner banner="{{banner}}" bind:open="onBannerOpen" />
   </view>
