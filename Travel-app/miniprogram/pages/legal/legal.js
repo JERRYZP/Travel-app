@@ -16,12 +16,19 @@ Page({
   },
 
   onLoad(options) {
-    const type = normalizeType(options && options.type);
-    const doc = agreements[type] || agreements.privacy;
     const g = app.globalData || {};
-    this.setData({
+    const shared = {
       statusBarHeight: g.statusBarHeight || 20,
       navBarHeight: g.navBarHeight || 44,
+    };
+    if (options && options.type === 'index') {
+      this.setData({ ...shared, type: 'index', navTitle: '用户协议' });
+      return;
+    }
+    const type = normalizeType(options && options.type);
+    const doc = agreements[type] || agreements.privacy;
+    this.setData({
+      ...shared,
       type,
       navTitle: type === 'terms' ? '用户服务协议' : '隐私政策',
       documentTitle: doc.title,
@@ -33,6 +40,11 @@ Page({
     wx.navigateBack({
       fail: () => wx.redirectTo({ url: '/pages/profile/profile' }),
     });
+  },
+
+  onAgreementType(e) {
+    const type = e.currentTarget.dataset.type === 'terms' ? 'terms' : 'privacy';
+    wx.navigateTo({ url: `/pages/legal/legal?type=${type}` });
   },
 
   onOpenWechatPrivacy() {

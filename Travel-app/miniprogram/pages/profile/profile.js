@@ -305,9 +305,8 @@ Page({
     wx.navigateTo({ url: '/admin/feedback/feedback' });
   },
 
-  onLegal(e) {
-    const type = e.currentTarget.dataset.type === 'terms' ? 'terms' : 'privacy';
-    wx.navigateTo({ url: `/pages/legal/legal?type=${type}` });
+  onAgreements() {
+    wx.navigateTo({ url: '/pages/legal/legal?type=index' });
   },
 
 });

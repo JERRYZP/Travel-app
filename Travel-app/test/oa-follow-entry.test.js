@@ -131,8 +131,8 @@ console.log('=== 3. 只留入口，不强引流 ===');
   /* 位置：最下面、独立一张卡，与上面几项隔开 */
   eq(/<view class="setting-card">\s*(?:<!--[\s\S]*?-->\s*)?<view class="setting-row" bindtap="onFollowOa">/.test(PROFILE_WXML), true,
     '公众号入口自成一张卡，不与提醒设置/使用攻略混排');
-  eq(PROFILE_WXML.indexOf('bindtap="onFollowOa"') > PROFILE_WXML.indexOf('bindtap="onLegal"'), true,
-    '公众号入口排在隐私政策 / 用户服务协议之后');
+  eq(PROFILE_WXML.indexOf('bindtap="onFollowOa"') > PROFILE_WXML.indexOf('bindtap="onAgreements"'), true,
+    '公众号入口排在帮助与协议组之后');
   const oaRowAt = PROFILE_WXML.indexOf('bindtap="onFollowOa"');
   const oaCardAt = PROFILE_WXML.lastIndexOf('<view class="setting-card">', oaRowAt);
   eq((PROFILE_WXML.slice(oaCardAt).match(/class="setting-row"/g) || []).length, 1,

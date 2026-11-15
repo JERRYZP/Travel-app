@@ -10,7 +10,11 @@
 <view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
 
 <view class="page-body">
-  <view class="legal-paper">
+  <view wx:if="{{type === 'index'}}" class="legal-paper">
+    <button class="legal-platform-button" bindtap="onAgreementType" data-type="privacy">隐私政策</button>
+    <button class="legal-platform-button" bindtap="onAgreementType" data-type="terms">用户服务协议</button>
+  </view>
+  <view wx:else class="legal-paper">
     <text class="legal-title">{{documentTitle}}</text>
     <view class="legal-rule"></view>
     <block wx:for="{{blocks}}" wx:key="index">

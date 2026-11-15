@@ -81,7 +81,7 @@
     </view>
   </view>
 
-  <!-- 帮助与反馈：在线客服、反馈、纠错与反馈记录统一收口 -->
+  <!-- 帮助与协议：帮助与反馈、用户协议作为同一组设置 -->
   <view class="setting-card">
     <view class="setting-row" bindtap="onHelpFeedback">
       <view class="setting-row-title">
@@ -96,17 +96,12 @@
         <svg-icon name="chevron-down" size="14px" rotate="270" />
       </view>
     </view>
-  </view>
-
-  <!-- 隐私与协议：与微信后台《用户隐私保护指引》同步核验入口 -->
-  <view class="setting-card">
-    <view class="setting-row" bindtap="onLegal" data-type="privacy">
-      <text class="setting-row-label">隐私政策</text>
-      <svg-icon name="chevron-down" size="14px" rotate="270" />
-    </view>
-    <view class="setting-row" bindtap="onLegal" data-type="terms">
-      <text class="setting-row-label">用户服务协议</text>
-      <svg-icon name="chevron-down" size="14px" rotate="270" />
+    <view class="setting-row" bindtap="onAgreements">
+      <text class="setting-row-label">用户协议</text>
+      <view class="setting-row-right">
+        <text class="setting-row-hint">隐私政策 / 用户服务协议</text>
+        <svg-icon name="chevron-down" size="14px" rotate="270" />
+      </view>
     </view>
   </view>
 
