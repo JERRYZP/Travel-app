@@ -54,3 +54,5 @@
 .fc-demo-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 5px; padding-top: 5px; border-top: 1px solid rgba(255,248,236,.12); }
 .fc-demo-close { padding: 2px 0 2px 8px; color: rgba(255,248,236,.8); font-size: 9px; line-height: 1.4; }
 .fc-root.is-demo .fc-card { border-color: rgba(242,211,140,.34); padding-bottom: 11px; }
+.fc-root.is-demo .fc-edge { justify-content: flex-start; }
+.fc-edge-demo { display: flex; justify-content: center; width: 100%; margin-top: auto; padding-top: 4px; flex: none; }

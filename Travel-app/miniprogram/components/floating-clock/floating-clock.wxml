@@ -60,5 +60,8 @@
       </view>
       <text wx:else class="fc-edge-unit">{{dockedCountdownUnit}}</text>
     </view>
+    <view wx:if="{{isDemo}}" class="fc-edge-demo">
+      <text class="fc-demo-badge">示例</text>
+    </view>
   </view>
 </view>
