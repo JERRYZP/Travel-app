@@ -2,6 +2,8 @@ const api = require('../../utils/api.js');
 const verify = require('../../utils/verify.js');
 const release = require('../../utils/release-context.js');
 const assets = require('../../utils/assets.js');
+const floatingClock = require('../../utils/floating-clock.js');
+let spotPopupSeq = 0;
 
 Component({
   properties: {
@@ -31,8 +33,40 @@ Component({
     scrollStyle: '',
   },
 
+  lifetimes: {
+    attached() {
+      this._floatingClockPopupKey = this._floatingClockPopupKey
+        || 'spot-popup-' + (++spotPopupSeq);
+      floatingClock.setSpotPopupVisible(this._floatingClockPopupKey, !!this.properties.show);
+    },
+    detached() {
+      if (this._floatingClockPopupKey) {
+        floatingClock.setSpotPopupVisible(this._floatingClockPopupKey, false);
+      }
+    },
+  },
+
+  pageLifetimes: {
+    hide() {
+      if (this._floatingClockPopupKey) {
+        floatingClock.setSpotPopupVisible(this._floatingClockPopupKey, false);
+      }
+    },
+    show() {
+      if (this._floatingClockPopupKey) {
+        floatingClock.setSpotPopupVisible(
+          this._floatingClockPopupKey,
+          !!this.properties.show
+        );
+      }
+    },
+  },
+
   observers: {
     'show, spotId': function (show, spotId) {
+      this._floatingClockPopupKey = this._floatingClockPopupKey
+        || 'spot-popup-' + (++spotPopupSeq);
+      floatingClock.setSpotPopupVisible(this._floatingClockPopupKey, !!show);
       if (show && spotId) {
         this.computeSheetLimit();
         this.loadDetail(spotId);
