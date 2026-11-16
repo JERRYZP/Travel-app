@@ -11,7 +11,7 @@
   <view wx:if="{{expanded}}" class="fc-card">
     <view class="fc-topline">
       <view class="fc-live"><view class="fc-dot"></view><text>北京抢票时间</text></view>
-      <view class="fc-collapse" bindtap="onClose" aria-role="button" aria-label="收起悬浮时钟"><svg-icon name="chevron-up" size="12px" /><text>收起</text></view>
+      <view class="fc-collapse" bindtap="onClose" aria-role="button" aria-label="收起悬浮时钟"><view class="fc-collapse-arrow"></view><text>收起</text></view>
     </view>
     <view class="fc-clock"><text>{{clockMain}}</text><text class="fc-millis">{{clockMillis}}</text></view>
     <view class="fc-release">
