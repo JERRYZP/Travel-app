@@ -27,7 +27,7 @@
       </view>
       <view class="fc-meta">
         <text>{{releaseTime}} 放票</text>
-        <text wx:if="{{extraCount > 0}}">同刻另有 {{extraCount}} 场</text>
+        <text wx:if="{{extraCount > 0}}" class="fc-same-time">{{sameTimeText}}</text>
         <text class="fc-sync">{{timeLabel}}</text>
       </view>
     </view>
@@ -42,6 +42,7 @@
     <view class="fc-edge-spot">
       <text wx:for="{{dockedSpotChars}}" wx:key="key">{{item.text}}</text>
     </view>
+    <text wx:if="{{extraCount > 0}}" class="fc-edge-more">+{{extraCount}}</text>
     <view class="fc-edge-title"><text>抢</text><text>票</text></view>
     <view class="fc-edge-time {{phase === 'after' ? 'is-live' : ''}}">
       <text class="fc-edge-number">{{dockedCountdownNumber}}</text>
