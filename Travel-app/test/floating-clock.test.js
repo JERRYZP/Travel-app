@@ -235,6 +235,7 @@ try {
   eq(memberWxml.includes('name="unlock-line"'), true, '视频解锁按钮使用解锁图标');
   eq(memberWxml.includes('onFloatingClockDemo'), true, '悬浮时钟权益提供查看示例');
   eq(memberWxml.includes('package-demo-link'), true, '会员套餐内也提供查看示例');
+  eq((memberWxml.match(/>查看示例><\/text>/g) || []).length, 2, '两个查看示例入口模板统一带右箭头');
   eq(memberJs.includes('expand:!0') || memberJs.includes('expand: true'), true, '会员页示例复用 45 秒展开演示');
   eq(memberWxml.includes('package-benefit-mark'), true, '套餐权益带圆点标识');
   eq(memberWxml.includes('name="lock"'), true, '震动开关默认带锁');

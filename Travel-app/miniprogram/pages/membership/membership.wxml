@@ -79,7 +79,7 @@
             <text class="benefit-title">抢票悬浮时钟</text>
             <view class="benefit-desc-row">
               <text class="benefit-desc">放票前 10 分钟自动出现，支持拖动；关闭后收至屏幕边缘，可随时展开</text>
-              <text class="clock-demo-link" catchtap="onFloatingClockDemo">查看示例</text>
+              <text class="clock-demo-link" catchtap="onFloatingClockDemo">查看示例></text>
             </view>
           </view>
           <view class="clock-switch {{floatingClockEnabled ? 'on' : ''}}" aria-role="switch" aria-checked="{{floatingClockEnabled}}">
@@ -132,7 +132,7 @@
                 <text class="package-benefit-mark">•</text>
                 <text class="package-desc">{{benefit.text}}</text>
                 <text wx:if="{{benefit.isNew}}" class="package-new">New</text>
-                <text wx:if="{{benefit.showDemo}}" class="package-demo-link" catchtap="onFloatingClockDemo">查看示例</text>
+                <text wx:if="{{benefit.showDemo}}" class="package-demo-link" catchtap="onFloatingClockDemo">查看示例></text>
               </view>
             </view>
             <text wx:if="{{!item._available}}" class="package-lock">{{item.actionText}}</text>
