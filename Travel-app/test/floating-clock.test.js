@@ -64,6 +64,7 @@ try {
   eq(clock.windowPhaseOf(group, group.startMs - 1), 'hidden', 'T-10 分钟前隐藏');
   eq(clock.windowPhaseOf(group, group.startMs), 'before', 'T-10 分钟整开始展示');
   eq(clock.windowPhaseOf(group, group.releaseAtMs), 'after', '到点进入开抢态');
+  eq(group.endMs - group.releaseAtMs, 30000, '结束窗口严格为放票后 30 秒');
   eq(clock.windowPhaseOf(group, group.endMs - 1), 'after', '放票后 30 秒内保留');
   eq(clock.windowPhaseOf(group, group.endMs), 'hidden', '放票满 30 秒结束');
   const liveView = clock.makeViewModel({
