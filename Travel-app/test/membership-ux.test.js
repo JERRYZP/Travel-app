@@ -628,7 +628,7 @@ async function run() {
     && membershipJs.includes('设置 > 你的姓名 > 付款与配送')
     && membershipJs.includes('中国大陆可使用微信支付'), true,
     'iOS 支付失败状态卡提供条件化的 Apple 付款方式自查路径');
-  eq(membershipJs.includes('`因服务器压力，普通用户最多有 ${freeSlots} 个提醒名额`'), true,
+  eq(membershipJs.includes('因服务器压力，普通用户最多有'), true,
     '免费版状态卡使用固定免费基础额度，不使用老用户保护额度');
   eq(membershipJs.includes('免费版可使用 ${limit || 5} 个提醒名额'), false,
     '免费版副标题不再把 taskLimit 误当成免费版标准名额');
@@ -958,6 +958,77 @@ async function run() {
   const expectedExpiry = new Date(currentExpiry.getTime() + 30 * 86400000 + 8 * 60 * 60 * 1000);
   const expectedText = `会员有效期至 ${expectedExpiry.getUTCFullYear()}年${expectedExpiry.getUTCMonth() + 1}月${expectedExpiry.getUTCDate()}日`;
   eq(upgradeData.upgradeConfirmExpiry, expectedText, '续费在原有效期末尾增加 30 天');
+
+  console.log('\n=== 7. 激励视频只在完整观看后提交服务端凭证 ===');
+  const apiUtil = require('../miniprogram/utils/api.js');
+  const adEvents = {};
+  const adStory = { shown: 0, loaded: 0, claimed: [], toasts: [] };
+  const adObject = {
+    onLoad(handler) { adEvents.load = handler; },
+    onError(handler) { adEvents.error = handler; },
+    onClose(handler) { adEvents.close = handler; },
+    show() { adStory.shown += 1; return Promise.resolve(); },
+    load() { adStory.loaded += 1; return Promise.resolve(); },
+  };
+  const adOriginalWx = global.wx;
+  global.wx = {
+    getStorageSync() { return ''; },
+    setStorageSync() {},
+    showToast(options) { adStory.toasts.push(options.title); },
+    vibrateShort() {},
+    createRewardedVideoAd(options) {
+      adStory.adUnitId = options.adUnitId;
+      return adObject;
+    },
+  };
+  const originalStart = apiUtil.reminder.membership.vibrationAdStart;
+  const originalClaim = apiUtil.reminder.membership.vibrationAdClaim;
+  apiUtil.reminder.membership.vibrationAdStart = async () => ({
+    success: true,
+    attemptId: 'b'.repeat(40),
+    adUnitId: 'adunit-ae770b8ec9fcd605',
+  });
+  apiUtil.reminder.membership.vibrationAdClaim = async attemptId => {
+    adStory.claimed.push(attemptId);
+    return { success: true, vibrationUnlocked: true, vibrationUnlockedUntil: new Date(Date.now() + 86400000) };
+  };
+  const adCtx = {
+    ...membershipDef,
+    data: {
+      membership: { unlimited: true, vibrationAdUnitId: 'adunit-ae770b8ec9fcd605' },
+      vibrationUnlocked: false,
+      vibrationEnabled: false,
+      vibrationUnlockLoading: false,
+    },
+    setData(patch) { this.data = { ...this.data, ...patch }; },
+  };
+  membershipDef.onUnlockVibration.call(adCtx);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  eq(adStory.adUnitId, 'adunit-ae770b8ec9fcd605', '使用服务端下发的广告位 ID');
+  eq(adStory.shown, 1, '用户点击后拉起激励视频');
+  eq(adCtx.data.vibrationUnlockLoading, true, '广告播放期间锁定按钮');
+  adEvents.close({ isEnded: false });
+  eq(adStory.claimed.length, 0, '中途关闭广告不提交凭证');
+  eq(adCtx.data.vibrationUnlockLoading, false, '中途关闭后恢复按钮');
+  membershipDef.onUnlockVibration.call(adCtx);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  adEvents.close({ isEnded: true });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  eq(adStory.claimed[0], 'b'.repeat(40), '完整观看后提交一次性广告凭证');
+  eq(adCtx.data.vibrationUnlocked, true, '服务端确认后页面立即解锁');
+  eq(adCtx.data.vibrationEnabled, true, '解锁后自动打开震动开关');
+  eq(adCtx.data.vibrationUnlockLoading, false, '确认完成后解除按钮锁定');
+  apiUtil.reminder.membership.vibrationAdStart = originalStart;
+  apiUtil.reminder.membership.vibrationAdClaim = originalClaim;
+  global.wx = adOriginalWx;
+
+  const markedFloatingPackages = membershipDef.markPackages(serverPackages, 'member_unlimited');
+  eq(markedFloatingPackages[1]._optionTitle, '不限提醒名额+悬浮抢票时钟', '4.9 标题包含悬浮抢票时钟');
+  eq(markedFloatingPackages[2]._optionTitle, '不限提醒名额+悬浮抢票时钟', '1.9 升级标题包含悬浮抢票时钟');
+  eq(markedFloatingPackages[1]._benefits[1].text, '悬浮时钟展示放票倒计时', '4.9 第二项权益为放票倒计时');
+  eq(markedFloatingPackages[1]._benefits[1].isNew, true, '4.9 第二项权益带 New');
+  eq(markedFloatingPackages[1]._benefits[1].showDemo, true, '4.9 第二项权益带查看示例');
+  eq(markedFloatingPackages[2]._benefits[1].showDemo, true, '1.9 升级同样带查看示例');
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);

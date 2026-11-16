@@ -68,7 +68,7 @@ for (const page of [
   const json = JSON.parse(read(page + '.json'));
   const wxml = read(page + '.wxml');
   eq(/order-refresh\.js/.test(js), true, `${path.basename(page)} 接入订单刷新规则`);
-  eq(/_pageVisible\s*=\s*false/.test(js) && /stopAutoRefresh/.test(js), true,
+  eq((/_pageVisible\s*=\s*false/.test(js) || /_pageVisible=!1/.test(js)) && /stopAutoRefresh/.test(js), true,
     `${path.basename(page)} 离开页面停止刷新`);
   eq(/onPullDownRefresh\s*\(/.test(js), true, `${path.basename(page)} 支持下拉刷新`);
   eq(json.enablePullDownRefresh, true, `${path.basename(page)} 开启下拉刷新`);

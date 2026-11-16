@@ -757,15 +757,16 @@ async function run() {
   );
 
   console.log('\n=== 11. 激励视频震动权益绑定会员有效期 ===');
+  process.env.MEMBERSHIP_TEST_OPENIDS = USER;
   db = createDb();
   seedUser(db, {
     memberLevel: MemberLevel.MEMBER,
     memberTier: membership.MemberTier.QUOTA_10,
     memberExpiresAt: new Date(Date.now() + 30 * DAY_MS),
   });
-  const quotaAdStart = await membership.startVibrationAd(db, USER);
+  const quotaAdStart = await membership.startVibrationAd(db, USER, undefined, ['two-tier-v5']);
   eq(quotaAdStart.success, false, '3 元档不能创建震动广告凭证');
-  eq(quotaAdStart.errorCode, 1045, '3 元档返回会员资格错误');
+  eq(quotaAdStart.errorCode, 1047, '3 元档返回会员资格错误');
 
   db = createDb();
   const unlockExpiresAt = new Date(Date.now() + 30 * DAY_MS);
@@ -774,13 +775,13 @@ async function run() {
     memberTier: membership.MemberTier.UNLIMITED,
     memberExpiresAt: unlockExpiresAt,
   });
-  const adStart = await membership.startVibrationAd(db, USER);
+  const adStart = await membership.startVibrationAd(db, USER, undefined, ['two-tier-v5']);
   eq(adStart.success, true, '不限额度会员可创建震动广告凭证');
   eq(/^[a-f0-9]{40}$/.test(adStart.attemptId), true, '广告凭证 ID 固定为 40 位哈希');
   eq(adStart.adUnitId, membership.VIBRATION_AD_UNIT_ID, '服务端下发唯一广告位 ID');
-  const adStartAgain = await membership.startVibrationAd(db, USER);
+  const adStartAgain = await membership.startVibrationAd(db, USER, undefined, ['two-tier-v5']);
   eq(adStartAgain.attemptId, adStart.attemptId, '5 分钟内重试复用同一广告凭证');
-  const claimed = await membership.claimVibrationAd(db, USER, adStart.attemptId);
+  const claimed = await membership.claimVibrationAd(db, USER, adStart.attemptId, undefined, ['two-tier-v5']);
   eq(claimed.success, true, '完整观看后可领取震动权益');
   eq(claimed.vibrationUnlocked, true, '领取后震动权益立即生效');
   eq(
@@ -791,18 +792,18 @@ async function run() {
   const claimedUser = db._dump(COLLECTIONS.USERS)[0];
   eq(claimedUser.vibrationUnlockSource, 'REWARDED_AD', '用户记录广告解锁来源');
   eq(claimedUser.vibrationUnlockAttemptId, adStart.attemptId, '用户记录广告凭证 ID');
-  const claimedAgain = await membership.claimVibrationAd(db, USER, adStart.attemptId);
+  const claimedAgain = await membership.claimVibrationAd(db, USER, adStart.attemptId, undefined, ['two-tier-v5']);
   eq(claimedAgain.success, true, '同一广告凭证重复领取保持幂等');
   eq(claimedAgain.alreadyClaimed, true, '重复领取返回已领取状态');
-  current = await membership.status(db, USER);
+  current = await membership.status(db, USER, undefined, { membershipCapabilities: ['two-tier-v5'] });
   eq(current.membership.vibrationUnlocked, true, '会员状态返回震动已解锁');
   eq(current.membership.vibrationAdUnitId, membership.VIBRATION_AD_UNIT_ID, '会员状态返回广告位 ID');
-  current = await membership.status(db, USER, new Date(unlockExpiresAt.getTime() + 1000));
+  current = await membership.status(db, USER, new Date(unlockExpiresAt.getTime() + 1000), { membershipCapabilities: ['two-tier-v5'] });
   eq(current.membership.vibrationUnlocked, false, '会员到期后震动权益自动失效');
   await db.collection(COLLECTIONS.USERS).where({ openId: USER }).update({
     data: { memberTier: membership.MemberTier.QUOTA_10 },
   });
-  current = await membership.status(db, USER);
+  current = await membership.status(db, USER, undefined, { membershipCapabilities: ['two-tier-v5'] });
   eq(current.membership.vibrationUnlocked, false, '档位回退后震动权益立即失效');
 
   db = createDb();
@@ -811,13 +812,13 @@ async function run() {
     memberTier: membership.MemberTier.UNLIMITED,
     memberExpiresAt: new Date(Date.now() + 30 * DAY_MS),
   });
-  const staleStart = await membership.startVibrationAd(db, USER);
+  const staleStart = await membership.startVibrationAd(db, USER, undefined, ['two-tier-v5']);
   await db.collection(COLLECTIONS.USERS).where({ openId: USER }).update({
     data: { memberExpiresAt: new Date(Date.now() + 31 * DAY_MS) },
   });
-  const staleClaim = await membership.claimVibrationAd(db, USER, staleStart.attemptId);
+  const staleClaim = await membership.claimVibrationAd(db, USER, staleStart.attemptId, undefined, ['two-tier-v5']);
   eq(staleClaim.success, false, '跨会员到期窗口的旧广告凭证不能领取');
-  eq(staleClaim.errorCode, 1046, '旧广告凭证返回失效错误');
+  eq(staleClaim.errorCode, 1048, '旧广告凭证返回失效错误');
 
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);

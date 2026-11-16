@@ -1158,7 +1158,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 }
 ```
 
-- 仅有效 `membership.unlimited=true` 用户可创建广告凭证；3 元档、免费用户、过期会员返回 `1045`。
+- 仅有效 `membership.unlimited=true` 用户可创建广告凭证；3 元档、免费用户、过期会员返回 `1047`。
 - 凭证按 `OpenID + 用途 + 当前 memberExpiresAt` 确定性生成，5 分钟有效；广告加载失败重试时复用同一 PENDING 凭证。
 - 微信小程序没有激励视频服务器回调；客户端必须以官方 `RewardedVideoAd.onClose` 的 `res.isEnded===true` 作为提交条件。
 
@@ -1175,7 +1175,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```
 
 - 服务端只接受本人、用途匹配、未过期且未领取的 PENDING 凭证。
-- 领取时重新校验不限额度会员资格，且当前 `memberExpiresAt` 必须与凭证快照一致；跨会员到期窗口返回 `1046`。
+- 领取时重新校验不限额度会员资格，且当前 `memberExpiresAt` 必须与凭证快照一致；跨会员到期窗口返回 `1048`。
 - 成功后在事务中写 `users.vibrationUnlockedUntil=memberExpiresAt`、`vibrationUnlockSource='REWARDED_AD'`、`vibrationUnlockAttemptId` 和 `vibrationUnlockedAt`，凭证置为 `CLAIMED`。
 - 同一凭证重复提交保持幂等；到期、退款或失去不限额度资格后，`membership.status` 必须返回 `vibrationUnlocked=false`。
 - 广告凭证集合 `rewarded_ad_attempts` 使用确定性文档 ID，不需要额外索引。

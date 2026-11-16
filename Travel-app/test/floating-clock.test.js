@@ -206,11 +206,7 @@ try {
   console.log('=== 7. 页面挂载与会员页入口 ===');
   const app = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/app.json'), 'utf8'));
   eq(app.usingComponents['floating-clock'], '/components/floating-clock/floating-clock', '组件全局注册');
-  const excluded = new Set([
-    'pages/admin-after-sales/admin-after-sales',
-    'pages/admin-feedback/admin-feedback',
-    'pages/payment-probe/payment-probe',
-  ]);
+  const excluded = new Set(['pages/payment-probe/payment-probe']);
   const userPages = app.pages.filter(page => !excluded.has(page));
   const missing = userPages.filter(page => {
     const wxml = fs.readFileSync(path.join(ROOT, 'miniprogram', `${page}.wxml`), 'utf8');
@@ -220,6 +216,12 @@ try {
   const homeWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxml'), 'utf8');
   eq(homeWxml.includes('id="floatingClock"') && homeWxml.includes('home-page="{{true}}"'), true, '首页声明自动展开');
   excluded.forEach(page => {
+    const wxml = fs.readFileSync(path.join(ROOT, 'miniprogram', `${page}.wxml`), 'utf8');
+    eq(wxml.includes('<floating-clock'), false, `${page} 不挂载`);
+  });
+  const adminPages = (app.subPackages || []).flatMap(pkg =>
+    (pkg.pages || []).map(page => `${pkg.root}/${page}`));
+  adminPages.forEach(page => {
     const wxml = fs.readFileSync(path.join(ROOT, 'miniprogram', `${page}.wxml`), 'utf8');
     eq(wxml.includes('<floating-clock'), false, `${page} 不挂载`);
   });
@@ -233,10 +235,10 @@ try {
   eq(memberWxml.includes('name="unlock-line"'), true, '视频解锁按钮使用解锁图标');
   eq(memberWxml.includes('onFloatingClockDemo'), true, '悬浮时钟权益提供查看示例');
   eq(memberWxml.includes('package-demo-link'), true, '会员套餐内也提供查看示例');
-  eq(memberJs.includes('expand: true'), true, '会员页示例复用 45 秒展开演示');
+  eq(memberJs.includes('expand:!0') || memberJs.includes('expand: true'), true, '会员页示例复用 45 秒展开演示');
   eq(memberWxml.includes('package-benefit-mark'), true, '套餐权益带圆点标识');
   eq(memberWxml.includes('name="lock"'), true, '震动开关默认带锁');
-  eq(memberJs.includes("text: '悬浮时钟展示放票倒计时', isNew: true"), true, '4.9 套餐放票倒计时展示带 New 标签');
+  eq(memberJs.includes('悬浮时钟展示放票倒计时') && (memberJs.includes('isNew:!0') || memberJs.includes('isNew: true')), true, '4.9 套餐放票倒计时展示带 New 标签');
   const clockWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.wxml'), 'utf8');
   eq(clockWxml.includes('bindtouchstart="onTouchStart"'), true, '拖拽起点不拦截点击合成');
   eq(clockWxml.includes('catchtouchstart'), false, '不得用 catchtouchstart 拦截时钟子按钮点击');

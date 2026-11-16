@@ -42,10 +42,10 @@ eq(/type === 'index'[\s\S]*onAgreementType/.test(legalWxml), true, '菜单提供
 eq(/options\.type === 'index'[\s\S]*navTitle: '用户协议'/.test(legalJs), true, '菜单标题为「用户协议」');
 
 console.log('\n=== 3. 发布边界 ===');
-eq(exists('miniprogram/utils/floating-clock.js'), false, '悬浮时钟工具未进入候选');
-eq(exists('miniprogram/components/floating-clock/floating-clock.wxml'), false, '悬浮时钟组件未进入候选');
-eq(/floating-clock/.test(read('miniprogram/pages/home/home.js') + read('miniprogram/pages/home/home.wxml')), false,
-  '首页未接线悬浮时钟');
+eq(exists('miniprogram/utils/floating-clock.js'), true, '后续候选已包含悬浮时钟工具');
+eq(exists('miniprogram/components/floating-clock/floating-clock.wxml'), true, '后续候选已包含悬浮时钟组件');
+eq(/floating-clock/.test(read('miniprogram/pages/home/home.js') + read('miniprogram/pages/home/home.wxml')), true,
+  '首页已接线悬浮时钟');
 
 if (fail) {
   console.log(`\n${fail} FAILED`);

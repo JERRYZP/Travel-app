@@ -343,6 +343,11 @@ function expiryMsOf(user = {}) {
   return new Date(user.memberExpiresAt || 0).getTime();
 }
 
+function timestampMsOf(value) {
+  const ms = new Date(value || 0).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
 function isMemberAt(user, nowTs = time.now()) {
   const expiryMs = expiryMsOf(user);
   return Number.isFinite(expiryMs) && expiryMs > new Date(nowTs).getTime();
@@ -1258,20 +1263,19 @@ async function orderDetail(db, userId, orderId) {
 }
 
 
-async function startVibrationAd(db, userId, nowTs = time.now()) {
-  const current = await status(db, userId, nowTs, { configCache: true });
-  if (current.success === false) return current;
-  if (!current.membership.unlimited) return fail(ERRORS.VIBRATION_AD_MEMBER_ONLY);
-  if (current.membership.vibrationUnlocked) {
-    return ok({
-      alreadyUnlocked: true,
-      adUnitId: VIBRATION_AD_UNIT_ID,
-      vibrationUnlockedUntil: current.membership.vibrationUnlockedUntil,
-    });
-  }
+async function startVibrationAd(db, userId, nowTs = time.now(), membershipCapabilities = []) {
   const userRes = await db.collection(COLLECTIONS.USERS).where({ openId: userId }).get();
   const user = (userRes.data || [])[0];
   if (!user) return fail(ERRORS.UNAUTHORIZED);
+  const current = normalizeTwoTierUser(user, nowTs);
+  if (!current.unlimited) return fail(ERRORS.VIBRATION_AD_MEMBER_ONLY);
+  if (current.vibrationUnlocked) {
+    return ok({
+      alreadyUnlocked: true,
+      adUnitId: VIBRATION_AD_UNIT_ID,
+      vibrationUnlockedUntil: current.vibrationUnlockedUntil,
+    });
+  }
   const memberExpiresMs = expiryMsOf(user);
   const attemptId = crypto.createHash('sha256')
     .update(`${userId}|${VIBRATION_AD_PURPOSE}|${memberExpiresMs}`)
@@ -1298,12 +1302,9 @@ async function startVibrationAd(db, userId, nowTs = time.now()) {
   return ok({ attemptId, adUnitId: VIBRATION_AD_UNIT_ID, expiresAt });
 }
 
-async function claimVibrationAd(db, userId, attemptId, nowTs = time.now()) {
+async function claimVibrationAd(db, userId, attemptId, nowTs = time.now(), membershipCapabilities = []) {
   const id = String(attemptId || '').trim();
   if (!/^[a-f0-9]{40}$/.test(id)) return fail(ERRORS.VIBRATION_AD_SESSION_INVALID);
-  const before = await status(db, userId, nowTs, { configCache: true });
-  if (before.success === false) return before;
-  if (!before.membership.unlimited) return fail(ERRORS.VIBRATION_AD_MEMBER_ONLY);
   return db.runTransaction(async transaction => {
     const attempt = (await transaction.collection(COLLECTIONS.REWARDED_AD_ATTEMPTS).doc(id).get()).data[0];
     if (!attempt || attempt.userId !== userId || attempt.purpose !== VIBRATION_AD_PURPOSE) {
