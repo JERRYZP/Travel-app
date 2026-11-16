@@ -1,7 +1,7 @@
 # Travel-app 当前工程状态
 
 > 当前分支与版本以 `git status`、`git log -1` 为准；本文件记录工作区状态，提交和部署状态分开判断。
-> 更新时间：2026-11-13
+> 更新时间：2026-11-16
 
 ## 当前定位
 
@@ -9,7 +9,8 @@
 
 ## 已实现
 
-- 2026-11-16 悬浮时钟已移植到 `main@a303ba6` 基线：包含 3 元/4.9 元/1.9 元套餐权益、会员页开关、45 秒示例、三阶段强震、30 秒开抢自动关闭、右上贴边及激励视频解锁。广告位 `adunit-ae770b8ec9fcd605`；服务端通过一次性凭证写 `users.vibrationUnlockedUntil=memberExpiresAt`，会员到期、退款或档位回退后自动失效。`rewarded_ad_attempts` 已创建；兼容版 `reminder` 已部署为 `Active`，`membership.status` 云端冒烟成功；`vibrationAdStart` 首次真实调用暴露缺失文档 `doc.get()` 抛 1500，已改为 `_id` 查询并部署（commit `8eedb1d`）；随后领取事务又暴露真实云 `doc.get()` 返回对象与 mock 数组不一致，已统一用 `docDataOf()` 兼容并部署（commit `e0f40fb`）；开发版 `2.5.0-rc.2` 已上传（总包 `1,191,252B`、主包 `1,099,037B`、`admin` 分包 `92,215B`，commit `601c040` / tag `v2.5.0-rc.2`）。**尚未在公众平台切换体验版，未提交审核、未发布正式版，真实广告仍待真机验收。**
+- 2026-11-16 22:22 客户端 `2.5.0-rc.3` 已上传并设为体验版：总包 `1,191,182 B`、主包 `1,098,967 B`、`admin` 分包 `92,215 B`；对应 `codex/floating-clock-main@896adec` / tag `v2.5.0-rc.3`。本版包含悬浮时钟同页景点详情、景点详情层级覆盖、会员权益文案与示例优化。`npm test`、`npm run check`、`git diff --check` 通过。**仅上传体验版，未提交审核、未发布正式版；本轮未部署云函数。**
+- 2026-11-16 悬浮时钟已移植到 `main@a303ba6` 基线：包含 3 元/4.9 元/1.9 元套餐权益、会员页开关、45 秒示例、三阶段强震、30 秒开抢自动关闭、右上贴边及激励视频解锁。广告位 `adunit-ae770b8ec9fcd605`；服务端通过一次性凭证写 `users.vibrationUnlockedUntil=memberExpiresAt`，会员到期、退款或档位回退后自动失效。`rewarded_ad_attempts` 已创建；兼容版 `reminder` 已部署为 `Active`，`membership.status` 云端冒烟成功；`vibrationAdStart` 首次真实调用暴露缺失文档 `doc.get()` 抛 1500，已改为 `_id` 查询并部署（commit `8eedb1d`）；随后领取事务又暴露真实云 `doc.get()` 返回对象与 mock 数组不一致，已统一用 `docDataOf()` 兼容并部署（commit `e0f40fb`）；开发版 `2.5.0-rc.2` 已上传（总包 `1,191,252B`、主包 `1,099,037B`、`admin` 分包 `92,215B`，commit `601c040` / tag `v2.5.0-rc.2`），现已被 `2.5.0-rc.3` 体验版覆盖；真实广告仍待真机验收。
 - 2026-11-15 已从 `main@705f2a4` 的隔离候选 `codex/release-2.4.4-20261115` / `v2.4.4-rc.1` 上传体验版 `2.4.4`，总包 `1,194,525 B`、主包 `1,102,310 B`、`admin` 分包 `92,215 B`。本版只纳入首页行程项提醒状态标签点击守卫与 PAGE-010「帮助与反馈 / 用户协议」合并入口，保留线上金色礼品图标及 `/ 在线客服 / 反馈与纠错` 文案；悬浮时钟未进入候选。`npm test`、`npm run check`、`git diff --check` 通过。**体验版验收通过；代码已通过 `main@f07e7fe` 合并并推送远端，`v2.4.4-rc.1` 固定实际上传提交 `678f88b`。当前待提交审核；本轮未部署云函数、未发布正式版**。
 - 2026-11-13 v2.4.3 体验验收候选：从 `origin/main@42530dd` 新建 `codex/experience-2.4.3-20261113`，收口首页悬浮提醒入口、想去景点页浮层按钮、今日放票顶部卡片、返回主页按钮位置、客服工作台隐藏会员升级公告控制卡（保留两档定价卡）与提醒质量 schema v2 显示修复；1.9 元升级单/3 元基础单退款依赖拦截沿用已在 main 的等价逻辑。自动验证通过，并已在微信开发者工具完成今日放票页与景点浮层渲染检查。`payment` 已于 2026-11-13 部署为 `Active`、Nodejs16.13、超时 60 秒，`paymentReconcileEveryTwoMinutes` 触发器保留；回读 `payment_config/reminder_quality_latest` 已为 `schemaVersion=2`，当前窗口 `expectedCount=1225`，不再是空数据。**未上传体验版、未真机验证**。验收范围与上传说明见 `docs/engineering/acceptance-2026-11-13.md`。
 - 2026-11-08 两档会员候选：从 `origin/main@adef8eb` 新建 `codex/membership-two-tier-rc`，新增 `two-tier-v5` 能力路由，仅两个既有测试 OpenID 可见；免费 5 个，`member_quota_10` 为 ¥3 / 30 天 / 总额度 10，`member_unlimited` 为 ¥4.9 / 30 天 / 不限，`member_unlimited_upgrade` 为 ¥1.9 只换档不延期。非白名单继续现有 `unlimited-v3`，旧客户端继续 `legacy-v2`。MP 固定道具分别为 `travel_task_vip_3`、`travel_task_vip_4_9`、`travel_task_vip_1_9`。`reminder` / `payment` 已于 20:33 部署并回读 `Active`、Nodejs16.13、60 秒、256 MB；`paymentReconcileEveryTwoMinutes` 保留。`payment` 环境变量只新增三个商品 ID，原有变量无删除、无变更；`reminder` 只把测试名单改为指定两个 OpenID，`MEMBERSHIP_ENFORCEMENT_MODE=all` 不变。本地 `npm test`、`npm run check`、`git diff --check` 通过。
