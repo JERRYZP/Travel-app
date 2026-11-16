@@ -10,11 +10,8 @@
 >
   <view wx:if="{{expanded}}" class="fc-card">
     <view class="fc-topline">
-      <view class="fc-live"><view class="fc-dot"></view><text>北京抢票时间</text><text wx:if="{{isDemo}}" class="fc-demo-badge">示例</text></view>
-      <view class="fc-head-actions">
-        <view wx:if="{{isDemo}}" class="fc-demo-close" bindtap="onCloseDemo" aria-role="button">关闭演示</view>
-        <view class="fc-close" bindtap="onClose" aria-role="button" aria-label="收起悬浮时钟"><view></view><view></view></view>
-      </view>
+      <view class="fc-live"><view class="fc-dot"></view><text>北京抢票时间</text></view>
+      <view class="fc-close" bindtap="onClose" aria-role="button" aria-label="收起悬浮时钟"><view></view><view></view></view>
     </view>
     <view class="fc-clock"><text>{{clockMain}}</text><text class="fc-millis">{{clockMillis}}</text></view>
     <view class="fc-release">
@@ -31,6 +28,10 @@
         <text class="fc-sync">{{timeLabel}}</text>
       </view>
     </view>
+    <view wx:if="{{isDemo}}" class="fc-demo-footer">
+      <text class="fc-demo-badge">示例</text>
+      <view class="fc-demo-close" bindtap="onCloseDemo" aria-role="button">关闭演示</view>
+    </view>
   </view>
 
   <view wx:else class="fc-edge" bindtap="onOpen" aria-role="button" aria-label="展开悬浮时钟">
@@ -39,7 +40,7 @@
       <text wx:for="{{dockedSpotChars}}" wx:key="key">{{item.text}}</text>
     </view>
     <view class="fc-edge-title"><text>抢</text><text>票</text></view>
-    <view class="fc-edge-time">
+    <view class="fc-edge-time {{phase === 'after' ? 'is-live' : ''}}">
       <text class="fc-edge-number">{{dockedCountdownNumber}}</text>
       <text wx:if="{{dockedCountdownUnit}}" class="fc-edge-unit">{{dockedCountdownUnit}}</text>
     </view>

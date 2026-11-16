@@ -432,9 +432,9 @@ Page({
       const days = Math.max(0, Number(item.memberDays) || 0);
       const slots = Math.max(0, Number(item.taskSlots) || 0);
       const benefits = item.upgrade
-        ? [{ text: '升级不限提醒名额' }, { text: '悬浮时钟展示放票倒计时', isNew: true }]
+        ? [{ text: '升级不限提醒名额' }, { text: '悬浮时钟展示放票倒计时', isNew: true, showDemo: true }]
         : (item.unlimited
-        ? [{ text: `有效期${days}天，不限额度` }, { text: '悬浮时钟展示放票倒计时', isNew: true }]
+        ? [{ text: `有效期${days}天，不限额度` }, { text: '悬浮时钟展示放票倒计时', isNew: true, showDemo: true }]
         : [{ text: `有效期${days}天，${slots}个提醒额度` }]);
       return {
         ...item,

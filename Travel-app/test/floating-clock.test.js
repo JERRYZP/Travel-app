@@ -209,6 +209,7 @@ try {
   eq(memberWxml.includes('看视频解锁震动功能'), true, '会员页提供视频解锁按钮');
   eq(memberWxml.includes('name="bell-line"'), true, '震动权益使用线性图标');
   eq(memberWxml.includes('onFloatingClockDemo'), true, '悬浮时钟权益提供查看示例');
+  eq(memberWxml.includes('package-demo-link'), true, '会员套餐内也提供查看示例');
   eq(memberJs.includes('expand: true'), true, '会员页示例复用 45 秒展开演示');
   eq(memberWxml.includes('package-benefit-mark'), true, '套餐权益带圆点标识');
   eq(memberWxml.includes('name="lock"'), true, '震动开关默认带锁');
@@ -223,7 +224,9 @@ try {
   eq(clockWxml.includes('phase-{{phase}}'), true, '开抢时切换浮窗状态样式');
   eq(clockWxml.includes('>示例</text>'), true, '示例浮窗显示示例标识');
   eq(clockWxml.includes('>关闭演示</view>'), true, '示例浮窗提供关闭演示文字按钮');
+  eq(clockWxml.includes('fc-demo-footer'), true, '示例与关闭演示位于浮窗底部');
   eq(clockWxml.includes('dockedSpotChars'), true, '贴边态在上方显示景点简称');
+  eq(clockWxml.includes("phase === 'after' ? 'is-live'"), true, '开抢二字使用竖排样式');
 } finally {
   clock.resetForTest();
   Date.now = realNow;
