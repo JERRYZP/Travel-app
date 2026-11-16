@@ -438,7 +438,7 @@ Page({
         : [{ text: `有效期${days}天，${slots}个提醒额度` }]);
       return {
         ...item,
-        _optionTitle: item.unlimited
+        _optionTitle: item.upgrade || item.unlimited
           ? '不限提醒名额+悬浮抢票时钟'
           : `${slots} 个提醒名额`,
         _optionDesc: benefits.map(benefit => benefit.text).join('；'),
