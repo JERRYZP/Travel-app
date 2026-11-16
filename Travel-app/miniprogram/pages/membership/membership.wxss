@@ -81,10 +81,11 @@
 .section-hint { display: block; margin: -6rpx 4rpx 16rpx; color: var(--color-muted); font-size: 21rpx; line-height: 1.5; }
 .upgrade-credit-note { display: block; margin: 0 4rpx 16rpx; padding: 14rpx 16rpx; border-radius: 12rpx; background: #FFF3D8; color: #8A5A12; font-size: 21rpx; line-height: 1.55; }
 .benefit-list { overflow: hidden; border-radius: 20rpx; background: var(--color-surface); box-shadow: var(--shadow-card); }
-.benefit-row { display: flex; gap: 16rpx; padding: 24rpx 26rpx; border-bottom: 1rpx solid var(--color-border); }
+.benefit-row { display: flex; align-items: flex-start; gap: 16rpx; padding: 24rpx 26rpx; border-bottom: 1rpx solid var(--color-border); }
 .benefit-row:last-child { border-bottom: none; }
 .benefit-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 5rpx; }
-.benefit-title { color: var(--color-ink); font-size: 25rpx; font-weight: 600; }
+.benefit-icon { display: flex; flex: none; align-items: flex-start; margin-top: 1rpx; }
+.benefit-title { color: var(--color-ink); font-size: 25rpx; font-weight: 600; line-height: 32rpx; }
 .benefit-desc { color: var(--color-muted); font-size: 22rpx; line-height: 1.5; }
 
 .package-list { display: flex; flex-direction: column; gap: 16rpx; }
@@ -137,7 +138,7 @@
   background: #5D93B2;
 }
 
-.clock-benefit-row { align-items: center; }
+.clock-benefit-row { align-items: flex-start; }
 .benefit-desc-row { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 2rpx 8rpx; }
 .clock-demo-link, .package-demo-link { color: #8A642C; font-size: 20rpx; text-decoration: underline; text-underline-offset: 4rpx; white-space: nowrap; }
 .clock-benefit-hover { background: #FCF7ED; }
@@ -164,7 +165,7 @@
 }
 .clock-switch.on .clock-switch-knob { transform: translateX(36rpx); }
 
-.vibration-benefit-row { align-items: center; }
+.vibration-benefit-row { align-items: flex-start; }
 .vibration-switch-wrap { display: flex; align-items: center; gap: 10rpx; flex-shrink: 0; }
 .clock-switch.locked { background: #E7E0D4; opacity: .72; }
 .vibration-unlock-row { padding: 0 26rpx 24rpx; background: var(--color-surface); }

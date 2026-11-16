@@ -58,6 +58,10 @@ try {
   eq(clock.entitlementOf({ member: false, unlimited: true }).entitled, false, '过期会员无资格');
   eq(clock.entitlementOf({ member: true, unlimited: true, legacyUnlimited: true }).entitled, true, '老不限额度会员有资格');
 
+  const defaultLayout = clock.normalizeLayout();
+  eq(defaultLayout.xRatio, 1, '默认横向位置靠右且切边');
+  eq(defaultLayout.yRatio, 0.12, '默认纵向位置位于上部');
+  eq(defaultLayout.side, 'right', '默认停在右侧');
   console.log('=== 2. 前 10 分钟边界和放票后 1 分钟 ===');
   const event = clock.eventRecordsFromHome(home)[0];
   const group = clock.selectEventGroup([event], BASE);
@@ -154,7 +158,11 @@ try {
   console.log('=== 6. 真机验收演示入口 ===');
   clock.resetForTest();
   clock.setActivePage('preview-home', true);
+  clock.updateLayout({ xRatio: 0.2, yRatio: 0.7, side: 'left' });
   const previewView = clock.startPreview({ secondsBefore: 45, spotShort: '故宫', spotName: '故宫博物院' });
+  eq(clock.layout().xRatio, 1, '演示从右上贴边默认位开始');
+  eq(clock.layout().yRatio, 0.12, '演示从默认上部位置开始');
+  eq(clock.layout().side, 'right', '演示默认吸附右侧');
   eq(previewView.visible, true, '演示模式立即可见');
   eq(previewView.expanded, true, '演示模式在首页自动展开');
   eq(previewView.spotName, '故宫', '演示景点可识别');
@@ -172,6 +180,8 @@ try {
   eq(clock.recompute().vibrationUnlocked, false, '预留后续视频解锁开关');
   clock.setVibrationUnlocked(true);
   clock.stopPreview();
+  eq(clock.layout().xRatio, 0.2, '结束演示后恢复用户位置');
+  eq(clock.layout().side, 'left', '结束演示后恢复用户吸附侧');
   eq(clock.recompute().visible, false, '结束演示后恢复真实状态');
   eq(clock.vibrationUnlocked(), false, '演示结束后恢复震动锁定');
   eq(clock.vibrationEnabled(), false, '震动开关默认关闭');
@@ -247,6 +257,7 @@ try {
   eq(clockWxml.includes('fc-elapsed'), true, '展开态展示开抢时长');
   eq(clockWxml.includes('fc-spot-hit'), true, '景点名称增加点击热区');
   eq(clockWxml.includes('fc-edge-elapsed-number'), true, '收起态秒数单独竖排');
+  eq(clockComponent.includes('SIDE_GAP=0'), true, '展开态默认可贴齐屏幕边缘');
   const clockWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.wxss'), 'utf8');
   eq(clockWxss.includes('padding-top: 13px'), true, '开抢收起态上内边距增加 2px');
   eq(clockWxss.includes('padding-bottom: 13px'), true, '开抢收起态下内边距增加 2px');
@@ -261,6 +272,12 @@ try {
   eq(clockWxml.includes('>示例</text>'), true, '示例浮窗显示示例标识');
   eq(clockWxml.includes('>关闭演示</view>'), true, '示例浮窗提供关闭演示文字按钮');
   eq(clockWxml.includes('fc-demo-footer'), true, '示例与关闭演示位于浮窗底部');
+  const memberWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership/membership.wxss'), 'utf8');
+  eq(memberWxss.includes('.benefit-row { display: flex; align-items: flex-start;'), true, '三项权益行使用顶部对齐');
+  eq((memberWxml.match(/class="benefit-icon"/g) || []).length, 3, '三项权益图标使用独立对齐容器');
+  eq(memberWxss.includes('.benefit-title {') && memberWxss.includes('line-height: 32rpx;'), true, '权益标题行高与图标尺寸对齐');
+  eq(memberWxss.includes('.clock-benefit-row { align-items: flex-start; }'), true, '悬浮时钟权益保持顶部对齐');
+  eq(memberWxss.includes('.vibration-benefit-row { align-items: flex-start; }'), true, '震动权益保持顶部对齐');
   eq(clockWxml.includes('dockedSpotChars'), true, '贴边态在上方显示景点简称');
   eq(clockWxml.includes("phase === 'after' ? 'is-live'"), true, '开抢二字使用竖排样式');
 } finally {

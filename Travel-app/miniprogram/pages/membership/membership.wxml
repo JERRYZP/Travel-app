@@ -67,14 +67,14 @@
       <text class="section-label">你能得到什么</text>
       <view class="benefit-list">
         <view class="benefit-row">
-          <svg-icon name="check-gold" size="16px" />
+          <view class="benefit-icon"><svg-icon name="check-gold" size="16px" /></view>
           <view class="benefit-copy">
             <text class="benefit-title">会员有效期内不限提醒名额</text>
             <text class="benefit-desc">免费版限{{membership.freeTaskSlots}}个提醒名额；开通会员后，有效期内不限提醒名额。只影响可同时开启的提醒数量</text>
           </view>
         </view>
         <view class="benefit-row clock-benefit-row" bindtap="onFloatingClockToggle" hover-class="clock-benefit-hover">
-          <svg-icon name="clock-gold" size="16px" />
+          <view class="benefit-icon"><svg-icon name="clock-gold" size="16px" /></view>
           <view class="benefit-copy">
             <text class="benefit-title">抢票悬浮时钟</text>
             <view class="benefit-desc-row">
@@ -87,7 +87,7 @@
           </view>
         </view>
         <view class="benefit-row vibration-benefit-row">
-          <svg-icon name="vibration-line" size="16px" />
+          <view class="benefit-icon"><svg-icon name="vibration-line" size="16px" /></view>
           <view class="benefit-copy">
             <text class="benefit-title">开抢倒计时震动提醒</text>
             <text class="benefit-desc">放票前 30 秒、10 秒和开抢时各强震一次，同一事件不重复震动</text>
