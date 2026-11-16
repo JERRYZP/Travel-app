@@ -3,9 +3,9 @@
   class="fc-root {{expanded ? 'is-expanded' : 'is-docked'}} {{dragging ? 'is-dragging' : ''}} phase-{{phase}} dock-{{dockedSide}} {{isDemo ? 'is-demo' : ''}}"
   style="{{rootStyle}}"
   catchtouchstart="onTouchStart"
-  capture-catch:touchmove="onTouchMove"
-  catchtouchend="onTouchEnd"
-  catchtouchcancel="onTouchCancel"
+  catchtouchmove="onTouchMove"
+  bindtouchend="onTouchEnd"
+  bindtouchcancel="onTouchCancel"
   bindtap="onRootTap"
 >
   <view wx:if="{{expanded}}" class="fc-card">
