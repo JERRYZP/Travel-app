@@ -249,6 +249,8 @@ try {
   const clockJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.json'), 'utf8'));
   const detailLayerWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/components/spot-detail-layer/spot-detail-layer.wxml'), 'utf8');
   const detailLayerJs = fs.readFileSync(path.join(ROOT, 'miniprogram/components/spot-detail-layer/spot-detail-layer.js'), 'utf8');
+  const spotPopupWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/components/spot-popup/spot-popup.wxss'), 'utf8');
+  eq(spotPopupWxss.includes('z-index: 240;'), true, '景点详情浮窗层级高于悬浮时钟');
   eq(clockWxml.includes('<spot-detail-layer'), true, '悬浮时钟自带同页景点详情层');
   eq(clockComponent.includes('wx.navigateTo'), false, '无页面详情浮窗时也不得跳转其他页面');
   eq(clockJson.usingComponents['spot-detail-layer'], '/components/spot-detail-layer/spot-detail-layer', '悬浮时钟注册同页详情层');
