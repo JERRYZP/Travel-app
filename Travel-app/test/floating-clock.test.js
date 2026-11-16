@@ -193,6 +193,11 @@ try {
   const homeSource = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.js'), 'utf8');
   eq(homeSource.includes('floatingClock.startPreview'), true, '首页提供演示触发入口');
   eq(homeSource.includes('onFloatingClockSpotOpen'), true, '首页接入景点详情点击');
+  const spotHubSource = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-hub/spot-hub.js'), 'utf8');
+  const spotHubWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-hub/spot-hub.wxml'), 'utf8');
+  eq(spotHubSource.includes('this.openDetail(spotId)'), true, '景点 Tab 的时钟景点名复用当前详情浮窗');
+  eq(spotHubSource.includes('\n    openDetail('), false, '景点 Tab 不得调用未绑定的详情方法');
+  eq(spotHubWxml.includes('<spot-popup'), true, '景点 Tab 使用当前 PAGE-002 浮窗');
   eq(homeSource.includes('floatingClock.testVibration'), true, '首页提供立即震动入口');
   eq(homeSource.includes("g.envVersion === 'develop'"), true, '演示入口仅在开发/预览包显示');
   const clockComponent = fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.js'), 'utf8');
