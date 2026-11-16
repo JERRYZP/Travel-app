@@ -3,7 +3,7 @@
   class="fc-root {{expanded ? 'is-expanded' : 'is-docked'}} {{dragging ? 'is-dragging' : ''}} phase-{{phase}} dock-{{dockedSide}} {{isDemo ? 'is-demo' : ''}}"
   style="{{rootStyle}}"
   bindtouchstart="onTouchStart"
-  catchtouchmove="onTouchMove"
+  capture-catch:touchmove="onTouchMove"
   bindtouchend="onTouchEnd"
   bindtouchcancel="onTouchCancel"
   bindtap="onRootTap"

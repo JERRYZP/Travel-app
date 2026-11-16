@@ -230,7 +230,8 @@ try {
   const clockWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.wxml'), 'utf8');
   eq(clockWxml.includes('bindtouchstart="onTouchStart"'), true, '拖拽起点不拦截点击合成');
   eq(clockWxml.includes('catchtouchstart'), false, '不得用 catchtouchstart 拦截时钟子按钮点击');
-  eq(clockWxml.includes('catchtouchmove="onTouchMove"'), true, '拖拽移动阻断页面下拉');
+  eq(clockWxml.includes('capture-catch:touchmove="onTouchMove"'), true, '捕获阶段阻断页面下拉');
+  eq(clockWxml.includes('bindtouchstart="onTouchStart"'), true, '拖拽起点保留点击合成');
   eq(clockWxml.includes('bindtouchend="onTouchEnd"'), true, '拖拽结束保留点击合成');
   eq(clockWxml.includes('bindtouchcancel="onTouchCancel"'), true, '拖拽取消保留事件冒泡');
   eq(clockWxml.includes('catchtouchend'), false, '不得拦截 touchend 导致子按钮点击失效');
