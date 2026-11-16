@@ -1307,12 +1307,12 @@ async function claimVibrationAd(db, userId, attemptId, nowTs = time.now(), membe
   const id = String(attemptId || '').trim();
   if (!/^[a-f0-9]{40}$/.test(id)) return fail(ERRORS.VIBRATION_AD_SESSION_INVALID);
   return db.runTransaction(async transaction => {
-    const attempt = (await transaction.collection(COLLECTIONS.REWARDED_AD_ATTEMPTS)
-      .where({ _id: id }).limit(1).get()).data[0];
+    const attempt = docDataOf(await transaction.collection(COLLECTIONS.REWARDED_AD_ATTEMPTS)
+      .where({ _id: id }).limit(1).get());
     if (!attempt || attempt.userId !== userId || attempt.purpose !== VIBRATION_AD_PURPOSE) {
       return fail(ERRORS.VIBRATION_AD_SESSION_INVALID);
     }
-    const user = (await transaction.collection(COLLECTIONS.USERS).doc(attempt.userDocumentId).get()).data[0];
+    const user = docDataOf(await transaction.collection(COLLECTIONS.USERS).doc(attempt.userDocumentId).get());
     if (!user || !isMemberAt(user, nowTs)) return fail(ERRORS.VIBRATION_AD_MEMBER_ONLY);
     const tier = effectiveMemberTierOf(user, nowTs);
     if (tier === MemberTier.QUOTA_10) return fail(ERRORS.VIBRATION_AD_MEMBER_ONLY);

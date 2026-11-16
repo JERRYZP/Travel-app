@@ -777,6 +777,16 @@ async function run() {
   const missingDocStart = await membership.startVibrationAd(db, USER, undefined, ['two-tier-v5']);
   eq(missingDocStart.success, true, '真实云缺失凭证文档时可正常创建广告凭证');
 
+  db = createDb({ cloudDocGetObject: true });
+  seedUser(db, {
+    memberLevel: MemberLevel.MEMBER,
+    memberTier: membership.MemberTier.UNLIMITED,
+    memberExpiresAt: new Date(Date.now() + 30 * DAY_MS),
+  });
+  const objectDocStart = await membership.startVibrationAd(db, USER, undefined, ['two-tier-v5']);
+  const objectDocClaim = await membership.claimVibrationAd(db, USER, objectDocStart.attemptId, undefined, ['two-tier-v5']);
+  eq(objectDocClaim.success, true, '真实云事务 doc.get 返回对象时可正常领取');
+
   db = createDb();
   const unlockExpiresAt = new Date(Date.now() + 30 * DAY_MS);
   seedUser(db, {

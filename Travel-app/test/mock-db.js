@@ -69,6 +69,7 @@ function createDb(options = {}) {
   const store = new Map(); // collectionName -> Map(id -> doc)
   const cloudGetOnMissing = options.cloudGetOnMissing === true;
   const cloudSetRejectsId = options.cloudSetRejectsId === true;
+  const cloudDocGetObject = options.cloudDocGetObject === true;
   const missingCollections = new Set(options.missingCollections || []);
 
   function assertSetDataIsWritable(data) {
@@ -146,7 +147,7 @@ function createDb(options = {}) {
             err.errCode = 1500;
             throw err;
           }
-          return { data: d ? [{ ...d }] : [] };
+          return { data: cloudDocGetObject ? (d ? { ...d } : null) : (d ? [{ ...d }] : []) };
         },
         set: async ({ data }) => {
           assertSetDataIsWritable(data);
@@ -200,7 +201,7 @@ function createDb(options = {}) {
                 err.errCode = 1500;
                 throw err;
               }
-              return { data: d ? [{ ...d }] : [] };
+              return { data: cloudDocGetObject ? (d ? { ...d } : null) : (d ? [{ ...d }] : []) };
             },
             set: async ({ data }) => {
               assertSetDataIsWritable(data);
