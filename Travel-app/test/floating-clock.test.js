@@ -75,7 +75,8 @@ try {
   eq(liveView.openedElapsedText, '5s', '开抢后显示已开抢时长');
   eq(liveView.spotId, 'gugong', '浮窗携带可点击景点 ID');
   eq(liveView.dockedCountdownNumber, '开抢', '收起态保留开抢文案');
-  eq(liveView.dockedCountdownUnit, '5s', '收起态竖排显示开抢时长');
+  eq(liveView.dockedElapsedNumber, '5', '收起态显示开抢秒数');
+  eq(liveView.dockedCountdownUnit, 's', '收起态秒单位单独展示');
 
   console.log('=== 3. 首页自动展开、关闭贴边、下一场重新展开 ===');
   clock.resetForTest();
@@ -227,10 +228,14 @@ try {
   eq(memberJs.includes("text: '悬浮时钟展示放票倒计时', isNew: true"), true, '4.9 套餐放票倒计时展示带 New 标签');
   const clockWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.wxml'), 'utf8');
   eq(clockWxml.includes('bindtap="onClose"'), true, '关闭按钮绑定点击事件');
+  eq(clockWxml.includes('name="chevron-up"'), true, '关闭按钮使用收起图标');
+  eq(clockWxml.includes('>收起</text>'), true, '关闭按钮显示收起文案');
   eq(clockWxml.includes('bindtap="onOpen"'), true, '贴边入口绑定展开事件');
   eq(clockWxml.includes('fc-edge-number'), true, '贴边态展示秒级数字');
   eq(clockWxml.includes('fc-edge-unit'), true, '贴边态展示小 s 单位');
   eq(clockWxml.includes('fc-elapsed'), true, '展开态展示开抢时长');
+  eq(clockWxml.includes('fc-spot-hit'), true, '景点名称增加点击热区');
+  eq(clockWxml.includes('fc-edge-elapsed-number'), true, '收起态秒数单独竖排');
   eq(clockWxml.includes('bindtap="onSpotTap"'), true, '景点名可点击打开详情');
   eq(clockWxml.includes('开抢中 '), true, '开抢后使用开抢中文案');
   eq(clockWxml.includes('{{spotName}} >'), true, '开抢后景点名右侧显示箭头');

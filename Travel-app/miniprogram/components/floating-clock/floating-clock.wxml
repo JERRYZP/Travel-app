@@ -11,7 +11,7 @@
   <view wx:if="{{expanded}}" class="fc-card">
     <view class="fc-topline">
       <view class="fc-live"><view class="fc-dot"></view><text>北京抢票时间</text></view>
-      <view class="fc-close" bindtap="onClose" aria-role="button" aria-label="收起悬浮时钟"><view></view><view></view></view>
+      <view class="fc-collapse" bindtap="onClose" aria-role="button" aria-label="收起悬浮时钟"><svg-icon name="chevron-up" size="12px" /><text>收起</text></view>
     </view>
     <view class="fc-clock"><text>{{clockMain}}</text><text class="fc-millis">{{clockMillis}}</text></view>
     <view class="fc-release">
@@ -20,12 +20,12 @@
           <svg-icon name="clock-gold" size="12px" />
           <block wx:if="{{phase === 'before'}}">
             <text class="fc-status-prefix">距 </text>
-            <text class="fc-spot-link" bindtap="onSpotTap" aria-role="button" aria-label="查看景点详情">{{spotName}}</text>
+            <view class="fc-spot-hit" bindtap="onSpotTap" aria-role="button" aria-label="查看景点详情"><text class="fc-spot-link">{{spotName}}</text></view>
             <text class="fc-status-prefix"> 开抢</text>
           </block>
           <block wx:else>
             <text class="fc-status-prefix">开抢中 </text>
-            <text class="fc-spot-link" bindtap="onSpotTap" aria-role="button" aria-label="查看景点详情">{{spotName}} ></text>
+            <view class="fc-spot-hit" bindtap="onSpotTap" aria-role="button" aria-label="查看景点详情"><text class="fc-spot-link">{{spotName}} ></text></view>
           </block>
         </view>
         <view class="fc-countdown-wrap">
@@ -54,7 +54,11 @@
     <view class="fc-edge-title"><text>抢</text><text>票</text></view>
     <view class="fc-edge-time {{phase === 'after' ? 'is-live' : ''}}">
       <text class="fc-edge-number">{{dockedCountdownNumber}}</text>
-      <text wx:if="{{dockedCountdownUnit}}" class="fc-edge-unit">{{dockedCountdownUnit}}</text>
+      <view wx:if="{{phase === 'after'}}" class="fc-edge-elapsed">
+        <text class="fc-edge-elapsed-number">{{dockedElapsedNumber}}</text>
+        <text class="fc-edge-elapsed-unit">{{dockedCountdownUnit}}</text>
+      </view>
+      <text wx:else class="fc-edge-unit">{{dockedCountdownUnit}}</text>
     </view>
   </view>
 </view>
