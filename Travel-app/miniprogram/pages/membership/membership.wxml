@@ -79,8 +79,11 @@
             <text class="benefit-title">抢票悬浮时钟</text>
             <text class="benefit-desc">放票前 10 分钟自动出现，支持拖动；关闭后收至屏幕边缘，可随时展开</text>
           </view>
-          <view class="clock-switch {{floatingClockEnabled ? 'on' : ''}}" aria-role="switch" aria-checked="{{floatingClockEnabled}}">
-            <view class="clock-switch-knob"></view>
+          <view class="clock-benefit-actions">
+            <text class="clock-demo-link" catchtap="onFloatingClockDemo">查看示例</text>
+            <view class="clock-switch {{floatingClockEnabled ? 'on' : ''}}" aria-role="switch" aria-checked="{{floatingClockEnabled}}">
+              <view class="clock-switch-knob"></view>
+            </view>
           </view>
         </view>
         <view class="benefit-row vibration-benefit-row">

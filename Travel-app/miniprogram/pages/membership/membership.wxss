@@ -138,6 +138,8 @@
 }
 
 .clock-benefit-row { align-items: center; }
+.clock-benefit-actions { display: flex; align-items: center; gap: 14rpx; flex-shrink: 0; }
+.clock-demo-link { color: #8A642C; font-size: 20rpx; text-decoration: underline; text-underline-offset: 4rpx; }
 .clock-benefit-hover { background: #FCF7ED; }
 .clock-switch {
   position: relative;

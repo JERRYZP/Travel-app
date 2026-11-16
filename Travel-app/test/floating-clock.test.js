@@ -150,6 +150,7 @@ try {
   eq(/^00:45/.test(previewView.countdownText), true, '演示倒计时在 1 分钟内');
   eq(/^4[45]$/.test(previewView.dockedCountdownNumber), true, '贴边态显示秒级数字');
   eq(previewView.dockedCountdownUnit, 's', '贴边态显示小 s 秒单位');
+  eq(previewView.isDemo, true, '验收模式标记为示例');
   eq(previewView.vibrationUnlocked, true, '开发预览临时解锁震动');
   const beforeVibrate = vibrateCalls;
   eq(clock.vibrateCue(30), true, 'T-30 秒提供强震');
@@ -163,6 +164,11 @@ try {
   eq(clock.recompute().visible, false, '结束演示后恢复真实状态');
   eq(clock.vibrationUnlocked(), false, '演示结束后恢复震动锁定');
   eq(clock.vibrationEnabled(), false, '震动开关默认关闭');
+  clock.setActivePage('member-page', false);
+  const memberDemo = clock.startPreview({ secondsBefore: 45, expand: true, spotShort: '故宫' });
+  eq(memberDemo.isDemo, true, '会员页示例复用演示状态');
+  eq(memberDemo.expanded, true, '会员页示例强制展开');
+  clock.stopPreview();
   const homeSource = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.js'), 'utf8');
   eq(homeSource.includes('floatingClock.startPreview'), true, '首页提供演示触发入口');
   eq(homeSource.includes('floatingClock.testVibration'), true, '首页提供立即震动入口');
@@ -202,6 +208,8 @@ try {
   eq(memberWxml.includes('放票前 30 秒、10 秒和开抢时各强震一次'), true, '会员页单独说明震动权益');
   eq(memberWxml.includes('看视频解锁震动功能'), true, '会员页提供视频解锁按钮');
   eq(memberWxml.includes('name="bell-line"'), true, '震动权益使用线性图标');
+  eq(memberWxml.includes('onFloatingClockDemo'), true, '悬浮时钟权益提供查看示例');
+  eq(memberJs.includes('expand: true'), true, '会员页示例复用 45 秒展开演示');
   eq(memberWxml.includes('package-benefit-mark'), true, '套餐权益带圆点标识');
   eq(memberWxml.includes('name="lock"'), true, '震动开关默认带锁');
   eq(memberJs.includes("text: '悬浮时钟展示放票倒计时', isNew: true"), true, '4.9 套餐放票倒计时展示带 New 标签');
@@ -213,6 +221,9 @@ try {
   eq(clockWxml.includes('fc-edge-title'), true, '贴边态竖排展示抢票');
   eq(clockWxml.includes('name="clock-gold"'), true, '倒计时使用线性时钟图标');
   eq(clockWxml.includes('phase-{{phase}}'), true, '开抢时切换浮窗状态样式');
+  eq(clockWxml.includes('>示例</text>'), true, '示例浮窗显示示例标识');
+  eq(clockWxml.includes('>关闭演示</view>'), true, '示例浮窗提供关闭演示文字按钮');
+  eq(clockWxml.includes('dockedSpotChars'), true, '贴边态在上方显示景点简称');
 } finally {
   clock.resetForTest();
   Date.now = realNow;

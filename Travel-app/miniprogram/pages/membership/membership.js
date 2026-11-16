@@ -177,11 +177,13 @@ Page({
   onHide() {
     this._pageVisible = false;
     this.stopAutoRefresh(false);
+    this.stopFloatingClockDemo();
   },
 
   onUnload() {
     this._pageVisible = false;
     this.stopAutoRefresh(false);
+    this.stopFloatingClockDemo();
   },
 
   onPullDownRefresh() {
@@ -484,6 +486,22 @@ Page({
       visiblePackages: this.markPackages(this.data.visiblePackages, id),
       payButtonText: this.payButtonOf(selectedPackage, this.data.membership),
     });
+  },
+
+  onFloatingClockDemo() {
+    this._membershipDemoActive = true;
+    floatingClock.startPreview({
+      secondsBefore: 45,
+      expand: true,
+      spotShort: '故宫',
+      spotName: '故宫博物院',
+    });
+  },
+
+  stopFloatingClockDemo() {
+    if (!this._membershipDemoActive) return;
+    this._membershipDemoActive = false;
+    floatingClock.stopPreview();
   },
 
   onFloatingClockToggle() {
