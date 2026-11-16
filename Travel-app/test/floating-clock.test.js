@@ -72,6 +72,7 @@ try {
     vibrationUnlocked: true, vibrationEnabled: true,
   });
   eq(liveView.openedElapsedText, '5s', '开抢后显示已开抢时长');
+  eq(liveView.spotId, 'gugong', '浮窗携带可点击景点 ID');
   eq(liveView.dockedCountdownNumber, '开抢', '收起态保留开抢文案');
   eq(liveView.dockedCountdownUnit, '5s', '收起态竖排显示开抢时长');
 
@@ -179,6 +180,7 @@ try {
   clock.stopPreview();
   const homeSource = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.js'), 'utf8');
   eq(homeSource.includes('floatingClock.startPreview'), true, '首页提供演示触发入口');
+  eq(homeSource.includes('onFloatingClockSpotOpen'), true, '首页接入景点详情点击');
   eq(homeSource.includes('floatingClock.testVibration'), true, '首页提供立即震动入口');
   eq(homeSource.includes("g.envVersion === 'develop'"), true, '演示入口仅在开发/预览包显示');
   const clockComponent = fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.js'), 'utf8');
@@ -204,7 +206,7 @@ try {
   });
   eq(missing.length, 0, '全部正式用户页面挂载组件');
   const homeWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxml'), 'utf8');
-  eq(/<floating-clock id="floatingClock" home-page="\{\{true\}\}" \/>/.test(homeWxml), true, '首页声明自动展开');
+  eq(homeWxml.includes('id="floatingClock"') && homeWxml.includes('home-page="{{true}}"'), true, '首页声明自动展开');
   excluded.forEach(page => {
     const wxml = fs.readFileSync(path.join(ROOT, 'miniprogram', `${page}.wxml`), 'utf8');
     eq(wxml.includes('<floating-clock'), false, `${page} 不挂载`);
@@ -228,6 +230,9 @@ try {
   eq(clockWxml.includes('fc-edge-number'), true, '贴边态展示秒级数字');
   eq(clockWxml.includes('fc-edge-unit'), true, '贴边态展示小 s 单位');
   eq(clockWxml.includes('fc-elapsed'), true, '展开态展示开抢时长');
+  eq(clockWxml.includes('bindtap="onSpotTap"'), true, '景点名可点击打开详情');
+  eq(clockWxml.includes('开抢中 '), true, '开抢后使用开抢中文案');
+  eq(clockWxml.includes('{{spotName}} >'), true, '开抢后景点名右侧显示箭头');
   eq(clockWxml.includes('fc-demo-footer'), true, '示例信息位于底部');
   eq(clockWxml.includes('fc-edge-title'), true, '贴边态竖排展示抢票');
   eq(clockWxml.includes('name="clock-gold"'), true, '倒计时使用线性时钟图标');

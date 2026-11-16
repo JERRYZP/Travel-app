@@ -272,6 +272,11 @@ Page({
     if (this._reminderAuthResolve) reminderFlow.refreshReminderAuth(this);
   },
 
+  onFloatingClockSpotOpen(e) {
+    const spotId = e && e.detail && e.detail.spotId;
+    if (spotId) this.openSpotPopup(spotId);
+  },
+
   onFloatingClockPreview() {
     floatingClock.startPreview({ secondsBefore: 45, spotShort: '故宫', spotName: '故宫博物院' });
     this.setData({ floatingClockPreviewActive: true });

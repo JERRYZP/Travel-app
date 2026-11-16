@@ -169,4 +169,4 @@
   bind:reselect="onReminderAuthReselect"
 />
 
-<floating-clock />
+<floating-clock spot-popup-mode="{{true}}" bind:spotopen="onFloatingClockSpotOpen" />

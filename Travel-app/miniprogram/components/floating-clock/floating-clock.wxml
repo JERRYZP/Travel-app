@@ -18,7 +18,15 @@
       <view class="fc-release-main">
         <view class="fc-status-wrap">
           <svg-icon name="clock-gold" size="12px" />
-          <text class="fc-status">{{statusText}}</text>
+          <block wx:if="{{phase === 'before'}}">
+            <text class="fc-status-prefix">距 </text>
+            <text class="fc-spot-link" bindtap="onSpotTap" aria-role="button" aria-label="查看景点详情">{{spotName}}</text>
+            <text class="fc-status-prefix"> 开抢</text>
+          </block>
+          <block wx:else>
+            <text class="fc-status-prefix">开抢中 </text>
+            <text class="fc-spot-link" bindtap="onSpotTap" aria-role="button" aria-label="查看景点详情">{{spotName}} ></text>
+          </block>
         </view>
         <view class="fc-countdown-wrap">
           <text class="fc-countdown {{phase === 'after' ? 'is-live' : ''}}">{{countdownText}}</text>

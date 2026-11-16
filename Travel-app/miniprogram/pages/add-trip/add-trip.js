@@ -484,6 +484,12 @@ Page({
     this.setData({ showSpotPopup: true, popupSpotId: e.currentTarget.dataset.id });
   },
 
+  onFloatingClockSpotOpen(e) {
+    const spotId = e && e.detail && e.detail.spotId;
+    if (!spotId) return;
+    this.setData({ showSpotPopup: true, popupSpotId: spotId });
+  },
+
   onSpotPopupClose() {
     this.setData({ showSpotPopup: false });
   },

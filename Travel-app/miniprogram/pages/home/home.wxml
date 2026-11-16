@@ -402,4 +402,4 @@
 <!-- 底部导航 -->
 <tabbar active="home" />
 
-<floating-clock id="floatingClock" home-page="{{true}}" />
+<floating-clock id="floatingClock" home-page="{{true}}" spot-popup-mode="{{true}}" bind:spotopen="onFloatingClockSpotOpen" />

@@ -166,6 +166,12 @@ Page({
     if (spot) this.setData({ popupSpotMeta: spot });
   },
 
+  onFloatingClockSpotOpen(e) {
+    const spotId = e && e.detail && e.detail.spotId;
+    if (!spotId) return;
+    this.setData({ showSpotPopup: true, popupSpotId: spotId, popupSpotMeta: null });
+  },
+
   onSpotPopupClose() {
     this.setData({ showSpotPopup: false, popupSpotId: '', popupSpotMeta: null });
   },

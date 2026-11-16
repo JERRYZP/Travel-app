@@ -417,6 +417,12 @@ Page({
     }
   },
 
+  onFloatingClockSpotOpen(e) {
+    const spotId = e && e.detail && e.detail.spotId;
+    if (!spotId) return;
+    openDetail(e && e.detail && e.detail.spotId);
+  },
+
   onSpotPopupClose() {
     this.setData({ showSpotPopup: false, popupSpotId: '', popupSpotMeta: null });
   },

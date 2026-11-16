@@ -181,6 +181,12 @@ Page({
   },
 
   onSpotNameTap(e) { this.setData({ showSpotPopup: true, popupSpotId: e.currentTarget.dataset.id }); },
+  onFloatingClockSpotOpen(e) {
+    const spotId = e && e.detail && e.detail.spotId;
+    if (!spotId) return;
+    this.setData({ showSpotPopup: true, popupSpotId: spotId });
+  },
+
   onSpotPopupClose() { this.setData({ showSpotPopup: false }); },
 
   /* 详情浮窗按钮：设置提醒 / 仅加行程不提醒 → 日期与授权浮层。 */
