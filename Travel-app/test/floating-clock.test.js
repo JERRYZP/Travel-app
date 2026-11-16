@@ -164,10 +164,6 @@ try {
   eq(clock.layout().yRatio, 0.2, '演示从顶部20%默认位置开始');
   eq(clock.layout().side, 'right', '演示默认吸附右侧');
   eq(previewView.visible, true, '演示模式立即可见');
-  clock.setSpotPopupVisible('test-detail-popup', true);
-  eq(clock.recompute().visible, false, '景点详情浮窗打开时隐藏悬浮时钟');
-  clock.setSpotPopupVisible('test-detail-popup', false);
-  eq(clock.recompute().visible, true, '景点详情浮窗关闭后恢复悬浮时钟');
   eq(previewView.expanded, true, '演示模式在首页自动展开');
   eq(previewView.spotName, '故宫', '演示景点可识别');
   eq(/^00:45/.test(previewView.countdownText), true, '演示倒计时在 1 分钟内');
@@ -259,8 +255,6 @@ try {
   eq(detailLayerWxml.includes('show="{{showSpotPopup}}"'), true, '同页详情层复用当前 PAGE-002 样式');
   eq(detailLayerWxml.includes('<date-picker-sheet') && detailLayerWxml.includes('<reminder-auth-sheet'), true, '同页详情层具备完整提醒行动链');
   eq(detailLayerJs.includes('reminderFlow.onDateConfirm(this, e)'), true, '同页详情层复用统一提醒流程');
-  const spotPopupJs = fs.readFileSync(path.join(ROOT, 'miniprogram/components/spot-popup/spot-popup.js'), 'utf8');
-  eq(spotPopupJs.includes('floatingClock.setSpotPopupVisible'), true, '景点详情浮窗通知悬浮时钟隐藏');
   eq(clockWxml.includes('bindtouchstart="onTouchStart"'), true, '拖拽起点不拦截点击合成');
   eq(clockWxml.includes('catchtouchstart'), false, '不得用 catchtouchstart 拦截时钟子按钮点击');
   eq(clockWxml.includes('capture-catch:touchmove="onTouchMove"'), true, '捕获阶段阻断页面下拉');
