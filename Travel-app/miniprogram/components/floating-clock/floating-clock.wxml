@@ -65,3 +65,9 @@
     </view>
   </view>
 </view>
+
+<spot-detail-layer
+  show="{{spotDetailShow}}"
+  spot-id="{{spotDetailId}}"
+  bind:close="onSpotDetailClose"
+/>

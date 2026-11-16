@@ -2,6 +2,7 @@
   "component": true,
   "styleIsolation": "apply-shared",
   "usingComponents": {
-    "svg-icon": "/components/svg-icon/svg-icon"
+    "svg-icon": "/components/svg-icon/svg-icon",
+    "spot-detail-layer": "/components/spot-detail-layer/spot-detail-layer"
   }
 }

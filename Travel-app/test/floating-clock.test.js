@@ -246,6 +246,15 @@ try {
   eq(memberWxml.includes('name="lock"'), true, '震动开关默认带锁');
   eq(memberJs.includes('悬浮时钟展示放票倒计时') && (memberJs.includes('isNew:!0') || memberJs.includes('isNew: true')), true, '4.9 套餐放票倒计时展示带 New 标签');
   const clockWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.wxml'), 'utf8');
+  const clockJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.json'), 'utf8'));
+  const detailLayerWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/components/spot-detail-layer/spot-detail-layer.wxml'), 'utf8');
+  const detailLayerJs = fs.readFileSync(path.join(ROOT, 'miniprogram/components/spot-detail-layer/spot-detail-layer.js'), 'utf8');
+  eq(clockWxml.includes('<spot-detail-layer'), true, '悬浮时钟自带同页景点详情层');
+  eq(clockComponent.includes('wx.navigateTo'), false, '无页面详情浮窗时也不得跳转其他页面');
+  eq(clockJson.usingComponents['spot-detail-layer'], '/components/spot-detail-layer/spot-detail-layer', '悬浮时钟注册同页详情层');
+  eq(detailLayerWxml.includes('show="{{showSpotPopup}}"'), true, '同页详情层复用当前 PAGE-002 样式');
+  eq(detailLayerWxml.includes('<date-picker-sheet') && detailLayerWxml.includes('<reminder-auth-sheet'), true, '同页详情层具备完整提醒行动链');
+  eq(detailLayerJs.includes('reminderFlow.onDateConfirm(this, e)'), true, '同页详情层复用统一提醒流程');
   eq(clockWxml.includes('bindtouchstart="onTouchStart"'), true, '拖拽起点不拦截点击合成');
   eq(clockWxml.includes('catchtouchstart'), false, '不得用 catchtouchstart 拦截时钟子按钮点击');
   eq(clockWxml.includes('capture-catch:touchmove="onTouchMove"'), true, '捕获阶段阻断页面下拉');
