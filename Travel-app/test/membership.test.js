@@ -768,6 +768,15 @@ async function run() {
   eq(quotaAdStart.success, false, '3 元档不能创建震动广告凭证');
   eq(quotaAdStart.errorCode, 1047, '3 元档返回会员资格错误');
 
+  db = createDb({ cloudGetOnMissing: true });
+  seedUser(db, {
+    memberLevel: MemberLevel.MEMBER,
+    memberTier: membership.MemberTier.UNLIMITED,
+    memberExpiresAt: new Date(Date.now() + 30 * DAY_MS),
+  });
+  const missingDocStart = await membership.startVibrationAd(db, USER, undefined, ['two-tier-v5']);
+  eq(missingDocStart.success, true, '真实云缺失凭证文档时可正常创建广告凭证');
+
   db = createDb();
   const unlockExpiresAt = new Date(Date.now() + 30 * DAY_MS);
   seedUser(db, {

@@ -1281,7 +1281,8 @@ async function startVibrationAd(db, userId, nowTs = time.now(), membershipCapabi
     .update(`${userId}|${VIBRATION_AD_PURPOSE}|${memberExpiresMs}`)
     .digest('hex').slice(0, 40);
   const ref = db.collection(COLLECTIONS.REWARDED_AD_ATTEMPTS).doc(attemptId);
-  const existing = (await ref.get()).data[0];
+  const existing = (await db.collection(COLLECTIONS.REWARDED_AD_ATTEMPTS)
+    .where({ _id: attemptId }).limit(1).get()).data[0];
   const nowMs = new Date(nowTs).getTime();
   if (existing && existing.status === 'PENDING' && timestampMsOf(existing.expiresAt) > nowMs) {
     return ok({ attemptId, adUnitId: VIBRATION_AD_UNIT_ID, expiresAt: existing.expiresAt });
@@ -1306,7 +1307,8 @@ async function claimVibrationAd(db, userId, attemptId, nowTs = time.now(), membe
   const id = String(attemptId || '').trim();
   if (!/^[a-f0-9]{40}$/.test(id)) return fail(ERRORS.VIBRATION_AD_SESSION_INVALID);
   return db.runTransaction(async transaction => {
-    const attempt = (await transaction.collection(COLLECTIONS.REWARDED_AD_ATTEMPTS).doc(id).get()).data[0];
+    const attempt = (await transaction.collection(COLLECTIONS.REWARDED_AD_ATTEMPTS)
+      .where({ _id: id }).limit(1).get()).data[0];
     if (!attempt || attempt.userId !== userId || attempt.purpose !== VIBRATION_AD_PURPOSE) {
       return fail(ERRORS.VIBRATION_AD_SESSION_INVALID);
     }
