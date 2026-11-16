@@ -2,7 +2,7 @@
   wx:if="{{visible}}"
   class="fc-root {{expanded ? 'is-expanded' : 'is-docked'}} {{dragging ? 'is-dragging' : ''}} phase-{{phase}} dock-{{dockedSide}} {{isDemo ? 'is-demo' : ''}}"
   style="{{rootStyle}}"
-  catchtouchstart="onTouchStart"
+  bindtouchstart="onTouchStart"
   catchtouchmove="onTouchMove"
   bindtouchend="onTouchEnd"
   bindtouchcancel="onTouchCancel"

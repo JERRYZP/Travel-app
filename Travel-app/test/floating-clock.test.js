@@ -228,11 +228,15 @@ try {
   eq(memberWxml.includes('name="lock"'), true, '震动开关默认带锁');
   eq(memberJs.includes("text: '悬浮时钟展示放票倒计时', isNew: true"), true, '4.9 套餐放票倒计时展示带 New 标签');
   const clockWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.wxml'), 'utf8');
-  eq(clockWxml.includes('catchtouchstart="onTouchStart"'), true, '拖拽起点拦截页面手势');
+  eq(clockWxml.includes('bindtouchstart="onTouchStart"'), true, '拖拽起点不拦截点击合成');
+  eq(clockWxml.includes('catchtouchstart'), false, '不得用 catchtouchstart 拦截时钟子按钮点击');
   eq(clockWxml.includes('catchtouchmove="onTouchMove"'), true, '拖拽移动阻断页面下拉');
   eq(clockWxml.includes('bindtouchend="onTouchEnd"'), true, '拖拽结束保留点击合成');
   eq(clockWxml.includes('bindtouchcancel="onTouchCancel"'), true, '拖拽取消保留事件冒泡');
   eq(clockWxml.includes('catchtouchend'), false, '不得拦截 touchend 导致子按钮点击失效');
+  eq(clockComponent.includes('wx.setPageStyle'), true, '拖拽期间临时锁定页面滚动');
+  eq(clockComponent.includes('setPageScrollLock(!0)'), true, '拖拽开始锁页面');
+  eq(clockComponent.includes('onTouchEnd(){setPageScrollLock(!1)'), true, '拖拽结束恢复页面滚动');
   eq(clockWxml.includes('bindtap="onClose"'), true, '关闭按钮绑定点击事件');
   eq(clockWxml.includes('fc-collapse-arrow'), true, '关闭按钮使用右箭头收起图标');
   eq(clockWxml.includes('>收起</text>'), true, '关闭按钮显示收起文案');
