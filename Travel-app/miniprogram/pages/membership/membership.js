@@ -439,7 +439,7 @@ Page({
       return {
         ...item,
         _optionTitle: item.unlimited
-          ? '不限提醒名额'
+          ? '不限提醒名额+悬浮抢票时钟'
           : `${slots} 个提醒名额`,
         _optionDesc: benefits.map(benefit => benefit.text).join('；'),
         _benefits: benefits,

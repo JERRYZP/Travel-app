@@ -60,7 +60,7 @@ try {
 
   const defaultLayout = clock.normalizeLayout();
   eq(defaultLayout.xRatio, 1, '默认横向位置靠右且切边');
-  eq(defaultLayout.yRatio, 0.12, '默认纵向位置位于上部');
+  eq(defaultLayout.yRatio, 0.2, '默认纵向位置距顶部20%');
   eq(defaultLayout.side, 'right', '默认停在右侧');
   console.log('=== 2. 前 10 分钟边界和放票后 1 分钟 ===');
   const event = clock.eventRecordsFromHome(home)[0];
@@ -161,7 +161,7 @@ try {
   clock.updateLayout({ xRatio: 0.2, yRatio: 0.7, side: 'left' });
   const previewView = clock.startPreview({ secondsBefore: 45, spotShort: '故宫', spotName: '故宫博物院' });
   eq(clock.layout().xRatio, 1, '演示从右上贴边默认位开始');
-  eq(clock.layout().yRatio, 0.12, '演示从默认上部位置开始');
+  eq(clock.layout().yRatio, 0.2, '演示从顶部20%默认位置开始');
   eq(clock.layout().side, 'right', '演示默认吸附右侧');
   eq(previewView.visible, true, '演示模式立即可见');
   eq(previewView.expanded, true, '演示模式在首页自动展开');
