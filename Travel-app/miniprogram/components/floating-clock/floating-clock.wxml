@@ -20,7 +20,10 @@
           <svg-icon name="clock-gold" size="12px" />
           <text class="fc-status">{{statusText}}</text>
         </view>
-        <text class="fc-countdown {{phase === 'after' ? 'is-live' : ''}}">{{countdownText}}</text>
+        <view class="fc-countdown-wrap">
+          <text class="fc-countdown {{phase === 'after' ? 'is-live' : ''}}">{{countdownText}}</text>
+          <text wx:if="{{openedElapsedText}}" class="fc-elapsed">{{openedElapsedText}}</text>
+        </view>
       </view>
       <view class="fc-meta">
         <text>{{releaseTime}} 放票</text>

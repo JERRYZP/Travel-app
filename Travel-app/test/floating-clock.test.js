@@ -66,6 +66,14 @@ try {
   eq(clock.windowPhaseOf(group, group.releaseAtMs), 'after', '到点进入开抢态');
   eq(clock.windowPhaseOf(group, group.endMs - 1), 'after', '放票后 30 秒内保留');
   eq(clock.windowPhaseOf(group, group.endMs), 'hidden', '放票满 30 秒结束');
+  const liveView = clock.makeViewModel({
+    events: [event], nowMs: group.releaseAtMs + 5500, entitled: true, enabled: true,
+    expanded: true, dismissedKeys: [], timeSynced: true, activeHome: true,
+    vibrationUnlocked: true, vibrationEnabled: true,
+  });
+  eq(liveView.openedElapsedText, '5s', '开抢后显示已开抢时长');
+  eq(liveView.dockedCountdownNumber, '开抢', '收起态保留开抢文案');
+  eq(liveView.dockedCountdownUnit, '5s', '收起态竖排显示开抢时长');
 
   console.log('=== 3. 首页自动展开、关闭贴边、下一场重新展开 ===');
   clock.resetForTest();
@@ -219,6 +227,8 @@ try {
   eq(clockWxml.includes('bindtap="onOpen"'), true, '贴边入口绑定展开事件');
   eq(clockWxml.includes('fc-edge-number'), true, '贴边态展示秒级数字');
   eq(clockWxml.includes('fc-edge-unit'), true, '贴边态展示小 s 单位');
+  eq(clockWxml.includes('fc-elapsed'), true, '展开态展示开抢时长');
+  eq(clockWxml.includes('fc-demo-footer'), true, '示例信息位于底部');
   eq(clockWxml.includes('fc-edge-title'), true, '贴边态竖排展示抢票');
   eq(clockWxml.includes('name="clock-gold"'), true, '倒计时使用线性时钟图标');
   eq(clockWxml.includes('phase-{{phase}}'), true, '开抢时切换浮窗状态样式');
