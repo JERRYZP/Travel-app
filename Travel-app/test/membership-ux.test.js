@@ -1023,8 +1023,8 @@ async function run() {
   global.wx = adOriginalWx;
 
   const markedFloatingPackages = membershipDef.markPackages(serverPackages, 'member_unlimited');
-  eq(markedFloatingPackages[1]._optionTitle, '不限提醒名额+悬浮抢票时钟', '4.9 标题包含悬浮抢票时钟');
-  eq(markedFloatingPackages[2]._optionTitle, '不限提醒名额+悬浮抢票时钟', '1.9 升级标题包含悬浮抢票时钟');
+  eq(markedFloatingPackages[1]._optionTitle, '不限提醒名额 + 悬浮抢票时钟', '4.9 标题包含悬浮抢票时钟');
+  eq(markedFloatingPackages[2]._optionTitle, '不限提醒名额 + 悬浮抢票时钟', '1.9 升级标题包含悬浮抢票时钟');
   eq(markedFloatingPackages[1]._benefits[1].text, '悬浮时钟展示放票倒计时', '4.9 第二项权益为放票倒计时');
   eq(markedFloatingPackages[1]._benefits[1].isNew, true, '4.9 第二项权益带 New');
   eq(markedFloatingPackages[1]._benefits[1].showDemo, true, '4.9 第二项权益带查看示例');
