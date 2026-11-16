@@ -21,6 +21,7 @@ const COLLECTIONS = {
   ADMIN_AUDIT_LOGS: 'admin_audit_logs',
   PAYMENT_CONFIG: 'payment_config',
   USER_RUNTIME: 'user_runtime',
+  REWARDED_AD_ATTEMPTS: 'rewarded_ad_attempts',
 };
 
 /** ENUM-001 行程状态 */
@@ -159,6 +160,8 @@ const ERRORS = {
   REFUND_NOT_ELIGIBLE: { code: 1029, message: '当前订单暂不符合退款申请条件' },
   CASE_NOT_FOUND: { code: 1030, message: '售后记录不存在' },
   FORBIDDEN: { code: 1040, message: '无权限' },
+  VIBRATION_AD_MEMBER_ONLY: { code: 1047, message: '仅不限额度会员可解锁震动功能' },
+  VIBRATION_AD_SESSION_INVALID: { code: 1048, message: '广告凭证无效或已过期' },
   BAD_PARAM: { code: 1010, message: '参数不合法' },
   UNKNOWN_ACTION: { code: 1099, message: 'unknown action' },
 };

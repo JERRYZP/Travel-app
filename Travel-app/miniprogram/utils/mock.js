@@ -18,6 +18,7 @@ const db = {
   orders: {},
   membershipCredits: {},
   afterSalesCases: {},
+  vibrationAdAttempts: {},
   paymentConfig: {
     membership_sales: { state: 'OPEN', reason: '', updatedAt: null, updatedBy: '' },
     membership_enforcement: { mode: 'all', updatedAt: null, updatedBy: '' },
@@ -1268,6 +1269,7 @@ const mockUser = {
   memberLevel: 'NORMAL',
   memberSince: null,
   memberExpiresAt: null,
+  vibrationUnlockedUntil: null,
   taskPackCount: 0,
   taskPackSlots: 0,
   protectedTaskQuota: 5,
@@ -1414,6 +1416,16 @@ function mockTaskUsage(nowTs) {
   };
 }
 
+function mockVibrationFields(unlimited, nowTs) {
+  const untilMs = new Date(mockUser.vibrationUnlockedUntil || 0).getTime();
+  const unlocked = unlimited && untilMs > nowTs.getTime();
+  return {
+    vibrationUnlocked: unlocked,
+    vibrationUnlockedUntil: unlocked ? mockUser.vibrationUnlockedUntil : null,
+    vibrationAdUnitId: 'adunit-ae770b8ec9fcd605',
+  };
+}
+
 function mockTwoTierMembershipSnapshot(nowTs = new Date()) {
   const memberExpiresMs = new Date(mockUser.memberExpiresAt || 0).getTime();
   const member = Number.isFinite(memberExpiresMs) && memberExpiresMs > nowTs.getTime();
@@ -1433,6 +1445,7 @@ function mockTwoTierMembershipSnapshot(nowTs = new Date()) {
   const usage = mockTaskUsage(nowTs);
   const memberRemainingMs = member ? Math.max(0, memberExpiresMs - nowTs.getTime()) : 0;
   return {
+    ...mockVibrationFields(unlimited, nowTs),
     member,
     memberLevel: member ? 'MEMBER' : 'NORMAL',
     memberTier,
@@ -1509,6 +1522,7 @@ function mockMembershipSnapshot(nowTs = new Date(), data = {}) {
   const protectedTaskUsed = usage.protectedTaskUsed;
   const taskUsed = usage.taskUsed;
   return {
+    ...mockVibrationFields(unlimited, nowTs),
     member,
     memberLevel: member ? 'MEMBER' : 'NORMAL',
     memberTier: newPlan && member ? 'LEGACY_UNLIMITED' : '',
@@ -3517,6 +3531,28 @@ const handlers = {
       sales,
       enforced: enforcement.mode === 'all',
     };
+  },
+  'membership.vibrationAdStart': () => {
+    const current = mockTwoTierMembershipSnapshot(new Date());
+    if (!current.unlimited) return { success: false, error: '仅不限额度会员可解锁震动功能', errorCode: 1047 };
+    if (current.vibrationUnlocked) return { success: true, alreadyUnlocked: true, adUnitId: current.vibrationAdUnitId, vibrationUnlockedUntil: current.vibrationUnlockedUntil };
+    const attemptId = 'a'.repeat(40);
+    db.vibrationAdAttempts[attemptId] = {
+      userId: mockUser.openId,
+      status: 'PENDING',
+      memberExpiresAtSnapshot: mockUser.memberExpiresAt,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    };
+    return { success: true, attemptId, adUnitId: current.vibrationAdUnitId };
+  },
+  'membership.vibrationAdClaim': (data) => {
+    const attempt = db.vibrationAdAttempts[String((data && data.attemptId) || '')];
+    if (!attempt || attempt.status !== 'PENDING') return { success: false, error: '广告凭证无效或已过期', errorCode: 1048 };
+    const current = mockTwoTierMembershipSnapshot(new Date());
+    if (!current.unlimited) return { success: false, error: '仅不限额度会员可解锁震动功能', errorCode: 1047 };
+    attempt.status = 'CLAIMED';
+    mockUser.vibrationUnlockedUntil = mockUser.memberExpiresAt;
+    return { success: true, vibrationUnlocked: true, vibrationUnlockedUntil: mockUser.vibrationUnlockedUntil };
   },
   'membership.createOrder': (data) => {
     const sales = mockMembershipSalesView();

@@ -100,7 +100,7 @@
           </view>
         </view>
         <view wx:if="{{!vibrationUnlocked}}" class="vibration-unlock-row">
-          <button class="vibration-unlock-btn" bindtap="onUnlockVibration"><svg-icon name="unlock-line" size="14px" /><text>看广告视频解锁震动功能</text></button>
+          <button class="vibration-unlock-btn {{vibrationUnlockLoading ? 'loading' : ''}}" disabled="{{vibrationUnlockLoading}}" bindtap="onUnlockVibration"><svg-icon name="unlock-line" size="14px" /><text>{{vibrationUnlockLoading ? '正在确认广告结果' : '看广告视频解锁震动功能'}}</text></button>
         </view>
       </view>
     </block>

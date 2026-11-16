@@ -756,6 +756,69 @@ async function run() {
     '最近提醒时间从历史任务回填，而不是只看未来 WAITING'
   );
 
+  console.log('\n=== 11. 激励视频震动权益绑定会员有效期 ===');
+  db = createDb();
+  seedUser(db, {
+    memberLevel: MemberLevel.MEMBER,
+    memberTier: membership.MemberTier.QUOTA_10,
+    memberExpiresAt: new Date(Date.now() + 30 * DAY_MS),
+  });
+  const quotaAdStart = await membership.startVibrationAd(db, USER);
+  eq(quotaAdStart.success, false, '3 元档不能创建震动广告凭证');
+  eq(quotaAdStart.errorCode, 1045, '3 元档返回会员资格错误');
+
+  db = createDb();
+  const unlockExpiresAt = new Date(Date.now() + 30 * DAY_MS);
+  seedUser(db, {
+    memberLevel: MemberLevel.MEMBER,
+    memberTier: membership.MemberTier.UNLIMITED,
+    memberExpiresAt: unlockExpiresAt,
+  });
+  const adStart = await membership.startVibrationAd(db, USER);
+  eq(adStart.success, true, '不限额度会员可创建震动广告凭证');
+  eq(/^[a-f0-9]{40}$/.test(adStart.attemptId), true, '广告凭证 ID 固定为 40 位哈希');
+  eq(adStart.adUnitId, membership.VIBRATION_AD_UNIT_ID, '服务端下发唯一广告位 ID');
+  const adStartAgain = await membership.startVibrationAd(db, USER);
+  eq(adStartAgain.attemptId, adStart.attemptId, '5 分钟内重试复用同一广告凭证');
+  const claimed = await membership.claimVibrationAd(db, USER, adStart.attemptId);
+  eq(claimed.success, true, '完整观看后可领取震动权益');
+  eq(claimed.vibrationUnlocked, true, '领取后震动权益立即生效');
+  eq(
+    new Date(claimed.vibrationUnlockedUntil).getTime(),
+    unlockExpiresAt.getTime(),
+    '震动权益截止时间等于会员到期时间'
+  );
+  const claimedUser = db._dump(COLLECTIONS.USERS)[0];
+  eq(claimedUser.vibrationUnlockSource, 'REWARDED_AD', '用户记录广告解锁来源');
+  eq(claimedUser.vibrationUnlockAttemptId, adStart.attemptId, '用户记录广告凭证 ID');
+  const claimedAgain = await membership.claimVibrationAd(db, USER, adStart.attemptId);
+  eq(claimedAgain.success, true, '同一广告凭证重复领取保持幂等');
+  eq(claimedAgain.alreadyClaimed, true, '重复领取返回已领取状态');
+  current = await membership.status(db, USER);
+  eq(current.membership.vibrationUnlocked, true, '会员状态返回震动已解锁');
+  eq(current.membership.vibrationAdUnitId, membership.VIBRATION_AD_UNIT_ID, '会员状态返回广告位 ID');
+  current = await membership.status(db, USER, new Date(unlockExpiresAt.getTime() + 1000));
+  eq(current.membership.vibrationUnlocked, false, '会员到期后震动权益自动失效');
+  await db.collection(COLLECTIONS.USERS).where({ openId: USER }).update({
+    data: { memberTier: membership.MemberTier.QUOTA_10 },
+  });
+  current = await membership.status(db, USER);
+  eq(current.membership.vibrationUnlocked, false, '档位回退后震动权益立即失效');
+
+  db = createDb();
+  seedUser(db, {
+    memberLevel: MemberLevel.MEMBER,
+    memberTier: membership.MemberTier.UNLIMITED,
+    memberExpiresAt: new Date(Date.now() + 30 * DAY_MS),
+  });
+  const staleStart = await membership.startVibrationAd(db, USER);
+  await db.collection(COLLECTIONS.USERS).where({ openId: USER }).update({
+    data: { memberExpiresAt: new Date(Date.now() + 31 * DAY_MS) },
+  });
+  const staleClaim = await membership.claimVibrationAd(db, USER, staleStart.attemptId);
+  eq(staleClaim.success, false, '跨会员到期窗口的旧广告凭证不能领取');
+  eq(staleClaim.errorCode, 1046, '旧广告凭证返回失效错误');
+
   console.log(fail ? `\n${fail} FAILED` : '\nALL PASS');
   process.exit(fail ? 1 : 0);
 }

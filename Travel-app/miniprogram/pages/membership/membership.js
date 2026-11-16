@@ -144,6 +144,7 @@ Page({
     floatingClockEnabled: true,
     vibrationUnlocked: false,
     vibrationEnabled: false,
+    vibrationUnlockLoading: false,
 
   },
 
@@ -156,6 +157,7 @@ Page({
       ? requestedPreview
       : '';
     const ios = isIosDevice();
+    if (this.ensureVibrationVideoAd) this.ensureVibrationVideoAd('adunit-ae770b8ec9fcd605');
     this.setData({
       statusBarHeight: g.statusBarHeight,
       navBarHeight: g.navBarHeight,
@@ -184,6 +186,8 @@ Page({
     this._pageVisible = false;
     this.stopAutoRefresh(false);
     this.stopFloatingClockDemo();
+    this._vibrationVideoAd = null;
+    this._vibrationAdAttemptId = '';
   },
 
   onPullDownRefresh() {
@@ -292,7 +296,12 @@ Page({
       const freeSlots = Math.max(0, Number(membership.freeTaskSlots) || 0);
       if (!this._previewMode) floatingClock.setMembership(membership);
       const floatingClockEnabled = floatingClock.enabled();
-      const vibrationUnlocked = floatingClock.vibrationUnlocked();
+      const vibrationUnlocked = this._previewMode
+        ? floatingClock.vibrationUnlocked()
+        : membership.vibrationUnlocked === true;
+      if (!this._previewMode && floatingClock.vibrationUnlocked() !== vibrationUnlocked) {
+        floatingClock.setVibrationUnlocked(vibrationUnlocked);
+      }
       const vibrationEnabled = floatingClock.vibrationEnabled();
       this.setData({
         loading: false,
@@ -312,6 +321,7 @@ Page({
         floatingClockEnabled,
         vibrationUnlocked,
         vibrationEnabled,
+        vibrationUnlockLoading: false,
       });
       if (orderRes) {
         const orders = orderRes.items || [];
@@ -529,13 +539,91 @@ Page({
     if (next && wx.vibrateShort) wx.vibrateShort({ type: 'light' });
   },
 
+  ensureVibrationVideoAd(adUnitId) {
+    if (!adUnitId || !wx.createRewardedVideoAd) return null;
+    if (this._vibrationVideoAd && this._vibrationAdUnitId === adUnitId) return this._vibrationVideoAd;
+    const ad = wx.createRewardedVideoAd({ adUnitId });
+    this._vibrationVideoAd = ad;
+    this._vibrationAdUnitId = adUnitId;
+    ad.onLoad(() => {});
+    ad.onError(err => this.onVibrationAdError(err));
+    ad.onClose(res => this.onVibrationAdClose(res));
+    return ad;
+  },
+
+  onVibrationAdError(err) {
+    console.warn('[membership] reward ad error', err);
+    if (this.data.vibrationUnlockLoading) this.finishVibrationUnlock('广告加载失败，请稍后重试');
+  },
+
+  onVibrationAdClose(res) {
+    if (!this.data.vibrationUnlockLoading || !this._vibrationAdAttemptId) return;
+    if (res && res.isEnded !== true) {
+      this.finishVibrationUnlock('完整观看广告后才能解锁');
+      return;
+    }
+    this.completeVibrationAd(this._vibrationAdAttemptId);
+  },
+
+  finishVibrationUnlock(title) {
+    this._vibrationAdAttemptId = '';
+    this.setData({ vibrationUnlockLoading: false });
+    if (title) wx.showToast({ title, icon: 'none' });
+  },
+
+  completeVibrationAd(attemptId) {
+    this.setData({ vibrationUnlockLoading: true });
+    api.reminder.membership.vibrationAdClaim(attemptId).then(result => {
+      if (result.vibrationUnlocked !== true) throw { errorCode: 1048 };
+      floatingClock.setVibrationUnlocked(true);
+      floatingClock.setVibrationEnabled(true);
+      this._vibrationAdAttemptId = '';
+      this.setData({ vibrationUnlocked: true, vibrationEnabled: true, vibrationUnlockLoading: false });
+      wx.showToast({ title: '震动功能已解锁', icon: 'success' });
+      if (wx.vibrateShort) wx.vibrateShort({ type: 'light' });
+    }).catch(err => {
+      this.setData({ vibrationUnlockLoading: false });
+      if (err && err.errorCode === 1048) this._vibrationAdAttemptId = '';
+      wx.showToast({ title: this._vibrationAdAttemptId ? '广告已完成，请再次点击确认权益' : '广告凭证已失效，请重新观看', icon: 'none' });
+    });
+  },
+
   onUnlockVibration() {
     if (this._previewMode) {
+      floatingClock.setVibrationUnlocked(true);
+      floatingClock.setVibrationEnabled(true);
       this.setData({ vibrationUnlocked: true, vibrationEnabled: true });
       wx.showToast({ title: '静态预览：已解锁并开启震动', icon: 'none' });
       return;
     }
-    wx.showToast({ title: '看视频解锁功能将在后续版本开放', icon: 'none' });
+    if (this.data.vibrationUnlockLoading) return;
+    if (this._vibrationAdAttemptId) {
+      this.completeVibrationAd(this._vibrationAdAttemptId);
+      return;
+    }
+    if (!this.data.membership || this.data.membership.unlimited !== true) return;
+    const ad = this.ensureVibrationVideoAd(this.data.membership.vibrationAdUnitId);
+    if (!ad) {
+      wx.showToast({ title: '当前微信版本不支持激励视频广告', icon: 'none' });
+      return;
+    }
+    this.setData({ vibrationUnlockLoading: true });
+    api.reminder.membership.vibrationAdStart().then(result => {
+      if (result.alreadyUnlocked) {
+        floatingClock.setVibrationUnlocked(true);
+        floatingClock.setVibrationEnabled(true);
+        this.setData({ vibrationUnlocked: true, vibrationEnabled: true, vibrationUnlockLoading: false });
+        wx.showToast({ title: '震动功能已解锁', icon: 'success' });
+        return;
+      }
+      this._vibrationAdAttemptId = result.attemptId;
+      ad.show().catch(() => ad.load().then(() => ad.show())).catch(() => {
+        this.finishVibrationUnlock('广告暂时不可用，请稍后再试');
+      });
+    }).catch(err => {
+      this.setData({ vibrationUnlockLoading: false });
+      api.toastError(err);
+    });
   },
 
 

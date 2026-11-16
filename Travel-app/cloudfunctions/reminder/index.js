@@ -316,6 +316,10 @@ async function main(event) {
         return await membership.status(db, userId, undefined, {
           membershipCapabilities: event.membershipCapabilities,
         });
+      case 'membership.vibrationAdStart':
+        return await membership.startVibrationAd(db, userId);
+      case 'membership.vibrationAdClaim':
+        return await membership.claimVibrationAd(db, userId, event.attemptId);
       case 'membership.createOrder':
         return await membership.createOrder(db, userId, event);
       case 'membership.orders':

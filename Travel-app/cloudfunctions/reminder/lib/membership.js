@@ -88,6 +88,9 @@ const ORDER_REFUND_STATUS_LABEL = {
 };
 const SAME_PACKAGE_PENDING_REUSE_MS = 15 * 60 * 1000;
 const REFUND_WINDOW_MS = 24 * 60 * 60 * 1000;
+const VIBRATION_AD_UNIT_ID = 'adunit-ae770b8ec9fcd605';
+const VIBRATION_AD_ATTEMPT_TTL_MS = 5 * 60 * 1000;
+const VIBRATION_AD_PURPOSE = 'FLOATING_CLOCK_VIBRATION';
 
 const PACKAGES = Object.freeze([
   {
@@ -556,6 +559,16 @@ function orderViewOf(order = {}, user = {}, nowTs = time.now(), sales = null) {
   };
 }
 
+function vibrationFieldsOf(user = {}, unlimited = false, nowTs = time.now()) {
+  const untilMs = timestampMsOf(user.vibrationUnlockedUntil);
+  const unlocked = unlimited && untilMs > new Date(nowTs).getTime();
+  return {
+    vibrationUnlocked: unlocked,
+    vibrationUnlockedUntil: unlocked ? user.vibrationUnlockedUntil : null,
+    vibrationAdUnitId: VIBRATION_AD_UNIT_ID,
+  };
+}
+
 function normalizeTwoTierUser(user = {}, nowTs = time.now()) {
   const isMember = isMemberAt(user, nowTs);
   const memberTier = effectiveMemberTierOf(user, nowTs);
@@ -584,6 +597,7 @@ function normalizeTwoTierUser(user = {}, nowTs = time.now()) {
     ? (legacyUnlimited ? 'legacy_unlimited' : 'member_unlimited')
     : (memberTier === MemberTier.QUOTA_10 ? 'member_quota_10' : '');
   return {
+    ...vibrationFieldsOf(user, unlimited, nowTs),
     member: isMember,
     memberLevel: isMember ? MemberLevel.MEMBER : MemberLevel.NORMAL,
     memberTier,
@@ -658,6 +672,7 @@ function normalizeUser(user = {}, nowTs = time.now(), options = {}) {
       + (isMember ? LEGACY_MEMBER_TASK_SLOTS - FREE_TASK_SLOTS : 0)
       + taskPackSlots;
   return {
+    ...vibrationFieldsOf(user, unlimited, nowTs),
     member: isMember,
     memberLevel: isMember ? MemberLevel.MEMBER : MemberLevel.NORMAL,
     memberTier: unlimited ? MemberTier.LEGACY_UNLIMITED : '',
@@ -1242,6 +1257,89 @@ async function orderDetail(db, userId, orderId) {
   });
 }
 
+
+async function startVibrationAd(db, userId, nowTs = time.now()) {
+  const current = await status(db, userId, nowTs, { configCache: true });
+  if (current.success === false) return current;
+  if (!current.membership.unlimited) return fail(ERRORS.VIBRATION_AD_MEMBER_ONLY);
+  if (current.membership.vibrationUnlocked) {
+    return ok({
+      alreadyUnlocked: true,
+      adUnitId: VIBRATION_AD_UNIT_ID,
+      vibrationUnlockedUntil: current.membership.vibrationUnlockedUntil,
+    });
+  }
+  const userRes = await db.collection(COLLECTIONS.USERS).where({ openId: userId }).get();
+  const user = (userRes.data || [])[0];
+  if (!user) return fail(ERRORS.UNAUTHORIZED);
+  const memberExpiresMs = expiryMsOf(user);
+  const attemptId = crypto.createHash('sha256')
+    .update(`${userId}|${VIBRATION_AD_PURPOSE}|${memberExpiresMs}`)
+    .digest('hex').slice(0, 40);
+  const ref = db.collection(COLLECTIONS.REWARDED_AD_ATTEMPTS).doc(attemptId);
+  const existing = (await ref.get()).data[0];
+  const nowMs = new Date(nowTs).getTime();
+  if (existing && existing.status === 'PENDING' && timestampMsOf(existing.expiresAt) > nowMs) {
+    return ok({ attemptId, adUnitId: VIBRATION_AD_UNIT_ID, expiresAt: existing.expiresAt });
+  }
+  const expiresAt = new Date(nowMs + VIBRATION_AD_ATTEMPT_TTL_MS);
+  await ref.set({ data: {
+    userId,
+    userDocumentId: user._id,
+    purpose: VIBRATION_AD_PURPOSE,
+    adUnitId: VIBRATION_AD_UNIT_ID,
+    status: 'PENDING',
+    memberExpiresAtSnapshot: user.memberExpiresAt || null,
+    createdAt: nowTs,
+    expiresAt,
+    claimedAt: null,
+    vibrationUnlockedUntil: null,
+  } });
+  return ok({ attemptId, adUnitId: VIBRATION_AD_UNIT_ID, expiresAt });
+}
+
+async function claimVibrationAd(db, userId, attemptId, nowTs = time.now()) {
+  const id = String(attemptId || '').trim();
+  if (!/^[a-f0-9]{40}$/.test(id)) return fail(ERRORS.VIBRATION_AD_SESSION_INVALID);
+  const before = await status(db, userId, nowTs, { configCache: true });
+  if (before.success === false) return before;
+  if (!before.membership.unlimited) return fail(ERRORS.VIBRATION_AD_MEMBER_ONLY);
+  return db.runTransaction(async transaction => {
+    const attempt = (await transaction.collection(COLLECTIONS.REWARDED_AD_ATTEMPTS).doc(id).get()).data[0];
+    if (!attempt || attempt.userId !== userId || attempt.purpose !== VIBRATION_AD_PURPOSE) {
+      return fail(ERRORS.VIBRATION_AD_SESSION_INVALID);
+    }
+    const user = (await transaction.collection(COLLECTIONS.USERS).doc(attempt.userDocumentId).get()).data[0];
+    if (!user || !isMemberAt(user, nowTs)) return fail(ERRORS.VIBRATION_AD_MEMBER_ONLY);
+    const tier = effectiveMemberTierOf(user, nowTs);
+    if (tier === MemberTier.QUOTA_10) return fail(ERRORS.VIBRATION_AD_MEMBER_ONLY);
+    if (!sameExpiryWindow(attempt.memberExpiresAtSnapshot, user.memberExpiresAt)) {
+      return fail(ERRORS.VIBRATION_AD_SESSION_INVALID);
+    }
+    if (attempt.status === 'CLAIMED') {
+      const fields = vibrationFieldsOf(user, true, nowTs);
+      return ok({ alreadyClaimed: true, vibrationUnlocked: fields.vibrationUnlocked, vibrationUnlockedUntil: fields.vibrationUnlockedUntil });
+    }
+    if (attempt.status !== 'PENDING'
+      || timestampMsOf(attempt.expiresAt) <= new Date(nowTs).getTime()) {
+      return fail(ERRORS.VIBRATION_AD_SESSION_INVALID);
+    }
+    const unlockedUntil = user.memberExpiresAt || null;
+    await transaction.collection(COLLECTIONS.USERS).doc(user._id).update({ data: {
+      vibrationUnlockedUntil: unlockedUntil,
+      vibrationUnlockSource: 'REWARDED_AD',
+      vibrationUnlockAttemptId: id,
+      vibrationUnlockedAt: nowTs,
+    } });
+    await transaction.collection(COLLECTIONS.REWARDED_AD_ATTEMPTS).doc(id).update({ data: {
+      status: 'CLAIMED',
+      claimedAt: nowTs,
+      vibrationUnlockedUntil: unlockedUntil,
+    } });
+    return ok({ vibrationUnlocked: true, vibrationUnlockedUntil: unlockedUntil });
+  });
+}
+
 module.exports = {
   FREE_TASK_SLOTS,
   MEMBER_TASK_SLOTS,
@@ -1252,6 +1350,8 @@ module.exports = {
   ORDER_GRANT_SCHEMA_VERSION,
   PlanVersion,
   MemberTier,
+  VIBRATION_AD_UNIT_ID,
+  VIBRATION_AD_ATTEMPT_TTL_MS,
   MEMBER_PRICE_FEN,
   TWO_TIER_MEMBER_PRICE_FEN,
   TWO_TIER_UNLIMITED_PRICE_FEN,
@@ -1288,6 +1388,8 @@ module.exports = {
   snapshotFromTasks,
   packageViews,
   status,
+  startVibrationAd,
+  claimVibrationAd,
   capacityError,
   createOrder,
   listOrders,

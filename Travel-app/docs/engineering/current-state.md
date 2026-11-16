@@ -1,7 +1,11 @@
 # Travel-app 当前工程状态
 
 > 当前分支与版本以 `git status`、`git log -1` 为准；本文件记录工作区状态，提交和部署状态分开判断。
+<<<<<<< HEAD
 > 更新时间：2026-11-13
+=======
+> 更新时间：2026-11-16
+>>>>>>> 6fb6819 (feat(membership): unlock clock vibration with rewarded ads)
 
 ## 当前定位
 
@@ -9,6 +13,7 @@
 
 ## 已实现
 
+<<<<<<< HEAD
 - 2026-11-15 已从 `main@705f2a4` 的隔离候选 `codex/release-2.4.4-20261115` / `v2.4.4-rc.1` 上传体验版 `2.4.4`，总包 `1,194,525 B`、主包 `1,102,310 B`、`admin` 分包 `92,215 B`。本版只纳入首页行程项提醒状态标签点击守卫与 PAGE-010「帮助与反馈 / 用户协议」合并入口，保留线上金色礼品图标及 `/ 在线客服 / 反馈与纠错` 文案；悬浮时钟未进入候选。`npm test`、`npm run check`、`git diff --check` 通过。**体验版验收通过；代码已通过 `main@f07e7fe` 合并并推送远端，`v2.4.4-rc.1` 固定实际上传提交 `678f88b`。当前待提交审核；本轮未部署云函数、未发布正式版**。
 - 2026-11-13 v2.4.3 体验验收候选：从 `origin/main@42530dd` 新建 `codex/experience-2.4.3-20261113`，收口首页悬浮提醒入口、想去景点页浮层按钮、今日放票顶部卡片、返回主页按钮位置、客服工作台隐藏会员升级公告控制卡（保留两档定价卡）与提醒质量 schema v2 显示修复；1.9 元升级单/3 元基础单退款依赖拦截沿用已在 main 的等价逻辑。自动验证通过，并已在微信开发者工具完成今日放票页与景点浮层渲染检查。`payment` 已于 2026-11-13 部署为 `Active`、Nodejs16.13、超时 60 秒，`paymentReconcileEveryTwoMinutes` 触发器保留；回读 `payment_config/reminder_quality_latest` 已为 `schemaVersion=2`，当前窗口 `expectedCount=1225`，不再是空数据。**未上传体验版、未真机验证**。验收范围与上传说明见 `docs/engineering/acceptance-2026-11-13.md`。
 - 2026-11-08 两档会员候选：从 `origin/main@adef8eb` 新建 `codex/membership-two-tier-rc`，新增 `two-tier-v5` 能力路由，仅两个既有测试 OpenID 可见；免费 5 个，`member_quota_10` 为 ¥3 / 30 天 / 总额度 10，`member_unlimited` 为 ¥4.9 / 30 天 / 不限，`member_unlimited_upgrade` 为 ¥1.9 只换档不延期。非白名单继续现有 `unlimited-v3`，旧客户端继续 `legacy-v2`。MP 固定道具分别为 `travel_task_vip_3`、`travel_task_vip_4_9`、`travel_task_vip_1_9`。`reminder` / `payment` 已于 20:33 部署并回读 `Active`、Nodejs16.13、60 秒、256 MB；`paymentReconcileEveryTwoMinutes` 保留。`payment` 环境变量只新增三个商品 ID，原有变量无删除、无变更；`reminder` 只把测试名单改为指定两个 OpenID，`MEMBERSHIP_ENFORCEMENT_MODE=all` 不变。本地 `npm test`、`npm run check`、`git diff --check` 通过。
@@ -32,6 +37,11 @@
 - 2026-11-04 会员升级改为白名单灰度：生产曾因旧客户端把 `taskLimit=10000` 兼容占位显示成 `11/10000` 而在 14:48 回滚；14:36–14:48 窗口内新增订单和提醒任务均为 0。随后按用户要求复用 `MEMBERSHIP_ENFORCEMENT_MODE`：环境变量设为 `test`，仅 `MEMBERSHIP_TEST_OPENIDS` 返回 `unlimited-v3`，非白名单继续 `legacy-v2` 的 `¥3 / 15 个 / task_pack_5`；数据库额度限制仍为 `all`。灰度 `payment` / `reminder` 于 14:59 / 15:02 部署，均 `Active`、Nodejs16.13、60 秒，`paymentReconcileEveryTwoMinutes` 保留。真实云白名单冒烟返回 ¥8 单套餐和不限权益；本轮只生成预览码，未上传体验版，历史 `2.3.0` 构建不得单独设为体验版。
 - 2026-11-04 安卓开发版 ¥8 支付未拉起：首轮 `payment.create` 虽然生成了 800 分签名，但使用旧商品 `travel_member_30d`，微信侧查单返回“数据不存在”。随后 MP 后台提供新固定道具 `travel_task_vip_8`，`payment` 于 17:49:10 部署双商品配置：旧 300 分会员继续使用 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER=travel_member_30d`，新 800 分白名单会员使用 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED=travel_task_vip_8`。函数为 `Active`、Nodejs16.13、60 秒、21 个环境变量，两分钟触发器保留。真实云冒烟返回 `productId=travel_task_vip_8`、`goodsPrice=800`、`env=0`；两笔测试待支付订单已关闭，未产生扣款。
 - 2026-11-05 `2.3.5` 候选包含清华规则更新：工作日即时提前 1 天、抽签提前 2 天，周末及法定节假日即时提前 7 天、抽签提前 8 天；2026 年节假日按国务院公布范围写入 `holidayRanges`。规则新增 `releaseSlots`，同一出行日可创建多条提醒任务，军博 `08:00 / 17:00 / 20:00` 三个时段均建提醒。新客户端统一传 `supportsMultiRelease=true`；旧客户端不传时继续按顶层 `advanceDays + releaseTime` 创建单任务。新客户端授权与提醒名额按 `reminderTaskCount` 计算。多放票时段相关云函数改动尚未随本候选部署。
+=======
+- 2026-11-16 本地开发候选：不限额度会员的悬浮时钟震动改为激励视频解锁。广告位 `adunit-ae770b8ec9fcd605`；客户端仅在官方 `onClose({isEnded:true})` 后提交服务端一次性凭证，云函数写 `users.vibrationUnlockedUntil=memberExpiresAt`，权益覆盖本次会员有效期。新增 `rewarded_ad_attempts` 集合，凭证 5 分钟有效、确定性文档 ID、重复领取幂等；会员到期、退款或失去不限额度资格后自动失效。为控制主包体积，`miniprogram/utils/mock.js` 改为压缩运行时，行为由 mock-mirror 与会员/广告专项测试保护。当前**未部署 reminder、未上传体验版、未真机验证真实广告**；上线步骤见 `docs/engineering/floating-clock-ad-runbook.md`。
+- 2026-11-08 本地开发候选：会员改为两档梯度，免费 5 个；`member_quota_10` 为 ¥3 / 30 天总额度 10 个，`member_unlimited` 为 ¥4.9 / 30 天不限额度；3 元档超额只允许 `member_unlimited_upgrade` 补 ¥1.9 升级。升级包使用 `member-unlimited-upgrade-v4`，只换档、不增加会员时长，升级前后到期时间一致；剩余不足 5 天时支付前提示不延期，剩余不足 15 分钟时关闭升级入口并拒绝创单。所有不限额度会员统一使用同一套页面：状态卡显示“会员生效中”和“已开启 N 个提醒 / 不限名额”，订单入口下只保留一条不限名额权益说明，不显示保护小字、价格、套餐、续费或会员升级入口。新 4.9 元会员、老会员和旧版本共存期会员均适用，到期后恢复当前两档价格。历史订单和名额包快照继续兼容，不再新增售卖。`npm test`、会员专项、mock 镜像与退款档位回收均已验证；**未部署、未上传体验版、未真机验证**。会员页可用本地静态预览：`preview=nonmember`、`preview=quota`、`preview=quota_short`、`preview=quota_closed`、`preview=unlimited`、`preview=legacy`；其中 `quota_short` 固定模拟剩余 4 天，`quota_closed` 固定模拟剩余 10 分钟，用于真机验收升级提示和关闭状态；全部预览不读取云端用户、不恢复待支付订单、不发起真实支付。虚拟支付上线前必须配置 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_QUOTA_10`、`WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED`、`WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_UPGRADE` 三个新商品 ID，并保留旧会员/名额包商品配置用于历史订单查单退款。
+- 2026-11-05 本地开发候选：清华规则改为工作日即时提前 1 天、抽签提前 2 天，周末及法定节假日即时提前 7 天、抽签提前 8 天；2026 年节假日按国务院公布范围写入 `holidayRanges`。规则新增 `releaseSlots`，同一出行日可创建多条提醒任务，军博 `08:00 / 17:00 / 20:00` 三个时段均建提醒。新客户端统一传 `supportsMultiRelease=true`；旧客户端不传时继续按顶层 `advanceDays + releaseTime` 创建单任务。新客户端授权与提醒名额按 `reminderTaskCount` 计算。当前只在 `codex/tsinghua-reminder-rules` 工作区验证，**未部署、未上传体验版、未真机验证**。
+>>>>>>> 6fb6819 (feat(membership): unlock clock vibration with rewarded ads)
 - 2026-11-03 客服工作台售后队列与订单退款统计已部署并进入体验版：售后筛选收敛为「全部 / 审核中 / 自动核验 / 处理中 / 异常」，进入售后页签默认选中「审核中」；已取消、已驳回、已完成仍可从「全部」查看。`adminOrders.stats` 新增 `refundedOrders`，按北京时间当日创建的已支付订单统计已完成退款数量，页面统计改为四项。`payment` 于 23:43 整包部署，真实管理员接口返回 `refundedOrders=8`，两分钟补偿触发器于 23:44:01 正常写心跳。
 - 2026-11-03 反馈闭环改造：云函数 `feedback` **已部署**（16:24），小程序端未发布。新增 `feedback.adminReply`（单条回复，就地覆盖），`feedback.adminList` 改为 `count()` + `skip/limit` 真分页（`page` / `pageSize` 默认 20、上限 50，返回真实 `total` 与 `hasMore`），并按 `userId` 关联 `users` 返回提交人昵称与完整 OpenID；「建议 / Bug」页签改按 `category` 服务端筛选，纠错按 `type` 筛选。`feedback.list` 改为字段白名单，不再把 `userId` 和 `adminReplyBy` 返回给普通用户。用户侧「我的反馈」展示管理员回复与回复时间，状态词改为「处理中 / 已回复 / 已处理 / 已关闭」，并支持下拉刷新；管理页补「加载更多」、提交人复制 OpenID，并把网络失败与 `1040 无权限` 分开显示。⚠️ CLI 更新含子目录的函数会报 `EISDIR`，本次用拍平包部署，详见「当前需要部署的范围」`feedback` 条目。
 - 2026-11-04 00:05 已从发布候选 `1f9cfc4` / `v2.2.5-rc.1` 上传体验版 `2.2.5`，包体 `1,127,622` 字节。本版统一 PAGE-008、景点设提醒浮层与会员页的 `payment-confirm-sheet`：商品、金额、生效时间、有效期、iOS / Android 退款与支付窗口提示和协议勾选共用同一实现；未勾选协议不能支付。只改小程序端，本轮不部署云函数；当前仅完成体验版上传，未提交审核、未发布正式版，待整机验收。

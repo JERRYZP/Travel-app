@@ -60,6 +60,7 @@ paths:
 - 只改小程序页面通常不需要部署云函数，但如果接口契约变化则必须部署。
 - 首页读模型运行期为 `HOME_RUNTIME_MODE=off|shadow|on`，默认 `off`。启用前必须创建 `user_runtime` 集合；先跑 `shadow`，连续 24 小时结构化比对零差异后再切 `on`。`HOME_RUNTIME_MAX_AGE_MS` 只控制派生文档的最长复用时间，不能替代写后失效。
 - 批量预建使用 `reminder.action='admin.runtimeBackfill'`，必须配置 `RUNTIME_BACKFILL_TOKEN` 并在请求中携带同值；未配置时动作始终拒绝。按 `limit <= 50` 和 `nextCursor` 重跑，直到 `hasMore=false`。
+- 悬浮时钟激励视频震动解锁依赖 `rewarded_ad_attempts` 集合和 `reminder` 的 `membership.vibrationAdStart` / `membership.vibrationAdClaim`。先创建集合，再部署 `reminder`，最后发布包含广告客户端的小程序；不需要配置广告 HTTP 回调。广告位 `adunit-ae770b8ec9fcd605` 是公开客户端配置，不创建广告回调密钥。
 - `reminder`、`spots`、`payment`、`notifier` 的资源日志可通过 `RESOURCE_METRICS_LOG=off` 关闭；生产默认开启，日志不得加入 OpenID 或业务内容。
 
 ## 状态纪律

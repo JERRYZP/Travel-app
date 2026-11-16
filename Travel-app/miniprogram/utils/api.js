@@ -212,6 +212,8 @@ const reminder = {
   },
   membership: {
     status: () => call('reminder', { action: 'membership.status' }),
+    vibrationAdStart: () => call('reminder', { action: 'membership.vibrationAdStart' }),
+    vibrationAdClaim: (attemptId) => call('reminder', { action: 'membership.vibrationAdClaim', attemptId }),
     previewStatus: (preview) => mockCall('membership.status', { preview }),
     previewOrders: () => mockCall('membership.orders', { preview: true }),
     createOrder: (p) => call('reminder', { action: 'membership.createOrder', ...(p || {}) }),
@@ -326,6 +328,8 @@ function toastError(result) {
     1044: '回复内容不能为空',
     1045: '回复条数已达上限',
     1046: '回复不存在或已被更新',
+    1047: '仅不限额度会员可解锁震动功能',
+    1048: '广告凭证无效或已过期',
     1047: '该反馈奖励已撤回，不能重复发放',
     1048: '奖励后已有新的会员权益，不能自动撤回',
     1500: '服务异常，请稍后重试',

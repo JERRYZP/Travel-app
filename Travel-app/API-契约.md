@@ -1096,6 +1096,9 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     memberTier: '' | 'QUOTA_10' | 'UNLIMITED' | 'LEGACY_UNLIMITED',
     memberExpiresAt: Date | null,
     memberExpiresAtText: '2026年11月26日' | '',
+    vibrationUnlocked: Boolean,
+    vibrationUnlockedUntil: Date | null,
+    vibrationAdUnitId: 'adunit-ae770b8ec9fcd605',
     memberDaysRemaining: Number,
     planVersion: 'legacy-v2' | 'unlimited-v3' | 'two-tier-v5',
     unlimited: Boolean,
@@ -1139,7 +1142,43 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - `unlimited-v3` 有效会员继续返回 `taskLimit/taskRemaining/memberTaskSlots=10000` 兼容投影，额度判断先读 `taskLimitUnlimited=true`。`two-tier-v5` 的不限会员返回 `taskLimit/taskRemaining=null`、`pricingVisible=false`、`packages=[]`；3 元档返回 `memberTier=QUOTA_10` 且只带升级包。`legacy-v2` 保持旧 `15 + 加量包` 契约。
 - 存在可用升级权益券且当前不是会员时，`packages` 只返回 `member_quota_10`，并标记 `upgradeCreditApplied=true`；此时禁止直接购买 `member_unlimited`。权益券被待支付订单预留时 `upgradeCreditPending=true`，`upgradeCreditPendingOrderId` 指向占用订单。
 
-> 抢票悬浮时钟不新增 API：客户端只消费 `home.bootstrap` 的 `serverNow`、`trips[].items[].releaseSlots` 和 `membership.unlimited`。同一放票时刻由客户端合并展示，关闭状态只存本机，不改变会员、提醒名额或任务状态。
+> 抢票悬浮时钟的展示只消费 `home.bootstrap` 的 `serverNow`、`trips[].items[].releaseSlots` 和 `membership.unlimited`。同一放票时刻由客户端合并展示，关闭状态只存本机，不改变会员、提醒名额或任务状态。广告震动解锁另走下面两个会员接口。
+
+#### `membership.vibrationAdStart`
+
+```javascript
+调用：{ action: 'membership.vibrationAdStart' }
+返回：{
+  success: true,
+  alreadyUnlocked?: Boolean,
+  attemptId?: String,
+  adUnitId: 'adunit-ae770b8ec9fcd605',
+  expiresAt?: Date,
+  vibrationUnlockedUntil?: Date | null
+}
+```
+
+- 仅有效 `membership.unlimited=true` 用户可创建广告凭证；3 元档、免费用户、过期会员返回 `1045`。
+- 凭证按 `OpenID + 用途 + 当前 memberExpiresAt` 确定性生成，5 分钟有效；广告加载失败重试时复用同一 PENDING 凭证。
+- 微信小程序没有激励视频服务器回调；客户端必须以官方 `RewardedVideoAd.onClose` 的 `res.isEnded===true` 作为提交条件。
+
+#### `membership.vibrationAdClaim`
+
+```javascript
+调用：{ action: 'membership.vibrationAdClaim', attemptId: String }
+返回：{
+  success: true,
+  vibrationUnlocked: true,
+  vibrationUnlockedUntil: Date,
+  alreadyClaimed?: Boolean
+}
+```
+
+- 服务端只接受本人、用途匹配、未过期且未领取的 PENDING 凭证。
+- 领取时重新校验不限额度会员资格，且当前 `memberExpiresAt` 必须与凭证快照一致；跨会员到期窗口返回 `1046`。
+- 成功后在事务中写 `users.vibrationUnlockedUntil=memberExpiresAt`、`vibrationUnlockSource='REWARDED_AD'`、`vibrationUnlockAttemptId` 和 `vibrationUnlockedAt`，凭证置为 `CLAIMED`。
+- 同一凭证重复提交保持幂等；到期、退款或失去不限额度资格后，`membership.status` 必须返回 `vibrationUnlocked=false`。
+- 广告凭证集合 `rewarded_ad_attempts` 使用确定性文档 ID，不需要额外索引。
 
 #### `membership.createOrder`
 
@@ -1698,7 +1737,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-008** 设置提醒 | V0.3 主流程：`cart.bootstrap`（清单 + 会员 + 订阅授权一次取回）、`membership.createOrder` + `payment.*`（仅提醒名额不足时）、用户主动点击「点击补授权次数」、`cart.commit`（授权、系统权限或提醒名额未满足时主按钮禁用；不提供仅加行程旁路） |
 | **PAGE-010** 我的 | `user.bootstrap`（资料 + 会员 + 订阅健康一次取回）；`feedback.entrySummary`（反馈入口身份与数字，旧缓存先渲染、`onShow` 刷新）；能力探测按本地短缓存降频 |
 | **PAGE-012** 编辑资料 | `user.profile`、`user.updateProfile`（头像走 `open-type="chooseAvatar"` + `wx.cloud.uploadFile` 上传） |
-| **PAGE-014** 会员与提醒名额 | `membership.status`、`membership.createOrder`、`membership.orders`、`payment.create/query/cancel`；支付前确认、持久支付状态和订单入口；“我的”页常驻会员状态卡 |
+| **PAGE-014** 会员与提醒名额 | `membership.status`、`membership.vibrationAdStart`、`membership.vibrationAdClaim`、`membership.createOrder`、`membership.orders`、`payment.create/query/cancel`；支付前确认、持久支付状态、激励视频震动解锁和订单入口；“我的”页常驻会员状态卡 |
 | **PAGE-015** 订单与退款详情 | `membership.orders`、`membership.orderDetail`；列表最多 50 笔，详情按本人单笔读取，主订单状态与退款状态分离，支持继续支付、取消、同步、申请售后和重新购买 |
 | **PAGE-016** 用户售后申请 | `membership.orderDetail`、`payment.afterSales.submit/cancel/list/detail/syncRights`；未到账、重复支付、未使用退款、权益不符和其他问题，未处理与无远端退款记录的异常单可取消 |
 | **PAGE-017** 客服工作台 | `payment.adminReminderQuality.stats`、`payment.adminOrders.list/detail`、`payment.afterSales.admin*`；仅 `AFTER_SALES_ADMIN_OPENIDS` 可见，服务端二次鉴权，敏感操作写审计日志 |

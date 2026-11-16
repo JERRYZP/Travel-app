@@ -118,6 +118,7 @@ reminder.membership.createOrder
 - 老用户历史保护池 `protectedTaskQuota=max(5, 迁移时未来 WAITING 提醒数)`，迁移由管理员分批触发。是否占用新增池由任务创建时的会员灰度决定：`off` / `test` 非白名单写入保护池，`test` 白名单 / `all` 才写新增池。
 - 支付渠道按环境开关选择；缺省为微信支付 API v3，`PAYMENT_PROVIDER=VIRTUAL_PAY` 才启用虚拟支付。历史订单保存渠道后继续走原渠道，避免切环境后错误查单或退款。订单展示接口返回派生后的 `paymentChannel=APPLE|WECHAT_VIRTUAL|WECHAT_PAY`，供客户端稳定识别 iOS 退款路径，不暴露原始支付结果。
 - 订单只由 `payment` 云函数在渠道回调或主动查单确认后置为 `PAID`；客户端不能自行改会员。虚拟支付发货和退款推送必须再次查询微信订单，不信任客户端或推送正文直接发权益。
+- 悬浮时钟震动广告解锁由 `membership.vibrationAdStart` 签发一次性凭证，客户端完整观看后调用 `membership.vibrationAdClaim`；服务端事务写 `users.vibrationUnlockedUntil=memberExpiresAt`。微信小程序没有激励视频服务器回调，因此不创建广告 HTTP 回调，也不能把 `onClose.isEnded` 之外的数据当作平台证明。
 - 会员购买总开关存于 `payment_config/membership_sales`，由 `reminder` 与 `payment` 共同读取。暂停只阻止新订单和待支付订单新发起支付；已支付查单、回调发权益、退款和售后不经过该闸门。
 - 会员限制模式存于 `payment_config/membership_enforcement`，由 `payment` 管理端写入、`reminder` 每次创建或展示额度时读取。配置缺失或读取失败才回退环境变量；后台切换不需要重新部署，已有任务保留原 `quotaPool`。
 - 会员升级临时公告存于 `payment_config/membership_upgrade_notice`，只注入 `user.profile` / `user.bootstrap` 的可选 `membershipUpgradeNotice`。`reminder` 先判定 `planVersion=unlimited-v3`、当前会员有效且 `memberSince < startsAt`，再校验公告开关和北京时间有效期；`payment` 管理端负责开关、72 小时默认窗口与审计。横幅不参与会员权益或任务额度计算。
