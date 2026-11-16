@@ -218,7 +218,7 @@ try {
   eq(memberWxml.includes('onFloatingClockToggle'), true, '会员页开关已绑定');
   eq(memberWxml.includes('开抢倒计时震动提醒'), true, '会员页使用新的震动权益标题');
   eq(memberWxml.includes('放票前 30 秒、10 秒和开抢时各强震一次'), true, '会员页单独说明震动权益');
-  eq(memberWxml.includes('看视频解锁震动功能'), true, '会员页提供视频解锁按钮');
+  eq(memberWxml.includes('看广告视频解锁震动功能'), true, '会员页提供广告视频解锁按钮');
   eq(memberWxml.includes('name="vibration-line"'), true, '震动权益使用线性震动图标');
   eq(memberWxml.includes('name="unlock-line"'), true, '视频解锁按钮使用解锁图标');
   eq(memberWxml.includes('onFloatingClockDemo'), true, '悬浮时钟权益提供查看示例');
@@ -228,6 +228,10 @@ try {
   eq(memberWxml.includes('name="lock"'), true, '震动开关默认带锁');
   eq(memberJs.includes("text: '悬浮时钟展示放票倒计时', isNew: true"), true, '4.9 套餐放票倒计时展示带 New 标签');
   const clockWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.wxml'), 'utf8');
+  eq(clockWxml.includes('catchtouchstart="onTouchStart"'), true, '拖拽起点拦截页面手势');
+  eq(clockWxml.includes('capture-catch:touchmove="onTouchMove"'), true, '拖拽移动捕获阶段阻断页面下拉');
+  eq(clockWxml.includes('catchtouchend="onTouchEnd"'), true, '拖拽结束事件不冒泡');
+  eq(clockWxml.includes('catchtouchcancel="onTouchCancel"'), true, '拖拽取消事件不冒泡');
   eq(clockWxml.includes('bindtap="onClose"'), true, '关闭按钮绑定点击事件');
   eq(clockWxml.includes('fc-collapse-arrow'), true, '关闭按钮使用右箭头收起图标');
   eq(clockWxml.includes('>收起</text>'), true, '关闭按钮显示收起文案');
