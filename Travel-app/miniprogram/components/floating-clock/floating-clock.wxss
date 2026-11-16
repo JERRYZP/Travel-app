@@ -34,7 +34,7 @@
 .fc-edge-spot, .fc-edge-title { display: flex; flex-direction: column; align-items: center; color: rgba(242,211,140,.78); font-size: 10px; font-weight: 600; line-height: 1.15; }
 .fc-edge-spot { color: rgba(255,248,236,.82); }
 .fc-edge-more { padding: 1px 4px; border-radius: 999px; background: rgba(242,211,140,.16); color: #F2D38C; font-size: 8px; font-weight: 700; line-height: 1.3; }
-.fc-edge-time.is-live { margin-top: 6px; }
+.fc-edge-time.is-live { margin-top: 4px; }
 .fc-edge-time.is-live .fc-edge-number { writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 1px; }
 .fc-edge-elapsed { display: flex; flex-direction: column; align-items: center; gap: 1px; margin-top: 6px; }
 .fc-edge-elapsed-number { font-size: 10px; font-weight: 700; line-height: 1; letter-spacing: 0; white-space: nowrap; }
@@ -44,7 +44,7 @@
 .fc-edge-unit { font-size: 9px; font-weight: 700; line-height: 1; }
 
 .fc-root.phase-after .fc-card { border-color: rgba(255,225,180,.35); background: linear-gradient(145deg,#4b1714,#8f2d20 68%,#c0472a); }
-.fc-root.phase-after .fc-edge { border-color: rgba(255,225,180,.46); background: linear-gradient(165deg,#6c1f18,#c0472a); }
+.fc-root.phase-after .fc-edge { padding-top: 13px; padding-bottom: 13px; border-color: rgba(255,225,180,.46); background: linear-gradient(165deg,#6c1f18,#c0472a); }
 .fc-root.phase-after .fc-dot { background: #fff8ec; box-shadow: 0 0 0 3px rgba(255,248,236,.18); animation: fc-pulse .8s ease-in-out infinite alternate; }
 .fc-root.phase-after .fc-spot-link, .fc-root.phase-after .fc-status-prefix, .fc-root.phase-after .fc-millis, .fc-root.phase-after .fc-countdown, .fc-root.phase-after .fc-edge-spot, .fc-root.phase-after .fc-edge-title, .fc-root.phase-after .fc-edge-time { color: #fff8ec; }
 .fc-root.phase-after .fc-release { border-top-color: rgba(255,248,236,.22); }

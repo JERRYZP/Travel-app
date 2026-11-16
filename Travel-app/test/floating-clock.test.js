@@ -219,7 +219,8 @@ try {
   eq(memberWxml.includes('开抢倒计时震动提醒'), true, '会员页使用新的震动权益标题');
   eq(memberWxml.includes('放票前 30 秒、10 秒和开抢时各强震一次'), true, '会员页单独说明震动权益');
   eq(memberWxml.includes('看视频解锁震动功能'), true, '会员页提供视频解锁按钮');
-  eq(memberWxml.includes('name="bell-line"'), true, '震动权益使用线性图标');
+  eq(memberWxml.includes('name="vibration-line"'), true, '震动权益使用线性震动图标');
+  eq(memberWxml.includes('name="unlock-line"'), true, '视频解锁按钮使用解锁图标');
   eq(memberWxml.includes('onFloatingClockDemo'), true, '悬浮时钟权益提供查看示例');
   eq(memberWxml.includes('package-demo-link'), true, '会员套餐内也提供查看示例');
   eq(memberJs.includes('expand: true'), true, '会员页示例复用 45 秒展开演示');
@@ -236,6 +237,10 @@ try {
   eq(clockWxml.includes('fc-elapsed'), true, '展开态展示开抢时长');
   eq(clockWxml.includes('fc-spot-hit'), true, '景点名称增加点击热区');
   eq(clockWxml.includes('fc-edge-elapsed-number'), true, '收起态秒数单独竖排');
+  const clockWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.wxss'), 'utf8');
+  eq(clockWxss.includes('padding-top: 13px'), true, '开抢收起态上内边距增加 2px');
+  eq(clockWxss.includes('padding-bottom: 13px'), true, '开抢收起态下内边距增加 2px');
+  eq(clockWxss.includes('fc-edge-time.is-live { margin-top: 4px; }'), true, '景点与数字间距减少 2px');
   eq(clockWxml.includes('bindtap="onSpotTap"'), true, '景点名可点击打开详情');
   eq(clockWxml.includes('开抢中 '), true, '开抢后使用开抢中文案');
   eq(clockWxml.includes('{{spotName}} >'), true, '开抢后景点名右侧显示箭头');

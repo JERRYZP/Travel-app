@@ -87,7 +87,7 @@
           </view>
         </view>
         <view class="benefit-row vibration-benefit-row">
-          <svg-icon name="bell-line" size="16px" />
+          <svg-icon name="vibration-line" size="16px" />
           <view class="benefit-copy">
             <text class="benefit-title">开抢倒计时震动提醒</text>
             <text class="benefit-desc">放票前 30 秒、10 秒和开抢时各强震一次，同一事件不重复震动</text>
@@ -100,7 +100,7 @@
           </view>
         </view>
         <view wx:if="{{!vibrationUnlocked}}" class="vibration-unlock-row">
-          <button class="vibration-unlock-btn" bindtap="onUnlockVibration">看视频解锁震动功能</button>
+          <button class="vibration-unlock-btn" bindtap="onUnlockVibration"><svg-icon name="unlock-line" size="14px" /><text>看视频解锁震动功能</text></button>
         </view>
       </view>
     </block>
