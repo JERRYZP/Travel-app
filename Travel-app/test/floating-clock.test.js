@@ -57,6 +57,27 @@ try {
   eq(clock.entitlementOf({ member: true, unlimited: false }).entitled, false, '3 元档无资格');
   eq(clock.entitlementOf({ member: true, unlimited: true, memberTier: 'QUOTA_10' }).entitled, false, '即使服务端误报 unlimited，3 元档仍无资格');
   eq(clock.entitlementOf({ member: true, unlimited: true, memberPlanId: 'member_quota_10' }).entitled, false, '3 元档 planId 同样阻断悬浮时钟');
+  const membershipRules = require('../cloudfunctions/reminder/lib/membership');
+  const tierNow = new Date('2026-11-17T20:00:00+08:00');
+  const tierExpiry = new Date('2026-12-17T20:00:00+08:00');
+  const quotaTierSnapshot = membershipRules.snapshotFromTasks({
+    member: true,
+    memberTier: 'QUOTA_10',
+    memberExpiresAt: tierExpiry,
+    taskPackCount: 0,
+    taskPackSlots: 0,
+    protectedTaskQuota: 5,
+  }, [], tierNow, { planVersion: membershipRules.PlanVersion.TWO_TIER });
+  eq(quotaTierSnapshot.memberTier, 'QUOTA_10', '首页会员快照保留 3 元档档位');
+  eq(quotaTierSnapshot.unlimited, false, '首页会员快照不把 3 元档标记为不限额度');
+  eq(quotaTierSnapshot.taskLimit, 10, '首页会员快照显示 3 元档 10 个名额');
+  eq(clock.entitlementOf(quotaTierSnapshot, tierNow).entitled, false, '3 元档首页快照不开放悬浮时钟');
+  const legacyUnlimitedSnapshot = membershipRules.snapshotFromTasks({
+    member: true,
+    memberTier: 'LEGACY_UNLIMITED',
+    memberExpiresAt: tierExpiry,
+  }, [], tierNow, { planVersion: membershipRules.PlanVersion.UNLIMITED });
+  eq(clock.entitlementOf(legacyUnlimitedSnapshot, tierNow).entitled, true, '老不限额度会员仍开放悬浮时钟');
   eq(clock.entitlementOf({ member: false, unlimited: true }).entitled, false, '过期会员无资格');
   eq(clock.entitlementOf({ member: true, unlimited: true, legacyUnlimited: true }).entitled, true, '老不限额度会员有资格');
 
