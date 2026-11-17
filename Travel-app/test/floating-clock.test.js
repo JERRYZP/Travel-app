@@ -55,6 +55,8 @@ try {
   eq(clock.formatCountdown(9 * 60000 + 59999), '09:59.999', '倒计时毫秒格式');
   eq(clock.entitlementOf({ member: true, unlimited: true }).entitled, true, '不限额度会员有资格');
   eq(clock.entitlementOf({ member: true, unlimited: false }).entitled, false, '3 元档无资格');
+  eq(clock.entitlementOf({ member: true, unlimited: true, memberTier: 'QUOTA_10' }).entitled, false, '即使服务端误报 unlimited，3 元档仍无资格');
+  eq(clock.entitlementOf({ member: true, unlimited: true, memberPlanId: 'member_quota_10' }).entitled, false, '3 元档 planId 同样阻断悬浮时钟');
   eq(clock.entitlementOf({ member: false, unlimited: true }).entitled, false, '过期会员无资格');
   eq(clock.entitlementOf({ member: true, unlimited: true, legacyUnlimited: true }).entitled, true, '老不限额度会员有资格');
 
@@ -193,6 +195,9 @@ try {
   const homeSource = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.js'), 'utf8');
   eq(homeSource.includes('floatingClock.startPreview'), true, '首页提供演示触发入口');
   eq(homeSource.includes('onFloatingClockSpotOpen'), true, '首页接入景点详情点击');
+  const reminderBootstrapSource = fs.readFileSync(path.join(ROOT, 'cloudfunctions/reminder/index.js'), 'utf8');
+  eq(reminderBootstrapSource.includes('planVersion: membership.planVersionFor(userId, event)'), true, '首页会员快照按真实两档方案生成');
+  eq(reminderBootstrapSource.includes('newPlan: membership.isNewPlanEnabledFor(userId, event)'), false, '首页不得把两档新客户端误判为不限额度');
   const spotHubSource = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-hub/spot-hub.js'), 'utf8');
   const spotHubWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-hub/spot-hub.wxml'), 'utf8');
   eq(spotHubSource.includes('this.openDetail(spotId)'), true, '景点 Tab 的时钟景点名复用当前详情浮窗');

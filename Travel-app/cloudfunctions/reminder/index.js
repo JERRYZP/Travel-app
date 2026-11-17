@@ -592,7 +592,7 @@ async function composeHomeBootstrap(db, userId, sources, event, t0, timing, opti
     releasePills: task.buildReleasePills(decorated, nowTs, 2),
     reminderQuotaWarning: task.buildReminderQuotaWarning(quotaHealth, nowTs),
     membership: membership.snapshotFromTasks(user, allTasks, nowTs, {
-      newPlan: membership.isNewPlanEnabledFor(userId, event),
+      planVersion: membership.planVersionFor(userId, event),
     }),
     recoverableIds,
     homeMode: decorated.length === 0 ? 1 : 2,
