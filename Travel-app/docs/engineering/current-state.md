@@ -10,6 +10,7 @@
 ## 已实现
 
 - 2026-11-17 19:41 云函数 `payment` + `reminder` 已部署到 `cloud1-d9g9f4hja396d6e92`，均回读 `Active`；`payment_config/home_clock_promo` 已开启，投放窗口为 `2026-11-17 19:41` 至 `2026-11-21 19:41`，`home.bootstrap.homeClockPromo` 已在开发者工具实际返回并渲染横幅。该窗口 4 天后自动结束，也可在客服工作台主动关闭。`payment` 定时触发器仍需在腾讯云控制台最终回读，部署回执只确认函数更新成功。
+- 2026-11-17 20:00 客户端 `2.5.0-rc.6` 已上传并设为体验版：总包 `1,195,873 B`、主包 `1,101,088 B`、`admin` 分包 `94,785 B`；对应 `codex/floating-clock-main@fde7f04` / tag `v2.5.0-rc.6`。本版修复首页会员快照把 3 元档误判为不限额度的问题：首页按真实 `planVersion` 生成会员快照，3 元档 `unlimited=false`，悬浮时钟仅对新 4.9 元不限额度会员和老 `LEGACY_UNLIMITED` 会员展示。`reminder` 已再次部署并回读 `Active`；`payment_config/home_clock_promo` 当前仍为展示中，截止 `2026-11-21 19:41`。`npm test`、`npm run check`、`git diff --check` 通过。**仅上传体验版，未提交审核、未发布正式版。**
 - 2026-11-17 19:15 客户端 `2.5.0-rc.5` 已上传并设为体验版：总包 `1,195,767 B`、主包 `1,100,982 B`、`admin` 分包 `94,785 B`；对应 `codex/floating-clock-main@63f7101` / tag `v2.5.0-rc.5`。本版包含首页悬浮时钟功能更新横幅、3 元档会员卡显示实际提醒名额并提供升级入口。`npm test`、`npm run check`、`git diff --check` 通过。横幅依赖的 `payment` / `reminder` 已部署并开启；**仅上传体验版，未提交审核、未发布正式版。**
 - 2026-11-17 18:11 客户端 `2.5.0-rc.4` 已上传并设为体验版：总包 `1,191,148 B`、主包 `1,098,933 B`、`admin` 分包 `92,215 B`；对应 `codex/floating-clock-main@bb9b1ea` / tag `v2.5.0-rc.4`。该版本已被 `2.5.0-rc.5` 体验版覆盖。
 - 2026-11-16 22:22 客户端 `2.5.0-rc.3` 已上传并设为体验版：总包 `1,191,182 B`、主包 `1,098,967 B`、`admin` 分包 `92,215 B`；对应 `codex/floating-clock-main@896adec` / tag `v2.5.0-rc.3`。该版本已被 `2.5.0-rc.4` 体验版覆盖。
