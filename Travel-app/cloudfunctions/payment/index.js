@@ -51,6 +51,7 @@ const membershipSales = require('./lib/membership-sales');
 const membershipEnforcement = require('./lib/membership-enforcement');
 const membershipPricing = require('./lib/membership-pricing');
 const membershipUpgradeNotice = require('./lib/membership-upgrade-notice');
+const homeClockPromo = require('./lib/home-clock-promo');
 const adminOrders = require('./lib/admin-orders');
 const adminReminderQuality = require('./lib/admin-reminder-quality');
 const feedbackReward = require('./lib/feedback-reward');
@@ -1219,6 +1220,53 @@ async function setMembershipUpgradeNotice(context, event) {
   membershipUpgradeNotice.invalidate(db);
   const fresh = await membershipUpgradeNotice.read(db, { cache: false });
   return ok({ membershipUpgradeNotice: membershipUpgradeNotice.adminViewOf(fresh) });
+}
+
+async function setHomeClockPromo(context, event) {
+  const denied = adminRequired(context);
+  if (denied) return denied;
+  const enabled = event.enabled === true;
+  const current = await homeClockPromo.read(db, { cache: false });
+  const nowTs = new Date();
+  const currentEndsMs = new Date(current.endsAt || 0).getTime();
+  const restarting = enabled && (current.enabled !== true
+    || !Number.isFinite(currentEndsMs)
+    || currentEndsMs <= nowTs.getTime());
+  const window = restarting ? homeClockPromo.nextWindow(nowTs) : {
+    startsAt: current.startsAt || nowTs,
+    endsAt: current.endsAt || homeClockPromo.nextWindow(nowTs).endsAt,
+  };
+  await db.runTransaction(async transaction => {
+    await transaction.collection(COLLECTIONS.PAYMENT_CONFIG)
+      .doc(homeClockPromo.CONFIG_ID)
+      .set({
+        data: {
+          promoId: current.promoId || homeClockPromo.PROMO_ID,
+          enabled,
+          startsAt: window.startsAt,
+          endsAt: window.endsAt,
+          updatedAt: nowTs,
+          updatedBy: context.OPENID,
+        },
+      });
+    await transaction.collection(COLLECTIONS.ADMIN_AUDIT_LOGS).add({
+      data: {
+        adminOpenId: context.OPENID,
+        action: 'SET_HOME_CLOCK_PROMO',
+        caseId: '',
+        orderId: '',
+        details: {
+          enabled,
+          startsAt: window.startsAt,
+          endsAt: window.endsAt,
+        },
+        createdAt: nowTs,
+      },
+    });
+  });
+  homeClockPromo.invalidate(db);
+  const fresh = await homeClockPromo.read(db, { cache: false });
+  return ok({ homeClockPromo: homeClockPromo.adminViewOf(fresh) });
 }
 
 async function adminCaseBundle(caseItem) {
@@ -2544,6 +2592,7 @@ async function main(event = {}) {
           enforcement,
           pricing,
           upgradeNotice,
+          clockPromo,
         ] = await Promise.all([
           protectionMigrationCompleted(db).catch(() => false),
           entitlementMigrationCompleted(db).catch(() => false),
@@ -2553,6 +2602,7 @@ async function main(event = {}) {
           membershipEnforcement.read(db),
           membershipPricing.read(db),
           membershipUpgradeNotice.read(db),
+          homeClockPromo.read(db),
         ]);
         return ok({
           isAdmin: true,
@@ -2564,6 +2614,7 @@ async function main(event = {}) {
           membershipEnforcement: membershipEnforcement.adminView(enforcement),
           membershipPricing: membershipPricing.adminView(pricing),
           membershipUpgradeNotice: membershipUpgradeNotice.adminViewOf(upgradeNotice),
+          homeClockPromo: homeClockPromo.adminViewOf(clockPromo),
         });
       }
       case 'afterSales.adminSetMembershipSales':
@@ -2574,6 +2625,8 @@ async function main(event = {}) {
         return await setMembershipPricing(context, event);
       case 'afterSales.adminSetMembershipUpgradeNotice':
         return await setMembershipUpgradeNotice(context, event);
+      case 'afterSales.adminSetHomeClockPromo':
+        return await setHomeClockPromo(context, event);
       case 'adminOrders.list':
         return await adminOrderList(context, event);
       case 'adminOrders.stats':

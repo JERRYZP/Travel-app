@@ -54,6 +54,43 @@
   box-sizing: border-box;
 }
 
+/* 会员功能更新横幅：复用个人页公告的暖色卡片样式，不打断首页操作。 */
+.home-clock-promo {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+  padding: 18rpx 16rpx 18rpx 20rpx;
+  border: 1rpx solid #E5CFA7;
+  border-radius: 16rpx;
+  background: #FFF8E8;
+  box-sizing: border-box;
+}
+.home-clock-promo-title {
+  flex: 1;
+  min-width: 0;
+  color: #6B4718;
+  font-size: 22rpx;
+  line-height: 1.45;
+}
+.home-clock-promo-emphasis { font-weight: 700; }
+.home-clock-promo-action {
+  flex-shrink: 0;
+  color: #A56B16;
+  font-size: 21rpx;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.home-clock-promo-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42rpx;
+  height: 42rpx;
+  flex-shrink: 0;
+  opacity: .5;
+}
+
 /* 授权额度预警：在原放票横幅之前，优先提醒“提醒可能收不到”。 */
 .quota-warning-banner {
   display: flex;

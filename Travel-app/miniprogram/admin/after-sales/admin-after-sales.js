@@ -239,6 +239,8 @@ Page({
     membershipSales: null,
     membershipUpgradeNotice: null,
     membershipUpgradeNoticeSaving: false,
+    homeClockPromo: null,
+    homeClockPromoSaving: false,
     salesReason: '',
     salesSaving: false,
     showSalesConfirm: false,
@@ -431,6 +433,7 @@ Page({
       fundingBlockedCount: Math.max(0, Number(res && res.fundingBlockedCount) || 0),
       membershipSales: (res && res.membershipSales) || null,
       membershipUpgradeNotice: (res && res.membershipUpgradeNotice) || null,
+      homeClockPromo: (res && res.homeClockPromo) || null,
       membershipEnforcement,
       enforcementPickerLabels: enforcementPicker.labels,
       enforcementPickerIndex: enforcementPicker.index,
@@ -497,6 +500,41 @@ Page({
       .catch(err => {
         this.setData({ salesSaving: false });
         api.toastError(err);
+        return false;
+      });
+  },
+
+  onToggleHomeClockPromo() {
+    const promo = this.data.homeClockPromo;
+    if (this.data.homeClockPromoSaving || !promo || promo.unavailable) return;
+    const nextEnabled = promo.toggleToEnabled !== false;
+    wx.showModal({
+      title: nextEnabled ? '开启首页悬浮时钟横幅' : '关闭首页悬浮时钟横幅',
+      content: nextEnabled
+        ? '开启后默认投放 4 天；用户点击横幅右侧叉号后本设备不再展示。可随时从这里主动关闭。'
+        : '关闭后首页不再展示悬浮时钟横幅，不影响会员权益和悬浮时钟功能。',
+      confirmText: nextEnabled ? '开启' : '关闭',
+      success: res => {
+        if (res.confirm) this.setHomeClockPromoState(nextEnabled);
+      },
+    });
+  },
+
+  setHomeClockPromoState(enabled) {
+    if (this.data.homeClockPromoSaving) return Promise.resolve(false);
+    this.setData({ homeClockPromoSaving: true });
+    return api.payment.afterSales.adminSetHomeClockPromo({ enabled })
+      .then(result => {
+        this.setData({
+          homeClockPromoSaving: false,
+          homeClockPromo: (result && result.homeClockPromo) || this.data.homeClockPromo,
+        });
+        wx.showToast({ title: enabled ? '推广横幅已开启' : '推广横幅已关闭', icon: 'none' });
+        return true;
+      })
+      .catch(err => {
+        this.setData({ homeClockPromoSaving: false });
+        wx.showToast({ title: (err && err.error) || '推广开关更新失败', icon: 'none' });
         return false;
       });
   },

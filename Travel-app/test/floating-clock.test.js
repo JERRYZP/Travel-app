@@ -307,6 +307,30 @@ try {
   eq(memberWxss.includes('.vibration-benefit-row { align-items: flex-start; }'), true, '震动权益保持顶部对齐');
   eq(clockWxml.includes('dockedSpotChars'), true, '贴边态在上方显示景点简称');
   eq(clockWxml.includes("phase === 'after' ? 'is-live'"), true, '开抢二字使用竖排样式');
+  const homePromoWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxml'), 'utf8');
+  const homePromoJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.js'), 'utf8');
+  const homePromoWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxss'), 'utf8');
+  const adminPromoWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/admin/after-sales/admin-after-sales.wxml'), 'utf8');
+  const promoConfig = require('../cloudfunctions/payment/lib/home-clock-promo');
+  const promoNow = new Date('2026-11-17T18:00:00+08:00');
+  const promoActive = {
+    _id: 'home_clock_promo', promoId: 'floating-clock-2026-11', enabled: true,
+    startsAt: new Date('2026-11-17T17:00:00+08:00'),
+    endsAt: new Date('2026-11-21T17:00:00+08:00'),
+  };
+  eq(promoConfig.publicViewOf(promoActive, promoNow).id, 'floating-clock-2026-11', '有效推广配置返回横幅活动 ID');
+  eq(promoConfig.publicViewOf({ ...promoActive, enabled: false }, promoNow), null, '关闭推广配置不返回横幅');
+  eq(promoConfig.adminViewOf(promoActive, promoNow).active, true, '后台读取推广横幅展示状态');
+  eq(promoConfig.adminViewOf({ ...promoActive, enabled: true, endsAt: new Date('2026-11-17T17:59:00+08:00') }, promoNow).statusLabel, '已到期', '后台读取过期推广状态');
+  eq(homePromoWxml.includes('class="home-clock-promo"'), true, '首页使用顶部横幅通知');
+  eq(homePromoWxml.includes('会员功能更新：<text class="home-clock-promo-emphasis">悬浮抢票时钟</text>现已上线！'), true, '首页横幅文案和重点字样式');
+  eq(homePromoWxml.includes('catchtap="onHomeClockPromoOpen">查看详情'), true, '首页横幅提供查看详情入口');
+  eq(homePromoWxml.includes('catchtap="onHomeClockPromoDismiss"'), true, '首页横幅提供关闭入口');
+  eq(homePromoJs.includes('homeClockPromoDismissedV1'), true, '首页按活动 ID 持久化关闭状态');
+  eq(homePromoWxss.includes('.home-clock-promo'), true, '首页横幅拥有独立样式');
+  eq(adminPromoWxml.includes('onToggleHomeClockPromo'), true, '客服工作台提供推广横幅开关');
+  const promoApi = fs.readFileSync(path.join(ROOT, 'miniprogram/utils/api.js'), 'utf8');
+  eq(promoApi.includes('adminSetHomeClockPromo'), true, '客户端接入推广横幅后台开关 API');
 } finally {
   clock.resetForTest();
   Date.now = realNow;

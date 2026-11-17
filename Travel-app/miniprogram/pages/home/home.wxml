@@ -21,6 +21,15 @@
      导航块下方的透明留白不参与撑高，正文必须让出实际胶囊区域，但不能让横幅自身高度。 -->
 <view class="page-body" style="padding-top: {{pageTop}}rpx;">
 
+  <view wx:if="{{showHomeClockPromo}}" class="home-clock-promo">
+    <svg-icon name="sparkle" size="17px" />
+    <text class="home-clock-promo-title">会员功能更新：<text class="home-clock-promo-emphasis">悬浮抢票时钟</text>现已上线！</text>
+    <text class="home-clock-promo-action" catchtap="onHomeClockPromoOpen">查看详情</text>
+    <view class="home-clock-promo-close" catchtap="onHomeClockPromoDismiss" aria-role="button" aria-label="关闭会员功能更新横幅">
+      <svg-icon name="close" size="11px" />
+    </view>
+  </view>
+
   <!-- 授权额度预警：short / exhausted 是真实缺口，立即提示；只有 low 缓冲受 48 小时窗口限制。可当天关闭。 -->
   <view wx:if="{{showReminderQuotaWarning}}" class="quota-warning-banner">
     <text class="qw-text">{{reminderQuotaWarning.text}}</text>

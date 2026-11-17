@@ -1350,6 +1350,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 { action: 'afterSales.adminSetMembershipEnforcement', mode: 'off' | 'test' | 'all' }
 { action: 'afterSales.adminSetMembershipPricing', mode: 'test' | 'all' }
 { action: 'afterSales.adminSetMembershipUpgradeNotice', enabled: Boolean }
+{ action: 'afterSales.adminSetHomeClockPromo', enabled: Boolean }
 { action: 'afterSales.adminList', status?, keyword?, page?, pageSize? }
 { action: 'afterSales.adminDetail', caseId }
 { action: 'afterSales.adminApproveRefund', caseId }
@@ -1406,12 +1407,13 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - `adminOrders.detail` 返回本人订单管理详情，包括用户会员状态、支付渠道、微信交易号、权益发放快照和关联售后记录。订单不存在统一返回 `1024`。
 - `afterSales.adminList` 的 `items[].user` 返回当前昵称、完整 OpenID、会员到期和已购名额；同样支持分页与关键词搜索。
 - 管理员搜索订单写 `SEARCH_ADMIN_ORDERS`，搜索售后写 `SEARCH_ADMIN_AFTER_SALES`，查看订单详情写 `VIEW_ADMIN_ORDER_DETAIL`。审计只记录关键词类型和状态，不记录原始搜索词；订单详情审计只记录交易号是否存在，不记录交易号全文。
-- `adminStatus` 返回 `{ isAdmin, migrationCompleted, entitlementMigrationCompleted, pendingCount, fundingBlockedCount, membershipSales, membershipEnforcement, membershipPricing, membershipUpgradeNotice }`。`pendingCount` 是未结束售后单数量，用户已取消的单不计入；`fundingBlockedCount` 是其中因商户基本账户余额不足而未能发起退款的数量；`membershipSales` 含当前购买状态、暂停原因、更新时间和配置读取失败标记；`membershipEnforcement` 返回当前额度限制模式；`membershipPricing` 返回当前两档定价范围、模式文案、说明、来源、更新时间和读取失败标记。非管理员不返回购买、限制、定价或公告配置。
+- `adminStatus` 返回 `{ isAdmin, migrationCompleted, entitlementMigrationCompleted, pendingCount, fundingBlockedCount, membershipSales, membershipEnforcement, membershipPricing, membershipUpgradeNotice, homeClockPromo }`。`pendingCount` 是未结束售后单数量，用户已取消的单不计入；`fundingBlockedCount` 是其中因商户基本账户余额不足而未能发起退款的数量；`membershipSales` 含当前购买状态、暂停原因、更新时间和配置读取失败标记；`membershipEnforcement` 返回当前额度限制模式；`membershipPricing` 返回当前两档定价范围、模式文案、说明、来源、更新时间和读取失败标记。非管理员不返回购买、限制、定价或公告配置。
 - `membershipUpgradeNotice` 返回公告配置状态：`configured / enabled / active / noticeId / startsAt / endsAt / endsAtText / updatedAt / updatedBy / readError / statusLabel / description / actionText / toggleToEnabled / unavailable`。全局唯一真身为 `payment_config/membership_upgrade_notice`；`active` 同时校验开关和北京时间有效期。客服工作台当前不渲染该控制卡，但字段和管理动作保留以兼容后端与后续恢复入口。
 - `adminSetMembershipSales` 仅管理员可调用。暂停时必须填写原因；恢复时清空暂停原因。切换写 `admin_audit_logs`，不得依赖客户端隐藏按钮。
 - `adminSetMembershipEnforcement` 仅管理员可调用，只接受 `off / test / all`。切换写 `SET_MEMBERSHIP_ENFORCEMENT` 审计，记录前后模式；切 `all` 时两项迁移未完成返回 `1033`。配置文档缺失时提醒链路继续使用环境变量兜底，后台显式展示该来源，不猜测运行模式。
 - `adminSetMembershipPricing` 仅管理员可调用，只接受 `test / all`。切换写 `SET_MEMBERSHIP_PRICING` 审计并立即失效服务端缓存；不写 `membership_enforcement`，不重算已有提醒任务。配置缺失或读取失败时默认只开放测试名单。
 - `adminSetMembershipUpgradeNotice` 仅管理员可调用，写 `SET_MEMBERSHIP_UPGRADE_NOTICE` 审计。`enabled=false` 立即停止向白名单用户返回公告；重新开启且原截止时间已过时，默认从当前时间延长 72 小时。公告开关只影响“我的”页横幅，不影响会员权益、订单、退款或提醒任务。
+- `adminSetHomeClockPromo` 仅管理员可调用：`enabled=true` 时若当前活动已关闭或过期，默认从当前时间开启 4 天；已处于有效窗口内则保持原截止时间。`enabled=false` 立即停止首页横幅，写 `SET_HOME_CLOCK_PROMO` 审计，不影响会员权益、订单、退款或悬浮时钟功能。`home.bootstrap.homeClockPromo` 仅在配置启用且处于有效期内返回；客户端按活动 ID 持久化“叉号永久关闭”本机状态。
 - 管理员可从「全部」列表查看“用户已取消”、取消时间和取消前异常原因；取消单不显示同意退款、驳回或重试退款操作。
 - 上线前迁移完成后正式工作台已关闭迁移入口；若未来重新开启，工作台可据 `migrationCompleted=true` 自动隐藏。
 - `adminDetail` 返回订单、用户权益、支付渠道、支付查单结果、权益发放快照、支付后新增提醒数、重复支付证据和历史售后记录。系统自动补建的平台退款记录会返回 `systemGenerated=true`、退款单号和退款金额。
@@ -1911,6 +1913,9 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
     releaseAt, spotName, visitDate, itemId, countdownText
   } | null,
   releasePills: [/* 摘要卡底部「即将提醒」胶囊，按放票时刻合并 */],
+  homeClockPromo: {               // 有效时返回；否则 null
+    id, endsAt, endsAtText
+  } | null,
   reminderQuotaWarning: {         // 授权 short/exhausted 时返回；low 仅限 48 小时内
     level, pendingMessageCount, remainingQuota, shortfall, replenishNeeded,
     nearestRemindAt, text

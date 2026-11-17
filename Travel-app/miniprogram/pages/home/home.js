@@ -19,6 +19,7 @@ const floatingClock = require('../../utils/floating-clock.js');
 /* 滚多少像素把导航栏底色从全透明推到不透明 */
 const NAV_FADE_PX = 50;
 const QUOTA_WARNING_DISMISS_KEY = 'reminderQuotaWarningDismissedOnV1';
+const HOME_CLOCK_PROMO_DISMISSED_KEY = 'homeClockPromoDismissedV1';
 /* 首页 onShow 的复用窗口（2026-10-13 调用量优化，2026-10-27 改成自适应）。
    距上次成功 bootstrap 不足**本次数据算出的窗口**、又有本地缓存时，切回首页
    不再重复发一次网络。窗口长度由放票紧迫度决定（30s / 60s / 5min），
@@ -42,6 +43,14 @@ function shareExpiryText(dateStr) {
  * @param {object} res  bootstrap 返回体（原始形状）
  * @param {Date}   now  用于推算放票状态的「现在」，见 resolveNow()
  */
+function clockPromoVisible(res) {
+  const promo = (res && res.homeClockPromo) || null;
+  if (!promo || !promo.id) return false;
+  let dismissed = '';
+  try { dismissed = wx.getStorageSync(HOME_CLOCK_PROMO_DISMISSED_KEY) || ''; } catch (e) {}
+  return String(dismissed) !== String(promo.id);
+}
+
 function buildHomeData(res, now, opts) {
   const silent = !!(opts && opts.silent);
   const trips = (res.trips || []).map((t, i) =>
@@ -94,6 +103,8 @@ function buildHomeData(res, now, opts) {
        那是第二套口径，必然与云端漂。 */
     bannerPills: res.releasePills || [],
     banner: res.stickyBanner || null,
+    homeClockPromo: res.homeClockPromo || null,
+    showHomeClockPromo: clockPromoVisible(res),
     emptyReleaseRows: releasePreview.rows,
     emptyReleaseSample: releasePreview.sample,
     reminderQuotaWarning: res.reminderQuotaWarning || null,
@@ -187,6 +198,8 @@ Page({
     historyOpen: false,
     banner: null,
     reminderQuotaWarning: null,
+    homeClockPromo: null,
+    showHomeClockPromo: false,
     showReminderQuotaWarning: false,
     quotaWarningDayKey: '',
 
@@ -598,6 +611,18 @@ Page({
    */
   bootstrapParams(options) {
     return options && options.bypassRuntimeCache ? { runtimeBypass: true } : {};
+  },
+
+  onHomeClockPromoOpen() {
+    wx.navigateTo({ url: '/pages/membership/membership' });
+  },
+
+  onHomeClockPromoDismiss() {
+    const promo = this.data.homeClockPromo;
+    if (promo && promo.id) {
+      try { wx.setStorageSync(HOME_CLOCK_PROMO_DISMISSED_KEY, String(promo.id)); } catch (e) {}
+    }
+    this.setData({ showHomeClockPromo: false });
   },
 
   onQuotaWarningOpen() {

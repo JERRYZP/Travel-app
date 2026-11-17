@@ -26,6 +26,7 @@ const item = require('./lib/item');
 const itemActions = require('./lib/trip-item-actions');
 const recovery = require('./lib/recovery');
 const membership = require('./lib/membership');
+const homeClockPromo = require('./lib/home-clock-promo');
 const userDomain = require('./lib/user');
 const userRuntime = require('./lib/user-runtime');
 const {
@@ -503,9 +504,10 @@ async function composeHomeBootstrap(db, userId, sources, event, t0, timing, opti
   const spotsPromise = includeSpots
     ? (resource.childCall(), cloud.callFunction({ name: 'spots', data: { action: 'list' } }).catch(() => null))
     : Promise.resolve(null);
-  const [{ spotMap, ruleMap }, spotsCall] = await Promise.all([
+  const [{ spotMap, ruleMap }, spotsCall, homeClockPromoConfig] = await Promise.all([
     item.loadSpotContext(db, items.map(row => row.spotId)),
     spotsPromise,
+    homeClockPromo.read(db),
   ]);
   timing.spotCtxMs = Date.now() - tSpotCtx;
 
@@ -602,6 +604,7 @@ async function composeHomeBootstrap(db, userId, sources, event, t0, timing, opti
     cart: null,
     tripTasks: null,
     showGroupTabs: false,
+    homeClockPromo: homeClockPromo.publicViewOf(homeClockPromoConfig, nowTs),
   });
 }
 
