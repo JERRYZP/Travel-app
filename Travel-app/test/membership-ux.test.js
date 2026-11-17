@@ -852,21 +852,39 @@ async function run() {
   profileDef.applyUser.call(
     { setData: patch => { profileData = { ...profileData, ...patch }; } },
     {
-      nickname: '会员用户',
+      nickname: '3 元档会员',
       membership: {
         member: true,
+        memberTier: 'QUOTA_10',
         memberExpiresAtText: '2026年11月26日',
         taskUsed: 3,
-        taskLimit: 10000,
-        taskLimitUnlimited: true,
+        taskLimit: 10,
+        unlimited: false,
       },
     }
   );
   eq(profileData.memberTagText, '尊贵会员', '会员标签凸显身份');
   eq(profileData.memberCardTitle, '尊贵会员', '会员卡标题');
-  eq(profileData.memberCardDesc, '2026-11-26 到期｜已开启 3 个提醒｜不限名额',
-    '会员卡显示到期和不限名额');
-  eq(profileData.memberCardAction, '查看', '会员卡行动为查看');
+  eq(profileData.memberCardDesc, '2026-11-26 到期｜提醒名额 3/10',
+    '3 元档会员卡显示实际提醒名额，不误报不限额度');
+  eq(profileData.memberCardAction, '升级', '3 元档会员卡行动为升级');
+  profileDef.applyUser.call(
+    { setData: patch => { profileData = { ...profileData, ...patch }; } },
+    {
+      nickname: '不限额度会员',
+      membership: {
+        member: true,
+        memberTier: 'UNLIMITED',
+        memberExpiresAtText: '2026年12月01日',
+        taskUsed: 18,
+        taskLimit: null,
+        unlimited: true,
+      },
+    }
+  );
+  eq(profileData.memberCardDesc, '2026-12-01 到期｜不限提醒名额',
+    '不限额度会员卡显示不限提醒名额');
+  eq(profileData.memberCardAction, '查看', '不限额度会员卡不显示续费行动');
 
   console.log('\n=== 5b. 售后入口只在有待处理单时显示数量标识 ===');
   profileData = {};

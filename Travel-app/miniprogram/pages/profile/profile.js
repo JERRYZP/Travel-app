@@ -30,7 +30,7 @@ Page({
     isMember: false,
     memberTagText: '普通用户',
     memberCardTitle: '会员',
-    memberCardDesc: '免费版 5 个提醒名额；会员 30 天内不限提醒名额',
+    memberCardDesc: '免费版 5 个提醒名额；会员可选 10 个或不限额度',
     memberCardAction: '开通',
     notifyHint: '未开启',
     notifyState: 'none',
@@ -135,19 +135,28 @@ Page({
       ? `${expiryMatch[1]}-${String(expiryMatch[2]).padStart(2, '0')}-${String(expiryMatch[3]).padStart(2, '0')}`
       : '';
     const freeSlots = Math.max(0, Number(current.freeTaskSlots) || 0);
+    const memberSlots = Math.max(freeSlots, Number(current.memberTaskSlots) || 0);
     const sales = user.membershipSales || {};
     const purchaseEnabled = sales.purchaseEnabled !== false;
+    const unlimited = current.unlimited === true;
+    const quotaSummary = unlimited
+      ? '不限提醒名额'
+      : `提醒名额 ${current.taskUsed || 0}/${current.taskLimit || 0}`;
     this.setData({
       user,
       isMember: current.member === true,
       memberTagText: current.member ? '尊贵会员' : '普通用户',
       memberCardTitle: current.member ? '尊贵会员' : '非会员',
       memberCardDesc: current.member
-        ? `${expiryDate || current.memberExpiresAtText || '—'} 到期｜已开启 ${Number(current.taskUsed) || 0} 个提醒｜不限名额`
+        ? `${expiryDate || current.memberExpiresAtText || '—'} 到期｜${quotaSummary}`
         : (purchaseEnabled
-          ? `免费版可用 ${freeSlots} 个提醒名额；开通后不限提醒名额`
+          ? `免费版可用 ${freeSlots} 个；会员可选 ${memberSlots} 个或不限额度`
           : `免费版可用 ${freeSlots} 个提醒名额；会员购买暂停中`),
-      memberCardAction: purchaseEnabled && current.member !== true ? '开通' : '查看',
+      memberCardAction: (current.member && unlimited)
+        ? '查看'
+        : (purchaseEnabled
+          ? (current.memberTier === 'QUOTA_10' ? '升级' : '开通')
+          : '查看'),
     });
   },
 
