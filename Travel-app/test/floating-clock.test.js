@@ -233,6 +233,8 @@ try {
   const memberWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership/membership.wxml'), 'utf8');
   const memberJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/membership/membership.js'), 'utf8');
   eq(memberWxml.includes('onFloatingClockToggle'), true, '会员页开关已绑定');
+  eq(memberWxml.includes('class="benefit-row clock-benefit-row" bindtap="onFloatingClockToggle"'), false, '会员页开关热区不覆盖整行');
+  eq(memberWxml.includes('class="clock-switch {{floatingClockEnabled ? \'on\' : \'\'}}" bindtap="onFloatingClockToggle"'), true, '开关热区只绑定开关本身');
   eq(memberWxml.includes('开抢倒计时震动提醒'), true, '会员页使用新的震动权益标题');
   eq(memberWxml.includes('放票前 30 秒、10 秒和开抢时各强震一次'), true, '会员页单独说明震动权益');
   eq(memberWxml.includes('看广告视频解锁震动功能'), true, '会员页提供广告视频解锁按钮');
