@@ -9,7 +9,8 @@
 
 ## 已实现
 
-- 2026-11-17 19:15 客户端 `2.5.0-rc.5` 已上传并设为体验版：总包 `1,195,767 B`、主包 `1,100,982 B`、`admin` 分包 `94,785 B`；对应 `codex/floating-clock-main@63f7101` / tag `v2.5.0-rc.5`。本版包含首页悬浮时钟功能更新横幅、3 元档会员卡显示实际提醒名额并提供升级入口。`npm test`、`npm run check`、`git diff --check` 通过。横幅后台开关尚需部署 `payment` / `reminder` 后生效；**仅上传体验版，未提交审核、未发布正式版。**
+- 2026-11-17 19:41 云函数 `payment` + `reminder` 已部署到 `cloud1-d9g9f4hja396d6e92`，均回读 `Active`；`payment_config/home_clock_promo` 已开启，投放窗口为 `2026-11-17 19:41` 至 `2026-11-21 19:41`，`home.bootstrap.homeClockPromo` 已在开发者工具实际返回并渲染横幅。该窗口 4 天后自动结束，也可在客服工作台主动关闭。`payment` 定时触发器仍需在腾讯云控制台最终回读，部署回执只确认函数更新成功。
+- 2026-11-17 19:15 客户端 `2.5.0-rc.5` 已上传并设为体验版：总包 `1,195,767 B`、主包 `1,100,982 B`、`admin` 分包 `94,785 B`；对应 `codex/floating-clock-main@63f7101` / tag `v2.5.0-rc.5`。本版包含首页悬浮时钟功能更新横幅、3 元档会员卡显示实际提醒名额并提供升级入口。`npm test`、`npm run check`、`git diff --check` 通过。横幅依赖的 `payment` / `reminder` 已部署并开启；**仅上传体验版，未提交审核、未发布正式版。**
 - 2026-11-17 18:11 客户端 `2.5.0-rc.4` 已上传并设为体验版：总包 `1,191,148 B`、主包 `1,098,933 B`、`admin` 分包 `92,215 B`；对应 `codex/floating-clock-main@bb9b1ea` / tag `v2.5.0-rc.4`。该版本已被 `2.5.0-rc.5` 体验版覆盖。
 - 2026-11-16 22:22 客户端 `2.5.0-rc.3` 已上传并设为体验版：总包 `1,191,182 B`、主包 `1,098,967 B`、`admin` 分包 `92,215 B`；对应 `codex/floating-clock-main@896adec` / tag `v2.5.0-rc.3`。该版本已被 `2.5.0-rc.4` 体验版覆盖。
 - 2026-11-16 悬浮时钟已移植到 `main@a303ba6` 基线：包含 3 元/4.9 元/1.9 元套餐权益、会员页开关、45 秒示例、三阶段强震、30 秒开抢自动关闭、右上贴边及激励视频解锁。广告位 `adunit-ae770b8ec9fcd605`；服务端通过一次性凭证写 `users.vibrationUnlockedUntil=memberExpiresAt`，会员到期、退款或档位回退后自动失效。`rewarded_ad_attempts` 已创建；兼容版 `reminder` 已部署为 `Active`，`membership.status` 云端冒烟成功；`vibrationAdStart` 首次真实调用暴露缺失文档 `doc.get()` 抛 1500，已改为 `_id` 查询并部署（commit `8eedb1d`）；随后领取事务又暴露真实云 `doc.get()` 返回对象与 mock 数组不一致，已统一用 `docDataOf()` 兼容并部署（commit `e0f40fb`）；开发版 `2.5.0-rc.2` 已上传（总包 `1,191,252B`、主包 `1,099,037B`、`admin` 分包 `92,215B`，commit `601c040` / tag `v2.5.0-rc.2`），现已被 `2.5.0-rc.3` 体验版覆盖；真实广告仍待真机验收。
