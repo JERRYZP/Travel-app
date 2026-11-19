@@ -120,7 +120,7 @@ async function run() {
     '按钮直接说明额度、金额并继续原流程');
   gate = membershipGateOf(5, { ...free, taskUsed: 6, taskRemaining: 0 });
   eq(gate.upgradePackageId, 'member_unlimited', '一次超过 10 个容量时推荐 4.9 元不限档');
-  eq(gate.membershipActionText, '支付 ¥4.9，开通不限额度并继续',
+  eq(gate.membershipActionText, '支付 ¥4.9，开通不限额度+悬浮时钟并继续',
     '不限档按钮只读服务端价格');
   const normalOptions = membershipEntry.purchaseOptionsOf(
     { ...free, taskUsed: 3 },
@@ -133,6 +133,8 @@ async function run() {
   eq(normalOptions[0].primary, true, '3 元足够本次使用时作为主按钮');
   eq(normalOptions[1].packageId, 'member_unlimited', '下方按钮固定为 4.9 元档');
   eq(normalOptions[1].secondary, true, '4.9 元作为次按钮展示');
+  eq(normalOptions[1].payText, '支付 ¥4.9，开通不限额度+悬浮时钟并继续',
+    '4.9 元按钮同时说明不限额度与悬浮时钟');
   const capacityOptions = membershipEntry.purchaseOptionsOf(
     { ...free, taskUsed: 8 },
     serverPackages,
@@ -313,7 +315,7 @@ async function run() {
   });
   eq(shortLimit.upgrade, true, '3 元档超额识别为升级包');
   eq(shortLimit.upgradeShortWindow, true, '不足 5 天状态透传到统一浮层');
-  eq(shortLimit.payText, '补 ¥1.9，升级不限额度并继续', '升级按钮只说明差价与继续');
+  eq(shortLimit.payText, '补 ¥1.9，升级不限额度+悬浮时钟并继续', '升级按钮只说明差价与继续');
   eq(membershipEntry.payConfirmOf(shortLimit).effect,
     '支付成功后立即升级为不限提醒名额，不延长会员有效期',
     '支付确认明确升级不延期');

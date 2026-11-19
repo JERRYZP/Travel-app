@@ -221,7 +221,7 @@ Page({
           ? '会员即将到期'
           : (purchaseEnabled
           ? (pkg
-            ? `补 ${priceText}，升级不限额度并继续`
+            ? `补 ${priceText}，升级不限额度+悬浮时钟并继续`
             : '升级方案暂不可购买')
           : '会员购买暂停中'),
         membershipGateActionDisabled: upgradeWindowClosed || !purchaseEnabled || !pkg,
@@ -249,7 +249,7 @@ Page({
       membershipActionText: purchaseEnabled
         ? (pkg
           ? (isUnlimited
-            ? `支付 ${priceText}，开通不限额度并继续`
+            ? `支付 ${priceText}，开通不限额度+悬浮时钟并继续`
             : `支付 ${priceText}，开通 ${memberSlots} 个提醒名额并继续`)
           : '暂无可购买的会员商品')
         : '会员购买暂停中',
