@@ -205,6 +205,14 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     );
     eq(/summaryTrip/.test(addTripCode), false,
       'onAddTrip 的任何预填/提交逻辑仍不读 summaryTrip');
+    eq(/const startDate = t \? \(t\.displayStartDate \|\| t\.startDate\) : '';/.test(addTripCode),
+      true, 'PAGE-005 起始日与首页摘要卡使用同一展示字段');
+    eq(/const endDate = t \? \(t\.displayEndDate \|\| t\.endDate\) : '';/.test(addTripCode),
+      true, 'PAGE-005 结束日与首页摘要卡使用同一展示字段');
+    eq(/&startDate=' \+ t\.startDate/.test(addTripCode), false,
+      'PAGE-005 不再直接传业务 startDate');
+    eq(/&endDate=' \+ t\.endDate/.test(addTripCode), false,
+      'PAGE-005 不再直接传业务 endDate');
     eq(/onTripShareTap\(\)[\s\S]*this\.data\.summaryTrip/.test(HOME_CODE), true,
       '只读分享入口可以读取摘要卡当前展示的那一趟');
     eq(/summaryTrip: null,/.test(HOME_CODE), true, 'summaryTrip 在 data 里显式声明');

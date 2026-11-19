@@ -23,7 +23,7 @@
 | `RULE-PROGRESS-001` | `CLAUDE.md` 40 | 门票进度分母 | `docs/engineering/domain-rules.md` | `extracted` |
 | `RULE-HOME-001` | `CLAUDE.md` 41-50 | 首页单形态、摘要卡、胶囊与样式硬约束 | `docs/engineering/domain-rules.md`、`.claude/rules/frontend.md` | `extracted` |
 | `RULE-HOME-002` | `CLAUDE.md` 85 | 双 Tab/`homeMode` 已废弃，首页只保留单形态 | `docs/engineering/domain-rules.md` | `history` |
-| `RULE-HOME-003` | 2026-11-19 首页摘要卡动态日期 | 摘要卡日期段与倒计时读取 `home.bootstrap.displayStartDate/displayEndDate`；范围取当前行程全部 `trip_items.visitDate` 首尾并包含已过期日程，原 `startDate/endDate` 继续服务预填、分享与业务判定 | `产品文档.md` `HOME-RULE-009`、`API-契约.md`、`docs/engineering/architecture.md`、`docs/engineering/domain-rules.md` | `delegated` |
+| `RULE-HOME-003` | 2026-11-19 首页摘要卡动态日期 | 摘要卡日期段与倒计时读取 `home.bootstrap.displayStartDate/displayEndDate`；范围取当前行程全部 `trip_items.visitDate` 首尾并包含已过期日程，PAGE-005 日期预填复用同一展示首尾且仍只接受未结束 `primaryTrip`；原 `startDate/endDate` 继续服务分享与业务判定 | `产品文档.md` `HOME-RULE-009`、`API-契约.md`、`docs/engineering/architecture.md`、`docs/engineering/domain-rules.md` | `delegated` |
 | `RULE-TIMELINE-001` | `CLAUDE.md` 51-60 | 纯预览、按钮态、已开票锁定、清单分组 | `docs/engineering/domain-rules.md` | `extracted` |
 | `RULE-CART-001` | `CLAUDE.md` 61 | 清单是提交前暂存区 | `docs/engineering/domain-rules.md`、`docs/engineering/architecture.md` | `extracted` |
 | `RULE-CART-002` | `产品文档.md` CART-RULE-003 / 007 | 清单收敛到当前这次生成的时间线范围 | `产品文档.md`、`docs/engineering/domain-rules.md` | `delegated` |

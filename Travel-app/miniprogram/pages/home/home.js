@@ -671,7 +671,7 @@ Page({
    *
    * 用户点这个按钮的典型意图是「往我刚规划的那趟行程里再加个景点」，让他把日期段
    * 和已经选过的景点重新输一遍是纯浪费。预填的是 `primaryTrip`（trips[0]，进行中
-   * 行程按开始日期升序的第一个，与首页置顶那趟是同一趟），不是别的：
+   * 行程按开始日期升序的第一个，与首页置顶那趟是同一趟），日期段取与摘要卡共用的展示首尾：
    * 空态时 primaryTrip 为 null，参数自然为空，页面维持从零填。
    *
    * ⚠️ **不是 `summaryTrip`**（2026-10-15）：摘要卡在「所有行程都结束」时会退化展示
@@ -691,10 +691,12 @@ Page({
       this.setData({ previewNewUser: false });
     }
     const t = emptyHome ? null : this.data.primaryTrip;
+    const startDate = t ? (t.displayStartDate || t.startDate) : '';
+    const endDate = t ? (t.displayEndDate || t.endDate) : '';
     const q = (t && t._id)
       ? ('?tripId=' + t._id
-        + '&startDate=' + t.startDate
-        + '&endDate=' + t.endDate
+        + '&startDate=' + startDate
+        + '&endDate=' + endDate
         + '&spotIds=' + (t.spotIds || []).join(','))
       : '';
     wx.navigateTo({ url: '/pages/add-trip/add-trip' + q });

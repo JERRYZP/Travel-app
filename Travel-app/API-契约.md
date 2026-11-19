@@ -2,7 +2,7 @@
 
 > 面向：前端（微信小程序页面开发）
 > 2026-11-19 更新：新增独立 `account` 云函数与 PAGE-012-1 自助注销。`account.preflight` 只读预检，`account.erase` 在服务端二次预检后删除个人业务数据，并将订单/售后/安全审计保留字段与 OpenID 解绑；延迟支付不得把权益发给新账户。
-> 2026-11-19 更新：`home.bootstrap` 的 `trips[]` 与 `history[]` 新增只读展示字段 `displayStartDate` / `displayEndDate`，取该行程全部 `trip_items.visitDate` 的最早/最晚日期（包含已过期日程）。原 `startDate` / `endDate` 语义不变，继续服务新增提醒预填、分享和业务判定；历史摘要仍不下发 `items`。
+> 2026-11-19 更新：`home.bootstrap` 的 `trips[]` 与 `history[]` 新增只读展示字段 `displayStartDate` / `displayEndDate`，取该行程全部 `trip_items.visitDate` 的最早/最晚日期（包含已过期日程）。原 `startDate` / `endDate` 语义不变，继续服务分享和行程业务判定；新增提醒日期预填改与首页摘要卡共用展示首尾，字段缺失时回退原日期。历史摘要仍不下发 `items`。
 > 2026-11-05 更新：反馈支持管理员追加多条单向回复、逐条修改，用户端展示完整回复线程和「已修改」标记；新增反馈采纳奖励 `payment.feedbackReward.adminStatus/adminGrant/adminRevoke`，每次奖励 30 天会员，可按反馈叠加。新反馈与历史反馈均可奖励，历史反馈标记为「补发」。用户端通过 `feedback.list.rewardNotices` 查看补发和撤回通知；通知按 `rewardUpdatedAt` 独立分页读取，不受最近 50 条反馈限制。
 > 2026-11-06 更新：提醒时段按额度成本收敛。清华只保留即时预约，工作日提前 1 天 `08:00`、周末及法定节假日提前 7 天 `08:00`，抽签预约不创建任务；军博只保留最早 `08:00`。当前两个景点每个出行日都只创建 1 条 `reminder_task`。底层仍保留 `releaseSlots` 与 `supportsMultiRelease` 请求级能力门禁，旧客户端继续使用单任务旧契约；`cart.list` 与 `cart.planDates` 继续返回 `reminderTaskCount`，当前值按单任务计算，未来重新启用多时段时仍按实际任务数校验授权与提醒名额。
 > 2026-11-02 更新：新增 `tripShare.create/status/revoke/open` 与 PAGE-018 行程只读分享。分享令牌只从公开路径传入，普通行程接口仅返回 `shareActive`；主人接口可通过 `ownerNickname` 读取应用内昵称用于会话标题，接收方数据只含城市、日期、天数和景点名称。
@@ -2002,8 +2002,8 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 
 - `trips` 只包含未结束行程，按 `startDate` 升序。
 - `history` 只包含 `endDate` 次日起的历史行程，按 `startDate` 降序。
-- `displayStartDate` / `displayEndDate` 只用于首页摘要卡日期段与同行倒计时，取该行程全部 `trip_items.visitDate` 的最小/最大值，不过滤已过期日程；无有效行程项时回退 `startDate` / `endDate`。新增或删除首尾行程项后，下一次 `home.bootstrap` 必须返回更新后的范围。
-- `startDate` / `endDate` 仍是行程业务日期，不得被展示字段替换；PAGE-005 预填、分享截止日和行程是否结束仍读原字段。
+- `displayStartDate` / `displayEndDate` 用于首页摘要卡日期段与同行倒计时，也作为 PAGE-005「添加提醒」日期预填范围；取该行程全部 `trip_items.visitDate` 的最小/最大值，不过滤已过期日程；无有效行程项时回退 `startDate` / `endDate`。新增或删除首尾行程项后，下一次 `home.bootstrap` 必须返回更新后的范围。
+- `startDate` / `endDate` 仍是行程业务日期，不得被展示字段替换；分享截止日和行程是否结束仍读原字段。PAGE-005 的日期预填与首页摘要卡共用 `displayStartDate/displayEndDate`，但预填对象仍只允许是未结束的 `primaryTrip`。
 - 一个行程结束后仍在 `endDate` 当天保留在主墙；次日按北京时间读取时归入历史，不依赖定时任务。
 - 首页结构：一张 `primaryTripId` 全局摘要卡 + 纵向分段墙；其他行程只显示紧凑分段标题，不用横向 Tab。
 - ⚠️ `primaryTripId` 的语义**只是「最近未结束行程」**（没有则为空串）：全部行程都结束时，客户端摘要卡会退化展示 `history[0]`（最近一段过往行程，副标题「已结束」），**不**把 `primaryTripId` 指到历史行程上——那个字段同时被「新增提醒」预填当成「还能继续加项的行程」（见 `PAGE-005-RULE-001`），指错了会把过去的时间范围预填进 PAGE-005。退化只发生在渲染层；历史摘要通过 `displayStartDate` / `displayEndDate` 展示实际日程范围（`HOME-RULE-008` / `HOME-RULE-009`）。

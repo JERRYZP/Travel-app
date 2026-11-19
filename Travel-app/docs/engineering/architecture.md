@@ -56,7 +56,7 @@
 2. 默认旧链路并行读取行程、行程项、提醒任务、用户和公开景点卡；`HOME_RUNTIME_MODE=on` 时优先读取 `user_runtime` 的单用户派生快照，缺失、失效或过期再从源集合重建。
 3. 服务端完成行程拆分、状态推导、提醒状态装饰、可挽回候选和额度预警。
 4. 前端只渲染服务端结果；票务状态和提醒送达状态不得在页面侧重新推导。
-5. 摘要卡展示日期由服务端从该行程全部 `trip_items.visitDate` 取最早/最晚值，下发 `displayStartDate/displayEndDate`（含过期日程）；原 `startDate/endDate` 继续服务预填、分享和业务判定。
+5. 摘要卡展示日期由服务端从该行程全部 `trip_items.visitDate` 取最早/最晚值，下发 `displayStartDate/displayEndDate`（含过期日程）；PAGE-005 日期预填复用同一展示首尾且仍只接受未结束 `primaryTrip`；原 `startDate/endDate` 继续服务分享和业务判定。
 6. `trip_items` 是首页、票务结果、提醒关联和删除动线的事实来源。
 7. `user_runtime` 是可丢弃、可重建的读模型，不是事实来源；历史摘要只持久化展示日期等摘要字段，不下发或复制历史 `items`。所有用户写操作成功后标记失效，`notifier` 的状态转换和支付权益变更也负责标记失效。
 
