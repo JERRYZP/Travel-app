@@ -1,0 +1,87 @@
+<view class="navbar" style="height: {{statusBarHeight + navBarHeight}}px;">
+  <view style="height: {{statusBarHeight}}px;"></view>
+  <view class="navbar-content" style="height: {{navBarHeight}}px;">
+    <view class="navbar-back" bindtap="onBack">
+      <svg-icon name="back-thick" size="18px" />
+    </view>
+    <text class="navbar-title">注销账户</text>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + navBarHeight}}px;"></view>
+
+<view wx:if="{{loading}}" class="state-wrap">
+  <van-loading size="42rpx" color="#B8904A" />
+  <text class="state-text">正在检查账户状态</text>
+</view>
+
+<view wx:elif="{{loadFailed}}" class="state-wrap">
+  <text class="state-title">暂时无法检查账户状态</text>
+  <text class="state-text">请检查网络后重试，账户数据尚未发生变化。</text>
+  <view class="state-btn" bindtap="onRetry">重新检查</view>
+</view>
+
+<view wx:elif="{{success}}" class="success-wrap">
+  <view class="success-mark"><svg-icon name="check" size="30px" /></view>
+  <text class="success-title">账户已注销</text>
+  <text class="success-desc">当前账户的资料、行程、提醒和反馈已清除。下次进入将创建全新的空白账户。</text>
+  <view class="finish-btn" bindtap="onFinish">返回首页</view>
+</view>
+
+<view wx:else class="page-body">
+  <view class="warning-card">
+    <text class="warning-title">注销的是本小程序账户</text>
+    <text class="warning-desc">不会注销你的微信账号。注销完成后无法恢复，也无法找回旧行程和提醒。</text>
+  </view>
+
+  <view wx:if="{{summary.membershipActive}}" class="membership-warning">
+    <text class="membership-title">会员权益将立即失效</text>
+    <text class="membership-desc">当前会员有效期至 {{summary.memberExpiresAtText}}。注销后会员、提醒名额和悬浮时钟权益均不可继续使用。</text>
+    <text class="membership-desc">如你对已支付订单有异议，请先查看会员订单，或通过隐私政策中的邮箱提供订单号联系我们。</text>
+  </view>
+
+  <view wx:if="{{blockers.length > 0}}" class="blocker-card">
+    <text class="section-title">请先处理以下事项</text>
+    <view wx:for="{{blockers}}" wx:key="code" class="blocker-item">
+      <view class="blocker-head">
+        <text class="blocker-title">{{item.title}}</text>
+        <text class="blocker-count">{{item.count}} 项</text>
+      </view>
+      <text class="blocker-desc">{{item.message}}</text>
+    </view>
+    <view class="orders-btn" bindtap="onOpenOrders">去会员订单处理</view>
+  </view>
+
+  <view class="section-card">
+    <text class="section-title">注销后会删除</text>
+    <view class="copy-line"><text class="copy-dot">•</text><text class="copy-text">头像、昵称、手机号等个人资料</text></view>
+    <view class="copy-line"><text class="copy-dot">•</text><text class="copy-text">行程、行程项、提醒、暂存清单和搜索历史</text></view>
+    <view class="copy-line"><text class="copy-dot">•</text><text class="copy-text">反馈、纠错、广告解锁凭证和首页缓存数据</text></view>
+  </view>
+
+  <view class="section-card">
+    <text class="section-title">仅在必要期限保留</text>
+    <text class="section-desc">订单和售后记录只保留金额、订单/交易号、支付退款状态、处理结论和时间，用于交易核对、售后争议及法定义务；安全审计按规定期限保留。</text>
+    <text class="section-desc strong">保留记录会删除 OpenID、昵称、手机号和个人补充正文，不会关联到以后创建的新账户。</text>
+  </view>
+
+  <view class="summary-card">
+    <text class="summary-title">当前账户</text>
+    <text class="summary-line">行程 {{summary.tripCount || 0}} 个 · 提醒 {{summary.reminderCount || 0}} 条</text>
+    <text class="summary-line">历史订单 {{summary.orderCount || 0}} 笔 · 反馈 {{summary.feedbackCount || 0}} 条</text>
+  </view>
+
+  <checkbox-group class="acknowledge-row" bindchange="onAcknowledgeChange">
+    <label class="acknowledge-label">
+      <checkbox value="acknowledged" checked="{{acknowledged}}" color="#B44332" />
+      <text>我已了解，注销后数据无法恢复</text>
+    </label>
+  </checkbox-group>
+
+  <view class="erase-btn {{(!canErase || !acknowledged || erasing) ? 'disabled' : ''}}" bindtap="onErase">
+    <van-loading wx:if="{{erasing}}" size="34rpx" color="#FFFEFB" />
+    <text>{{erasing ? '注销中' : '注销账户'}}</text>
+  </view>
+  <text class="bottom-hint">存在待处理事项或未勾选确认时，注销按钮不可用。</text>
+</view>
+
+<floating-clock />

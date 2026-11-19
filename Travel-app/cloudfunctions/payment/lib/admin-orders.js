@@ -167,6 +167,15 @@ function orderViewOf(order = {}, user = {}, cases = [], options = {}) {
   const entitlementStatus = grantStateOf(order);
   const refundStatus = order.refundStatus || RefundStatus.NONE;
   const currentCases = caseSummaryOf(cases);
+  const userView = directory.userBriefOf(user, order.userId);
+  if (order.accountDeleted === true) {
+    userView.nickname = '已注销用户';
+    userView.openId = '';
+    userView.identityText = '身份已注销';
+    userView.accountDeleted = true;
+  } else {
+    userView.identityText = userView.openId ? `OpenID ${userView.openId}` : 'OpenID 缺失';
+  }
   const view = {
     orderId: order._id,
     outTradeNo: order.outTradeNo || '',
@@ -193,7 +202,7 @@ function orderViewOf(order = {}, user = {}, cases = [], options = {}) {
     paymentChannel: channel,
     paymentChannelLabel: channelLabel(channel),
     cases: currentCases,
-    user: directory.userBriefOf(user, order.userId),
+    user: userView,
     createdAt: order.createdAt || null,
     createdAtText: afterSales.timeText(order.createdAt),
     paidAt: order.paidAt || null,
@@ -336,13 +345,16 @@ async function getOrderForAdmin(db, orderId) {
   const res = await db.collection(COLLECTIONS.ORDERS).where({ _id: orderId }).limit(1).get();
   const order = (res.data || [])[0];
   if (!order) return fail(ERRORS.ORDER_NOT_FOUND);
-  const [user, cases] = await Promise.all([
-    afterSales.refundEvidenceUser(db, order.userId),
-    afterSales.casesForOrder(db, order.userId, order._id),
-  ]);
+  const [user, cases] = order.accountDeleted === true
+    ? [null, await casesByOrderIds(db, [order._id])]
+    : await Promise.all([
+      afterSales.refundEvidenceUser(db, order.userId),
+      afterSales.casesForOrder(db, order.userId, order._id),
+    ]);
+  const orderView = orderViewOf(order, user || {}, cases, { detail: true });
   return ok({
-    order: orderViewOf(order, user || {}, cases, { detail: true }),
-    user: directory.userBriefOf(user || {}, order.userId),
+    order: orderView,
+    user: orderView.user,
   });
 }
 

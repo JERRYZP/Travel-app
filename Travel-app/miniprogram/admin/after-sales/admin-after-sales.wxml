@@ -245,8 +245,8 @@
             <text class="order-amount">{{item.amountText}}</text>
           </view>
           <view class="openid-row">
-            <text class="openid-value">OpenID {{item.user.openId}}</text>
-            <view class="copy-link" catchtap="onCopyText" data-value="{{item.user.openId}}">复制</view>
+            <text class="openid-value">{{item.user.identityText}}</text>
+            <view wx:if="{{!item.user.accountDeleted}}" class="copy-link" catchtap="onCopyText" data-value="{{item.user.openId}}">复制</view>
           </view>
           <text class="order-title">{{item.title}}</text>
           <view class="order-tags">
@@ -274,8 +274,8 @@
           </view>
           <view class="case-user-row">
             <text class="case-user-name">{{item.user.nickname || '未设置昵称'}}</text>
-            <text class="case-openid">{{item.user.openId}}</text>
-            <view class="copy-link" catchtap="onCopyText" data-value="{{item.user.openId}}">复制</view>
+            <text class="case-openid">{{item.user.identityText}}</text>
+            <view wx:if="{{!item.user.accountDeleted}}" class="copy-link" catchtap="onCopyText" data-value="{{item.user.openId}}">复制</view>
           </view>
           <text class="case-title">{{item.typeLabel}} · {{item.title}}</text>
           <text class="case-meta">订单 {{item.outTradeNo}}</text>
@@ -404,8 +404,8 @@
           <text class="detail-user-member">{{detail.user.memberExpiresAt ? '会员有效' : '非会员'}}</text>
         </view>
         <view class="detail-copy-row">
-          <text class="detail-break">OpenID {{detail.user.openId}}</text>
-          <view class="copy-link" catchtap="onCopyText" data-value="{{detail.user.openId}}">复制</view>
+          <text class="detail-break">{{detail.user.identityText}}</text>
+          <view wx:if="{{!detail.user.accountDeleted}}" class="copy-link" catchtap="onCopyText" data-value="{{detail.user.openId}}">复制</view>
         </view>
         <text>历史名额包：{{detail.user.taskPackCount || 0}} 包</text>
         <text>历史保护额度：{{detail.user.protectedTaskQuota || 0}} 个</text>

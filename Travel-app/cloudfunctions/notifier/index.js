@@ -573,6 +573,29 @@ async function scanAndSend(prefetchedTasks, nowTsArg) {
       const wait = Math.max(0, delays[i] - (Date.now() - runStart));
       if (wait > 0) await sleep(wait);
 
+      /* 注销竞态保护：预取后任务可能已被用户注销删除。
+         真正发送前回读一次；不存在、已非 WAITING 或已失去 userId 都不得补发。 */
+      let freshTask = null;
+      try {
+        const freshRes = await db.collection(COLLECTIONS.REMINDER_TASKS)
+          .doc(g.task._id)
+          .get();
+        freshTask = (freshRes.data || [])[0] || null;
+      } catch (err) {
+        console.warn('[notifier] send-recheck-failed', err && err.message);
+      }
+      if (!freshTask
+        || freshTask.backendStatus !== ReminderBackendStatus.WAITING
+        || !freshTask.userId) {
+        skipped += g.offsets.length;
+        continue;
+      }
+      g.task = freshTask;
+      g.state = {
+        sentOffsets: [...(freshTask.sentOffsets || [])],
+        backendStatus: freshTask.backendStatus,
+      };
+
       for (const { offset } of g.offsets) {
         const result = await sendOne(g.task, spotMap[g.task.spotId], offset);
         g.state = await markResult(g.task, offset, result, Date.now(), g.state);

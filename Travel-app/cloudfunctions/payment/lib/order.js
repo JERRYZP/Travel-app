@@ -5,8 +5,10 @@
  * 已支付订单发放。金额、商品类型和权益都来自服务端订单快照。
  */
 
+const crypto = require('crypto');
 const {
-  COLLECTIONS, ERRORS, MemberLevel, OrderStatus, RefundStatus, GrantStatus, ok, fail,
+  COLLECTIONS, ERRORS, MemberLevel, OrderStatus, RefundStatus, GrantStatus,
+  CaseType, CaseStatus, ok, fail,
 } = require('./schema');
 const userDomain = require('./user');
 const quotaLock = require('./quota-lock');
@@ -264,6 +266,91 @@ async function markGrantFailed(db, order, message) {
 }
 
 /**
+ * 账户已经注销后收到延迟支付结果。
+ *
+ * 不重建旧用户，也不把权益挂到复用同一 OpenID 的新账户；只把订单收口为已支付，
+ * 并生成无身份关联的高优先级售后单，交给客服核验退款。
+ */
+async function handleErasedAccountPayment(db, order, payment = {}) {
+  const outTradeNo = String(order.outTradeNo || payment.outTradeNo || payment.out_trade_no || '');
+  const nowTs = new Date();
+  const digest = crypto.createHash('sha256')
+    .update(`${outTradeNo}|PAYMENT_AFTER_ACCOUNT_DELETION`, 'utf8')
+    .digest('hex');
+  const caseId = `erased_${digest.slice(0, 32)}`;
+  const paymentResult = {
+    transactionId: payment.transactionId || payment.transaction_id || order.transactionId || '',
+    amountFen: amountOf(payment) == null ? Number(order.amountFen) || 0 : amountOf(payment),
+    tradeState: payment.tradeState || payment.trade_state || '',
+    appId: payment.appId || payment.appid || '',
+    mchId: payment.mchId || payment.mchid || '',
+    outTradeNo,
+    paymentProvider: payment.paymentProvider || order.paymentProvider || '',
+    channelOrderType: payment.channelOrderType != null
+      ? Number(payment.channelOrderType)
+      : (order.channelOrderType != null ? Number(order.channelOrderType) : null),
+  };
+
+  await db.collection(COLLECTIONS.ORDERS).doc(order._id).update({
+    data: {
+      status: OrderStatus.PAID,
+      paidAt: order.paidAt || nowTs,
+      paymentResult,
+      grantStatus: GrantStatus.FAILED,
+      grantError: 'ACCOUNT_DELETED_DELAYED_PAYMENT',
+      grantFailedAt: nowTs,
+      activeAfterSalesCaseId: caseId,
+      accountDeleted: true,
+      updatedAt: nowTs,
+    },
+  });
+
+  const existingRes = await db.collection(COLLECTIONS.AFTER_SALES_CASES).doc(caseId).get();
+  if (!(existingRes.data || []).length) {
+    await db.collection(COLLECTIONS.AFTER_SALES_CASES).doc(caseId).set({
+      data: {
+        caseNo: `AS${digest.slice(0, 16).toUpperCase()}`,
+        userId: '',
+        accountDeleted: true,
+        accountDeletedAt: order.accountDeletedAt || nowTs,
+        erasedAccountRef: order.erasedAccountRef || '',
+        orderId: order._id,
+        outTradeNo,
+        title: order.title || '会员提醒名额',
+        amountFen: Number(order.amountFen) || 0,
+        productType: order.productType || '',
+        packageId: order.packageId || '',
+        requestIdHash: '',
+        type: CaseType.OTHER,
+        priority: 'HIGH',
+        reasonCode: 'PAYMENT_AFTER_ACCOUNT_DELETION',
+        description: '账户注销后收到延迟支付结果，需人工核验并退款。',
+        status: CaseStatus.UNDER_REVIEW,
+        refundStatus: RefundStatus.NONE,
+        outRefundNo: '',
+        decisionNote: '',
+        reviewerOpenId: '',
+        evidence: {
+          systemGenerated: true,
+          accountDeleted: true,
+          outTradeNo,
+        },
+        createdAt: nowTs,
+        updatedAt: nowTs,
+      },
+    });
+  }
+
+  return ok({
+    orderId: order._id,
+    caseId,
+    status: OrderStatus.PAID,
+    entitlementStatus: 'ACCOUNT_DELETED',
+    accountDeleted: true,
+  });
+}
+
+/**
  * 幂等地把订单置为 PAID，并发放对应权益。
  * - PENDING 正常发放；
  * - PAID + 未发放/发放失败时允许重试；
@@ -274,6 +361,33 @@ async function fulfillOrder(db, order, payment = {}) {
   const paidAmount = amountOf(payment);
   if (paidAmount !== null && paidAmount !== Number(order.amountFen)) {
     return fail(ERRORS.ORDER_AMOUNT_MISMATCH);
+  }
+
+  if (order.accountDeleted === true) {
+    if (order.grantStatus === GrantStatus.REVERTED
+      || order.refundStatus === RefundStatus.REFUNDED
+      || order.status === OrderStatus.REFUNDED) {
+      return ok({
+        orderId: order._id,
+        status: OrderStatus.PAID,
+        entitlementStatus: 'REFUNDED',
+        alreadyReverted: true,
+        accountDeleted: true,
+      });
+    }
+    if (order.grantStatus === GrantStatus.GRANTED) {
+      return ok({
+        orderId: order._id,
+        status: OrderStatus.PAID,
+        entitlementStatus: 'ACCOUNT_DELETED',
+        alreadyPaid: true,
+        accountDeleted: true,
+      });
+    }
+    return handleErasedAccountPayment(db, order, payment);
+  }
+  if (!order.userId) {
+    return fail({ code: 1500, message: '订单用户标识缺失，已转人工核验' });
   }
 
   if (order.grantStatus === GrantStatus.REVERTED
@@ -611,6 +725,10 @@ async function reverseOrderEntitlement(db, order, refundedAmountFen) {
     });
   };
 
+  if (freshSeed.accountDeleted === true || !freshSeed.userId) {
+    return recordRefundWithoutReversal();
+  }
+
   if (freshSeed.grantStatus === GrantStatus.FAILED
     || freshSeed.grantStatus === GrantStatus.NONE
     || freshSeed.grantStatus == null) {
@@ -820,6 +938,7 @@ module.exports = {
   paymentViewOf,
   markOrderClosed,
   markGrantFailed,
+  handleErasedAccountPayment,
   fulfillOrder,
   reverseOrderEntitlement,
   isCallbackPaidResult,

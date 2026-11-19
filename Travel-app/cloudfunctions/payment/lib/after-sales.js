@@ -510,7 +510,7 @@ async function createCaseRecord(db, userId, event = {}, evidence = {}) {
  * 使用退款单号派生稳定 _id，重复或在途推送都落到同一条记录。
  */
 async function createPlatformRefundCase(db, order = {}, outRefundNo = '', details = {}) {
-  if (!order._id || !order.userId || !outRefundNo) {
+  if (!order._id || (!order.userId && order.accountDeleted !== true) || !outRefundNo) {
     throw new Error('平台退款售后记录缺少订单或退款单号');
   }
   const nowTs = new Date();
@@ -541,7 +541,10 @@ async function createPlatformRefundCase(db, order = {}, outRefundNo = '', detail
   const doc = {
     _id: platformRefundCaseIdOf(outRefundNo),
     caseNo: makeCaseNo(nowTs),
-    userId: order.userId,
+    userId: order.userId || '',
+    accountDeleted: order.accountDeleted === true,
+    accountDeletedAt: order.accountDeletedAt || null,
+    erasedAccountRef: order.erasedAccountRef || '',
     orderId: order._id,
     outTradeNo: order.outTradeNo || '',
     title: order.title || '会员提醒名额',
@@ -725,10 +728,22 @@ async function listCasesForAdmin(db, params = {}) {
   }
 
   const userMap = await directory.userMapByOpenIds(db, rows.map(item => item.userId));
-  const items = rows.map(item => ({
-    ...caseViewOf(item),
-    user: directory.userBriefOf(userMap[item.userId] || {}, item.userId),
-  }));
+  const items = rows.map(item => {
+    const user = directory.userBriefOf(userMap[item.userId] || {}, item.userId);
+    if (item.accountDeleted === true) {
+      user.nickname = '已注销用户';
+      user.openId = '';
+      user.identityText = '身份已注销';
+      user.accountDeleted = true;
+    } else {
+      user.identityText = user.openId || '身份缺失';
+    }
+    return {
+      ...caseViewOf(item),
+      accountDeleted: item.accountDeleted === true,
+      user,
+    };
+  });
   return ok({
     items,
     count: items.length,

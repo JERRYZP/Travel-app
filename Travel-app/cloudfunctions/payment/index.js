@@ -454,7 +454,8 @@ async function userOf(order) {
 async function ensureGrantFailureCase(order, message = '') {
   if (!order || !order._id) return null;
   const fresh = await findOrderById(db, order._id);
-  if (!fresh || fresh.status !== OrderStatus.PAID || fresh.grantStatus !== GrantStatus.FAILED) return null;
+  if (!fresh || fresh.accountDeleted === true
+    || fresh.status !== OrderStatus.PAID || fresh.grantStatus !== GrantStatus.FAILED) return null;
   try {
     const created = await afterSales.createCaseRecord(db, fresh.userId, {
       orderId: fresh._id,
@@ -482,8 +483,8 @@ async function ensureGrantFailureCase(order, message = '') {
 }
 
 async function ensureGrantUnknownCase(order) {
-  if (!order || !order._id || order.status !== OrderStatus.PAID
-    || order.grantStatus) return null;
+  if (!order || !order._id || order.accountDeleted === true
+    || order.status !== OrderStatus.PAID || order.grantStatus) return null;
   try {
     return await afterSales.createCaseRecord(db, order.userId, {
       orderId: order._id,
@@ -533,6 +534,7 @@ async function resolveGrantCasesForOrder(order) {
  * 避免退款接口超时拖垮微信支付回调响应。
  */
 async function queueDuplicateChargeCase(order) {
+  if (!order || order.accountDeleted === true) return ok({ skipped: true, reason: 'ACCOUNT_DELETED' });
   const target = await afterSales.duplicateChargeTarget(db, order);
   if (!target.duplicate || !target.targetOrderId) return ok({ skipped: true, reason: 'NO_DUPLICATE' });
   if (await afterSales.hasAnyCaseForOrder(db, order.userId, target.targetOrderId)) {
@@ -576,7 +578,7 @@ async function queueDuplicateChargeCase(order) {
 }
 
 async function paymentSideEffects(order) {
-  if (!order) return;
+  if (!order || order.accountDeleted === true) return;
   if (order.status === OrderStatus.PAID && order.grantStatus === GrantStatus.FAILED) {
     await ensureGrantFailureCase(order, order.grantError || '');
     return;
@@ -1272,7 +1274,26 @@ async function setHomeClockPromo(context, event) {
 async function adminCaseBundle(caseItem) {
   const order = await findOrderById(db, caseItem.orderId);
   const user = order ? await afterSales.refundEvidenceUser(db, order.userId) : null;
-  const history = await afterSales.userCaseHistory(db, caseItem.userId, caseItem.orderId);
+  const refundEligibility = order
+    ? await afterSales.refundEligibilityForOrder(db, order, user || {})
+    : null;
+  const accountDeleted = caseItem.accountDeleted === true
+    || !!(order && order.accountDeleted === true);
+  let userBrief = user ? adminDirectory.userBriefOf(user) : null;
+  if (accountDeleted) {
+    if (!userBrief) userBrief = {};
+    Object.assign(userBrief, {
+      nickname: '已注销用户',
+      openId: '',
+      identityText: '身份已注销，历史交易记录已与用户身份解绑',
+      accountDeleted: true,
+    });
+  } else if (userBrief) {
+    userBrief.identityText = userBrief.openId ? `OpenID ${userBrief.openId}` : 'OpenID 缺失';
+  }
+  const history = caseItem.userId
+    ? await afterSales.userCaseHistory(db, caseItem.userId, caseItem.orderId)
+    : { items: [], stats: {} };
   const orderRefunded = !!order && (
     order.refundStatus === RefundStatus.REFUNDED
     || order.grantStatus === GrantStatus.REVERTED
@@ -1423,7 +1444,7 @@ async function handleVirtualDelivery(message) {
   const order = await findOrderByOutTradeNo(db, message.outTradeNo);
   if (!order) return virtualNotify.cloudFailure('订单不存在');
   if (!paymentProvider.isVirtualPay(order)) return virtualNotify.cloudFailure('订单支付渠道不匹配');
-  if (message.openId !== order.userId) return virtualNotify.cloudFailure('用户与订单不匹配');
+  if (!order.accountDeleted && message.openId !== order.userId) return virtualNotify.cloudFailure('用户与订单不匹配');
 
   const config = virtualPay.configForOrder(order, process.env, message.env);
   if (!virtualPay.hasApiConfig(config)) return virtualNotify.cloudFailure('虚拟支付配置未完成');
@@ -1493,7 +1514,7 @@ async function handleVirtualRefund(message) {
   const order = await findOrderByOutTradeNo(db, orderNo);
   if (!order) return virtualNotify.cloudFailure('订单不存在');
   if (!paymentProvider.isVirtualPay(order)) return virtualNotify.cloudFailure('订单支付渠道不匹配');
-  if (message.openId !== order.userId) return virtualNotify.cloudFailure('用户与订单不匹配');
+  if (!order.accountDeleted && message.openId !== order.userId) return virtualNotify.cloudFailure('用户与订单不匹配');
 
   const config = virtualPay.configForOrder(order, process.env, message.env);
   if (!virtualPay.hasApiConfig(config)) return virtualNotify.cloudFailure('虚拟支付配置未完成');
@@ -1555,7 +1576,7 @@ async function iosRefundDecision(message) {
       evidence: '系统未找到对应支付订单或权益发放记录，建议退款。',
     };
   }
-  if (message.openId && order.userId !== message.openId) {
+  if (message.openId && !order.accountDeleted && order.userId !== message.openId) {
     return {
       result_code: 1,
       result_info: '拒绝退款',

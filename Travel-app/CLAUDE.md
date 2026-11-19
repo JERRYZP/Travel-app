@@ -68,7 +68,7 @@
 ## 工程事实
 
 - 前端：微信原生小程序 + Vant Weapp + 自绘组件。
-- 后端：微信云开发；核心云函数 `reminder`，另有 `spots`、`notifier`、`feedback`、`scraper`、`ics-generator`。
+- 后端：微信云开发；核心云函数 `reminder`，另有 `account`、`spots`、`notifier`、`feedback`、`scraper`、`ics-generator`。
 - 首页数据由 `reminder.home.bootstrap` 聚合；`trip_items` 是首页、票务结果、提醒关联和删除动线的事实来源。
 - 模型关系：`trips -> trip_items -> reminder_tasks`；`reminder_cart` 只是提交前暂存区。
 - 首页、行程、清单、提醒的完整规则见 `docs/engineering/domain-rules.md`。

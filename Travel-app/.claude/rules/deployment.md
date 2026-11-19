@@ -57,6 +57,8 @@ paths:
 - 会员升级临时公告真身为 `payment_config/membership_upgrade_notice`，固定字段 `noticeId / enabled / startsAt / endsAt`。公开展示必须同时满足 `unlimited-v3` 命中、当前有效会员、`memberSince < startsAt`、`enabled=true` 和在有效期内；非白名单、免费用户及公告上线后新开通会员不得返回公告字段。
 - 公告默认只跑 72 小时。上线顺序为先部署 `payment`（后台写开关与审计），再部署 `reminder`（公开读取与会员状态注入），最后由管理员把配置切为 `enabled=true`；下架由客服工作台直接切 `enabled=false`，不需要重新部署。`payment` 写后失效本函数实例缓存，`reminder` 读取缓存最多 45 秒，用户下次进入“我的”页时隐藏。
 - 上线前先分批迁移老用户 `protectedTaskQuota`；保护额度迁移和权益账本迁移任一未完成时，后台切 `all` 必须返回 `1033`。审核与等待发布期间保持 `test`；`test` 非白名单 / `off` 期间新任务进入历史保护池，切 `all` 后新建的任务才占新增额度。
+- 用户自助注销新增独立 `account` 云函数；部署前必须核验 `admin_audit_logs(targetType,targetId)`、`search_history(userId,searchedAt)`、`feedbacks(userId,handledAt)`、`rewarded_ad_attempts(userId)`。上线顺序固定为：索引 → `payment` / `notifier` 竞态保护 → `account` → 小程序客户端。`account.erase` 会删除用户业务数据并匿名化保留交易记录，部署和冒烟必须使用测试用户，不得直接拿真实用户验收。
+- 注销后延迟支付只允许生成匿名人工核验售后，不得重建旧用户或把权益发给复用同一 OpenID 的新账户；`payment` 部署后仍需核验 `paymentReconcileEveryTwoMinutes`。
 - 只改小程序页面通常不需要部署云函数，但如果接口契约变化则必须部署。
 - 首页读模型运行期为 `HOME_RUNTIME_MODE=off|shadow|on`，默认 `off`。启用前必须创建 `user_runtime` 集合；先跑 `shadow`，连续 24 小时结构化比对零差异后再切 `on`。`HOME_RUNTIME_MAX_AGE_MS` 只控制派生文档的最长复用时间，不能替代写后失效。
 - 批量预建使用 `reminder.action='admin.runtimeBackfill'`，必须配置 `RUNTIME_BACKFILL_TOKEN` 并在请求中携带同值；未配置时动作始终拒绝。按 `limit <= 50` 和 `nextCursor` 重跑，直到 `hasMore=false`。

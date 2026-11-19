@@ -1,0 +1,7 @@
+{
+  "usingComponents": {
+    "svg-icon": "/components/svg-icon/svg-icon",
+    "van-loading": "/components/vendor/vant/loading/index"
+  },
+  "navigationStyle": "custom"
+}

@@ -10,6 +10,7 @@ Page({
     phone: '',
     _prevAvatar: '',   // 已持久化头像（cloud:// 或本地默认图），上传失败时回退用
     saving: false,
+    dirty: false,
   },
 
   onLoad() {
@@ -22,6 +23,7 @@ Page({
         avatarUrl: user.avatarUrl || '',
         phone: user.phone || '',
         _prevAvatar: user.avatarUrl || '',
+        dirty: false,
       });
     }).catch(() => {});
   },
@@ -33,15 +35,34 @@ Page({
   /* 微信头像：open-type=chooseAvatar 返回临时文件路径，保存时统一走 resolveAvatarUrl 上传云存储 */
   onChooseWechatAvatar(e) {
     const url = e.detail && e.detail.avatarUrl;
-    if (url) this.setData({ avatarUrl: url });
+    if (url) this.setData({ avatarUrl: url, dirty: true });
   },
 
   onNicknameInput(e) {
-    this.setData({ nickname: e.detail.value });
+    this.setData({ nickname: e.detail.value, dirty: true });
   },
 
   onPhoneInput(e) {
-    this.setData({ phone: e.detail.value });
+    this.setData({ phone: e.detail.value, dirty: true });
+  },
+
+  onAccountSecurity() {
+    if (this.data.saving) return;
+    if (!this.data.dirty) {
+      wx.navigateTo({ url: '/pages/account-cancellation/account-cancellation' });
+      return;
+    }
+    wx.showModal({
+      title: '当前修改未保存',
+      content: '继续进入注销页将丢弃本次未保存的资料修改。',
+      confirmText: '继续',
+      confirmColor: '#B44332',
+      success: res => {
+        if (res.confirm) {
+          wx.navigateTo({ url: '/pages/account-cancellation/account-cancellation' });
+        }
+      },
+    });
   },
 
   onSave() {

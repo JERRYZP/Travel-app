@@ -7,6 +7,7 @@ const spotsStatic = require('./spots-static.js');
 
 const READ_ACTIONS = new Set([
   'home.bootstrap',
+  'account.preflight',
   'timeline.preview',
   'cart.list',
   'cart.bootstrap',
@@ -290,6 +291,15 @@ const payment = {
   },
 };
 
+/* ===== account ===== */
+const account = {
+  preflight: () => call('account', { action: 'account.preflight' }),
+  erase: () => call('account', {
+    action: 'account.erase',
+    confirmation: 'ERASE_MY_ACCOUNT',
+  }),
+};
+
 /* ===== ICS ===== */
 const ics = {
 };
@@ -363,4 +373,4 @@ function toastError(result) {
   wx.showToast({ title: '操作失败', icon: 'none' });
 }
 
-module.exports = { spots, reminder, feedback, payment, ics, toastError, markHomeDataDirty };
+module.exports = { spots, reminder, feedback, payment, account, ics, toastError, markHomeDataDirty };
