@@ -60,16 +60,7 @@
     <text>{{saving ? '保存中' : '保存'}}</text>
   </view>
 
-  <view class="security-card">
-    <text class="security-title">账号与安全</text>
-    <view class="security-row" bindtap="onAccountSecurity">
-      <view class="security-copy">
-        <text class="security-label">注销账户</text>
-        <text class="security-desc">清除资料和业务数据，操作后无法恢复</text>
-      </view>
-      <svg-icon name="chevron-right" size="14px" />
-    </view>
-  </view>
+  <view class="account-ghost-btn {{saving ? 'disabled' : ''}}" bindtap="onAccountSecurity" aria-role="button">注销账户</view>
 </view>
 
 <floating-clock />

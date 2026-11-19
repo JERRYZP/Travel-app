@@ -33,7 +33,7 @@
 | `pages/setup` | PAGE-008 设置提醒；V0.3 授权硬闸门 |
 | `pages/notify-settings` | 系统通知权限与提醒额度设置 |
 | `pages/profile` | 我的；帮助与反馈统一入口 |
-| `pages/profile-edit` | 编辑资料；底部提供账号与安全 / 注销账户入口 |
+| `pages/profile-edit` | 编辑资料；底部提供幽灵按钮「注销账户」入口 |
 | `pages/account-cancellation` | 注销预检、删除/保留范围说明、二次确认与成功返回 |
 | `pages/membership` | 会员与提醒名额；权益解释、支付前确认、持久支付状态 |
 | `pages/membership-orders` | 当前用户最近 50 笔订单，点击通过本人单笔接口进入订单详情 |

@@ -12,9 +12,13 @@ function main() {
 
   const editWxml = read('miniprogram/pages/profile-edit/profile-edit.wxml');
   const editJs = read('miniprogram/pages/profile-edit/profile-edit.js');
-  assert.ok(editWxml.includes('账号与安全'));
-  assert.ok(editWxml.includes('注销账户'));
+  const editWxss = read('miniprogram/pages/profile-edit/profile-edit.wxss');
+  assert.ok(!editWxml.includes('账号与安全'));
+  assert.ok(!editWxml.includes('清除资料和业务数据'));
+  assert.ok(editWxml.includes('class="account-ghost-btn'));
+  assert.ok(editWxml.includes('>注销账户</view>'));
   assert.ok(editWxml.includes('bindtap="onAccountSecurity"'));
+  assert.ok(/\.account-ghost-btn\s*\{[^}]*position:\s*fixed[^}]*bottom:\s*calc\([^)]*env\(safe-area-inset-bottom\)/.test(editWxss));
   assert.ok(editJs.includes('onAccountSecurity'));
   assert.ok(editJs.includes('当前修改未保存'));
 

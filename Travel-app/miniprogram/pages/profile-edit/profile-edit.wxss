@@ -3,7 +3,7 @@
 .navbar-back { position: absolute; left: 20rpx; width: 60rpx; height: 60rpx; display: flex; align-items: center; justify-content: center; }
 .navbar-title { position: absolute; left: 50%; transform: translateX(-50%); font-size: 30rpx; font-weight: 600; color: var(--color-ink); }
 
-.page-body { padding: 32rpx 30rpx 120rpx; }
+.page-body { padding: 32rpx 30rpx calc(160rpx + env(safe-area-inset-bottom)); }
 
 .edit-card {
   background: var(--color-surface);
@@ -57,30 +57,22 @@
 .save-btn.disabled { opacity: 0.6; }
 
 
-/* 账号与安全：与资料保存区明确分隔，避免误把注销当成普通编辑操作。 */
-.security-card {
-  margin-top: 52rpx;
-  padding: 0 24rpx;
-  background: var(--color-surface);
-  border: 1rpx solid #EEDDD1;
-  border-radius: 24rpx;
-  box-shadow: var(--shadow-card);
-}
-.security-title {
-  display: block;
-  padding: 24rpx 0 10rpx;
-  font-size: 23rpx;
+/* 注销入口：页面底部幽灵按钮，只有居中文字，不混入资料编辑说明。 */
+.account-ghost-btn {
+  position: fixed;
+  left: 30rpx;
+  right: 30rpx;
+  bottom: calc(28rpx + env(safe-area-inset-bottom));
+  z-index: 20;
+  height: 88rpx;
+  border: 1rpx solid #B44332;
+  border-radius: 44rpx;
+  background: transparent;
+  color: #B44332;
+  font-size: 28rpx;
   font-weight: 600;
-  color: var(--color-muted);
-  letter-spacing: 1rpx;
-}
-.security-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 20rpx;
-  padding: 20rpx 0 26rpx;
+  justify-content: center;
 }
-.security-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 8rpx; }
-.security-label { font-size: 28rpx; font-weight: 600; color: #A4432C; }
-.security-desc { font-size: 23rpx; line-height: 1.5; color: var(--color-muted); }
+.account-ghost-btn.disabled { opacity: 0.42; }
