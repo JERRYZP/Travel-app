@@ -727,7 +727,7 @@ function instantiateComponent(def) {
   eq(hub.data.membershipLimit.remaining, 1, '浮层展示服务端剩余额度');
   eq(hub.data.membershipLimit.requested, 3, '浮层展示本次新建数');
   eq(hub.data.membershipLimit.actionText, '开通会员 ¥6', '主按钮文案直接复用服务端套餐');
-  eq(hub.data.membershipLimit.payText, '支付 ¥6，开通不限额度+悬浮时钟并继续',
+  eq(hub.data.membershipLimit.payText, '支付 ¥6，开通不限额度+悬浮抢票时钟并继续',
     '名额主按钮直接说明支付后继续完成提醒');
   eq(calls.navigations.length, 0, '关闭说明前不自动跳会员页');
   await hub.onReminderAuthPay();
