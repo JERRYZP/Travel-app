@@ -19,10 +19,15 @@ function main() {
   assert.ok(editJs.includes('当前修改未保存'));
 
   const wxml = read('miniprogram/pages/account-cancellation/account-cancellation.wxml');
+  const wxss = read('miniprogram/pages/account-cancellation/account-cancellation.wxss');
   const js = read('miniprogram/pages/account-cancellation/account-cancellation.js');
+  assert.ok(wxml.includes('您将注销本小程序账户'));
   assert.ok(wxml.includes('不会注销你的微信账号'));
   assert.ok(wxml.includes('注销后会删除'));
-  assert.ok(wxml.includes('仅在必要期限保留'));
+  assert.ok(wxml.includes('class="details-card"'));
+  assert.ok(wxml.includes('wx:if="{{summary.membershipActive}}"'));
+  assert.ok(!wxml.includes('仅在必要期限保留'));
+  assert.ok(wxss.includes('.detail-section + .detail-section'));
   assert.ok(wxml.includes('我已了解，注销后数据无法恢复'));
   assert.ok(wxml.includes('{{(!canErase || !acknowledged || erasing) ? \'disabled\' : \'\'}}'));
   assert.ok(js.includes("api.account.preflight()"));

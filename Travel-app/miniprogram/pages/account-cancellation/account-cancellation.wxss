@@ -8,14 +8,15 @@
 .state-text, .success-desc { font-size: 25rpx; line-height: 1.7; color: var(--color-muted); }
 .state-btn, .finish-btn { margin-top: 24rpx; min-width: 280rpx; height: 82rpx; padding: 0 34rpx; box-sizing: border-box; border-radius: 41rpx; display: flex; align-items: center; justify-content: center; background: var(--color-primary); color: #FFFEFB; font-size: 28rpx; font-weight: 600; }
 .success-mark { width: 104rpx; height: 104rpx; border-radius: 52rpx; background: #EAF3EA; color: #4A7C59; display: flex; align-items: center; justify-content: center; }
-.warning-card, .membership-warning, .blocker-card, .section-card, .summary-card { background: var(--color-surface); border-radius: 22rpx; box-shadow: var(--shadow-card); padding: 26rpx; margin-bottom: 22rpx; }
+.warning-card, .details-card { background: var(--color-surface); border-radius: 22rpx; box-shadow: var(--shadow-card); padding: 26rpx; margin-bottom: 22rpx; }
+.details-card { padding: 0 26rpx; }
+.detail-section { padding: 26rpx 0; }
+.detail-section + .detail-section { border-top: 1rpx solid var(--color-border); }
 .warning-card { background: #FFF4EE; border: 1rpx solid #F0D2C5; }
-.warning-title { display: block; font-size: 29rpx; font-weight: 600; color: #A4432C; margin-bottom: 10rpx; }
+.warning-title { display: block; text-align: center; font-size: 32rpx; font-weight: 600; color: #B44332; margin-bottom: 20rpx; }
 .warning-desc { display: block; font-size: 24rpx; line-height: 1.65; color: #7E5C50; }
-.membership-warning { background: #FFF7E7; border: 1rpx solid #E7DAC5; }
 .membership-title { display: block; font-size: 28rpx; font-weight: 600; color: #8A5A12; margin-bottom: 10rpx; }
 .membership-desc { display: block; font-size: 24rpx; line-height: 1.65; color: #8D7764; margin-top: 8rpx; }
-.blocker-card { border: 1rpx solid #F0D2C5; }
 .section-title { display: block; font-size: 28rpx; font-weight: 600; color: var(--color-ink); margin-bottom: 18rpx; }
 .blocker-item { padding: 18rpx 0; border-top: 1rpx solid var(--color-border); }
 .blocker-head { display: flex; justify-content: space-between; gap: 16rpx; }
@@ -25,10 +26,7 @@
 .orders-btn { margin-top: 16rpx; height: 72rpx; border-radius: 36rpx; display: flex; align-items: center; justify-content: center; border: 1rpx solid #D8BE94; color: #8A5A12; font-size: 25rpx; font-weight: 600; }
 .copy-line { display: flex; align-items: flex-start; gap: 10rpx; margin-top: 12rpx; }
 .copy-dot { flex-shrink: 0; color: #B8904A; line-height: 1.6; }
-.copy-text, .section-desc { font-size: 24rpx; line-height: 1.7; color: var(--color-muted); }
-.section-desc { display: block; margin-top: 10rpx; }
-.section-desc.strong { color: #7C4C20; font-weight: 600; }
-.summary-card { background: #FAF6EE; }
+.copy-text { font-size: 24rpx; line-height: 1.7; color: var(--color-muted); }
 .summary-title { display: block; font-size: 26rpx; font-weight: 600; color: var(--color-ink); margin-bottom: 12rpx; }
 .summary-line { display: block; margin-top: 6rpx; font-size: 24rpx; color: var(--color-muted); }
 .acknowledge-row { margin: 34rpx 4rpx 24rpx; }
