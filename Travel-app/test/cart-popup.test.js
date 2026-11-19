@@ -203,6 +203,10 @@ console.log('=== 8. 景点详情长内容在真机可滚动到底 ===');
     '以最后一块真实内容测量，避免 scroll-view 把容器拉满后留下大空白');
   eq(/\.popup-actions-bar/.test(SPOT_JS), true,
     '适配时扣除底部操作栏高度');
+  eq(/<view class="popup-tips-body">\s*<text wx:if="\{\{spot\.bookingTips\}\}">/.test(SPOT_WXML), true,
+    '预约提示 bookingTips 默认可见，不再依赖展开');
+  eq(/<block wx:if="\{\{tipsExpanded\}\}">/.test(SPOT_WXML), true,
+    '开放时间、票价、证件等详细项仍按需展开');
 }
 
 console.log('=== 9. 公众号二维码弹层在滚动容器外，官网入口不再走 web-view ===');

@@ -140,8 +140,9 @@
         <text class="popup-tips-title">{{spot.reservationRequired ? '预约注意事项' : '游玩信息'}}</text>
         <van-icon name="{{tipsExpanded ? 'arrow-up' : 'arrow-down'}}" size="14px" color="#B8904A" />
       </view>
-      <view wx:if="{{tipsExpanded}}" class="popup-tips-body">
-        <text>{{spot.bookingTips}}</text>
+      <view class="popup-tips-body">
+        <text wx:if="{{spot.bookingTips}}">{{spot.bookingTips}}</text>
+        <block wx:if="{{tipsExpanded}}">
         <view wx:if="{{spot.openTime}}" class="popup-tips-row">
           <text class="popup-tips-label">开放时间</text>
           <text>{{spot.openTime}}</text>
@@ -177,6 +178,7 @@
             <svg-icon name="chevron-right" size="12px" />
           </view>
         </view>
+        </block>
       </view>
     </block>
     </view>
