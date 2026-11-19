@@ -290,6 +290,96 @@ const seedSpot = async () => {
     eq(noRuleCommit.createdTasks, 0, '不创建提醒任务');
   }
 
+  /* ===== 场景 8：摘要展示日期取实际行程项首尾（含已过期），原行程段不动 ===== */
+  {
+    const rangeStart = time.addDays(TODAY, -5);
+    const rangeEnd = time.addDays(TODAY, 6);
+    const early = time.addDays(TODAY, -3);
+    const middle = time.addDays(TODAY, 1);
+    const late = time.addDays(TODAY, 4);
+    await CURRENT_DB.collection(COLLECTIONS.TRIPS).add({
+      data: {
+        _id: 'TRIP_RANGE', userId: USER, city: '北京',
+        startDate: rangeStart, endDate: rangeEnd, name: '北京动态日期测试',
+        spotIds: ['gugong'], status: 'ACTIVE', createdAt: time.now(), updatedAt: time.now(),
+      },
+    });
+    for (const [id, visitDate] of [
+      ['RANGE_EARLY', early], ['RANGE_MIDDLE', middle], ['RANGE_LATE', late],
+    ]) {
+      await CURRENT_DB.collection(COLLECTIONS.TRIP_ITEMS).add({
+        data: {
+          _id: id, userId: USER, tripId: 'TRIP_RANGE', spotId: 'gugong',
+          visitDate, backupGroupId: 'TRIP_RANGE:gugong', remindOn: false,
+          result: null, resultAt: null, createdAt: time.now(), updatedAt: time.now(),
+        },
+      });
+    }
+
+    res = await reminder.main({ action: 'home.bootstrap' });
+    let rangeTrip = res.trips.find(t => t._id === 'TRIP_RANGE');
+    eq(rangeTrip.displayStartDate, early, '展示起始日取包含已过期项的最早 visitDate');
+    eq(rangeTrip.displayEndDate, late, '展示结束日取最晚 visitDate');
+    eq(rangeTrip.startDate, rangeStart, '原 startDate 不被展示日期覆盖');
+    eq(rangeTrip.endDate, rangeEnd, '原 endDate 不被展示日期覆盖');
+
+    await reminder.main({ action: 'tripItem.remove', itemId: 'RANGE_LATE' });
+    res = await reminder.main({ action: 'home.bootstrap' });
+    rangeTrip = res.trips.find(t => t._id === 'TRIP_RANGE');
+    eq(rangeTrip.displayEndDate, middle, '删除最晚单项后展示结束日收缩');
+
+    await reminder.main({
+      action: 'tripItem.removeVisitDate',
+      tripId: 'TRIP_RANGE', visitDate: early, itemIds: ['RANGE_EARLY'],
+    });
+    res = await reminder.main({ action: 'home.bootstrap' });
+    rangeTrip = res.trips.find(t => t._id === 'TRIP_RANGE');
+    eq(rangeTrip.displayStartDate, middle, '删除最早整天后展示起始日收缩');
+
+    const newEarly = time.addDays(TODAY, -4);
+    const newLate = time.addDays(TODAY, 5);
+    for (const [id, visitDate] of [['RANGE_NEW_EARLY', newEarly], ['RANGE_NEW_LATE', newLate]]) {
+      await CURRENT_DB.collection(COLLECTIONS.TRIP_ITEMS).add({
+        data: {
+          _id: id, userId: USER, tripId: 'TRIP_RANGE', spotId: 'gugong',
+          visitDate, backupGroupId: 'TRIP_RANGE:gugong', remindOn: false,
+          result: null, resultAt: null, createdAt: time.now(), updatedAt: time.now(),
+        },
+      });
+    }
+    res = await reminder.main({ action: 'home.bootstrap' });
+    rangeTrip = res.trips.find(t => t._id === 'TRIP_RANGE');
+    eq(rangeTrip.displayStartDate, newEarly, '新增更早日程后展示起始日扩张');
+    eq(rangeTrip.displayEndDate, newLate, '新增更晚日程后展示结束日扩张');
+
+    const historyStart = time.addDays(TODAY, -10);
+    const historyEnd = time.addDays(TODAY, -2);
+    await CURRENT_DB.collection(COLLECTIONS.TRIPS).add({
+      data: {
+        _id: 'TRIP_RANGE_HISTORY', userId: USER, city: '北京',
+        startDate: historyStart, endDate: historyEnd, name: '北京历史动态日期测试',
+        spotIds: ['gugong'], status: 'ACTIVE', createdAt: time.now(), updatedAt: time.now(),
+      },
+    });
+    for (const [id, visitDate] of [
+      ['HISTORY_EARLY', time.addDays(TODAY, -8)],
+      ['HISTORY_LATE', time.addDays(TODAY, -4)],
+    ]) {
+      await CURRENT_DB.collection(COLLECTIONS.TRIP_ITEMS).add({
+        data: {
+          _id: id, userId: USER, tripId: 'TRIP_RANGE_HISTORY', spotId: 'gugong',
+          visitDate, backupGroupId: 'TRIP_RANGE_HISTORY:gugong', remindOn: false,
+          result: null, resultAt: null, createdAt: time.now(), updatedAt: time.now(),
+        },
+      });
+    }
+    res = await reminder.main({ action: 'home.bootstrap' });
+    const historyTrip = res.history.find(t => t._id === 'TRIP_RANGE_HISTORY');
+    eq(historyTrip.displayStartDate, time.addDays(TODAY, -8), '历史摘要展示最早实际日程');
+    eq(historyTrip.displayEndDate, time.addDays(TODAY, -4), '历史摘要展示最晚实际日程');
+    eq(historyTrip.items, undefined, '历史摘要仍不下发 items');
+  }
+
   console.log('\n' + (fail === 0 ? 'ALL PASS' : ('FAIL ' + fail)));
   process.exit(fail === 0 ? 0 : 1);
 })();

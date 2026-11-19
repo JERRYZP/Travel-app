@@ -45,12 +45,18 @@ Component({
       if (!trip) return;
       const util = require('../../utils/util.js');
       const p = trip.progress || { done: 0, total: 0, noReservationCount: 0 };
+      /* 日期段按行程项的实际首尾展示（含已过期日程），倒计时必须跟随同一组日期，
+         否则边界日程删除后会出现「日期已经换了，倒计时还按旧行程段算」的矛盾。
+         displayStartDate/displayEndDate 缺失时兼容旧版云函数响应，回退原行程日期；
+         原 startDate/endDate 仍只服务预填、分享等主流程。 */
+      const displayStart = trip.displayStartDate || trip.startDate;
+      const displayEnd = trip.displayEndDate || trip.endDate;
       this.setData({
         displayName: util.tripDisplayName(trip),
         /* ⚠️ 用 tripCountdownTextOf（行程级）而不是 countdownTextOf（景点级）：
            后者在进行中显示「就是今天」，摘要卡要的是「进行中第N天」。 */
-        metaLine: util.tripMetaLine(trip.startDate, trip.endDate,
-          util.tripCountdownTextOf(trip.startDate, trip.endDate)),
+        metaLine: util.tripMetaLine(displayStart, displayEnd,
+          util.tripCountdownTextOf(displayStart, displayEnd)),
         watermark: util.tripWatermark(trip),
         percent: p.total > 0 ? Math.round((p.done / p.total) * 100) : 0,
         noReservation: p.noReservationCount || 0,

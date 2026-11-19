@@ -8,7 +8,7 @@
 const crypto = require('crypto');
 const { COLLECTIONS } = require('./schema');
 
-const SCHEMA_VERSION = 'user_runtime/v1';
+const SCHEMA_VERSION = 'user_runtime/v2';
 const RuntimeMode = Object.freeze({
   OFF: 'off',
   SHADOW: 'shadow',
@@ -108,6 +108,8 @@ function comparisonShape(home) {
       _id: trip._id,
       startDate: trip.startDate,
       endDate: trip.endDate,
+      displayStartDate: trip.displayStartDate,
+      displayEndDate: trip.displayEndDate,
       progress: trip.progress,
       itemCount: trip.itemCount,
       items: (trip.items || []).map(item => ({
@@ -123,6 +125,8 @@ function comparisonShape(home) {
       _id: trip._id,
       startDate: trip.startDate,
       endDate: trip.endDate,
+      displayStartDate: trip.displayStartDate,
+      displayEndDate: trip.displayEndDate,
       progress: trip.progress,
     })),
     reminderQuotaWarning: home && home.reminderQuotaWarning,

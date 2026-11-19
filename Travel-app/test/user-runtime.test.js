@@ -145,11 +145,33 @@ async function main() {
   assert.strictEqual(first.sources.history.length, 1);
   assert.strictEqual(first.sources.allTasks.length, 1,
     '历史事项只保留摘要，不把全部历史任务塞进派生文档');
+  assert.strictEqual(result.trips[0].displayStartDate, VISIT,
+    '活跃行程展示起始日取实际行程项日期');
+  assert.strictEqual(result.trips[0].displayEndDate, VISIT,
+    '活跃行程展示结束日取实际行程项日期');
+  assert.strictEqual(result.history[0].displayStartDate, time.addDays(TODAY, -3),
+    '历史摘要持久化实际最早日程');
+  assert.strictEqual(result.history[0].displayEndDate, time.addDays(TODAY, -3),
+    '历史摘要持久化实际最晚日程');
 
   const warm = await reminder.main({ action: 'home.bootstrap' });
   assert.strictEqual(warm.success, true);
   assert.strictEqual(warm.trips.length, 1);
   assert.strictEqual(warm.history.length, 1);
+  assert.strictEqual(warm.history[0].displayStartDate, time.addDays(TODAY, -3),
+    'runtime 热读保留历史展示起始日');
+  assert.strictEqual(warm.history[0].displayEndDate, time.addDays(TODAY, -3),
+    'runtime 热读保留历史展示结束日');
+
+  await CURRENT_DB.collection('user_runtime').doc(first._id).update({
+    data: { schemaVersion: 'user_runtime/v1' },
+  });
+  const migrated = await reminder.main({ action: 'home.bootstrap' });
+  assert.strictEqual(migrated.success, true);
+  assert.strictEqual(CURRENT_DB._dump('user_runtime')[0].schemaVersion, runtime.SCHEMA_VERSION,
+    '旧版 runtime 快照按新 schema 重建');
+  assert.strictEqual(migrated.history[0].displayStartDate, time.addDays(TODAY, -3),
+    '旧快照重建后历史展示日期可回读');
 
   await reminder.main({
     action: 'user.updateNotifyPrefs',

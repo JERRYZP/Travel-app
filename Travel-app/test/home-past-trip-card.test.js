@@ -12,8 +12,8 @@
  *      ——混用会拿一个过去的时间范围去预填 PAGE-005（提交即 1016）；
  *   ③ 这一档文案是行程级的「已结束」——与行程项卡那套同名同词，但仍是**两条**
  *      计算路径，不要把两个函数合并（见 `util.js` 的注释）；
- *   ④ 本轮**不碰云函数**：`primaryTripId` 的语义（最近未结束行程）不变，
- *      退化只发生在页面渲染层，避免有人以为云端已经改过而重复改一遍。
+ *   ④ 动态展示日期由 `home.bootstrap` 追加只读字段，`primaryTripId` 语义
+ *      （最近未结束行程）不变；退化展示仍在页面渲染层完成。
  *
  * 运行：node test/home-past-trip-card.test.js
  */
@@ -156,14 +156,24 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     require(CARD);
     global.Component = origComponent;
 
-    const pastTrip = Object.assign({}, PAST_TRIP_LATEST, { startDate: D(-5), endDate: D(-1) });
+    const pastTrip = Object.assign({}, PAST_TRIP_LATEST, {
+      startDate: D(-5), endDate: D(-1),
+      displayStartDate: D(-6), displayEndDate: D(-2),
+    });
     const ctx = { data: {}, setData(patch) { Object.assign(this.data, patch); } };
     compDef.observers.trip.call(ctx, pastTrip);
-    eq(ctx.data.metaLine, util.tripMetaLine(D(-5), D(-1), '已结束'),
-      '已结束行程的摘要卡副标题 = 日期段 · 已结束');
+    eq(ctx.data.metaLine, util.tripMetaLine(D(-6), D(-2), '已结束'),
+      '已结束行程的摘要卡使用实际日程首尾，副标题 = 日期段 · 已结束');
     eq(/ · 已结束$/.test(ctx.data.metaLine), true, '小字末尾就是「已结束」这一档');
     eq(ctx.data.displayName, '北京之行', '行程名照旧');
     eq(ctx.data.percent, 67, '进度条按 progress 算（2/3）');
+
+    const legacyTrip = Object.assign({}, pastTrip);
+    delete legacyTrip.displayStartDate;
+    delete legacyTrip.displayEndDate;
+    compDef.observers.trip.call(ctx, legacyTrip);
+    eq(ctx.data.metaLine, util.tripMetaLine(D(-5), D(-1), '已结束'),
+      '旧版响应缺展示字段时回退原行程日期');
 
     eq(util.tripCountdownTextOf(D(-5), D(-1)), '已结束', '行程级：结束日次日 → 已结束');
     eq(util.tripCountdownTextOf(D(-3), D(0)), '进行中第4天',
@@ -171,8 +181,12 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     eq(util.tripCountdownTextOf(D(9), D(12)), '还有9天', '行程级未开始不变');
     eq(util.countdownTextOf(D(-3)), '已结束',
       '行程项卡那套（距出行日）不改动——两套算法仍各自独立');
-    eq(/util\.tripCountdownTextOf\(trip\.startDate, trip\.endDate\)/.test(CARD_JS), true,
-      '摘要卡仍走 util 的行程级倒计时（组件里不另写一套日期算法）');
+    eq(/const displayStart = trip\.displayStartDate \|\| trip\.startDate;/.test(CARD_JS), true,
+      '摘要卡优先使用服务端动态展示起始日');
+    eq(/const displayEnd = trip\.displayEndDate \|\| trip\.endDate;/.test(CARD_JS), true,
+      '摘要卡优先使用服务端动态展示结束日');
+    eq(/util\.tripMetaLine\(displayStart, displayEnd,\s*util\.tripCountdownTextOf\(displayStart, displayEnd\)\)/.test(CARD_JS),
+      true, '日期段与倒计时同步使用动态首尾日期，仍复用 util');
   }
 
   console.log('=== 5. 两件事不许混：摘要卡归卡，预填归 primaryTrip ===');
@@ -203,11 +217,11 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
       true, '展开后仍平铺全部历史行程');
   }
 
-  console.log('=== 6. 本轮不碰云端：primaryTripId 语义不变（否则会有两套口径） ===');
+  console.log('=== 6. 展示日期字段不改变 primaryTripId 语义 ===');
   {
     const CLOUD_CODE = codeOf(CLOUD_INDEX);
     eq(/const primaryTripId = activeTrips\.length \? activeTrips\[0\]\._id : '';/.test(CLOUD_CODE),
-      true, '云端 primaryTripId 仍是「最近未结束行程」（本次是纯小程序端改动）');
+      true, '云端 primaryTripId 仍是「最近未结束行程」');
     eq(/historyTrips\.sort\(\(a, b\) => String\(b\.startDate\)\.localeCompare\(String\(a\.startDate\)\)\);/
       .test(CLOUD_CODE), true, 'history 仍是 startDate 降序 —— 页面回退依赖的就是这个顺序');
   }

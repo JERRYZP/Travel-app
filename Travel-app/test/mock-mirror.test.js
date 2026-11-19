@@ -278,6 +278,9 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     eq(bs.trips[0].items.length, 2, '带回 2 条行程项');
     eq(bs.trips[0].progress.total, 1, '进度分母 = 预约需求组（免预约不计）');
     eq(bs.trips[0].progress.noReservationCount, 1, '另有 1 处随到随玩');
+    const displayDates = [req.visitDate, free.visitDate].sort();
+    eq(bs.trips[0].displayStartDate, displayDates[0], 'mock 展示起始日取实际行程项最早日期');
+    eq(bs.trips[0].displayEndDate, displayDates[displayDates.length - 1], 'mock 展示结束日取实际行程项最晚日期');
   }
 
   /* ============ 7. 六个展示态 + 进度口径（镜像 lib/item.js）============ */

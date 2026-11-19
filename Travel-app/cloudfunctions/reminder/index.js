@@ -491,6 +491,24 @@ async function loadHomeSources(db, userId) {
   };
 }
 
+/**
+ * 首页摘要卡的展示日期段。
+ *
+ * 只从这一趟行程的 trip_items 取最早/最晚 visitDate，包含已经过去的出行日；
+ * trips.startDate/endDate 仍保留给新增提醒预填、分享和行程业务判定使用。
+ * 正常行程不存在 items 为空的情况；空数组时回退原行程日期，兼容历史读模型。
+ */
+function displayRangeOf(items, fallbackStartDate, fallbackEndDate) {
+  const dates = (items || [])
+    .map(row => String((row && row.visitDate) || ''))
+    .filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date))
+    .sort();
+  return {
+    displayStartDate: dates.length ? dates[0] : fallbackStartDate,
+    displayEndDate: dates.length ? dates[dates.length - 1] : fallbackEndDate,
+  };
+}
+
 async function composeHomeBootstrap(db, userId, sources, event, t0, timing, options = {}) {
   const includeSpots = event.includeSpots === true;
   const nowTs = time.now();
@@ -557,11 +575,14 @@ async function composeHomeBootstrap(db, userId, sources, event, t0, timing, opti
   const historyTrips = hasStoredHistory ? [...(sources.history || [])] : [];
   for (const tripRow of trips) {
     const mine = decorated.filter(row => row.tripId === tripRow._id);
+    const displayRange = displayRangeOf(mine, tripRow.startDate, tripRow.endDate);
     const entry = {
       _id: tripRow._id,
       city: tripRow.city,
       startDate: tripRow.startDate,
       endDate: tripRow.endDate,
+      displayStartDate: displayRange.displayStartDate,
+      displayEndDate: displayRange.displayEndDate,
       name: tripRow.name,
       progress: item.backupGroupProgress(mine),
       itemCount: mine.length,
