@@ -1,6 +1,8 @@
 # Travel-app 前端接口契约 V1.4
 
 > 面向：前端（微信小程序页面开发）
+> 2026-11-19 更新：新增独立 `account` 云函数与 PAGE-012-1 自助注销。`account.preflight` 只读预检，`account.erase` 在服务端二次预检后删除个人业务数据，并将订单/售后/安全审计保留字段与 OpenID 解绑；延迟支付不得把权益发给新账户。
+> 2026-11-19 更新：`home.bootstrap` 的 `trips[]` 与 `history[]` 新增只读展示字段 `displayStartDate` / `displayEndDate`，取该行程全部 `trip_items.visitDate` 的最早/最晚日期（包含已过期日程）。原 `startDate` / `endDate` 语义不变，继续服务新增提醒预填、分享和业务判定；历史摘要仍不下发 `items`。
 > 2026-11-05 更新：反馈支持管理员追加多条单向回复、逐条修改，用户端展示完整回复线程和「已修改」标记；新增反馈采纳奖励 `payment.feedbackReward.adminStatus/adminGrant/adminRevoke`，每次奖励 30 天会员，可按反馈叠加。新反馈与历史反馈均可奖励，历史反馈标记为「补发」。用户端通过 `feedback.list.rewardNotices` 查看补发和撤回通知；通知按 `rewardUpdatedAt` 独立分页读取，不受最近 50 条反馈限制。
 > 2026-11-06 更新：提醒时段按额度成本收敛。清华只保留即时预约，工作日提前 1 天 `08:00`、周末及法定节假日提前 7 天 `08:00`，抽签预约不创建任务；军博只保留最早 `08:00`。当前两个景点每个出行日都只创建 1 条 `reminder_task`。底层仍保留 `releaseSlots` 与 `supportsMultiRelease` 请求级能力门禁，旧客户端继续使用单任务旧契约；`cart.list` 与 `cart.planDates` 继续返回 `reminderTaskCount`，当前值按单任务计算，未来重新启用多时段时仍按实际任务数校验授权与提醒名额。
 > 2026-11-02 更新：新增 `tripShare.create/status/revoke/open` 与 PAGE-018 行程只读分享。分享令牌只从公开路径传入，普通行程接口仅返回 `shareActive`；主人接口可通过 `ownerNickname` 读取应用内昵称用于会话标题，接收方数据只含城市、日期、天数和景点名称。
@@ -74,6 +76,8 @@
 | 1046 | 回复不存在 | 提示回复已被更新，刷新列表 |
 | 1047 | 反馈奖励已撤回 | 不允许同一反馈再次赠送 |
 | 1048 | 奖励后已有新的会员权益 | 不自动撤回，保留当前权益并提示人工核验 |
+| 1047 | 注销存在未结事项（account 命名空间） | 展示 `blockers` 和「去会员订单处理」，处理完返回后重新预检 |
+| 1048 | 注销确认缺失（account 命名空间） | 不执行删除；恢复主动勾选与二次确认 |
 | 1099 | 未知 action | Toast |
 | 1500 | 服务端异常 | Toast「服务异常，请稍后重试」 |
 
@@ -1367,7 +1371,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 ```
 
 - 仅 `AFTER_SALES_ADMIN_OPENIDS` 白名单可调用；未配置时工作台关闭，不存在代码内置兜底账号。
-- `adminOrders.list` 返回订单、当前昵称、完整 OpenID、支付渠道、权益状态和关联售后摘要。`keyword` 支持商户订单号、订单 ID、完整 OpenID、售后单号和昵称；只有昵称允许部分匹配。`timeRange=7d|30d|90d|all` 按北京时间自然日过滤订单创建时间，缺省或非法值按 `30d`；时间范围在数据库查询阶段生效，同时作用于搜索、状态筛选和分页。分页参数默认 `page=1&pageSize=20`，单页最大 50。
+- `adminOrders.list` 返回订单、当前昵称、完整 OpenID、支付渠道、权益状态和关联售后摘要。订单或售后已 `accountDeleted=true` 时，用户栏固定显示「已注销用户」且不返回 OpenID；仍可按订单号、商户交易号和售后单号继续查询与处理退款。`keyword` 支持商户订单号、订单 ID、完整 OpenID、售后单号和昵称；只有昵称允许部分匹配。`timeRange=7d|30d|90d|all` 按北京时间自然日过滤订单创建时间，缺省或非法值按 `30d`；时间范围在数据库查询阶段生效，同时作用于搜索、状态筛选和分页。分页参数默认 `page=1&pageSize=20`，单页最大 50。
 - `adminOrders.stats` 返回北京时间当日的 `{ dateKey, totalOrders, paidOrders, paidAmountFen, paidAmountText, refundedOrders, refundedAmountFen, refundedAmountText, netAmountFen, netAmountText }`。`totalOrders` 统计当日创建的全部订单；`paidOrders / paidAmountFen` 统计这些订单中已写入 `paidAt` 的订单及支付金额；`refundedOrders` 统计这些已支付订单中退款已完成的数量；`refundedAmountFen` 只汇总已完成退款，优先读取 `refundedAmountFen`，历史单缺失时按订单金额；`netAmountFen = paidAmountFen - refundedAmountFen`。统计独立于列表搜索和筛选。
 - `adminReminderQuality.stats` 返回：
   ```javascript
@@ -1427,10 +1431,68 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 ---
 
+## 2.5 account（账户注销，2026-11-19）
+
+**云函数名：`account`**
+
+身份只取 `cloud.getWXContext().OPENID`，不接受客户端传入 OpenID。注销的是业务账户，不涉及微信账号。
+
+### `account.preflight`
+
+```javascript
+调用：{ action: 'account.preflight' }
+
+返回：{
+  success: true,
+  canErase: Boolean,
+  blockers: [{
+    code: 'PAYMENT_PENDING' | 'PAYMENT_RECONCILING' |
+          'ENTITLEMENT_UNRESOLVED' | 'AFTER_SALES_ACTIVE',
+    count, title, message, action: 'ORDERS'
+  }],
+  summary: {
+    profileCount, tripCount, itemCount, reminderCount, cartCount,
+    searchCount, feedbackCount, adAttemptCount, eventCount,
+    orderCount, afterSalesCount,
+    membershipActive, memberExpiresAt, memberExpiresAtText,
+    alreadyErased
+  }
+}
+```
+
+- 待支付订单、关闭后 24 小时内订单、`PAID` 但权益未确认、活动售后或活动退款均阻断注销。
+- 有效会员返回 `membershipActive=true` 和到期日，但 `canErase=true`；页面必须强提示注销后权益立即失效。
+- 缺失用户且没有旧交易记录时返回 `alreadyErased=true`。
+
+### `account.erase`
+
+```javascript
+调用：{ action: 'account.erase', confirmation: 'ERASE_MY_ACCOUNT' }
+
+成功：{
+  success: true,
+  alreadyErased: false,
+  counts: { profiles, trips, tripItems, reminderTasks, reminderCart,
+            searchHistory, feedbacks, adAttempts, reminderEvents,
+            userRuntime, avatarFiles },
+  retained: { orders, afterSalesCases, auditTargets },
+  erasedAccountRef, erasedAt
+}
+```
+
+- 确认值缺失返回 `1048`；服务端重新预检后存在阻塞项返回 `1047`，并携带 `blockers` / `summary`。
+- 删除顺序固定：任务与清单 → 行程项/行程 → 搜索、反馈、广告凭证、提醒事件、首页派生模型 → 保留记录匿名化 → 云头像与用户文档。重复调用必须可继续收口部分完成的数据。
+- `users`、`trips`、`trip_items`、`reminder_tasks`、`reminder_cart`、`search_history`、`feedbacks`、`rewarded_ad_attempts`、用户 `reminder_events` 和 `user_runtime` 删除。
+- `orders` / `after_sales_cases` 保留交易必需字段，清空 `userId`、`userDocumentId`、`requestIdHash` 和用户补充正文，写入 `accountDeleted=true`、`accountDeletedAt` 与无 OpenID 关联的 `erasedAccountRef`；新账户不能按 OpenID 查询到旧交易。
+- 用户定向安全审计只保留审计过程，必须把可定位用户的 `targetId` 替换为 `erasedAccountRef`。
+- 注销后延迟支付或重复支付回调不得重建旧用户、不得向复用同一 OpenID 的新账户发放权益；订单收口为已支付并生成 `PAYMENT_AFTER_ACCOUNT_DELETION` 高优先级匿名售后单，由客服核验退款。
+
+---
+
 ## 3. notifier（提醒推送）
 
 **云函数名：`notifier`**
-**说明：** 定时触发器（每分钟一次），前端不直接调用。走**微信服务端 HTTP 接口**发送订阅消息（不依赖小程序端触发，定时触发可用）。
+**说明：** 定时触发器（每分钟一次），前端不直接调用。走**微信服务端 HTTP 接口**发送订阅消息（不依赖小程序端触发，定时触发可用）。实际发送前必须按 `taskId` 回读任务；任务已删除、非 `WAITING` 或 `userId` 为空时跳过，防止注销后补发。
 
 **环境变量（云函数配置）**：`WX_APPID`（小程序 AppID，缺省回退 `wx05c160a589b97d76`）、`WX_APPSECRET`（必填，小程序密钥）、`SUBSCRIBE_TEMPLATE_ID`（仅作为 `testSend` 的默认订阅模板 ID，缺省回退内置常量 `_BUe5xII9f16kHmuYjz2esWY8MjdL7Qrp30pqmuKFmA`）。正常定时发送不从环境变量取模板：`reminder_tasks.templateId` 优先，旧任务缺省回退 `V6Nm8xUD4sMWwSCy8CFWm3ukhla-RGNrEfnI4aBYb-Q`。
 
@@ -1738,7 +1800,8 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 | **PAGE-007** 行程清单弹窗 | `cart.list`、`cart.remove`、`cart.clear`、`cart.updateRemindOn`、`cart.commit` |
 | **PAGE-008** 设置提醒 | V0.3 主流程：`cart.bootstrap`（清单 + 会员 + 订阅授权一次取回）、`membership.createOrder` + `payment.*`（仅提醒名额不足时）、用户主动点击「点击补授权次数」、`cart.commit`（授权、系统权限或提醒名额未满足时主按钮禁用；不提供仅加行程旁路） |
 | **PAGE-010** 我的 | `user.bootstrap`（资料 + 会员 + 订阅健康一次取回）；`feedback.entrySummary`（反馈入口身份与数字，旧缓存先渲染、`onShow` 刷新）；能力探测按本地短缓存降频 |
-| **PAGE-012** 编辑资料 | `user.profile`、`user.updateProfile`（头像走 `open-type="chooseAvatar"` + `wx.cloud.uploadFile` 上传） |
+| **PAGE-012** 编辑资料 | `user.profile`、`user.updateProfile`（头像走 `open-type="chooseAvatar"` + `wx.cloud.uploadFile` 上传）；底部注销入口 |
+| **PAGE-012-1** 注销账户 | `account.preflight`、`account.erase`；服务端二次预检，成功后清本地缓存并回首页 |
 | **PAGE-014** 会员与提醒名额 | `membership.status`、`membership.vibrationAdStart`、`membership.vibrationAdClaim`、`membership.createOrder`、`membership.orders`、`payment.create/query/cancel`；支付前确认、持久支付状态、激励视频震动解锁和订单入口；“我的”页常驻会员状态卡 |
 | **PAGE-015** 订单与退款详情 | `membership.orders`、`membership.orderDetail`；列表最多 50 笔，详情按本人单笔读取，主订单状态与退款状态分离，支持继续支付、取消、同步、申请售后和重新购买 |
 | **PAGE-016** 用户售后申请 | `membership.orderDetail`、`payment.afterSales.submit/cancel/list/detail/syncRights`；未到账、重复支付、未使用退款、权益不符和其他问题，未处理与无远端退款记录的异常单可取消 |
@@ -1896,6 +1959,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   primaryTripId: 'trip_a',
   trips: [{
     _id, city, startDate, endDate, name,
+    displayStartDate, displayEndDate, // 首页展示用：全部行程项最早/最晚 visitDate，含过期项
     shareActive: true,              // 只读分享是否有效；不下发 shareToken
     progress: {
       done: 2,                    // 已成的预约需求组数
@@ -1906,6 +1970,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   }],
   history: [{
     _id, city, startDate, endDate, name,
+    displayStartDate, displayEndDate, // 与 trips 同口径；历史仍不下发 items
     shareActive: false,             // 历史行程在 endDate + 7 天内仍可能为 true
     progress: { done, total, noReservationCount }
   }],
@@ -1937,9 +2002,11 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 
 - `trips` 只包含未结束行程，按 `startDate` 升序。
 - `history` 只包含 `endDate` 次日起的历史行程，按 `startDate` 降序。
+- `displayStartDate` / `displayEndDate` 只用于首页摘要卡日期段与同行倒计时，取该行程全部 `trip_items.visitDate` 的最小/最大值，不过滤已过期日程；无有效行程项时回退 `startDate` / `endDate`。新增或删除首尾行程项后，下一次 `home.bootstrap` 必须返回更新后的范围。
+- `startDate` / `endDate` 仍是行程业务日期，不得被展示字段替换；PAGE-005 预填、分享截止日和行程是否结束仍读原字段。
 - 一个行程结束后仍在 `endDate` 当天保留在主墙；次日按北京时间读取时归入历史，不依赖定时任务。
 - 首页结构：一张 `primaryTripId` 全局摘要卡 + 纵向分段墙；其他行程只显示紧凑分段标题，不用横向 Tab。
-- ⚠️ `primaryTripId` 的语义**只是「最近未结束行程」**（没有则为空串）：全部行程都结束时，客户端摘要卡会退化展示 `history[0]`（最近一段过往行程，副标题「已结束」），**不**把 `primaryTripId` 指到历史行程上——那个字段同时被「新增提醒」预填当成「还能继续加项的行程」（见 `PAGE-005-RULE-001`），指错了会把过去的时间范围预填进 PAGE-005。退化只发生在渲染层，本文契约字段不变（`HOME-RULE-008`）。
+- ⚠️ `primaryTripId` 的语义**只是「最近未结束行程」**（没有则为空串）：全部行程都结束时，客户端摘要卡会退化展示 `history[0]`（最近一段过往行程，副标题「已结束」），**不**把 `primaryTripId` 指到历史行程上——那个字段同时被「新增提醒」预填当成「还能继续加项的行程」（见 `PAGE-005-RULE-001`），指错了会把过去的时间范围预填进 PAGE-005。退化只发生在渲染层；历史摘要通过 `displayStartDate` / `displayEndDate` 展示实际日程范围（`HOME-RULE-008` / `HOME-RULE-009`）。
 - 顶部吸顶 Banner 跨全部当前/未来行程取全局最近 1–2 个放票项。
 - ⚠️ **`recoverableIds` 必须随这一次响应给**（决策文档 4.3 的三层规则，真身 `lib/recovery.js` 的
   `recoverableMapOf`）。前端据此渲染「还有其他日期可约」气泡与菜单里的「约其他日」；

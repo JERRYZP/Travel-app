@@ -23,6 +23,7 @@
 | `RULE-PROGRESS-001` | `CLAUDE.md` 40 | 门票进度分母 | `docs/engineering/domain-rules.md` | `extracted` |
 | `RULE-HOME-001` | `CLAUDE.md` 41-50 | 首页单形态、摘要卡、胶囊与样式硬约束 | `docs/engineering/domain-rules.md`、`.claude/rules/frontend.md` | `extracted` |
 | `RULE-HOME-002` | `CLAUDE.md` 85 | 双 Tab/`homeMode` 已废弃，首页只保留单形态 | `docs/engineering/domain-rules.md` | `history` |
+| `RULE-HOME-003` | 2026-11-19 首页摘要卡动态日期 | 摘要卡日期段与倒计时读取 `home.bootstrap.displayStartDate/displayEndDate`；范围取当前行程全部 `trip_items.visitDate` 首尾并包含已过期日程，原 `startDate/endDate` 继续服务预填、分享与业务判定 | `产品文档.md` `HOME-RULE-009`、`API-契约.md`、`docs/engineering/architecture.md`、`docs/engineering/domain-rules.md` | `delegated` |
 | `RULE-TIMELINE-001` | `CLAUDE.md` 51-60 | 纯预览、按钮态、已开票锁定、清单分组 | `docs/engineering/domain-rules.md` | `extracted` |
 | `RULE-CART-001` | `CLAUDE.md` 61 | 清单是提交前暂存区 | `docs/engineering/domain-rules.md`、`docs/engineering/architecture.md` | `extracted` |
 | `RULE-CART-002` | `产品文档.md` CART-RULE-003 / 007 | 清单收敛到当前这次生成的时间线范围 | `产品文档.md`、`docs/engineering/domain-rules.md` | `delegated` |
@@ -66,6 +67,7 @@
 | `RULE-ADMIN-002` | 2026-11-02 客服工作台 | 会员购买开关置顶；会员订单与售后双页签；昵称/OpenID 展示、搜索、订单详情和管理员审计 | `产品文档.md` PAGE-017、`API-契约.md`、`数据库索引.md` | `delegated` |
 | `RULE-SHARE-001` | 2026-11-02 行程只读分享 | PAGE-018 只分享当前未结束整趟行程；链接只带 32 字节令牌，`endDate + 7 天` 当日仍有效；接收方不可编辑、复制或二次转发，公开投影不夹带身份与票务/提醒状态。主人应用内昵称只用于会话标题，Canvas 封面只画公开行程信息 | `产品文档.md` PAGE-018 / SHARE-RULE-008~009、`API-契约.md`、`数据库索引.md`、`docs/engineering/domain-rules.md` | `delegated` |
 | `RULE-ADMIN-003` | 2026-11-02 客服工作台提醒质量 | 每日 13:00 / 21:00 更新最近完成 8 小时时段的任务级 2 分钟内送达率；页面只直出当前送达率和前 5 日加权均值，低于 99% 才标红 | `产品文档.md` PAGE-017、`API-契约.md`、`docs/engineering/reminder-troubleshooting.md`、`数据库索引.md` | `delegated` |
+| `RULE-ACCOUNT-001` | 2026-11-19 用户自助注销 | 立即注销、再次进入空账户；有效会员强提示；未结支付/售后阻断；交易最小保留且切断 OpenID；支付/提醒竞态保护 | `产品文档.md` PAGE-012-1、`API-契约.md` 2.5、`docs/engineering/architecture.md`、`docs/legal/隐私政策.md`、`数据库索引.md` | `delegated` |
 | `RULE-RESOURCE-001` | 2026-11-02 调用量结构性优化 | 静态景点快照出云函数；页面级 bootstrap；写命令返回规范视图；`user_runtime` 只是可重建读模型；`off/shadow/on` 灰度后才能启用 | `API-契约.md` 8.8、`docs/engineering/architecture.md`、`.claude/rules/deployment.md`、`数据库索引.md` | `delegated` |
 
 ## Phase 3 验收结果
