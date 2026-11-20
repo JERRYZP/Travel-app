@@ -66,13 +66,6 @@
 .enforcement-select.disabled { opacity: .55; }
 .enforcement-select-value { min-width: 0; overflow: hidden; font-size: 18rpx; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .pricing-card { margin-bottom: 18rpx; padding: 18rpx 20rpx; }
-.promo-card { margin-bottom: 18rpx; padding: 18rpx 20rpx; border-color: #E2C896; background: #FFF9EA; }
-.promo-card.active { border-color: #C8A15E; background: #FFF4D8; }
-.promo-status { flex-shrink: 0; padding: 3rpx 9rpx; border-radius: 999rpx; background: #F1F0ED; color: #77736B; font-size: 18rpx; font-weight: 600; }
-.promo-card.active .promo-status { background: #F5E5B9; color: #8A5A12; }
-.promo-expiry { color: #B09878; font-size: 18rpx; }
-.promo-action { flex-shrink: 0; padding: 14rpx 18rpx; border-radius: 13rpx; background: #B8904A; color: #FFFDF7; font-size: 21rpx; white-space: nowrap; }
-.promo-action.disabled { opacity: .55; }
 .upgrade-notice-card { margin-bottom: 18rpx; padding: 18rpx 20rpx; }
 .upgrade-notice-card.active { border-color: #E2C896; background: #FFF9EA; }
 .upgrade-notice-card.active .upgrade-notice-status { background: #F7ECD4; color: #8A5A12; }

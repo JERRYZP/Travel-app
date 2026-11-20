@@ -1417,7 +1417,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 - `adminSetMembershipEnforcement` 仅管理员可调用，只接受 `off / test / all`。切换写 `SET_MEMBERSHIP_ENFORCEMENT` 审计，记录前后模式；切 `all` 时两项迁移未完成返回 `1033`。配置文档缺失时提醒链路继续使用环境变量兜底，后台显式展示该来源，不猜测运行模式。
 - `adminSetMembershipPricing` 仅管理员可调用，只接受 `test / all`。切换写 `SET_MEMBERSHIP_PRICING` 审计并立即失效服务端缓存；不写 `membership_enforcement`，不重算已有提醒任务。配置缺失或读取失败时默认只开放测试名单。
 - `adminSetMembershipUpgradeNotice` 仅管理员可调用，写 `SET_MEMBERSHIP_UPGRADE_NOTICE` 审计。`enabled=false` 立即停止向白名单用户返回公告；重新开启且原截止时间已过时，默认从当前时间延长 72 小时。公告开关只影响“我的”页横幅，不影响会员权益、订单、退款或提醒任务。
-- `adminSetHomeClockPromo` 仅管理员可调用：`enabled=true` 时若当前活动已关闭或过期，默认从当前时间开启 4 天；已处于有效窗口内则保持原截止时间。`enabled=false` 立即停止首页横幅，写 `SET_HOME_CLOCK_PROMO` 审计，不影响会员权益、订单、退款或悬浮时钟功能。`home.bootstrap.homeClockPromo` 仅在配置启用且处于有效期内返回；客户端按活动 ID 持久化“叉号永久关闭”本机状态。
+- `adminSetHomeClockPromo` 仅管理员可调用：`enabled=true` 时若当前活动已关闭或过期，默认从当前时间开启 6 天；已处于有效窗口内则保持原截止时间。`enabled=false` 立即停止首页横幅，写 `SET_HOME_CLOCK_PROMO` 审计，不影响会员权益、订单、退款或悬浮时钟功能。客服工作台不再展示该控制卡，接口保留用于内部维护。`home.bootstrap.homeClockPromo` 仅在配置启用且处于有效期内返回；到期后自动返回空，客户端按活动 ID 持久化“叉号永久关闭”本机状态。
 - 管理员可从「全部」列表查看“用户已取消”、取消时间和取消前异常原因；取消单不显示同意退款、驳回或重试退款操作。
 - 上线前迁移完成后正式工作台已关闭迁移入口；若未来重新开启，工作台可据 `migrationCompleted=true` 自动隐藏。
 - `adminDetail` 返回订单、用户权益、支付渠道、支付查单结果、权益发放快照、支付后新增提醒数、重复支付证据和历史售后记录。系统自动补建的平台退款记录会返回 `systemGenerated=true`、退款单号和退款金额。

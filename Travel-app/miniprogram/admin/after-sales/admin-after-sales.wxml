@@ -103,19 +103,6 @@
       </picker>
     </view>
 
-    <view wx:if="{{homeClockPromo}}" class="admin-control-card promo-card {{homeClockPromo.active ? 'active' : ''}}">
-      <view class="enforcement-main">
-        <view class="enforcement-title-row">
-          <text class="enforcement-title">首页悬浮时钟横幅</text>
-          <text class="promo-status">{{homeClockPromo.statusLabel}}</text>
-        </view>
-        <text class="enforcement-desc {{homeClockPromo.readError ? 'warning' : ''}}">{{homeClockPromo.description}}</text>
-        <text wx:if="{{homeClockPromo.endsAtText}}" class="promo-expiry">截止：{{homeClockPromo.endsAtText}}</text>
-      </view>
-      <view class="promo-action {{homeClockPromoSaving || homeClockPromo.unavailable ? 'disabled' : ''}}" bindtap="onToggleHomeClockPromo">
-        {{homeClockPromoSaving ? '处理中' : homeClockPromo.actionText}}
-      </view>
-    </view>
 
     <view wx:if="{{fundingBlockedCount > 0}}" class="funding-alert">
       <view class="funding-alert-copy">

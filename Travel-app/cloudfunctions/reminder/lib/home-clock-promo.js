@@ -9,7 +9,7 @@ const { COLLECTIONS } = require('./schema');
 
 const CONFIG_ID = 'home_clock_promo';
 const PROMO_ID = 'floating-clock-2026-11';
-const DURATION_DAYS = 4;
+const DURATION_DAYS = 6;
 const DEFAULT_CACHE_MS = 45 * 1000;
 const cache = new WeakMap();
 
@@ -55,7 +55,7 @@ function adminViewOf(config = {}, now = new Date()) {
   let description = configured
     ? '横幅已关闭，首页不会展示推广内容。'
     : '尚未创建首页推广配置。';
-  let actionText = '开启 4 天';
+  let actionText = '开启 6 天';
   let toggleToEnabled = true;
   if (readError) {
     statusLabel = '读取失败';
@@ -70,7 +70,7 @@ function adminViewOf(config = {}, now = new Date()) {
   } else if (enabled) {
     statusLabel = expired ? '已到期' : '已排期';
     description = expired ? '活动已到期，首页不再展示横幅。' : '活动将在开始时间后展示横幅。';
-    actionText = '重新开启 4 天';
+    actionText = '重新开启 6 天';
     toggleToEnabled = true;
   }
   return {

@@ -354,7 +354,10 @@ try {
   eq(homePromoWxml.includes('catchtap="onHomeClockPromoDismiss"'), true, '首页横幅提供关闭入口');
   eq(homePromoJs.includes('homeClockPromoDismissedV1'), true, '首页按活动 ID 持久化关闭状态');
   eq(homePromoWxss.includes('.home-clock-promo'), true, '首页横幅拥有独立样式');
-  eq(adminPromoWxml.includes('onToggleHomeClockPromo'), true, '客服工作台提供推广横幅开关');
+  eq(adminPromoWxml.includes('onToggleHomeClockPromo'), false, '客服工作台不再展示推广横幅开关');
+  eq(adminPromoWxml.includes('首页悬浮时钟横幅'), false, '客服工作台不再渲染推广横幅控制卡');
+  eq(promoConfig.DURATION_DAYS, 6, '推广横幅默认投放 6 天');
+  eq(promoConfig.nextWindow(new Date('2026-11-20T08:00:00+08:00')).endsAt.toISOString(), new Date('2026-11-26T00:00:00.000Z').toISOString(), '默认截止时间为开启后 6 天');
   const promoApi = fs.readFileSync(path.join(ROOT, 'miniprogram/utils/api.js'), 'utf8');
   eq(promoApi.includes('adminSetHomeClockPromo'), true, '客户端接入推广横幅后台开关 API');
 } finally {
