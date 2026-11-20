@@ -55,6 +55,7 @@
 | `RULE-ROLLOUT-001` | 2026-11-04 生产事故 | 新功能不得影响线上；会员改版必须用 `MEMBERSHIP_ENFORCEMENT_MODE=test` 与 `MEMBERSHIP_TEST_OPENIDS` 限定白名单，非白名单保持旧契约；影响线上的阻塞、体验版上传和全量切换必须单独授权 | `CLAUDE.md`、`.claude/rules/deployment.md`、`API-契约.md`、`docs/engineering/membership-payment.md` | `root-current` |
 | `RULE-COMPAT-001` | 2026-11-05 新旧客户端交叉期 | 客户端声明能力，服务端默认回退旧契约；白名单与运行期开关决定新契约范围；`all` 只覆盖声明能力的新客户端；订单、退款和售后按快照兼容 | `docs/engineering/client-version-compatibility.md`、`CLAUDE.md`、`.claude/rules/deployment.md` | `delegated` |
 | `RULE-NOTIFYOPS-001` | `CLAUDE.md` 128-137 | 状态收敛、台账自愈、发送链路 | `docs/engineering/reminder-troubleshooting.md`、`.claude/rules/deployment.md` | `delegated` |
+| `RULE-NOTIFYOPS-002` | 2026-11-20 提醒发送全量中断 | `doc().get()` 必须兼容线上对象与测试数组；回归必须模拟真实云库并覆盖存在/缺失文档；`notifier` 部署后必须核验触发器、手动 tick 与真实 `SEND_SUCCEEDED`；`due>0` 且全量 `skipped` 为 P0 | `docs/engineering/reminder-outage-incident-20261120.md`、`docs/engineering/reminder-troubleshooting.md`、`.claude/rules/deployment.md` | `delegated` |
 | `RULE-AUTH-001` | `CLAUDE.md` 138-139 | 无感登录、资料编辑与反馈管理 | `docs/engineering/architecture.md` | `extracted` |
 | `RULE-DIFF-001` | `CLAUDE.md` 140-143 | 难度真身、mock/seed 与数据确认 | `.claude/rules/data-contracts.md` | `extracted` |
 | `RULE-SILENT-001` | `CLAUDE.md` 144 | 首页静默刷新 | `docs/engineering/frontend-pitfalls.md` | `extracted` |

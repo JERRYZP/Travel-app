@@ -9,7 +9,7 @@
 
 ## 已实现
 
-- 2026-11-20 紧急事故修复（**已部署**）：`notifier` 发送前任务回读把真实云库 `doc().get()` 返回对象误当数组取 `[0]`，导致 11-19 部署后所有待发任务被误判为已删除并跳过，随后落为 `MISSED`；用户无提醒、13:00 质量 0。生产日志复现为 12:29 `due=223 / skipped=223`、12:30 `marked=223`。已改为 `docDataOf()` 兼容对象/数组，并用 `cloudDocGetObject` 回归钉死。`notifier` 于 16:43:48 整包部署，回读 `Active` / Nodejs16.13 / 60 秒，`notifierEveryMinute` 仍启用；16:49 手动 `tick` 成功，16:54:05 已有真实任务写入 `SEND_SUCCEEDED` / `TASK_TRIGGERED`。已错过任务不会补发，后续提醒恢复。
+- 2026-11-20 提醒发送全量中断已关闭：`notifier` 发送前回读把真实云库 `doc().get()` 返回对象误当数组，导致 223 个到期任务全量跳过并落为 `MISSED`，13:00 提醒质量为 0。修复版已于 16:43:48 部署，16:54:05 真实发送写入 `SEND_SUCCEEDED` / `TASK_TRIGGERED`；`notifierEveryMinute`、`Active` / Nodejs16.13 / 60 秒均已回读。已错过任务不补发，后续提醒恢复。完整时间线、根因和防复发门禁见 `docs/engineering/reminder-outage-incident-20261120.md`。
 
 - 2026-11-20 08:26 客户端 `2.6.1` 已上传并设为体验版，对应 `codex/experience-2.6.1-20261120@4ba0b33` / tag `v2.6.1-rc.1`。本版在 `2.6.0rc.2` 验收内容基础上隐藏客服工作台的首页悬浮时钟横幅控制卡，并将推广默认投放窗口调整为 6 天；线上当前 `home_clock_promo.endsAt` 为 `2026-11-23 19:41`，到期自动停止首页展示。`npm test`、`npm run check`、`git diff --check` 通过。**未提交审核、未发布正式版，待体验版真机验收。**
 - 2026-11-20 首页悬浮时钟推广收口：客服工作台移除“首页悬浮时钟横幅”控制卡；`payment` / `reminder` 的默认投放窗口由 4 天调整为 6 天，`payment/lib/` 已增量部署并保持 `Active`。线上 `payment_config/home_clock_promo` 当前 `endsAt` 已延长至 `2026-11-23 19:41`（北京时间），到期后 `home.bootstrap.homeClockPromo` 自动返回空，首页横幅自动撤下。客户端控制卡隐藏尚未上传新体验版，现有 `2.6.0rc.2` 工作台仍会显示旧控制卡，下次客户端发版后生效。

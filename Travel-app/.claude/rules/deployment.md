@@ -38,6 +38,7 @@ paths:
 3. 确认要部署的云函数及其依赖文件。
 4. 运行 `npm test`、`npm run check` 和 `git diff --check`。
 5. 景点静态快照先运行 `npm run build:spots-snapshot`，再通过 `scripts/upload-cloud-assets.sh` 上传 `static/v1/data/`；包内快照始终作为回退，不得只发布远程文件。
+6. 新增或修改 `doc().get()` 调用时，必须兼容线上对象返回与测试数组返回；回归必须使用 `createDb({ cloudDocGetObject: true, cloudGetOnMissing: true })` 覆盖“文档存在”和“文档缺失”，默认数组桩不能作为唯一证据。
 
 ## 部署顺序
 
@@ -48,6 +49,7 @@ paths:
 - 虚拟支付推荐使用云开发「设置 → 其他设置 → 消息推送 → 云函数」，分别把 `xpay_goods_deliver_notify`、`xpay_refund_notify`、`xpay_subscribe_ios_refund_query_notify` 推送到 `payment`。不要只配置 `/payment/virtual-notify` HTTP 兼容路由。
 - `payment` 含每 2 分钟定时补偿触发器；部署前确认 `cloudfunctions/payment/config.json` 随函数生效，并先创建 `payment_reconcile_state` 及补偿游标索引。
 - 使用微信开发者工具 CLI 整包部署 `payment` 会清空已有定时触发器；每次部署后必须用腾讯云 `ListTriggers` 核验并恢复 `paymentReconcileEveryTwoMinutes`，不得只凭 `config.json` 或部署成功回执认为触发器仍存在。
+- `notifier` 整包部署后必须核验线上源码包含目标修复、`ListTriggers` 中 `notifierEveryMinute` 仍启用，并执行一次 `{"action":"tick"}`。若该次 `due > 0`，必须满足 `sent + failed > 0`；出现 `skipped=due` 且 `sent=failed=0` 时按 P0 停止验收。随后至少等待一个真实到期窗口，确认任务写入 `SEND_SUCCEEDED` / `TASK_TRIGGERED`；函数 `Active` 或 tick 无报错都不能替代真实发送证据。事故复盘见 `docs/engineering/reminder-outage-incident-20261120.md`。
 - 售后上线前必须创建 `after_sales_cases`、`admin_audit_logs` 及 `数据库索引.md` 第二节索引；管理员白名单变化后需重新部署或更新云函数环境变量。
 - 客服工作台提醒质量快照由 `payment` 的现有 `paymentReconcileEveryTwoMinutes` 定时器生成并写入 `payment_config/reminder_quality_latest`；工作台接口只读快照。上线前必须核验 `reminder_events.releaseAt` 与 `reminder_tasks.releaseAt` 索引，并在部署 `payment` 后确认定时触发器仍存在、首个窗口快照可回读；不改 `reminder` / `notifier`，不代表已配置主动告警或半日定时统计。
 - 会员购买断路器依赖 `payment_config` 集合中的确定性文档 `membership_sales`。首次部署前先创建集合；文档缺失时默认开放，集合读取失败时新购买失败关闭。`reminder` 与 `payment` 必须读取同一份文档，不得改成两个独立环境变量。

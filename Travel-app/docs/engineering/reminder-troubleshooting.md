@@ -4,12 +4,14 @@
 > 关联规则：`REMINDER-RULE-004` / `STATE-002`；关联文档：`产品文档.md`、`API-契约.md`、`数据库索引.md`、`CLAUDE.md`。
 > ⚠️ 2026-09-25 状态审计：文中「任务列表 / 已过期 Tab / `decorateTaskGroups`」属于 2026-09-16 前的旧首页形态。现役用户界面是行程状态墙；云端触发器、索引和环境变量仍按本文 A 节核查，用户侧只看行程项卡的提醒 chip 与“未送达”原因。第五、六节保留为旧任务列表兼容期的历史修复记录。
 
-## 零之一、2026-11-20 全量提醒未发送事故
+## 零之一、2026-11-20 全量提醒未发送事故（已关闭）
 
-- 症状：2026-11-20 中午起用户收不到订阅消息，首页任务显示「未送达」，客服工作台 13:00 提醒质量降为 0。
-- 根因：2026-11-19 为注销竞态新增的发送前任务回读把云数据库 `doc().get()` 的 `data` 当成数组取 `[0]`；线上实际返回对象，导致所有存在的 `WAITING` 任务都被误判为“已删除”，`scanAndSend` 全量 `skipped`，过期后由 `sweepMissed` 落成 `MISSED`。
-- 修复口径：统一使用 `docDataOf(result)` 同时兼容对象和数组；回归测试必须使用 `createDb({ cloudDocGetObject: true })` 模拟真实云库，不得继续用数组形状的默认桩掩盖问题。2026-11-20 16:43:48 已部署 `notifier`，定时触发器 `notifierEveryMinute` 保持启用，手动 `tick` 成功，16:54:05 已有真实任务写入 `SEND_SUCCEEDED` / `TASK_TRIGGERED`；已错过任务不自动补发。
-- 与 2026-11-16 激励视频领取事务的 `doc.get()` 事故同类；根因都是“线上对象 / 测试数组”的形状漂移。
+> 完整时间线、根因和防复发门禁见 `docs/engineering/reminder-outage-incident-20261120.md`。本节只保留以后排障要执行的检查。
+
+- 事故根因是 `doc().get()` 线上返回对象、测试桩返回数组，发送前回读误判所有任务已删除；不是触发器缺失，也不是模板未配置。
+- 现役部署验收必须同时核验：线上源码、`notifierEveryMinute`、手动 `tick`、下一真实到期窗口的 `SEND_SUCCEEDED` / `TASK_TRIGGERED`。
+- `due > 0` 且 `skipped=due`、`sent=0`、`failed=0` 表示发送主链路被整批跳过，按 P0 处理。
+- 若线上日志同时出现 `[notifier] tick` 成功和大量 `MISSED`，不能以“函数没有报错”结束排查，必须检查 `send.skipped`、任务 `lastSendError` 和事件账本。
 
 ## 零、客服工作台质量兜底（2026-11-02）
 
@@ -65,7 +67,9 @@
 3. **超时时间改 60 秒**（默认 3 秒会把 30 秒错峰窗口掐断）。
 4. **建索引** `reminder_tasks`：`backendStatus` + `releaseAt`（升序、不勾唯一）。缺了它 `tick` 第一步就报错。
 5. **重新部署** `notifier` 与 `reminder`（右键 → 上传并部署：云端安装依赖）。
-6. **验证**：`notifier` → 云端测试 → `{"action":"tick"}`，期望 `errors` 为空数组。
+6. **验证**：`notifier` → 云端测试 → `{"action":"tick"}`，要求 `success=true`、`errors=[]`、`templateConfigured=true`，并检查 `send` 计数。
+   - 若 `due > 0`，必须满足 `sent + failed > 0`；`skipped=due` 且 `sent=failed=0` 按 P0 处理。
+   - 至少等待一个真实到期窗口，确认对应任务写入 `SEND_SUCCEEDED` / `TASK_TRIGGERED`。
    - `{"action":"whoami"}` → 确认 `appid` 是新号
    - `{"action":"testSend","touser":"<users 集合里的 openId>"}` → 真机收到订阅消息
 
