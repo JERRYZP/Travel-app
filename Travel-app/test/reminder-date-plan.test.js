@@ -40,6 +40,25 @@ eq(gugong.dates[1].status, 'REMINDABLE', '故宫 11月10日仍可提醒');
 eq(gugong.summary.reminder, 1, '汇总只计 1 个可提醒日期');
 eq(gugong.summary.tripOnly, 1, '汇总记录 1 个仅行程日期');
 
+const closed = datePlan.build({
+  spot: spotOf('gugong'),
+  rule: ruleOf('gugong'),
+  visitDates: ['2026-11-09'],
+  nowTs: NOW,
+  cartDates: new Set(),
+  tripDates: new Set(),
+});
+eq(closed.dates[0].status, 'UNAVAILABLE', '故宫周一闭馆日不可选');
+eq(closed.dates[0].reason, 'CLOSED_DAY', '闭馆日原因明确');
+eq(closed.dates[0].addable, false, '闭馆日不能加入行程');
+eq(closed.dates[0].reminderAllowed, false, '闭馆日不能设置提醒');
+eq(closed.summary.unavailable, 1, '汇总记录 1 个不可选日期');
+
+const closedView = datePlanView.viewOf(closed);
+eq(closedView.title, '所选日期景点闭馆，请重新选择', '闭馆日期要求重新选择');
+eq(closedView.lines[0].label, '不可选', '浮层明确标出不可选日期');
+eq(closedView.lines[0].text, '11月9日（景点闭馆或不可约）', '浮层列出具体闭馆日期');
+
 const renmin = datePlan.build({
   spot: spotOf('renmin-dahuitang'),
   rule: ruleOf('renmin-dahuitang'),
@@ -98,6 +117,22 @@ eq(mixedView.lines[1].text, '11月4日（已过放票时间）', '次行定位�
   const userId = 'openid_date_plan';
   const pastVisit = time.addDays(time.todayStr(), 2);
   const futureVisit = time.addDays(time.todayStr(), 30);
+  let closedVisit = time.todayStr();
+  while (time.dayNameOf(closedVisit) !== 'monday') closedVisit = time.addDays(closedVisit, 1);
+
+  const closedPlan = await cart.planQuickDates(db, userId, {
+    spotId: 'gugong',
+    visitDates: [closedVisit],
+  });
+  eq(closedPlan.dates[0].status, 'UNAVAILABLE', '快捷预检拒绝周一闭馆日');
+  const closedCommit = await task.submitQuick(db, userId, {
+    spotId: 'gugong',
+    visitDates: [closedVisit],
+    channels: ['OFFICIAL_ACCOUNT'],
+    offsets: [5],
+  });
+  eq(closedCommit.errorCode, 1010, '快捷提交服务端二次拒绝闭馆日');
+  eq(db._dump(COLLECTIONS.TRIP_ITEMS).length, 0, '闭馆日不会留下行程项');
 
   const before = await cart.planDates(db, userId, {
     spotId: 'gugong',

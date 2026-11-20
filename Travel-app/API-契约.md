@@ -2196,8 +2196,8 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   spotName,
   dates: [{
     visitDate,
-    status: 'REMINDABLE' | 'TRIP_ONLY' | 'IN_CART' | 'IN_TRIP',
-    reason: '' | 'RELEASE_PASSED' | 'NO_FIXED_RELEASE' | 'NO_RESERVATION' | 'IN_CART' | 'IN_TRIP',
+    status: 'REMINDABLE' | 'TRIP_ONLY' | 'IN_CART' | 'IN_TRIP' | 'UNAVAILABLE',
+    reason: '' | 'RELEASE_PASSED' | 'NO_FIXED_RELEASE' | 'NO_RESERVATION' | 'IN_CART' | 'IN_TRIP' | 'CLOSED_DAY',
     releaseAt: Date | null,
     releaseSlots: [{ key, label, releaseTime, advanceDays, releaseDateStr, releaseAt }],
     reminderTaskCount: Number,       // 该日期当前会创建的提醒任务数
@@ -2205,13 +2205,14 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
     reminderAllowed: Boolean
   }],
   summary: {
-    requested, addable, reminder, reminderTaskCount, tripOnly, existing,
+    requested, addable, reminder, reminderTaskCount, tripOnly, existing, unavailable,
     releasePassed, noFixedRelease, noReservation
   }
 }
 ```
 
 - 只读接口，是景点页日期资格的权威来源。客户端不得用 `advanceDays/releaseTime` 自行重推。
+- `UNAVAILABLE / CLOSED_DAY` 表示该出行日景点闭馆或不可约；`addable=false`、`reminderAllowed=false`，不得降级为“仅加入行程”。
 - 单次最多 31 个日期；重复日期先去重排序。
 - 已在暂存清单或任一真实行程中的日期不重复加入。
 
@@ -2230,8 +2231,8 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
   reservationRequired: Boolean,
   dates: [{
     visitDate,
-    status: 'REMINDABLE' | 'TRIP_ONLY' | 'IN_CART' | 'IN_TRIP',
-    reason: '' | 'RELEASE_PASSED' | 'NO_FIXED_RELEASE' | 'NO_RESERVATION' | 'IN_CART' | 'IN_TRIP',
+    status: 'REMINDABLE' | 'TRIP_ONLY' | 'IN_CART' | 'IN_TRIP' | 'UNAVAILABLE',
+    reason: '' | 'RELEASE_PASSED' | 'NO_FIXED_RELEASE' | 'NO_RESERVATION' | 'IN_CART' | 'IN_TRIP' | 'CLOSED_DAY',
     releaseAt: Date | null,
     releaseSlots: [{ key, label, releaseTime, advanceDays, releaseDateStr, releaseAt }],
     reminderTaskCount: Number,
@@ -2241,7 +2242,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
     resumeCartId: String      // 可选；服务端内部续用标识
   }],
   summary: {
-    requested, addable, reminder, reminderTaskCount, tripOnly, existing,
+    requested, addable, reminder, reminderTaskCount, tripOnly, existing, unavailable,
     releasePassed, noFixedRelease, noReservation
   },
   resumeCartCount: Number
@@ -2250,6 +2251,7 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 
 - 景点页、景点详情、分享场景和首页「约其他日」的唯一日期资格预检入口。
 - 与 `cart.planDates` 的区别：旧版留在 pending `reminder_cart` 的同景点日期视为可续用，不把用户引回主流程清单；已落成 `trip_items` 的日期仍返回 `IN_TRIP`。
+- 日历打开时用景点静态快照的 `openDays / closedDays` 提前禁用闭馆日；服务端仍以 `UNAVAILABLE` 二次拦截，旧客户端或绕过页面的提交不会落成行程项。
 - 只读，不创建、消费或清理任何数据。
 
 #### `cart.quickCommit`

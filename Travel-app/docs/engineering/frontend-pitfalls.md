@@ -34,7 +34,7 @@
 - 行程分享封面在 `open-type="share"` 打开前生成完毕；Canvas 2D 只重绘公开信息，不能截入票务进度、提醒 chip、菜单或身份字段。Canvas 失败必须回退 `/images/share/home-today.jpg`，封面生成不能阻断链接分享。应用内昵称只用于会话标题；微信不提供读取本人真实微信昵称的接口。
 - tabbar 图标尺寸必须与承载容器使用同一 `rpx` 体系。禁止在 `44rpx` 容器里写固定 `22px` 图标，否则 320px 窄屏会出现图标溢出、视觉变大；当前图标为 `40rpx`，保留 4rpx 容器内边距。
 - 景点/分享/首页“约其他日”轻量入口不得把“授权不足”和“提醒名额不足”拆成两个浮层，也不得从错误分支直接跳会员页。统一使用标题为「设置提醒」、与 PAGE-008 同构的浮层，同时显示授权需求、可用、待发送占用和缺口；`membership.status.enforced=true` 且免费名额不足时才展示唯一会员套餐，`taskLimitUnlimited=true` 时不展示名额付费卡。授权按钮固定为「点击补授权次数」，每次只申请一次。仅授权不足时，补足后启用底部「开启行程放票提醒」并由用户提交；免费名额不足时底部置灰，会员支付到账后直接完成原提醒。
-- 景点页多日期必须先消费服务端 `cart.planDates` 的 `REMINDABLE / TRIP_ONLY / IN_CART / IN_TRIP`，不得用卡片的 `advanceDays/releaseTime` 在页面重推。全部只能加入行程时必须停留统一浮层明确确认，禁止只弹 Toast 后自动提交；部分失效时必须按具体日期列出“可设提醒”和“仅加入行程”，不能只给数量汇总。
+- 景点页多日期必须先消费服务端 `cart.planDates` 的 `REMINDABLE / TRIP_ONLY / IN_CART / IN_TRIP / UNAVAILABLE`，不得用卡片的 `advanceDays/releaseTime` 在页面重推。日历可用景点静态快照的 `openDays / closedDays` 提前置灰闭馆日，但服务端仍必须返回 `UNAVAILABLE` 兜底；该状态不能降级成“仅加入行程”。全部只能加入行程时必须停留统一浮层明确确认，禁止只弹 Toast 后自动提交；部分失效时必须按具体日期列出“可设提醒”“仅加入行程”和“不可选”，不能只给数量汇总。
 - 首页票务态和提醒态全部消费服务端结果，不在页面侧重新按时间推导。
 - 摘要卡在**全部行程都已结束**时展示最近一段过往行程（副标题「已结束」，见 `HOME-RULE-008`），但**预填/提交类逻辑一律不认它**：`summaryTrip` 只喂 `trip-summary-card`，`onAddTrip` 的预填只读 `primaryTrip`（未结束行程）。把摘要卡那趟的日期段带进 PAGE-005 会预填出一个过去的时间范围，提交时被判 1016。退化的“哪一趟”也只沿服务端数组序（`trips[0]` → `history[0]`）回退，页面不重判结束状态。回归见 `test/home-past-trip-card.test.js`。
 - 抢票悬浮时钟只消费 `home.bootstrap.trips[].items[].releaseSlots` 与 `membership.unlimited`，不得从 `releaseTime/advanceDays` 重推放票时刻。有效窗口固定为 `[T-10 分钟, T+30 秒)`；首页自动展开、其他页面首次贴边、关闭只抑制当前事件。组件必须在全部正式用户页面挂载，管理员页和支付测试页除外；静态回归见 `test/floating-clock.test.js`。

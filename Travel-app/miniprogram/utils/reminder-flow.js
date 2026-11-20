@@ -549,11 +549,24 @@ function openDateSheet(page, opts) {
     });
   };
 
-  return api.reminder.home.bootstrap({})
-    .then(res => open(tripCalendar.fromHomeBootstrap(res, opts.spotId)))
+  const calendarPromise = api.reminder.home.bootstrap({})
+    .then(res => tripCalendar.fromHomeBootstrap(res, opts.spotId))
     .catch(() => {
-      open(null);
       wx.showToast({ title: '已有行程加载失败，仍可继续选择', icon: 'none' });
+      return null;
+    });
+  const spotPromise = api.spots.detail(opts.spotId)
+    .then(res => res && res.data ? res.data : null)
+    .catch(() => null);
+
+  return Promise.all([calendarPromise, spotPromise])
+    .then(([calendar, spot]) => {
+      open(calendar);
+      page.setData({
+        dateSpotName: (spot && spot.shortName) || (spot && spot.name) || opts.spotName,
+        dateOpenDays: (spot && spot.openDays) || [],
+        dateClosedDays: (spot && spot.closedDays) || [],
+      });
     })
     .then(() => true);
 }

@@ -6,12 +6,14 @@
  */
 
 const releaseSchedule = require('./release-schedule');
+const time = require('./time');
 
 const DATE_PLAN_STATUS = Object.freeze({
   REMINDABLE: 'REMINDABLE',
   TRIP_ONLY: 'TRIP_ONLY',
   IN_CART: 'IN_CART',
   IN_TRIP: 'IN_TRIP',
+  UNAVAILABLE: 'UNAVAILABLE',
 });
 
 const DATE_PLAN_REASON = Object.freeze({
@@ -20,6 +22,7 @@ const DATE_PLAN_REASON = Object.freeze({
   NO_FIXED_RELEASE: 'NO_FIXED_RELEASE',
   IN_CART: 'IN_CART',
   IN_TRIP: 'IN_TRIP',
+  CLOSED_DAY: 'CLOSED_DAY',
 });
 
 function normalizeVisitDates(values) {
@@ -30,6 +33,7 @@ function normalizeVisitDates(values) {
 function planOne({ spot, rule, visitDate, nowTs, cartDates, tripDates, supportsMultiRelease }) {
   const existingCart = !!(cartDates && cartDates.has(visitDate));
   const existingTrip = !!(tripDates && tripDates.has(visitDate));
+  const openOnVisitDate = !rule || time.isOpenOn(rule, time.dayNameOf(visitDate));
   const releaseSlots = releaseSchedule.slotsForRequest(spot, rule, visitDate, supportsMultiRelease);
   const taskSlots = releaseSchedule.taskSlotsForRequest(
     spot,
@@ -50,6 +54,9 @@ function planOne({ spot, rule, visitDate, nowTs, cartDates, tripDates, supportsM
   } else if (existingCart) {
     status = DATE_PLAN_STATUS.IN_CART;
     reason = DATE_PLAN_REASON.IN_CART;
+  } else if (!openOnVisitDate) {
+    status = DATE_PLAN_STATUS.UNAVAILABLE;
+    reason = DATE_PLAN_REASON.CLOSED_DAY;
   } else if (!spot || spot.reservationRequired === false) {
     status = DATE_PLAN_STATUS.TRIP_ONLY;
     reason = DATE_PLAN_REASON.NO_RESERVATION;
@@ -82,6 +89,7 @@ function summarize(dates) {
     reminder: 0,
     tripOnly: 0,
     existing: 0,
+    unavailable: 0,
     releasePassed: 0,
     noFixedRelease: 0,
     noReservation: 0,
@@ -92,6 +100,7 @@ function summarize(dates) {
     if (row.reminderAllowed) summary.reminder += 1;
     if (row.status === DATE_PLAN_STATUS.TRIP_ONLY) summary.tripOnly += 1;
     if (row.status === DATE_PLAN_STATUS.IN_CART || row.status === DATE_PLAN_STATUS.IN_TRIP) summary.existing += 1;
+    if (row.status === DATE_PLAN_STATUS.UNAVAILABLE) summary.unavailable += 1;
     if (row.reason === DATE_PLAN_REASON.RELEASE_PASSED) summary.releasePassed += 1;
     if (row.reason === DATE_PLAN_REASON.NO_FIXED_RELEASE) summary.noFixedRelease += 1;
     if (row.reason === DATE_PLAN_REASON.NO_RESERVATION) summary.noReservation += 1;

@@ -78,6 +78,8 @@
   trip-dates="{{dateTripDates}}"
   booked-dates="{{dateBookedDates}}"
   min-date="{{dateMinDate}}"
+  open-days="{{dateOpenDays}}"
+  closed-days="{{dateClosedDays}}"
   bind:confirm="onDateConfirm"
   bind:close="onDateClose"
 />

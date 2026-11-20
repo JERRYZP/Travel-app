@@ -61,6 +61,12 @@ const bootstrap = {
 };
 
 const apiStub = {
+  spots: {
+    detail: () => Promise.resolve({
+      success: true,
+      data: { shortName: '故宫', openDays: [], closedDays: ['monday'] },
+    }),
+  },
   reminder: {
     home: { bootstrap: () => Promise.resolve(JSON.parse(JSON.stringify(bootstrap))) },
     cart: {
@@ -319,6 +325,22 @@ function instantiateComponent(def) {
   eq(dateSheet.events[0].detail.visitDates.join(','), '2026-11-03,2026-11-05',
     '确认时返回排序后的 visitDates');
 
+  const closedDateSheet = instantiateComponent(dateSheetDef);
+  Object.assign(closedDateSheet.data, {
+    minDate: '2026-11-01',
+    multiple: true,
+    tripDates: [],
+    bookedDates: [],
+    openDays: [],
+    closedDays: ['monday'],
+  });
+  closedDateSheet.buildMonths();
+  const november = closedDateSheet.data.months.find(month => month.key === '2026-11');
+  eq(november.days.find(cell => cell.date === '2026-11-02').disabled, true,
+    '景点闭馆日（周一）在日历中不可选');
+  eq(november.days.find(cell => cell.date === '2026-11-03').disabled, false,
+    '非闭馆日仍可选');
+
   const singleDateSheet = instantiateComponent(dateSheetDef);
   Object.assign(singleDateSheet.data, {
     minDate: '2026-11-01',
@@ -339,6 +361,7 @@ function instantiateComponent(def) {
   eq(hub.data.showDateSheet, true, '日历成功打开');
   eq(hub.data.dateTripDates.join(','), '2026-10-01,2026-10-02,2026-09-20', '日历带全部已有/历史行程日期');
   eq(hub.data.dateBookedDates.join(','), '2026-10-01,2026-09-20', '当前景点已有日期置灰');
+  eq(hub.data.dateClosedDays.join(','), 'monday', '日历读取当前景点闭馆日');
 
   console.log('\n=== 2. 景点页仅加行程，不得提示提醒成功 ===');
   calls.add = []; calls.commit = []; calls.toasts = [];
@@ -1015,13 +1038,13 @@ function instantiateComponent(def) {
   console.log('\n=== 6.2 mock 多日期提交只消费指定条目 ===');
   const mock = require('../miniprogram/utils/mock.js');
   const mockA = await mock.mockCall('cart.add', {
-    spotId: 'gugong', visitDate: '2032-01-03', remindOn: false,
+    spotId: 'gugong', visitDate: '2032-01-04', remindOn: false,
   });
   const mockB = await mock.mockCall('cart.add', {
-    spotId: 'gugong', visitDate: '2032-01-05', remindOn: false,
+    spotId: 'gugong', visitDate: '2032-01-06', remindOn: false,
   });
   await mock.mockCall('cart.add', {
-    spotId: 'guobo', visitDate: '2032-01-06', remindOn: false,
+    spotId: 'guobo', visitDate: '2032-01-07', remindOn: false,
   });
   const mockCommitted = await mock.mockCall('cart.commit', {
     cartIds: [mockA.cartId, mockB.cartId],

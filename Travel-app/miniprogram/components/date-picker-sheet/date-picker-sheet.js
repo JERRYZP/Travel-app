@@ -17,6 +17,8 @@
  *   点一天时重建月份数组，确保跨月份选中态同步，避免模板里出现 `indexOf` 等静默失效写法。
  */
 
+const releaseContext = require('../../utils/release-context.js');
+
 /* 从 minDate 所在月起向后生成多少个月。
    旧实现是无限翻页（箭头没有尽头），滑动式必须给出确定的可滑范围。
    取 12：放票提前量最多 10 天（`rules.json` 的 advanceDays 上限），
@@ -41,6 +43,9 @@ Component({
     bookedDates: { type: Array, value: [] },
     minDate: { type: String, value: '' },
     maxDate: { type: String, value: '' },
+    /* 景点开放日规则：openDays 非空时接管 closedDays。 */
+    openDays: { type: Array, value: [] },
+    closedDays: { type: Array, value: [] },
     /* 景点页轻量入口一次可选多个日期；首页「约其他日」仍用单选 */
     multiple: { type: Boolean, value: false },
   },
@@ -60,7 +65,7 @@ Component({
   },
 
   observers: {
-    'show, multiple': function (val) {
+    'show, multiple, openDays, closedDays': function (val) {
       if (!val) return;
       /* 每次打开回到 minDate 所在月（= 今天），与旧实现「默认定位到 minDate 所在月」一致 */
       this.buildMonths();
@@ -69,9 +74,10 @@ Component({
 
   methods: {
     buildMonths() {
-      const { tripDates, bookedDates, minDate, maxDate } = this.data;
+      const { tripDates, bookedDates, minDate, maxDate, openDays, closedDays } = this.data;
       const tripSet = new Set(tripDates);
       const bookedSet = new Set(bookedDates);
+      const rule = { openDays: openDays || [], closedDays: closedDays || [] };
 
       const start = minDate ? new Date(minDate + 'T00:00:00') : new Date();
       const months = [];
@@ -82,7 +88,7 @@ Component({
         months.push({
           key: y + '-' + pad(mo + 1),
           label: y + '年' + (mo + 1) + '月',
-          days: this.buildCells(y, mo, tripSet, bookedSet, minDate, maxDate),
+          days: this.buildCells(y, mo, tripSet, bookedSet, minDate, maxDate, rule),
         });
       }
 
@@ -100,7 +106,7 @@ Component({
     },
 
     /** 单个月份的格子：上月补位 + 本月 + 下月补位，并标记条带 / 禁用 */
-    buildCells(year, month, tripSet, bookedSet, minDate, maxDate) {
+    buildCells(year, month, tripSet, bookedSet, minDate, maxDate, rule) {
       const firstDay = new Date(year, month, 1);
       const firstWeekday = (firstDay.getDay() + 6) % 7;   // 周日=0 → 6，周一起始
       const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -122,11 +128,12 @@ Component({
         const tooEarly = min && ds < min;
         const tooLate = max && ds > max;
         const booked = bookedSet.has(ds);
+        const closed = !releaseContext.isOpenOnDate(rule, releaseContext.dayNameOfStr(ds));
         cells.push({
           date: ds,
           day: d,
           cellClass: '',
-          disabled: !!(tooEarly || tooLate || booked),
+          disabled: !!(tooEarly || tooLate || booked || closed),
           inTrip: tripSet.has(ds) && !booked,
           tripEdge: '',
           selected: false,

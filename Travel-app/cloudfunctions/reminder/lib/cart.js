@@ -332,6 +332,11 @@ async function add(db, userId, {
   const spot = (spotRes.data || [])[0];
   if (!spot) return fail(ERRORS.SPOT_NOT_FOUND);
   const rule = (ruleRes.data || [])[0] || null;
+  if (rule && !time.isOpenOn(rule, time.dayNameOf(visitDate))) {
+    return fail({ code: 1010, message: '所选日期景点闭馆或不可约' }, {
+      unavailableDates: [visitDate],
+    });
+  }
   const reservationRequired = spot.reservationRequired !== false;
 
   let resolvedReleaseAt = null;

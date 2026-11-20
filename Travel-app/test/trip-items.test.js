@@ -227,7 +227,7 @@ function freshDb() {
   console.log('\n=== 4. 指定 cartId：补录只提交一条，不消费其他草稿 ===');
   db = freshDb();
   const firstVisit = time.addDays(time.todayStr(), 30);
-  const secondVisit = time.addDays(time.todayStr(), 31);
+  const secondVisit = time.addDays(time.todayStr(), 32);
   const first = await cart.add(db, USER, {
     spotId: 'gugong', visitDate: firstVisit, remindOn: false,
   });

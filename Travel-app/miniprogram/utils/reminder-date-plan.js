@@ -16,10 +16,15 @@ function labelsOf(dates) {
 
 function viewOf(plan) {
   const summary = plan && plan.summary;
-  if (!summary || (summary.tripOnly <= 0 && summary.existing <= 0)) return null;
+  if (!summary || ((summary.tripOnly || 0) <= 0
+    && (summary.existing || 0) <= 0
+    && (summary.unavailable || 0) <= 0)) {
+    return null;
+  }
 
   const dates = Array.isArray(plan.dates) ? plan.dates : [];
   const reminderDates = dates.filter(row => row.status === 'REMINDABLE');
+  const unavailableDates = dates.filter(row => row.reason === 'CLOSED_DAY');
   const releasePassedDates = dates.filter(row => row.reason === 'RELEASE_PASSED');
   const noFixedDates = dates.filter(row => row.reason === 'NO_FIXED_RELEASE');
   const noReservationDates = dates.filter(row => row.reason === 'NO_RESERVATION');
@@ -28,6 +33,13 @@ function viewOf(plan) {
   const lines = [];
   if (reminderDates.length) {
     lines.push({ tone: 'ok', label: '可设提醒', text: labelsOf(reminderDates) });
+  }
+  if (unavailableDates.length) {
+    lines.push({
+      tone: 'warn',
+      label: '不可选',
+      text: `${labelsOf(unavailableDates)}（景点闭馆或不可约）`,
+    });
   }
   if (releasePassedDates.length) {
     lines.push({
@@ -59,7 +71,12 @@ function viewOf(plan) {
   }
 
   let title = '';
-  if (summary.reminder > 0 && summary.tripOnly > 0) {
+  if (summary.unavailable > 0) {
+    const selectable = summary.reminder + summary.tripOnly;
+    title = selectable > 0
+      ? `${selectable} 天可加入行程，${summary.unavailable} 天不可选`
+      : '所选日期景点闭馆，请重新选择';
+  } else if (summary.reminder > 0 && summary.tripOnly > 0) {
     title = `${summary.reminder} 天可设提醒，${summary.tripOnly} 天仅加入行程`;
   } else if (summary.reminder > 0) {
     title = `${summary.reminder} 天将设置提醒`;
@@ -69,7 +86,9 @@ function viewOf(plan) {
     title = '所选日期已经添加过';
   }
 
-  const primaryAction = summary.reminder > 0 ? 'continue' : (summary.tripOnly > 0 ? 'trip-only' : 'reselect');
+  const primaryAction = summary.unavailable > 0
+    ? 'reselect'
+    : (summary.reminder > 0 ? 'continue' : (summary.tripOnly > 0 ? 'trip-only' : 'reselect'));
   return {
     title,
     lines,

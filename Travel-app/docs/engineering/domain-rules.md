@@ -79,7 +79,7 @@ PENDING / BOOKABLE / SUCCESS / FAILED / UNMARKED / NO_RESERVATION
 - 授权健康输出固定五态：`idle / ready / low / short / exhausted`，必须保留一次安全缓冲。
 - 首页额度预警：`short / exhausted` 是真实缺口，立即下发；`low` 仅表示缺 1 次缓冲，仍限制在最近提醒进入 48 小时内。
 - 景点页轻量入口可一次选择多个日期；首页「约其他日」只选择一个日期。两者确认后都按本次实际待建提醒数校验授权，并通过 `cart.quickCommit` 一次性提交本次选中项。
-- 景点页多日期先走 `cart.planQuickDates`：服务端返回 `REMINDABLE / TRIP_ONLY / IN_TRIP`，旧版 pending 同景点日期可续用但不得显示成主流程清单重复。全部只能加入行程时不得自动提交，必须在统一浮层明确确认；部分可提醒时按实际可提醒数过授权和名额闸门。
+- 景点页多日期先走 `cart.planQuickDates`：服务端返回 `REMINDABLE / TRIP_ONLY / IN_TRIP / UNAVAILABLE`，旧版 pending 同景点日期可续用但不得显示成主流程清单重复。`UNAVAILABLE / CLOSED_DAY` 为闭馆或不可约日期，日历必须置灰，服务端不得写入行程项；全部只能加入行程时不得自动提交，必须在统一浮层明确确认；部分可提醒时按实际可提醒数过授权和名额闸门。
 - 快捷入口不得先写 `reminder_cart`：新建日期由 `cart.quickCommit` 直接在同一事务中创建行程项与任务；历史 pending 行只消费匹配的景点日期，其他暂存草稿保留。`cart.addDates` 仅保留兼容旧客户端，不再作为当前景点页调用入口。
 - `confirmReminderAccess()` 的 `trip-only` 分支只用于景点详情直设提醒等未迁移的轻量入口；首页「约其他日」必须复用 `reminderFlow`。
 - 景点卡片、景点详情、分享场景和首页「约其他日」使用一个标题为「设置提醒」的统一浮层，同时检查订阅授权和提醒名额；授权卡、三条说明与样式入口复用 PAGE-008。授权区固定显示「点击补授权次数」，每次只发起一次微信订阅，补足后由用户点击底部「开启行程放票提醒」继续；`membership.status.enforced=true` 且名额不足时，同一浮层展示名额公式和「支付并继续」入口，底部按钮置灰。名额支付到账后自动完成原提醒；若授权仍有缺口，则保留浮层，补齐后自动完成。不得逐次重新弹系统 ActionSheet，不得自动连发授权，也不得跳「提醒设置」页让用户重做。只有系统通知、订阅总开关或历史拒收需要设置时才打开设置引导。真身见 `REMINDER-RULE-009`。

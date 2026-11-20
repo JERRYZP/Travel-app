@@ -120,7 +120,7 @@ function resetWx(patch = {}) {
   console.log('\n=== 1.1 mock disableReminders 镜像 ===');
   const mock = require('../miniprogram/utils/mock.js');
   const mockFirst = await mock.mockCall('cart.add', { spotId: 'gugong', visitDate: '2026-12-20', remindOn: true });
-  await mock.mockCall('cart.add', { spotId: 'guobo', visitDate: '2026-12-21', remindOn: false });
+  await mock.mockCall('cart.add', { spotId: 'guobo', visitDate: '2026-12-22', remindOn: false });
   const mockDisabled = await mock.mockCall('cart.commit', {
     cartId: mockFirst.cartId,
     disableReminders: true,

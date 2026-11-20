@@ -554,6 +554,13 @@ async function submitQuickLocked(db, userId, event, lock) {
 
   const dates = plan.dates || [];
   if (dates.length === 0) return fail(ERRORS.BAD_PARAM);
+  const unavailable = dates.filter(row => row.status === datePlan.DATE_PLAN_STATUS.UNAVAILABLE);
+  if (unavailable.length > 0) {
+    return fail(
+      { code: 1010, message: '所选日期景点闭馆或不可约' },
+      { unavailableDates: unavailable.map(row => row.visitDate) }
+    );
+  }
   const inTrip = dates.filter(row => row.status === datePlan.DATE_PLAN_STATUS.IN_TRIP);
   if (inTrip.length > 0) {
     return fail(
@@ -662,6 +669,14 @@ async function commitCartItems(db, userId, event, cartItems, options = {}) {
     planByCartKey.set(`${cartItem.spotId}|${cartItem.visitDate}`, plan);
     return plan;
   });
+  const unavailablePlans = plans.filter(plan => plan.rule
+    && !time.isOpenOn(plan.rule, time.dayNameOf(plan.cartItem.visitDate)));
+  if (unavailablePlans.length > 0) {
+    return fail(
+      { code: 1010, message: '所选日期景点闭馆或不可约' },
+      { unavailableDates: unavailablePlans.map(plan => plan.cartItem.visitDate) }
+    );
+  }
   const wantedReminderItems = disableReminders ? [] : plans.filter(({ cartItem, releaseSlots }) =>
     cartItem.reservationRequired !== false
       && cartItem.remindOn === true

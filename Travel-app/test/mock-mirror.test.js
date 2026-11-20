@@ -452,8 +452,8 @@ const errOf = (p) => Promise.resolve(p).then(() => null, e => e);
     const item = (await c('home.bootstrap', {})).trips[0].items[0];
 
     await c('cart.add', {
-      spotId: 'guobo', visitDate: '2027-01-11',
-      releaseAt: new Date('2027-01-04T20:00:00+08:00'), remindOn: true,
+      spotId: 'guobo', visitDate: '2027-01-12',
+      releaseAt: new Date('2027-01-05T20:00:00+08:00'), remindOn: true,
     });
     eq((await c('cart.list', {})).summary.count, 1, '删除前暂存清单仍有 1 条草稿');
 

@@ -190,7 +190,7 @@ async function cloudConsumption() {
   db._seed(COLLECTIONS.RELEASE_RULES, rulesSeed);
 
   const USER = 'openid_subscribe_quota';
-  const start = time.addDays(time.todayStr(), 30);
+  const start = time.addDays(time.todayStr(), 29);
   const t = await trip.create(db, USER, {
     startDate: start,
     endDate: time.addDays(start, 3),
