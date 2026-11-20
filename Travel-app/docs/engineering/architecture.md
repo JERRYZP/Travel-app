@@ -19,7 +19,7 @@
 | `payment` | 会员 / 提醒名额订单、支付与退款回调、主动查单、售后、权益发放与 2 分钟补偿；含注销后延迟支付保护 |
 | `account` | 用户自助注销预检与执行、业务数据清除、交易记录匿名化 |
 | `feedback` | 意见反馈与信息纠错 |
-| `admin` | 内部事件维护：日汇总、缺失事件补录和过期清理；不提供 Web 管理 API |
+| `admin` | 过期事件清理：仅删除超过 180 天的提醒事件和管理员审计日志 |
 | `scraper` | 抓取与规则推算，未完成线上闭环 |
 | `ics-generator` | `.ics` 生成，日历通道已下线但函数保留 |
 
@@ -178,9 +178,9 @@ reminder.membership.createOrder
 - 用户业务数据直接删除；订单、售后和安全审计只保留交易与争议所需字段，并清除 OpenID、昵称、手机号、用户正文和请求哈希。
 - `notifier` 发送前回读任务，`payment` 对 `accountDeleted` 订单只进入匿名人工核验，不得重建旧用户或给新账户发权益。
 
-## 内部事件维护
+## 过期事件清理
 
 - `admin-web/` 已于 2026-11-20 移除，Web 管理后台登录、用户/任务查询和敏感字段接口不再保留。
-- `cloudfunctions/admin/` 仅运行每日 `internal.rollupDaily`：重建 `reminder_daily_stats`、补录缺失任务事件，并清理超过 180 天的 `reminder_events` / `admin_audit_logs`。
-- 该函数不接受客户端调用；普通客户端请求 `internal.rollupDaily` 返回 `1040`，旧 `admin.*` action 返回 `1099`。
-- `admins` 集合仅作为历史数据保留，不再参与运行。小程序内客服工作台与反馈管理继续使用 `payment` / `feedback`。
+- `cloudfunctions/admin/` 仅运行每日 `internal.cleanupExpired`：分批删除超过 180 天的 `reminder_events` 和 `admin_audit_logs`。
+- 该函数不接受客户端调用；普通客户端请求 `internal.cleanupExpired` 返回 `1040`，旧 `admin.*` action 返回 `1099`。
+- `admins`、`reminder_daily_stats` 仅作为历史数据保留，不再参与运行。小程序内客服工作台与反馈管理继续使用 `payment` / `feedback`。

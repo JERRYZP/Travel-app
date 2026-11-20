@@ -29,7 +29,7 @@
 | `account` | 2026-11-19 18:14:20 | Nodejs16.13 / 60s | 账户注销预检与执行 |
 | `feedback` | 2026-11-05 22:16:50 | Nodejs16.13 / 3s | 反馈、纠错与管理 |
 | `spots` | 2026-11-03 16:33:35 | Nodejs16.13 / 3s | 景点列表、详情与规则 |
-| `admin` | 2026-11-03 00:31:52（生产旧版） | Nodejs20.19 / 3s | 仓库已改为内部事件维护并移除 Web API；待部署 |
+| `admin` | 待部署 | Nodejs20.19 / 60s | 仓库已改为过期事件清理；Web API 与日汇总已移除 |
 
 - `notifierEveryMinute`：存在、启用，`0 * * * * * *`。
 - `paymentReconcileEveryTwoMinutes`：存在、启用，`0 */2 * * * * *`；`payment_config/reconcile_health.lastRunAt` 持续刷新。
@@ -61,7 +61,7 @@
 - **2026-11-20 提醒发送全量中断**：`notifier` 的 `doc().get()` 形状判断错误，导致 223 个到期任务全量跳过并落为 `MISSED`。修复版已于 16:43:48 部署，`notifierEveryMinute` 保持启用；16:54:05 首个真实任务写入 `SEND_SUCCEEDED` / `TASK_TRIGGERED`。完整复盘见 `docs/engineering/reminder-outage-incident-20261120.md`。
 - **2026-11-19 用户自助注销**：`account` 云函数、PAGE-012-1、支付/提醒竞态保护和隐私指引补充文档已落地并部署。
 - **2026-11-19 首页摘要卡实际日期**：`home.bootstrap` 下发 `displayStartDate/displayEndDate`，服务端包含已过期日程；`user_runtime` 升级为 `/v2`。
-- **2026-11-20 Web 管理后台退役**：删除 `admin-web/`、Web 登录/查询 API、测试和文档入口；`cloudfunctions/admin` 只保留每日事件汇总与 180 天过期清理。生产云函数尚未重新部署。
+- **2026-11-20 Web 管理后台退役**：删除 `admin-web/`、Web 登录/查询 API、测试和文档入口；`cloudfunctions/admin` 只保留每日 180 天过期清理，不再生成 `reminder_daily_stats`。生产云函数尚未重新部署。
 
 ## 当前风险与 pending
 
@@ -77,7 +77,7 @@
 - 悬浮时钟激励视频：完整观看、中途关闭、跨设备和权益失效场景仍待真机验收。
 - 提醒模板：线上真实发送已成功；旧/新模板任务分流和不同客户端授权路径仍需持续验证。
 - 真实签名的微信支付 / 退款 HTTP 回调仍未观察到；现有查单、补偿和售后结果不能替代该证据。
-- `cloudfunctions/admin` 的维护版代码尚未部署；生产仍运行旧 Web 管理 API，直到单独授权部署后才会关闭公开入口。小程序内客服工作台仍走 `payment` / `feedback`。
+- `cloudfunctions/admin` 的清理版代码尚未部署；生产仍运行旧 Web 管理 API，直到单独授权部署后才会关闭公开入口。小程序内客服工作台仍走 `payment` / `feedback`。
 
 ### 运维与成本
 
@@ -94,7 +94,7 @@
 
 ## 数据库与索引
 
-- 新环境需要 18 个现役集合；已有环境的 `admins` 仅作为历史数据保留，不再被代码使用。
+- 新环境需要 17 个现役集合；已有环境的 `admins`、`reminder_daily_stats` 仅作为历史数据保留，不再被代码使用。
 - `数据库索引.md` 第二节「必须」索引是现役基线；管理后台与注销相关索引已创建并回读。
 - `payment_reconcile_state` 以确定性文档 ID 工作，不依赖自定义索引。
 - 用户注销新增的 `admin_audit_logs(targetType,targetId)`、`search_history(userId,searchedAt)`、`rewarded_ad_attempts(userId)` 已创建并回读。

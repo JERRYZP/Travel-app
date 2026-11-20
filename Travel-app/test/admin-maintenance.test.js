@@ -1,4 +1,4 @@
-/** 内部维护任务：只允许定时触发，且必须保留过期事件清理。 */
+/** 过期清理任务：只允许定时触发，旧 Web API 必须全部关闭。 */
 const assert = require('assert');
 const Module = require('module');
 const { createDb } = require('./mock-db');
@@ -23,20 +23,24 @@ async function main() {
   assert.strictEqual(deniedExternal.success, false);
   assert.strictEqual(deniedExternal.errorCode, 1099, '旧 Web 管理接口必须已移除');
 
-  const deniedNonTimer = await maintenance.main({ action: 'internal.rollupDaily' });
+  const deniedNonTimer = await maintenance.main({ action: 'internal.cleanupExpired' });
   assert.strictEqual(deniedNonTimer.success, false);
-  assert.strictEqual(deniedNonTimer.errorCode, 1040, '普通调用不得触发内部汇总');
+  assert.strictEqual(deniedNonTimer.errorCode, 1040, '普通调用不得触发内部清理');
 
   CURRENT_DB._seed('reminder_events', [{
     _id: 'expired_event',
     eventKey: 'expired_event:OLD',
-    eventType: 'TASK_CREATED',
-    eventAt: new Date('2026-01-01T00:00:00+08:00'),
     expireAt: new Date('2026-06-01T00:00:00+08:00'),
   }]);
-  const timerResult = await maintenance.main({ Type: 'Timer' });
-  assert.strictEqual(timerResult.success, true, '定时维护任务必须成功');
-  assert.strictEqual(CURRENT_DB._size('reminder_events'), 0, '过期事件必须被清理');
+  CURRENT_DB._seed('admin_audit_logs', [{
+    _id: 'expired_audit',
+    expireAt: new Date('2026-06-01T00:00:00+08:00'),
+  }]);
+  const timerResult = await maintenance.main({ Type: 'Timer', TriggerName: 'adminDailyCleanup' });
+  assert.strictEqual(timerResult.success, true, '定时清理必须成功');
+  assert.strictEqual(timerResult.removed, 2, '两个集合的过期记录都必须清理');
+  assert.strictEqual(CURRENT_DB._size('reminder_events'), 0);
+  assert.strictEqual(CURRENT_DB._size('admin_audit_logs'), 0);
 
   console.log('admin-maintenance.test.js 全部通过');
 }

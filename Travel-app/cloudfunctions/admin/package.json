@@ -1,7 +1,7 @@
 {
   "name": "admin",
   "version": "1.0.0",
-  "description": "Travel-app 内部事件维护任务",
+  "description": "Travel-app 过期事件清理任务",
   "main": "index.js",
   "dependencies": {
     "wx-server-sdk": "latest"

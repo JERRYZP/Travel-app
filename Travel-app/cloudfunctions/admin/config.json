@@ -2,7 +2,7 @@
   "timeout": 60,
   "triggers": [
     {
-      "name": "adminDailyRollup",
+      "name": "adminDailyCleanup",
       "type": "timer",
       "config": "0 0 1 * * * *"
     }
