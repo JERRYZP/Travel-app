@@ -63,6 +63,13 @@ const TEMPLATE_ID = process.env.SUBSCRIBE_TEMPLATE_ID || DEFAULT_TEMPLATE_ID;
 
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
 
+/** 云数据库 doc().get() 线上返回对象，测试桩历史上返回数组；统一兼容两种形状。 */
+function docDataOf(result) {
+  const data = result && result.data;
+  if (Array.isArray(data)) return data[0] || null;
+  return data || null;
+}
+
 function beijingHm(date) {
   const s = new Date(new Date(date).getTime() + BEIJING_OFFSET_MS).toISOString();
   return `${s.slice(11, 13)}:${s.slice(14, 16)}`;
@@ -580,7 +587,7 @@ async function scanAndSend(prefetchedTasks, nowTsArg) {
         const freshRes = await db.collection(COLLECTIONS.REMINDER_TASKS)
           .doc(g.task._id)
           .get();
-        freshTask = (freshRes.data || [])[0] || null;
+        freshTask = docDataOf(freshRes);
       } catch (err) {
         console.warn('[notifier] send-recheck-failed', err && err.message);
       }

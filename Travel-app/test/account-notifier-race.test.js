@@ -3,7 +3,7 @@ const assert = require('assert');
 const Module = require('module');
 const { createDb } = require('./mock-db');
 
-const CURRENT_DB = createDb();
+const CURRENT_DB = createDb({ cloudDocGetObject: true, cloudGetOnMissing: true });
 const origLoad = Module._load;
 Module._load = function (request) {
   if (request === 'wx-server-sdk') {
@@ -37,6 +37,15 @@ async function main() {
     visitDate: '2026-12-01',
   };
   CURRENT_DB._seed('reminder_tasks', [task]);
+
+  /* 真实云库 doc().get() 返回对象。存在且仍为 WAITING 的任务必须进入发送链，
+     不能因为回读形状判断错而被当作“已删除”跳过。 */
+  const live = await notifier._internal.scanAndSend([{ ...task }], now);
+  assert.strictEqual(live.due, 1);
+  assert.strictEqual(live.skipped, 0, '存在的 WAITING 任务不得被误判为已删除');
+  assert.strictEqual(live.failed, 1, '测试环境无 AppSecret，应走到真实发送失败分支');
+  assert.ok(String(CURRENT_DB._dump('reminder_tasks')[0].lastSendError).includes('WX_APPID/WX_APPSECRET 未配置'));
+
   await CURRENT_DB.collection('reminder_tasks').doc(task._id).remove();
 
   const out = await notifier._internal.scanAndSend([{ ...task }], now);
