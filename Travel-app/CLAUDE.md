@@ -19,7 +19,7 @@
 - 最新正式客户端：`2.3.7`；最新体验版：`2.6.1`（2026-11-20），未提交审核、未发布正式版，真机验收 pending。
 - 云端 `reminder`、`payment`、`notifier`、`account`、`feedback`、`spots`、`admin` 均为 `Active`；`notifierEveryMinute` 与 `paymentReconcileEveryTwoMinutes` 已核验启用。
 - 运行期 `membership_sales=OPEN`、`membership_enforcement.mode=all`、`membership_pricing.mode=all`；能力门禁仍保护旧客户端。
-- 生产 `notifier` 已部署 2026-11-20 提醒中断修复，但修复只存在于未合并的 `codex/notifier-doc-get-fix-20261120`；`main` 仍不含该修复。下一次从 `main` 重部署 `notifier` 前必须先集成，否则会回退故障。
+- 生产 `notifier` 已部署 2026-11-20 提醒中断修复，并已快进合并到本地 `main`；`origin/main` 尚未同步。下次从其他机器或远端 `main` 部署 `notifier` 前，必须先推送本次合并，否则会回退故障。
 - 完整现役基线、pending 与已知风险见 `docs/engineering/current-state.md`；历史流水放 Git、验收单或事故文档，不堆回根文件。
 
 ## Git 纪律
