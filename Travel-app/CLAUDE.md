@@ -17,7 +17,7 @@
 
 - 主分支：`main`。实时分支、HEAD、远端与 dirty 状态以 `git status` 和 `git log` 为准；开发任务从 `main` 创建 `codex/*` 分支，不直接堆在 `main`。
 - 最新正式客户端：`2.3.7`；最新体验版：`2.6.1`（2026-11-20），未提交审核、未发布正式版，真机验收 pending。
-- 云端 `reminder`、`payment`、`notifier`、`account`、`feedback`、`spots`、`admin` 均为 `Active`；`notifierEveryMinute` 与 `paymentReconcileEveryTwoMinutes` 已核验启用。
+- 云端 `reminder`、`payment`、`notifier`、`account`、`feedback`、`spots` 均为 `Active`；`admin` 仓库代码仅保留内部事件维护，Web 管理后台已移除；维护版尚未部署。`notifierEveryMinute` 与 `paymentReconcileEveryTwoMinutes` 已核验启用。
 - 运行期 `membership_sales=OPEN`、`membership_enforcement.mode=all`、`membership_pricing.mode=all`；能力门禁仍保护旧客户端。
 - 生产 `notifier` 已部署 2026-11-20 提醒中断修复，并已快进合并到本地 `main`；`origin/main` 尚未同步。下次从其他机器或远端 `main` 部署 `notifier` 前，必须先推送本次合并，否则会回退故障。
 - 完整现役基线、pending 与已知风险见 `docs/engineering/current-state.md`；历史流水放 Git、验收单或事故文档，不堆回根文件。
@@ -53,14 +53,13 @@
 | `cloudfunctions/**`、appid/cloudEnv | `.claude/rules/deployment.md`、`docs/engineering/current-state.md` |
 | API 域、数据模型、新旧客户端兼容发布 | `API-契约.md`、`docs/engineering/architecture.md`、`docs/engineering/client-version-compatibility.md` |
 | 提醒发送和 MISSED | `docs/engineering/reminder-troubleshooting.md`、`docs/engineering/domain-rules.md` |
-| `admin-web/**` | `docs/engineering/admin-console.md`、`API-契约.md` |
 
 路径规则由 Claude Code 按匹配文件自动加载；根文件不复制完整机制。
 
 ## 工程事实
 
 - 前端：微信原生小程序 + Vant Weapp + 自绘组件。
-- 后端：微信云开发；核心云函数 `reminder`、`payment`、`notifier`、`account`，另有 `spots`、`feedback`、`scraper`、`ics-generator`、`admin`。
+- 后端：微信云开发；核心云函数 `reminder`、`payment`、`notifier`、`account`，另有 `spots`、`feedback`、`scraper`、`ics-generator`；`admin` 仅承担内部事件维护，不提供 Web 管理 API。
 - 首页数据由 `reminder.home.bootstrap` 聚合；`trip_items` 是首页、票务结果、提醒关联和删除动线的事实来源。
 - 模型关系：`trips -> trip_items -> reminder_tasks`；`reminder_cart` 只是提交前暂存区。
 - 首页、行程、清单、提醒的完整规则见 `docs/engineering/domain-rules.md`。

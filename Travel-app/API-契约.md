@@ -1,6 +1,7 @@
 # Travel-app 前端接口契约 V1.4
 
 > 面向：前端（微信小程序页面开发）
+> 2026-11-20 更新：只读 Web 管理后台 `admin-web` 已移除，`cloudfunctions/admin` 不再提供 `admin.login`、查询和敏感字段接口；函数仅接受受保护的内部分钟/每日维护任务。客户端不应调用 `admin`。
 > 2026-11-20 更新：`two-tier-v5` 已是当前会员契约，`membership_pricing.mode=all` 与 `membership_enforcement.mode=all` 只作用于声明该能力的客户端；旧客户端继续 `unlimited-v3` / `legacy-v2`。客服工作台不再展示首页悬浮时钟控制卡，但 `adminSetHomeClockPromo` 保留用于内部维护，默认投放 6 天。
 > 2026-11-19 更新：新增独立 `account` 云函数与 PAGE-012-1 自助注销。`account.preflight` 只读预检，`account.erase` 在服务端二次预检后删除个人业务数据，并将订单/售后/安全审计保留字段与 OpenID 解绑；延迟支付不得把权益发给新账户。
 > 2026-11-19 更新：`home.bootstrap` 的 `trips[]` 与 `history[]` 新增只读展示字段 `displayStartDate` / `displayEndDate`，取该行程全部 `trip_items.visitDate` 的最早/最晚日期（包含已过期日程）。原 `startDate` / `endDate` 语义不变，继续服务分享和行程业务判定；新增提醒日期预填改与首页摘要卡共用展示首尾，字段缺失时回退原日期。历史摘要仍不下发 `items`。
@@ -2450,67 +2451,3 @@ PAGE-008 → PAGE-001:  cart.commit 成功 → 回首页。⚠️ tripId 在这�
 - 客户端 `spots.list/detail/batch/search/searchHistory/clearSearchHistory` 在快照可用时不再调用 `spots` 云函数。
 
 ---
-
-## 9. admin（只读 Web 管理后台，2026-10-06 新增）
-
-**云函数名：`admin`**
-
-> Web 端通过 CloudBase Web SDK 登录匿名身份后调用本函数；管理员业务会话由 `admin.login` 单独签发。
-> 除 `admin.login` 和定时器 `internal.rollupDaily` 外，所有 action 都必须携带 `token`。
-> CloudBase 云函数安全规则必须单独放行 `admin` 的匿名调用，但不能开放整个环境；`internal.rollupDaily` 只接受定时触发器调用。
-
-### 9.1 `admin.login`
-
-```javascript
-调用：{ action: 'admin.login', username, password }
-返回（success=true）：
-{
-  success: true,
-  token: '<8 小时 HS256 会话 token>',
-  expiresIn: 28800,
-  admin: { id, username, role }
-}
-```
-
-- 密码使用 `scrypt` + 随机盐保存在 `admins` 集合。
-- 首次登录时，若 `admins` 为空且传入账号匹配 `ADMIN_BOOTSTRAP_*` 环境变量，则创建首个 `SUPER_ADMIN`。
-- 连续 5 次密码错误锁定 15 分钟；成功登录清零失败计数并写审计日志。
-
-### 9.2 只读查询 actions
-
-```text
-admin.overview
-admin.users.list
-admin.user.detail
-admin.tasks.list
-admin.task.detail
-admin.spots.stats
-```
-
-统一调用：`{ action, token, ...params }`
-
-- `admin.overview`：`{ days: 7|30|90 }`，返回用户总数、新增用户、创建任务、到期任务、已触发、未送达、处理率、Top 10 景点和趋势。
-- `admin.users.list`：`{ page, pageSize, keyword? }`，默认每页 20，列表只返回脱敏字段。
-- `admin.user.detail`：`{ id }`，返回用户、行程、行程项、任务摘要和最近任务。
-- `admin.tasks.list`：`{ page, pageSize, status?, spotId?, userId?, releaseFrom?, releaseTo?, createdFrom?, createdTo? }`。
-- `admin.task.detail`：`{ id }`，返回任务、行程项和最近 100 条事件时间线。
-- `admin.spots.stats`：`{ days: 7|30|90 }`，按 `TASK_CREATED` 统计景点任务频率，并返回处理率和发送成功率。
-
-### 9.3 敏感字段查看
-
-```javascript
-调用：{ action: 'admin.audit.viewSensitive', token, id, field }
-field: 'openId' | 'phone' | 'nickname'
-返回：{ success: true, field, value }
-```
-
-- 仅 `SUPER_ADMIN` 可调用。
-- 每次成功查看都会向 `admin_audit_logs` 写入审计日志。
-- 列表接口永远返回脱敏值，只有这个 action 能返回完整值。
-
-### 9.4 `internal.rollupDaily`
-
-- 由 `admin` 云函数每天北京时间 01:00 的定时触发器执行；无 action 调用也默认进入此动作。
-- 重算最近 7 天事件，写入永久 `reminder_daily_stats`。
-- 对最近 7 天缺少的 `TASK_CREATED` / 终态事件做幂等补录。
-- 分批删除超过 180 天的 `reminder_events` 和 `admin_audit_logs`。

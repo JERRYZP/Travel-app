@@ -19,7 +19,7 @@
 | `payment` | 会员 / 提醒名额订单、支付与退款回调、主动查单、售后、权益发放与 2 分钟补偿；含注销后延迟支付保护 |
 | `account` | 用户自助注销预检与执行、业务数据清除、交易记录匿名化 |
 | `feedback` | 意见反馈与信息纠错 |
-| `admin` | 只读 Web 管理后台 API：管理员鉴权、用户/任务查询、事件汇总 |
+| `admin` | 内部事件维护：日汇总、缺失事件补录和过期清理；不提供 Web 管理 API |
 | `scraper` | 抓取与规则推算，未完成线上闭环 |
 | `ics-generator` | `.ics` 生成，日历通道已下线但函数保留 |
 
@@ -178,11 +178,9 @@ reminder.membership.createOrder
 - 用户业务数据直接删除；订单、售后和安全审计只保留交易与争议所需字段，并清除 OpenID、昵称、手机号、用户正文和请求哈希。
 - `notifier` 发送前回读任务，`payment` 对 `accountDeleted` 订单只进入匿名人工核验，不得重建旧用户或给新账户发权益。
 
-## 只读 Web 管理后台
+## 内部事件维护
 
-- `admin-web/` 是独立桌面端 Vue 3 + Element Plus 应用，部署到 CloudBase 静态托管；第一版使用默认域名，仅用于内部测试。
-- Web 端不直连数据库，所有请求都调用 `cloudfunctions/admin/`。
-- `admins` 保存独立管理员账号；不和小程序用户 `users` 混用。
-- `reminder_events` 是追加式事件账本，任务创建、重建、取消、发送成功/失败/跳过、触发和未送达都会写事件。
-- `reminder_daily_stats` 保存永久日汇总；`admin_audit_logs` 保存登录与敏感字段查看审计。
-- 事件写入采用 best-effort：统计写失败不得阻断用户创建任务或 notifier 发送提醒。
+- `admin-web/` 已于 2026-11-20 移除，Web 管理后台登录、用户/任务查询和敏感字段接口不再保留。
+- `cloudfunctions/admin/` 仅运行每日 `internal.rollupDaily`：重建 `reminder_daily_stats`、补录缺失任务事件，并清理超过 180 天的 `reminder_events` / `admin_audit_logs`。
+- 该函数不接受客户端调用；普通客户端请求 `internal.rollupDaily` 返回 `1040`，旧 `admin.*` action 返回 `1099`。
+- `admins` 集合仅作为历史数据保留，不再参与运行。小程序内客服工作台与反馈管理继续使用 `payment` / `feedback`。

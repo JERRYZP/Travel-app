@@ -1,19 +1,20 @@
-# admin 云函数
+# admin 内部维护任务
 
-只读 Web 管理后台 API。部署前需要：
+2026-11-20 已移除只读 Web 管理后台。本云函数不再提供登录、用户/任务查询或敏感字段查看接口，只保留每日内部维护：
 
-1. 创建 `admins`、`reminder_events`、`reminder_daily_stats`、`admin_audit_logs` 集合，权限统一选“仅管理端可读写”。
-2. 生成首个管理员密码哈希：
+- 重建最近 N 天 `reminder_daily_stats`；
+- 为缺失终态的任务补录 `TASK_CREATED / TASK_TRIGGERED / TASK_MISSED` 事件；
+- 分批清理超过 180 天的 `reminder_events` 与 `admin_audit_logs`。
 
-```bash
-node scripts/hash-password.js "your-password"
-```
+## 配置
 
-3. 给云函数配置环境变量：
+- 索引见 `数据库索引.md` 第四节「内部维护任务必须」。
+- 定时触发器：`adminDailyRollup`，北京时间每天 `01:00`。
+- 普通客户端调用 `internal.rollupDaily` 返回 `1040`；任何旧的 `admin.login` / `admin.*` action 返回 `1099`。
 
-- `ADMIN_BOOTSTRAP_USERNAME`
-- `ADMIN_BOOTSTRAP_PASSWORD_HASH`
-- `ADMIN_BOOTSTRAP_PASSWORD_SALT`
-- `ADMIN_SESSION_SECRET`
+## 安全边界
 
-首次成功登录后会在 `admins` 集合创建 `SUPER_ADMIN`。后续登录不再依赖 bootstrap 环境变量。
+- 不开放匿名调用。
+- 不接受客户端传 token。
+- 不读写 `admins` 集合；该集合仅作为历史数据保留，不再参与运行。
+- 所有云端部署仍需用户当场明确授权。

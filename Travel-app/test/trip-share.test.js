@@ -3,8 +3,6 @@
  * 运行：node test/trip-share.test.js
  */
 const Module = require('module');
-const fs = require('fs');
-const path = require('path');
 const { createDb } = require('./mock-db');
 const time = require('../cloudfunctions/reminder/lib/time');
 
@@ -197,11 +195,6 @@ async function seedItem(id, tripId, spotId, visitDate, userId = OWNER) {
   const keys = collectKeys(opened);
   ['userId', 'openId', 'tripId', 'itemId', 'releaseAt', 'ticketState', 'result', 'reminder', 'shareToken', 'nickname', 'ownerNickname']
     .forEach(key => eq(keys.has(key), false, `公开投影不得包含 ${key}`));
-  const adminSource = fs.readFileSync(
-    path.join(__dirname, '../cloudfunctions/admin/lib/admin.js'), 'utf8');
-  eq(/delete out\.shareToken;/.test(adminSource), true,
-    '管理端普通用户详情同样剥离原始分享令牌');
-
   CURRENT_OPENID = 'recipient';
   const recipientOpened = await call({ action: 'tripShare.open', token: created.token });
   eq(recipientOpened.success, true, '非主人也可凭令牌只读查看');

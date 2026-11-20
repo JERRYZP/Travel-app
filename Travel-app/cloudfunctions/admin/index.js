@@ -1,67 +1,32 @@
 /**
- * admin 云函数 —— 只读 Web 管理后台接口。
+ * admin 云函数 —— 内部事件维护任务。
  *
- * action:
- *   admin.login
- *   admin.overview / admin.users.list / admin.user.detail
- *   admin.tasks.list / admin.task.detail / admin.spots.stats
- *   admin.audit.viewSensitive
- *   internal.rollupDaily（定时触发器无 action 时默认执行）
+ * Web 管理后台已于 2026-11-20 移除；本函数不再暴露登录、查询或敏感字段接口。
+ * 唯一入口是每日定时运行的 internal.rollupDaily：
+ * - 重建最近 N 天提醒日汇总；
+ * - 补齐缺失的任务终态事件；
+ * - 分批清理过期 reminder_events / admin_audit_logs。
  */
 const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 
-const { ERRORS, ok, fail } = require('./lib/schema');
-const admin = require('./lib/admin');
+const { ERRORS, fail } = require('./lib/schema');
+const maintenance = require('./lib/admin');
 
-const AUTH_ACTIONS = new Set([
-  'admin.overview',
-  'admin.users.list',
-  'admin.user.detail',
-  'admin.tasks.list',
-  'admin.task.detail',
-  'admin.spots.stats',
-  'admin.audit.viewSensitive',
-]);
+const INTERNAL_ACTION = 'internal.rollupDaily';
 
 exports.main = async (event = {}) => {
-  const action = event.action || 'internal.rollupDaily';
+  const action = event.action || INTERNAL_ACTION;
+  if (action !== INTERNAL_ACTION) return fail(ERRORS.UNKNOWN_ACTION);
+  if (!maintenance.isTimerInvocation(event, process.env)) return fail(ERRORS.FORBIDDEN);
+
   try {
-    if (action === 'admin.login') {
-      return await admin.login(db, event, process.env);
-    }
-    if (action === 'internal.rollupDaily') {
-      if (!admin.isTimerInvocation(event, process.env)) return fail(ERRORS.FORBIDDEN);
-      return await admin.rollupDaily(db, event);
-    }
-    if (!AUTH_ACTIONS.has(action)) return fail(ERRORS.UNKNOWN_ACTION);
-
-    const session = await admin.authenticate(db, event.token, process.env);
-    if (!session.ok) return session.response;
-
-    switch (action) {
-      case 'admin.overview':
-        return await admin.overview(db, event);
-      case 'admin.users.list':
-        return await admin.usersList(db, event);
-      case 'admin.user.detail':
-        return await admin.userDetail(db, event);
-      case 'admin.tasks.list':
-        return await admin.tasksList(db, event);
-      case 'admin.task.detail':
-        return await admin.taskDetail(db, event);
-      case 'admin.spots.stats':
-        return await admin.spotsStats(db, event);
-      case 'admin.audit.viewSensitive':
-        return await admin.viewSensitive(db, session.admin, event);
-      default:
-        return fail(ERRORS.UNKNOWN_ACTION);
-    }
+    return await maintenance.rollupDaily(db, event);
   } catch (err) {
-    console.error(`[admin] action=${action} failed`, err);
+    console.error('[admin-maintenance] rollup failed', err);
     return fail(ERRORS.SERVER_ERROR, { message: err.message });
   }
 };
 
-exports._internal = { db, admin };
+exports._internal = { db, maintenance };
