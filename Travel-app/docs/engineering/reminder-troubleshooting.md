@@ -8,7 +8,7 @@
 
 - 症状：2026-11-20 中午起用户收不到订阅消息，首页任务显示「未送达」，客服工作台 13:00 提醒质量降为 0。
 - 根因：2026-11-19 为注销竞态新增的发送前任务回读把云数据库 `doc().get()` 的 `data` 当成数组取 `[0]`；线上实际返回对象，导致所有存在的 `WAITING` 任务都被误判为“已删除”，`scanAndSend` 全量 `skipped`，过期后由 `sweepMissed` 落成 `MISSED`。
-- 修复口径：统一使用 `docDataOf(result)` 同时兼容对象和数组；回归测试必须使用 `createDb({ cloudDocGetObject: true })` 模拟真实云库，不得继续用数组形状的默认桩掩盖问题。
+- 修复口径：统一使用 `docDataOf(result)` 同时兼容对象和数组；回归测试必须使用 `createDb({ cloudDocGetObject: true })` 模拟真实云库，不得继续用数组形状的默认桩掩盖问题。2026-11-20 16:43:48 已部署 `notifier`，定时触发器 `notifierEveryMinute` 保持启用，手动 `tick` 成功，16:54:05 已有真实任务写入 `SEND_SUCCEEDED` / `TASK_TRIGGERED`；已错过任务不自动补发。
 - 与 2026-11-16 激励视频领取事务的 `doc.get()` 事故同类；根因都是“线上对象 / 测试数组”的形状漂移。
 
 ## 零、客服工作台质量兜底（2026-11-02）
