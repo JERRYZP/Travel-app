@@ -63,6 +63,50 @@ function releaseTimesOf(spot) {
   return Array.isArray(t) ? t.slice() : [t];
 }
 
+function releaseSlotOf(spot, releaseTime) {
+  const slots = spot && Array.isArray(spot.releaseSlots) ? spot.releaseSlots : [];
+  return slots.find(slot => String(slot && slot.releaseTime) === String(releaseTime)) || null;
+}
+
+function isHighDemandDate(spot, dateStr) {
+  const dayName = dayNameOfStr(dateStr);
+  const holiday = spot && Array.isArray(spot.holidayRanges)
+    ? spot.holidayRanges.some(range => Array.isArray(range)
+      && range.length >= 2
+      && dateStr >= range[0]
+      && dateStr <= range[1])
+    : false;
+  return dayName === 'saturday' || dayName === 'sunday' || holiday;
+}
+
+/** 某个出行日、某个放票时刻对应的绝对放票时间。 */
+function releaseAtForVisit(spot, visitDate, releaseTime) {
+  const p = parseDateStr(visitDate);
+  const tm = /^(\d{1,2}):(\d{2})$/.exec(String(releaseTime || ''));
+  if (!p || !tm) return null;
+  const slot = releaseSlotOf(spot, releaseTime);
+  const baseAdvance = Number(slot ? slot.advanceDays : (spot && spot.advanceDays));
+  if (!Number.isFinite(baseAdvance)) return null;
+  const weekendAdvance = slot && slot.weekendAdvanceDays !== undefined && slot.weekendAdvanceDays !== null
+    ? Number(slot.weekendAdvanceDays)
+    : null;
+  const advanceDays = isHighDemandDate(spot, visitDate) && Number.isFinite(weekendAdvance)
+    ? weekendAdvance
+    : baseAdvance;
+  const releaseDate = addDaysStr(visitDate, -advanceDays);
+  const date = parseDateStr(releaseDate);
+  if (!date) return null;
+  return new Date(Date.UTC(
+    date.y,
+    date.m - 1,
+    date.d,
+    Number(tm[1]),
+    Number(tm[2]),
+    0,
+    0
+  ) - BEIJING_OFFSET_MS);
+}
+
 function minutesOf(time) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(time || '');
   return m ? Number(m[1]) * 60 + Number(m[2]) : Number.MAX_SAFE_INTEGER;
@@ -234,6 +278,7 @@ module.exports = {
   dayNameOfStr,
   diffDays,
   releaseTimesOf,
+  releaseAtForVisit,
   minutesOf,
   isOpenOnDate,
   isOpenToday,

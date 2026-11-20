@@ -70,6 +70,17 @@ eq(todayRows[0].spotId, 'gugong', '未到放票时刻排前');
 eq(todayRows[1].spotId, 'guobo', '已放票景点排后');
 eq(todayRows[0]._sceneStatus, '今日 20:00 放票', '今日状态文案');
 eq(todayRows[1]._sceneEarliestText, '按规则推算，最早可约 10月2日', '最早可约口径');
+const closedBackoffRelease = release.releaseAtForVisit({
+  advanceDays: 10,
+  releaseTime: '20:00',
+  releaseSlots: [],
+  holidayRanges: [],
+}, '2026-11-29', '20:00');
+eq(closedBackoffRelease.toISOString(), '2026-11-19T12:00:00.000Z',
+  '顶部可约日按该出行日反推真实放票时刻');
+const spotHubSource = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/spot-hub/spot-hub.js'), 'utf8');
+eq(/const releaseAt = releaseContext\.releaseAtForVisit\(c, c\.earliestDate, timeText\)/.test(spotHubSource), true,
+  '顶部 Banner 使用真实放票时刻判断已放票');
 eq(scenes.getScene('unknown').id, 'today', '未知场景回退今日');
 eq(scenes.isSceneActive(scenes.getScene('national-day-2026'), new Date('2026-10-09T04:00:00Z')), false, '国庆页过期');
 eq(scenes.buildSceneTitle(scenes.getScene('today'), 3), '今天北京有3个热门景点放票，时间都在这里', '今日分享标题含数量');

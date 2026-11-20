@@ -5,6 +5,7 @@ const notify = require('../../utils/notify.js');
 const shareEntry = require('../../utils/share-entry.js');
 const analytics = require('../../utils/analytics.js');
 const reminderFlow = require('../../utils/reminder-flow.js');
+const releaseContext = require('../../utils/release-context.js');
 
 /* 景点类型 Tab（V3.0 定稿：页面唯一筛选维度，不设「预约方式」筛选） */
 const TABS = [
@@ -90,6 +91,7 @@ function buildBanner(cards, now) {
       const m = /^(\d{1,2}):(\d{2})$/.exec(timeText);
       if (!m) return null;
       const minutes = Number(m[1]) * 60 + Number(m[2]);
+      const releaseAt = releaseContext.releaseAtForVisit(c, c.earliestDate, timeText);
       const flames = Math.max(1, c.popularityScore || 0);
       const ds = c.difficultyScore || 0;
       const diff = ds >= 4
@@ -102,7 +104,7 @@ function buildBanner(cards, now) {
         name: c.name,
         timeText,
         dateText: dateTextOf(c.earliestDate),
-        released: bj.getHours() * 60 + bj.getMinutes() >= minutes,
+        released: !!(releaseAt && releaseAt.getTime() <= now.getTime()),
         flames: Array.from({ length: flames }, (_, i) => i),
         diffKey: diff.key,
         diffText: diff.text,
