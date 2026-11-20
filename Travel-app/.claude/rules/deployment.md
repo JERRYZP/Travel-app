@@ -31,6 +31,26 @@ paths:
 - 当前 cloudEnv：`cloud1-d9g9f4hja396d6e92`
 - 只改 appid 会导致所有 `wx.cloud.callFunction` 失败。
 
+## 云函数发布产物一致性
+
+- 正常发布必须从干净工作区构建，构建脚本发现任何已修改或未跟踪文件时直接失败。禁止从混合工作区、在线编辑器草稿或手工挑选的文件发布生产云函数。
+- 生成拍平包和逐文件哈希清单：
+
+  ```bash
+  npm run release:cloudfunction -- build --function payment --out /tmp/payment-artifact
+  ```
+
+- 上传前先校验产物，上传后下载线上代码再次校验，并显式核对提交 SHA：
+
+  ```bash
+  node scripts/cloudfunction-artifact.js verify --artifact /tmp/payment-artifact --expected-commit <main-sha>
+  ```
+
+- `release-manifest.json` 是发布证据，不得手改。多文件、少文件、哈希不一致、仍包含 `require('./lib/...')` 或存在无法解析的相对依赖时均不得发布。
+- 云函数必须先整包部署，再发布新版本并切到 100% 流量；只保存代码、只更新单个文件或把旧版本继续保留 100% 流量都不算部署完成。
+- `payment` 发布后必须额外通过 `test/payment-admin-detail-contract.test.js` 的真实入口契约，并核验 `paymentReconcileEveryTwoMinutes` 触发器、环境变量和售后详情冒烟。
+- 紧急在线编辑只能用于止血；止血后必须立即用同一提交重新生成标准产物并完成一次完整部署，不能把在线编辑状态当作最终发布基线。
+
 ## 部署前
 
 1. 阅读 `docs/engineering/current-state.md` 和 `数据库索引.md`。

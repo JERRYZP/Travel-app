@@ -154,7 +154,7 @@ function timeText(value) {
   return `${iso.slice(0, 4)}-${iso.slice(5, 7)}-${iso.slice(8, 10)} ${iso.slice(11, 16)}`;
 }
 
-function refundEligibilityOf(order = {}, user = {}, now = new Date()) {
+function refundEligibilityOf(order = {}, user = {}, now = new Date(), options = {}) {
   const paidMs = dateMs(order.paidAt);
   const nowMs = new Date(now).getTime();
   const lastCreatedMs = dateMs(user.lastReminderCreatedAt || 0);
@@ -168,18 +168,40 @@ function refundEligibilityOf(order = {}, user = {}, now = new Date()) {
     RefundStatus.UNDER_REVIEW,
     RefundStatus.PROCESSING,
   ].includes(order.refundStatus);
+  const blockingUpgrade = options.blockingUpgrade || null;
+  const blockedByUpgrade = !!blockingUpgrade;
   return {
     withinWindow,
     usedAfterPurchase,
     alreadyRefunded,
     refundInProgress,
+    blockedByUpgrade,
+    blockingUpgradeOrderId: blockingUpgrade ? String(blockingUpgrade._id || '') : '',
+    blockingUpgradeAmountFen: blockingUpgrade
+      ? Math.max(0, Number(blockingUpgrade.amountFen) || 0)
+      : 0,
+    blockReason: blockedByUpgrade
+      ? '基础会员订单已升级为不限提醒名额，必须先处理升级订单退款'
+      : '',
     hoursSincePaid,
     eligibleForReview: order.status === OrderStatus.PAID
       && withinWindow
       && !usedAfterPurchase
       && !alreadyRefunded
-      && !refundInProgress,
+      && !refundInProgress
+      && !blockedByUpgrade,
+    eligible: order.status === OrderStatus.PAID
+      && withinWindow
+      && !usedAfterPurchase
+      && !alreadyRefunded
+      && !refundInProgress
+      && !blockedByUpgrade,
   };
+}
+
+async function refundEligibilityForOrder(db, order = {}, user = {}, now = new Date()) {
+  const blockingUpgrade = await upgradeDependencyBlockingRefund(db, order, user, now);
+  return refundEligibilityOf(order, user, now, { blockingUpgrade });
 }
 
 function caseViewOf(item = {}) {
@@ -941,6 +963,7 @@ module.exports = {
   makeCaseNo,
   timeText,
   refundEligibilityOf,
+  refundEligibilityForOrder,
   caseViewOf,
   findOrderForUser,
   findUser,

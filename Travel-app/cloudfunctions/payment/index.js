@@ -53,6 +53,7 @@ const membershipPricing = require('./lib/membership-pricing');
 const membershipUpgradeNotice = require('./lib/membership-upgrade-notice');
 const homeClockPromo = require('./lib/home-clock-promo');
 const adminOrders = require('./lib/admin-orders');
+const adminDirectory = require('./lib/admin-directory');
 const adminReminderQuality = require('./lib/admin-reminder-quality');
 const feedbackReward = require('./lib/feedback-reward');
 const {

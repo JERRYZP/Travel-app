@@ -58,6 +58,7 @@
 
 ## 最近已关闭事项
 
+- **2026-11-20 支付售后详情产物漂移**：`payment/index.js` 曾引用未导出的 `afterSales.refundEligibilityForOrder`，并缺少 `adminDirectory` 依赖，导致客服审核工单打开即返回 `1500`。已补齐售后资格聚合与依赖，新增真实 `afterSales.adminDetail` 入口契约、云函数拍平产物 manifest 校验和脏工作区发布门禁；生产 `payment` 已发布版本 3 并切 100% 流量，两分钟触发器核验存在。`npm test`、`npm run check`、`git diff --check` 通过。
 - **2026-11-20 提醒发送全量中断**：`notifier` 的 `doc().get()` 形状判断错误，导致 223 个到期任务全量跳过并落为 `MISSED`。修复版已于 16:43:48 部署，`notifierEveryMinute` 保持启用；16:54:05 首个真实任务写入 `SEND_SUCCEEDED` / `TASK_TRIGGERED`。完整复盘见 `docs/engineering/reminder-outage-incident-20261120.md`。
 - **2026-11-19 用户自助注销**：`account` 云函数、PAGE-012-1、支付/提醒竞态保护和隐私指引补充文档已落地并部署。
 - **2026-11-19 首页摘要卡实际日期**：`home.bootstrap` 下发 `displayStartDate/displayEndDate`，服务端包含已过期日程；`user_runtime` 升级为 `/v2`。

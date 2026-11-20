@@ -64,6 +64,7 @@
 | `RULE-VISUAL-001` | `CLAUDE.md` 147 | 402px 视觉基准 | `figma_design.md` | `delegated` |
 | `RULE-COMMAND-001` | `CLAUDE.md` 150-155 | 安装、构建、运行、测试和静态检查 | 根 `CLAUDE.md` | `root-current` |
 | `RULE-DEPLOY-001` | `CLAUDE.md` 157-174 | 部署依赖、顺序和未验证状态 | `.claude/rules/deployment.md`、`docs/engineering/current-state.md` | `extracted` |
+| `RULE-DEPLOY-002` | 2026-11-20 支付售后详情产物漂移 | 云函数只能从干净提交构建；拍平包必须生成逐文件 SHA-256 manifest，上传前和下载线上代码后都要校验；`payment` 必须跑真实 `afterSales.adminDetail` 入口契约，并核验版本流量与定时触发器 | `.claude/rules/deployment.md`、`scripts/cloudfunction-artifact.js`、`test/payment-admin-detail-contract.test.js`、`docs/engineering/current-state.md` | `extracted` |
 | `RULE-ADMIN-001` | 2026-10-06 新增；2026-11-20 退役 | 只读 Web 管理后台已移除；`admin` 仅保留过期事件清理，不再提供 Web API | `docs/engineering/current-state.md`、`docs/engineering/architecture.md` | `history` |
 | `RULE-ADMIN-002` | 2026-11-02 客服工作台 | 会员购买开关置顶；会员订单与售后双页签；昵称/OpenID 展示、搜索、订单详情和管理员审计 | `产品文档.md` PAGE-017、`API-契约.md`、`数据库索引.md` | `delegated` |
 | `RULE-SHARE-001` | 2026-11-02 行程只读分享 | PAGE-018 只分享当前未结束整趟行程；链接只带 32 字节令牌，`endDate + 7 天` 当日仍有效；接收方不可编辑、复制或二次转发，公开投影不夹带身份与票务/提醒状态。主人应用内昵称只用于会话标题，Canvas 封面只画公开行程信息 | `产品文档.md` PAGE-018 / SHARE-RULE-008~009、`API-契约.md`、`数据库索引.md`、`docs/engineering/domain-rules.md` | `delegated` |
