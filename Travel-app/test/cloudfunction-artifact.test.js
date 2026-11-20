@@ -64,6 +64,10 @@ function run() {
   check(manifest.functionName === 'payment', '完整产物校验通过');
   fs.mkdirSync(path.join(root, 'node_modules'));
   fs.writeFileSync(path.join(root, 'node_modules', 'installed.js'), 'module.exports = true;\n');
+  fs.symlinkSync(
+    path.join(root, 'node_modules', 'installed.js'),
+    path.join(root, 'node_modules', 'installed-link.js')
+  );
   verifyArtifact(root, { expectedCommit: 'abc123' });
   check(true, '忽略云端安装的 node_modules');
   fs.rmSync(path.join(root, 'node_modules'), { recursive: true, force: true });

@@ -152,7 +152,8 @@ function resolveRelativeRequire(baseDir, request) {
 
 function verifyRelativeRequires(artifactDir) {
   const failures = [];
-  const jsFiles = walkFiles(artifactDir).filter(file => file.endsWith('.js'));
+  const jsFiles = walkFiles(artifactDir, { skipNames: ['node_modules', '.DS_Store', '__MACOSX'] })
+    .filter(file => file.endsWith('.js'));
   for (const file of jsFiles) {
     const source = fs.readFileSync(file, 'utf8');
     const relative = ensureInside(artifactDir, file);
