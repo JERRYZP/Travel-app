@@ -46,7 +46,7 @@ paths:
   node scripts/cloudfunction-artifact.js verify --artifact /tmp/payment-artifact --expected-commit <main-sha>
   ```
 
-- `release-manifest.json` 是发布证据，不得手改。多文件、少文件、哈希不一致、仍包含 `require('./lib/...')` 或存在无法解析的相对依赖时均不得发布。
+- `release-manifest.json` 是发布证据，不得手改。多文件、少文件、哈希不一致、仍包含 `require('./lib/...')` 或存在无法解析的相对依赖时均不得发布；云端安装的 `node_modules` 依赖树与系统垃圾文件不计入业务产物清单。
 - 云函数必须先整包部署，再发布新版本并切到 100% 流量；只保存代码、只更新单个文件或把旧版本继续保留 100% 流量都不算部署完成。
 - `payment` 发布后必须额外通过 `test/payment-admin-detail-contract.test.js` 的真实入口契约，并核验 `paymentReconcileEveryTwoMinutes` 触发器、环境变量和售后详情冒烟。
 - 紧急在线编辑只能用于止血；止血后必须立即用同一提交重新生成标准产物并完成一次完整部署，不能把在线编辑状态当作最终发布基线。

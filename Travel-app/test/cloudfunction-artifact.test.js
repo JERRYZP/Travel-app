@@ -62,6 +62,11 @@ function run() {
 
   const manifest = verifyArtifact(root, { expectedCommit: 'abc123' });
   check(manifest.functionName === 'payment', '完整产物校验通过');
+  fs.mkdirSync(path.join(root, 'node_modules'));
+  fs.writeFileSync(path.join(root, 'node_modules', 'installed.js'), 'module.exports = true;\n');
+  verifyArtifact(root, { expectedCommit: 'abc123' });
+  check(true, '忽略云端安装的 node_modules');
+  fs.rmSync(path.join(root, 'node_modules'), { recursive: true, force: true });
   expectFailure(
     () => verifyArtifact(root, { expectedCommit: 'different' }),
     '产物提交不一致',

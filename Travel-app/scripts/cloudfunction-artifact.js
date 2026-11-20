@@ -182,7 +182,7 @@ function verifyArtifact(artifactDir, options = {}) {
 
   const manifestFiles = Array.isArray(manifest.files) ? manifest.files : [];
   const expected = new Map(manifestFiles.map(item => [String(item.path), item]));
-  const actualFiles = walkFiles(root)
+  const actualFiles = walkFiles(root, { skipNames: ['node_modules', '.DS_Store', '__MACOSX'] })
     .map(file => ensureInside(root, file))
     .filter(relative => relative !== MANIFEST_NAME)
     .sort();
