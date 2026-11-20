@@ -2,7 +2,7 @@
 
 > 基线快照：`CLAUDE.md@19a4798`
 > Phase 1 仅新增目标文件；Phase 2 已完成覆盖审计；Phase 3 已按本索引重写根规则。
-> 当前根文件为 101 行、约 5.4KB；基线文件为 174 行、约 75KB。
+> 当前根文件只保留现役门禁、状态、权威路由和命令；具体机制与历史流水以本索引目标文档为准。
 
 ## 状态说明
 
@@ -16,7 +16,7 @@
 | ID | 源位置 | 主题 | 目标 | 状态 |
 |---|---|---|---|---|
 | `RULE-SCOPE-001` | `CLAUDE.md` 1-2 | 项目定位、不代抢不代约 | 根 `CLAUDE.md` | `root-current` |
-| `RULE-STATE-001` | `CLAUDE.md` 4-17 | 当前版本状态与近期变更 | `docs/engineering/current-state.md` | `extracted` |
+| `RULE-STATE-001` | 根规则历史“当前状态” | 只保留最新正式版 / 体验版、云端 Active 基线、运行期配置和 `main` 分叉风险 | `CLAUDE.md`、`docs/engineering/current-state.md` | `delegated` |
 | `RULE-DATA-001` | `CLAUDE.md` 19 | `shortName` 窄容器口径与四处同步 | `.claude/rules/data-contracts.md`、`docs/engineering/domain-rules.md` | `extracted` |
 | `RULE-REMINDER-001` | `CLAUDE.md` 20-33 | 行程项提醒四态、菜单、MISSED、挽回候选 | `docs/engineering/domain-rules.md` | `extracted` |
 | `RULE-TICKET-001` | `CLAUDE.md` 34-39 | 六票务态、固定判定顺序、结果撤销 | `docs/engineering/domain-rules.md` | `extracted` |
@@ -52,7 +52,7 @@
 | `RULE-MEMBER-004` | 2026-11-05 会员契约能力门禁 | 新客户端必须声明 `membershipCapabilities=['unlimited-v3']`；服务端仅在声明能力且命中 `MEMBERSHIP_ENFORCEMENT_MODE` 时返回新套餐、新额度、新订单和升级公告；未声明能力的旧客户端永久保持 legacy | `API-契约.md`、`.claude/rules/deployment.md`、`docs/engineering/domain-rules.md`、`docs/engineering/membership-payment.md` | `delegated` |
 | `RULE-PAY-001` | `API-契约.md` 会员与支付 | 订单金额服务端决定；API v3 与虚拟支付双通道、按订单固化渠道；请求号幂等、额度锁、持久化补偿游标；退款生命周期与本单权益快照回收；售后工作台审计 | `API-契约.md`、`.claude/rules/deployment.md`、`docs/engineering/membership-payment.md`、`docs/engineering/payment-v3-runbook.md`、`docs/engineering/payment-virtual-runbook.md` | `delegated` |
 | `RULE-SALES-001` | 2026-11-02 会员购买断路器 | 独立停售开关只阻止新下单和新发起支付；已付款、查单、权益、退款和售后继续；唯一配置为 `payment_config/membership_sales` | `API-契约.md`、`.claude/rules/deployment.md`、`docs/engineering/membership-payment.md`、`数据库索引.md` | `delegated` |
-| `RULE-ROLLOUT-001` | 2026-11-04 生产事故 | 新功能不得影响线上；会员改版必须用 `MEMBERSHIP_ENFORCEMENT_MODE=test` 与 `MEMBERSHIP_TEST_OPENIDS` 限定白名单，非白名单保持旧契约；影响线上的阻塞、体验版上传和全量切换必须单独授权 | `CLAUDE.md`、`.claude/rules/deployment.md`、`API-契约.md`、`docs/engineering/membership-payment.md` | `root-current` |
+| `RULE-ROLLOUT-001` | 2026-11-04 生产事故；2026-11-20 校准 | 新功能不得影响线上；会员改版默认 `test`，切 `all` 必须单独授权且只覆盖声明新能力的客户端；未声明能力继续旧契约；体验版、审核和生产切换分别授权 | `CLAUDE.md`、`.claude/rules/deployment.md`、`API-契约.md`、`docs/engineering/membership-payment.md` | `root-current` |
 | `RULE-COMPAT-001` | 2026-11-05 新旧客户端交叉期 | 客户端声明能力，服务端默认回退旧契约；白名单与运行期开关决定新契约范围；`all` 只覆盖声明能力的新客户端；订单、退款和售后按快照兼容 | `docs/engineering/client-version-compatibility.md`、`CLAUDE.md`、`.claude/rules/deployment.md` | `delegated` |
 | `RULE-NOTIFYOPS-001` | `CLAUDE.md` 128-137 | 状态收敛、台账自愈、发送链路 | `docs/engineering/reminder-troubleshooting.md`、`.claude/rules/deployment.md` | `delegated` |
 | `RULE-NOTIFYOPS-002` | 2026-11-20 提醒发送全量中断 | `doc().get()` 必须兼容线上对象与测试数组；回归必须模拟真实云库并覆盖存在/缺失文档；`notifier` 部署后必须核验触发器、手动 tick 与真实 `SEND_SUCCEEDED`；`due>0` 且全量 `skipped` 为 P0 | `docs/engineering/reminder-outage-incident-20261120.md`、`docs/engineering/reminder-troubleshooting.md`、`.claude/rules/deployment.md` | `delegated` |

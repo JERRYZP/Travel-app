@@ -7,8 +7,8 @@
 1. **规则值先确认**：放票时间、提前天数、开放/闭馆日、可约窗口、票务、核验日期等任何景点规则值，都必须先报告差异并等用户确认；禁止根据资料置信度推断或替用户拍板。
 2. **保护现有工作**：开始改动前检查 `git status`。不得回滚、覆盖、格式化或清理与本任务无关的 dirty 文件。
 3. **部署必须单独授权**：没有用户当场明确确认，不部署云函数、不切环境、不修改生产配置、不执行破坏性清场。
-4. **新功能不得影响线上**：用户可见行为、接口返回和价格权益变更必须先限制在显式测试白名单内；非白名单必须继续返回原生产契约。若没有安全灰度手段，或解决阻塞必须改生产行为，先停止并等待用户明确授权。
-5. **会员改版必须复用白名单**：生产验收期间设置 `MEMBERSHIP_ENFORCEMENT_MODE=test`，只让 `MEMBERSHIP_TEST_OPENIDS` 命中新会员方案；非白名单继续旧价、旧额度、旧加量包契约。禁止在客户端全量发布前把该模式切到 `all`。
+4. **新功能不得影响线上**：用户可见行为、接口返回和价格权益变更必须使用显式测试白名单或新旧能力门禁；未命中的请求和旧客户端必须继续返回原生产契约。若没有安全灰度或能力隔离开关，立即停止并等待用户明确授权。
+5. **会员改版必须保留能力门禁**：生产验收默认使用 `test` 与 `MEMBERSHIP_TEST_OPENIDS`；只有用户明确授权后才能切 `all`，且 `all` 只覆盖显式声明新能力的客户端，旧客户端和未声明能力的请求必须继续旧价、旧额度、旧加量包契约。不得把 `all` 理解成所有已安装客户端。
 6. **体验版上传必须单独授权**：不得把预览、上传体验版、提交审核、发布正式版视为同一授权。用户只要求真机预览时，只生成预览码，不上传体验版。
 7. **不要制造第二套业务真相**：业务规则只保留一个真身；必要镜像必须由测试或生成脚本钉住。页面不得自行重推服务端状态。
 8. **不要伪造能力或时效**：首页提醒区域只进入真实样式示例；任何“可约/库存”都只能表述为规则推算，并明确不代表官方库存。
@@ -16,19 +16,11 @@
 ## 当前状态
 
 - 主分支：`main`。实时分支、HEAD、远端与 dirty 状态以 `git status` 和 `git log` 为准；开发任务从 `main` 创建 `codex/*` 分支，不直接堆在 `main`。
-- V0.3 主流程已实现：四步流程、日期锚点、清单策略、PAGE-008 授权硬闸门。
-- 新用户首页空态已重构：动态结果预览、提醒样式入口、高热度 S 级景点「近期热门景点放票」。
-- 分享、深链、今日/国庆场景页、提醒额度健康度、真实缺口预警与 48 小时缓冲窗口均已实现。
-- 2026-10-28 已完成非会员修复收口：授权额度、提醒回滚、清单收敛、随买随用、强提醒与景点页搜索均已提交；部署范围与真机状态仍按 `docs/engineering/current-state.md` 分别判断。
-- 会员付费客户端与生产账本已全量运行。会员限制模式已由 `payment_config/membership_enforcement={mode:"all"}` 接管，后台切换无需重新部署；`MEMBERSHIP_ENFORCEMENT_MODE=all` 只保留为配置缺失或读取失败时的兜底。
-- 2026-11-06 客户端 `2.3.7` 已正式发布；新会员方案的全量门槛已按要求把 `reminder` 的 `MEMBERSHIP_ENFORCEMENT_MODE` 从 `test` 切为 `all`，数据库额度配置保持 `all`。新客户端通过 `unlimited-v3` 能力声明获得 ¥6 / 30 天 / 不限提醒方案，旧客户端仍走 `legacy-v2`。
-- 2026-11-08 两档会员候选在 `codex/membership-two-tier-rc` 验证：`two-tier-v5` 只对两个测试 OpenID 生效，非白名单继续 `unlimited-v3`；云函数已部署，体验版 `2.4.0` 已上传，未提审、未发布、未真机支付验证。
-- 2026-11-02 会员购买断路器已部署：`payment_config/membership_sales` 为 `OPEN` 且仅管理端可读写，`payment` 与 `reminder` 已更新；管理页客户端已全量发布，业务停售状态未切换。
-- 2026-11-02 客服工作台后端已部署：会员购买开关置顶，会员订单 / 售后双页签，支持昵称与完整 OpenID、订单搜索、订单详情和关联售后，并包含当日统计与 7 / 30 / 90 天 / 全部时间筛选；`payment` 与 `reminder` 已更新并通过管理员冒烟。
-- 2026-11-02 客户端 `2.1.1` 已从 `main@af05573` / `v2.1.1-rc.2` 完成体验验收、送审和全量发布，新功能已在正式版可见；首开仍可能命中旧包，需冷启动等待微信完成版本切换。
-- 2026-10-27 已发版客户端来自当时未提交工作区，Git 中没有可诚实对应的发布 commit/tag。
-- 只读 Web 管理后台代码已合入 `admin-web/` 与 `cloudfunctions/admin/`，不是小程序体验版的运行依赖；是否部署仍以云开发控制台和单独授权为准。
-- 完整状态、待部署范围和待验证项见 `docs/engineering/current-state.md`。
+- 最新正式客户端：`2.3.7`；最新体验版：`2.6.1`（2026-11-20），未提交审核、未发布正式版，真机验收 pending。
+- 云端 `reminder`、`payment`、`notifier`、`account`、`feedback`、`spots`、`admin` 均为 `Active`；`notifierEveryMinute` 与 `paymentReconcileEveryTwoMinutes` 已核验启用。
+- 运行期 `membership_sales=OPEN`、`membership_enforcement.mode=all`、`membership_pricing.mode=all`；能力门禁仍保护旧客户端。
+- 生产 `notifier` 已部署 2026-11-20 提醒中断修复，但修复只存在于未合并的 `codex/notifier-doc-get-fix-20261120`；`main` 仍不含该修复。下一次从 `main` 重部署 `notifier` 前必须先集成，否则会回退故障。
+- 完整现役基线、pending 与已知风险见 `docs/engineering/current-state.md`；历史流水放 Git、验收单或事故文档，不堆回根文件。
 
 ## Git 纪律
 
@@ -68,7 +60,7 @@
 ## 工程事实
 
 - 前端：微信原生小程序 + Vant Weapp + 自绘组件。
-- 后端：微信云开发；核心云函数 `reminder`，另有 `account`、`spots`、`notifier`、`feedback`、`scraper`、`ics-generator`。
+- 后端：微信云开发；核心云函数 `reminder`、`payment`、`notifier`、`account`，另有 `spots`、`feedback`、`scraper`、`ics-generator`、`admin`。
 - 首页数据由 `reminder.home.bootstrap` 聚合；`trip_items` 是首页、票务结果、提醒关联和删除动线的事实来源。
 - 模型关系：`trips -> trip_items -> reminder_tasks`；`reminder_cart` 只是提交前暂存区。
 - 首页、行程、清单、提醒的完整规则见 `docs/engineering/domain-rules.md`。
@@ -111,7 +103,7 @@ npm run check
 - appid 与 cloudEnv 必须成对更换。
 - 部署前先按 `数据库索引.md` 建集合和索引，再按 `.claude/rules/deployment.md` 的顺序部署云函数。
 - 最新首页空态仅改小程序端，不需要部署云函数。
-- 只要本轮修改了云函数源码、接口返回体或共享业务逻辑，就必须单独核对 `reminder` / `notifier` 的部署范围。
+- 只要本轮修改了云函数源码、接口返回体或共享业务逻辑，就必须按改动范围核对 `reminder`、`payment`、`notifier`、`account` 等部署单元；涉及定时触发器时必须在部署后回读。
 
 ## 维护规则
 

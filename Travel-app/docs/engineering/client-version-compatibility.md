@@ -212,9 +212,9 @@ return newContract ? buildNewContract() : buildLegacyContract();
 
 ## 13. 当前会员升级案例
 
-本轮会员升级可以作为标准案例：
+当前会员契约可以作为标准案例：
 
-| 维度 | 旧契约 | 现有契约 | 两档候选 |
+| 维度 | 旧契约 | `unlimited-v3` | `two-tier-v5` 当前契约 |
 |---|---|---|---|
 | 能力声明 | 不声明 | `unlimited-v3` | `unlimited-v3 + two-tier-v5` |
 | 方案版本 | `legacy-v2` | `unlimited-v3` | `two-tier-v5` |
@@ -227,8 +227,8 @@ return newContract ? buildNewContract() : buildLegacyContract();
 关键实现约束：
 
 - 新客户端在 `reminder` 请求中声明 `membershipCapabilities: ['unlimited-v3', 'two-tier-v5']`。
-- 服务端先检查 `two-tier-v5` 能力与 `payment_config/membership_pricing`；`test` 再检查 `MEMBERSHIP_TEST_OPENIDS`，`all` 对新客户端全量开放。未命中时再按现有 `unlimited-v3` 路由；最后回退 `legacy-v2`。
-- `two-tier-v5` 的定价范围不依赖当前生产额度模式 `all`；独立配置缺失或异常时回退 `test`，避免为了调价改动额度限制。
+- 服务端先检查 `two-tier-v5` 能力与 `payment_config/membership_pricing`；当前运行态为 `mode=all`，因此只对声明 `two-tier-v5` 的新客户端开放。未命中时再按 `unlimited-v3` 路由；最后回退 `legacy-v2`。
+- `two-tier-v5` 的定价范围独立于 `membership_enforcement`；当前两者均为 `all`，但配置缺失或异常时仍必须回退 `test`，不能为了调价改动额度限制。
 - 旧客户端永远返回旧套餐、旧价格和旧额度，即使模式为 `all`。
 - `unlimited-v3` 有效会员继续返回兼容字段 `taskLimit/taskRemaining/memberTaskSlots=10000`；`two-tier-v5` 不限会员返回 `taskLimit/taskRemaining=null`，3 元档返回真实 `taskLimit=10`。
 - 会员升级横幅、公告接口和所有相关 bootstrap 接口都消费同一能力判断。

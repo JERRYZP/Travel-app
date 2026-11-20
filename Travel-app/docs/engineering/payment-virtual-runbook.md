@@ -1,6 +1,6 @@
 # 小程序虚拟支付接入 Runbook
 
-> 2026-11-08 两档候选：MP 后台已发布 `travel_task_vip_3`、`travel_task_vip_4_9`、`travel_task_vip_1_9` 三个固定价道具。对应环境变量已写入 `payment`，回读确认只新增三项且原有变量无变更。候选只允许两个测试 OpenID；非白名单继续现有 ¥6 契约。定价全量开关模块已随 `payment` / `reminder` 增量部署，`membership_pricing` 缺省为 `test`；体验版 `2.4.2` 已上传，需在客服工作台单独切换后再全量。
+> 2026-11-20 当前状态：`travel_task_vip_3`、`travel_task_vip_4_9`、`travel_task_vip_1_9` 三个固定价道具已发布，`payment_config/membership_pricing.mode=all` 与 `membership_enforcement.mode=all` 均已回读；`all` 只覆盖声明 `two-tier-v5` 的新客户端，旧客户端继续 `unlimited-v3` / `legacy-v2`。最新正式版为 `2.3.7`，最新体验版为 `2.6.1`。
 >
 > 2026-11-02 当前状态：`payment` / `reminder` 已部署，`payment_reconcile_state` 与关键索引已创建核验，生产数据已备份，名额账本 dry-run 与正式迁移均完成。客户端 `2.1.0` 已审核通过并全量发布；累计观察到 8 笔已支付订单，用户完成付费流程自测且客服工作台正常，实际发布包已用 `v2.1.0` tag 固化。**`payment` 支付白名单已删除，新版客户端新订单全量使用虚拟支付；`MEMBERSHIP_ENFORCEMENT_MODE` 已于 15:10:02 切换为 `all`，其他环境变量保持不变。** Apple 自主退款最终通知已实测；仍需继续观察 Android/iOS 支付、退款问询及真实签名回调，测试通过不等于所有异常场景已经验收。
 >
@@ -80,13 +80,13 @@
 | `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_V6` | 新方案售卖必填 | 当前不限会员 600 分固定道具 ProductId；`member-unlimited-30d-v4` 只使用此项 |
 | `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED` | 历史订单兼容必填 | 历史不限会员 800 分固定道具 ProductId；只供 v3 / 800 分订单继续支付、查单、补发和退款 |
 | `WECHAT_VIRTUAL_PAY_PRODUCT_TASK_PACK` | 是 | 历史提醒名额包道具的 ProductId；新售停用后仍需保留，供旧待支付订单查单和退款 |
-| `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_QUOTA_10` | 两档候选必填 | `travel_task_vip_3`，仅 `member_quota_10` 订单使用 |
-| `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_TWO_TIER_UNLIMITED` | 两档候选必填 | `travel_task_vip_4_9`，仅 `member_unlimited` 候选订单使用 |
-| `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_UPGRADE` | 两档候选必填 | `travel_task_vip_1_9`，仅 `member_unlimited_upgrade` 订单使用 |
+| `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_QUOTA_10` | `two-tier-v5` 必填 | `travel_task_vip_3`，仅 `member_quota_10` 订单使用 |
+| `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_TWO_TIER_UNLIMITED` | `two-tier-v5` 必填 | `travel_task_vip_4_9`，仅 `member_unlimited` 当前契约订单使用 |
+| `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_UPGRADE` | `two-tier-v5` 必填 | `travel_task_vip_1_9`，仅 `member_unlimited_upgrade` 订单使用 |
 
 `WECHAT_VIRTUAL_PAY_APP_KEY` 只作为单一 AppKey 的兼容回退，不建议正式环境依赖。
 
-服务端查单和退款只依赖 AppID、AppSecret、OfferId 和对应环境 AppKey；商品 ID 在签名前先按 `packageId` 路由两档候选，再按旧订单金额和 `specVersion/unlimitedReminders` 选择历史道具，并在发放前再次核对订单固化的 `virtualProductId`。旧会员、当前 600 分、历史 800 分和两档候选必须使用不同道具 ID，禁止复用旧道具承载新价格。
+服务端查单和退款只依赖 AppID、AppSecret、OfferId 和对应环境 AppKey；商品 ID 在签名前先按 `packageId` 路由 `two-tier-v5` 当前契约，再按旧订单金额和 `specVersion/unlimitedReminders` 选择历史道具，并在发放前再次核对订单固化的 `virtualProductId`。旧会员、当前 600 分、历史 800 分和 `two-tier-v5` 必须使用不同道具 ID，禁止复用旧道具承载新价格。
 
 API v3 原有 `WECHAT_PAY_*` 变量和 HTTP 网关继续保留，不需要删除。两项配置可同时存在；渠道由 `PAYMENT_PROVIDER` 控制。
 

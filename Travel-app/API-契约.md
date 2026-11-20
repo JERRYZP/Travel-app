@@ -1,6 +1,7 @@
 # Travel-app 前端接口契约 V1.4
 
 > 面向：前端（微信小程序页面开发）
+> 2026-11-20 更新：`two-tier-v5` 已是当前会员契约，`membership_pricing.mode=all` 与 `membership_enforcement.mode=all` 只作用于声明该能力的客户端；旧客户端继续 `unlimited-v3` / `legacy-v2`。客服工作台不再展示首页悬浮时钟控制卡，但 `adminSetHomeClockPromo` 保留用于内部维护，默认投放 6 天。
 > 2026-11-19 更新：新增独立 `account` 云函数与 PAGE-012-1 自助注销。`account.preflight` 只读预检，`account.erase` 在服务端二次预检后删除个人业务数据，并将订单/售后/安全审计保留字段与 OpenID 解绑；延迟支付不得把权益发给新账户。
 > 2026-11-19 更新：`home.bootstrap` 的 `trips[]` 与 `history[]` 新增只读展示字段 `displayStartDate` / `displayEndDate`，取该行程全部 `trip_items.visitDate` 的最早/最晚日期（包含已过期日程）。原 `startDate` / `endDate` 语义不变，继续服务分享和行程业务判定；新增提醒日期预填改与首页摘要卡共用展示首尾，字段缺失时回退原日期。历史摘要仍不下发 `items`。
 > 2026-11-05 更新：反馈支持管理员追加多条单向回复、逐条修改，用户端展示完整回复线程和「已修改」标记；新增反馈采纳奖励 `payment.feedbackReward.adminStatus/adminGrant/adminRevoke`，每次奖励 30 天会员，可按反馈叠加。新反馈与历史反馈均可奖励，历史反馈标记为「补发」。用户端通过 `feedback.list.rewardNotices` 查看补发和撤回通知；通知按 `rewardUpdatedAt` 独立分页读取，不受最近 50 条反馈限制。
@@ -1069,7 +1070,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
 
 唯一额度口径在 `cloudfunctions/reminder/lib/membership.js`，唯一支付/退款状态机在 `cloudfunctions/payment/lib/order.js` 与 `cloudfunctions/payment/lib/after-sales.js`。客户端只消费服务端返回的额度、价格、有效期、退款资格和可执行动作。
 
-- 用户侧统一使用「提醒名额」。免费版 5 个。现有 `unlimited-v3` 契约保持 `¥6 / 30 天 / 不限`；候选 `two-tier-v5` 为 `member_quota_10`（¥3 / 30 天 / 总额度 10）和 `member_unlimited`（¥4.9 / 30 天 / 不限）。每条微信订阅消息仍需按条授权，不自动续费。
+- 用户侧统一使用「提醒名额」。免费版 5 个。现有 `unlimited-v3` 契约保持 `¥6 / 30 天 / 不限`；`two-tier-v5` 当前契约为 `member_quota_10`（¥3 / 30 天 / 总额度 10）和 `member_unlimited`（¥4.9 / 30 天 / 不限）。每条微信订阅消息仍需按条授权，不自动续费。
 - 方案路由顺序固定：先判断 `two-tier-v5`，再判断现有 `unlimited-v3`，最后回退 `legacy-v2`。`two-tier-v5` 必须声明能力；`membership_pricing=test` 时还要求 OpenID 命中 `MEMBERSHIP_TEST_OPENIDS`，`all` 时对新客户端全量开放。该判定不受额度模式 `all` 影响；未命中且声明 `unlimited-v3` 的客户端继续当前 ¥6 契约，旧客户端仍返回旧价格、旧额度和旧加量包。
 - 3 元档超过 10 个时只允许 `member_unlimited_upgrade` 补 ¥1.9 升级；订单保存 `upgradeExpiresAt`，只换档、不增加会员时长。剩余不足 15 分钟时服务端拒绝创单。升级单是 3 元会员单的子权益，有有效升级单时先退主会员单返回 `1034`。
 - 外部平台强制先退 3 元会员单时，退款状态机必须把仍有效且绑定本单的升级单转为一次性升级权益券，不能留下“无会员但升级包有效”的非法状态。权益券只允许绑定下一笔 `member_quota_10` 订单；该 3 元订单支付后直接发放 `UNLIMITED`，不再另收 ¥1.9。3 元订单退款时恢复权益券。已转权益券的 1.9 元订单不再进入普通售后；若平台仍强制退款该升级单，权益券原地转为 `REVOKED`，已拉起支付的 3 元单按普通 `QUOTA_10` 发放。
@@ -1130,7 +1131,7 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
     memberDurationDays: Number,
     freeTaskSlots: 5,
     memberTaskSlots: Number, // two-tier-v5 为 10；unlimited-v3 为兼容投影 10000；legacy-v2 为 15
-    taskPackSize: Number // 候选两档为 0；legacy-v2 为 10
+    taskPackSize: Number // two-tier-v5 为 0；legacy-v2 为 10
   },
   packages: [{
     id: 'member' | 'task_pack_5' | 'member_quota_10' | 'member_unlimited' | 'member_unlimited_upgrade',
