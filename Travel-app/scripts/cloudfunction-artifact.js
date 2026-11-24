@@ -92,7 +92,7 @@ function buildArtifact(functionName, outDir) {
     .sort((a, b) => a.name.localeCompare(b.name));
   for (const entry of topEntries) {
     if (entry.isSymbolicLink()) throw new Error(`云函数目录不允许符号链接: ${entry.name}`);
-    if (entry.isDirectory() && !['lib', 'node_modules'].includes(entry.name)) {
+    if (entry.isDirectory() && !['lib', 'data', 'node_modules'].includes(entry.name)) {
       throw new Error(`存在未支持拍平的顶层目录: ${entry.name}`);
     }
   }
@@ -118,6 +118,19 @@ function buildArtifact(functionName, outDir) {
     let content = fs.readFileSync(sourceFile);
     if (relative.endsWith('.js')) content = Buffer.from(rewriteLibRequires(content.toString('utf8')));
     fs.writeFileSync(target, content);
+  }
+
+  const dataDir = path.join(sourceDir, 'data');
+  if (fs.existsSync(dataDir)) {
+    if (!fs.statSync(dataDir).isDirectory()) throw new Error(`data 不是目录: ${dataDir}`);
+    const targetDataDir = path.join(output, 'data');
+    fs.mkdirSync(targetDataDir, { recursive: true });
+    for (const sourceFile of walkFiles(dataDir)) {
+      const relative = path.relative(dataDir, sourceFile);
+      const target = path.join(targetDataDir, relative);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.copyFileSync(sourceFile, target);
+    }
   }
 
   const artifactFiles = walkFiles(output)

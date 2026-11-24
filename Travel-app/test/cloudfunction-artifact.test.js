@@ -58,7 +58,10 @@ function run() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'payment-artifact-test-'));
   fs.writeFileSync(path.join(root, 'index.js'), "require('./dep');\n");
   fs.writeFileSync(path.join(root, 'dep.js'), 'module.exports = 1;\n');
-  writeManifest(root, ['index.js', 'dep.js']);
+  fs.mkdirSync(path.join(root, 'data', 'nested'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'data', 'rules.json'), '{"rules":[]}\n');
+  fs.writeFileSync(path.join(root, 'data', 'nested', 'fixture.json'), '{"ok":true}\n');
+  writeManifest(root, ['index.js', 'dep.js', 'data/rules.json', 'data/nested/fixture.json']);
 
   const manifest = verifyArtifact(root, { expectedCommit: 'abc123' });
   check(manifest.functionName === 'payment', '完整产物校验通过');
@@ -85,7 +88,7 @@ function run() {
   expectFailure(() => verifyArtifact(root), 'SHA-256 不一致', '拒绝被篡改文件');
 
   fs.writeFileSync(path.join(root, 'index.js'), "require('./missing');\n");
-  writeManifest(root, ['index.js', 'dep.js']);
+  writeManifest(root, ['index.js', 'dep.js', 'data/rules.json', 'data/nested/fixture.json']);
   expectFailure(() => verifyArtifact(root), '无法解析相对依赖', '拒绝缺失相对依赖');
 
   fs.rmSync(root, { recursive: true, force: true });
