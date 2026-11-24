@@ -114,6 +114,8 @@
 
 ## 首页首屏（2026-09-30 三层渲染）
 
+- 悬浮时钟验收区只能通过显式 `floatingClockPreview=1` 进入；不得因 `envVersion === 'develop'` 或空环境自动显示。普通开发预览首屏必须直接展示真实首页内容。
+
 - 首页先出内容再原地替换：**缓存层**（`utils/home-cache.js` 回放上次的 bootstrap 返回体）→ **骨架层**（`utils/empty-preview.js` 的本地切片）→ **实况层**（云端返回）。
 - 首页的 30 秒 / 60 秒 / 5 分钟复用窗口不能挡住写操作后的新状态：`cart.commit`、行程项提醒开关、`subscribe.add` 成功后必须递增 `app.globalData.homeDataVersion`；`home.js` 只复用“版本号不旧于当前值”的缓存。否则设完提醒或补完授权返回首页，额度预警和临近放票横幅会被旧缓存压住。
 - ⚠️ 骨架层必须用 `wx:elif` 接在空态块之后，**不能是独立的 `wx:if`**：WXML 的 `wx:else` 绑的是紧邻的上一个 `wx:if/wx:elif`，中间插一个独立 `wx:if` 会让下面的行程墙 `wx:else` 改绑到骨架块上，结果空态和行程墙同时渲染且不报错。

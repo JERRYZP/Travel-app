@@ -268,11 +268,10 @@ Page({
     const spotId = options && options.spotId;
     if (spotId) this.openSpotPopup(decodeURIComponent(spotId));
 
+    /* 悬浮时钟验收区只在显式带 `floatingClockPreview=1` 时出现。
+       普通开发预览 / 模拟器首屏不再自动展示，避免压过真实首页内容。 */
     const explicitClockPreview = String((options && options.floatingClockPreview) || '') === '1';
-    const showFloatingClockPreview = explicitClockPreview
-      || g.envVersion === 'develop'
-      || g.envVersion === '';
-    this.setData({ showFloatingClockPreview });
+    this.setData({ showFloatingClockPreview: explicitClockPreview });
     if (explicitClockPreview) this.onFloatingClockPreview();
   },
 
