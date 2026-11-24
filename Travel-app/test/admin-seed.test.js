@@ -72,6 +72,8 @@ const eq = (a, b, message) => {
   console.log('\n=== 4. 定向真实导入只更新目标，保留无关漂移 ===');
   res = await reminder.main({ action: 'admin.seed', spotIds: ['tsinghua'] });
   eq(res.success, true, '定向更新成功');
+  eq(res.report.spots.unchanged, 1, '未变化的景点不重复写');
+  eq(res.report.rules.updated, 1, '仅变化的规则写一次');
   eq(db._dump(COLLECTIONS.RELEASE_RULES).find(r => r.spotId === 'tsinghua').releaseSlots.length, 2,
     '目标规则写入双时段');
   eq(db._dump(COLLECTIONS.RELEASE_RULES).find(r => r.spotId === 'gugong').bookingTips, 'sentinel',

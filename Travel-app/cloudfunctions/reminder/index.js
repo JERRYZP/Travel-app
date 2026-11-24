@@ -863,17 +863,18 @@ async function seed(event = {}) {
     const actual = stripDocId(current);
     backup.spots.push(current);
     const diff = seedDiff(s, actual);
-    if (actual && !diff.extraKeys.length && !diff.changedKeys.length) {
+    const changed = !actual || diff.extraKeys.length > 0 || diff.changedKeys.length > 0;
+    if (!changed) {
       report.spots.unchanged += 1;
     } else {
       differences.push({ collection: COLLECTIONS.SPOTS, spotId: s.spotId, ...diff });
-    }
-    if (!dryRun && actual) {
-      await db.collection(COLLECTIONS.SPOTS).doc(current._id).update({ data: s });
-      report.spots.updated += 1;
-    } else if (!dryRun) {
-      await db.collection(COLLECTIONS.SPOTS).add({ data: s });
-      report.spots.inserted += 1;
+      if (!dryRun && actual) {
+        await db.collection(COLLECTIONS.SPOTS).doc(current._id).update({ data: s });
+        report.spots.updated += 1;
+      } else if (!dryRun) {
+        await db.collection(COLLECTIONS.SPOTS).add({ data: s });
+        report.spots.inserted += 1;
+      }
     }
   }
 
@@ -883,17 +884,18 @@ async function seed(event = {}) {
     const actual = stripDocId(current);
     backup.rules.push(current);
     const diff = seedDiff(r, actual);
-    if (actual && !diff.extraKeys.length && !diff.changedKeys.length) {
+    const changed = !actual || diff.extraKeys.length > 0 || diff.changedKeys.length > 0;
+    if (!changed) {
       report.rules.unchanged += 1;
     } else {
       differences.push({ collection: COLLECTIONS.RELEASE_RULES, spotId: r.spotId, ...diff });
-    }
-    if (!dryRun && actual) {
-      await db.collection(COLLECTIONS.RELEASE_RULES).doc(current._id).update({ data: r });
-      report.rules.updated += 1;
-    } else if (!dryRun) {
-      await db.collection(COLLECTIONS.RELEASE_RULES).add({ data: r });
-      report.rules.inserted += 1;
+      if (!dryRun && actual) {
+        await db.collection(COLLECTIONS.RELEASE_RULES).doc(current._id).update({ data: r });
+        report.rules.updated += 1;
+      } else if (!dryRun) {
+        await db.collection(COLLECTIONS.RELEASE_RULES).add({ data: r });
+        report.rules.inserted += 1;
+      }
     }
   }
 
