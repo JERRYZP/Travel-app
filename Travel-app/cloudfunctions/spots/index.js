@@ -139,9 +139,13 @@ function releaseSlotsOf(rule) {
   }));
 }
 
+function reminderSlotsOf(rule) {
+  return releaseSlotsOf(rule).filter(slot => slot.statusOnly !== true);
+}
+
 function advanceDaysLabelOf(rule) {
   const days = [];
-  releaseSlotsOf(rule).forEach(slot => {
+  reminderSlotsOf(rule).forEach(slot => {
     days.push(Number(slot.advanceDays));
     if (slot.weekendAdvanceDays !== undefined && slot.weekendAdvanceDays !== null) {
       days.push(Number(slot.weekendAdvanceDays));
@@ -168,9 +172,10 @@ function isHighDemandDate(rule, dateStr) {
 }
 
 /**
- * 最早可约日期 = 今天 + advanceDays，该日不可约则**向前回退**到最近的可约日（isOpenOn 判定）
+ * “可预约至”日期：从各时段的提前天数窗口倒序查找，返回当前窗口内最晚的
+ * 可约出行日。statusOnly 时段也参与计算，因此清华抽签窗口会扩大可预约范围。
  *
- * 只回退、不顺延：这天的票本来就在 advanceDays 窗口内，往后顺延会指到一个还没开始放票的日期。
+ * 只回退、不顺延：目标日本身在窗口内，往后顺延会指到一个还没开始放票的日期。
  * 例：纪念堂提前 6 天、周一闭馆，11-03 算出的 11-09 是周一，真实可约是 11-08，不是 11-10。
  * 回退下限是今天（窗口最早一天）；回退满 N 天仍无开放日说明规则异常，返回 null。
  */
@@ -239,7 +244,7 @@ function buildTags(rule) {
 function buildCard(spot, rule, now) {
   const status = computeReleaseStatus(rule, now);
   // 可提醒 = 需预约 且有真实放票时刻（无放票时刻如环球影城购票型 → 只进行程、不建任务）
-  const remindable = spot.reservationRequired !== false && releaseSlotsOf(rule).length > 0;
+  const remindable = spot.reservationRequired !== false && reminderSlotsOf(rule).length > 0;
   const weak = spot.reservationRequired !== false
     && spot.strongReminder !== true
     && (spot.difficultyScore || 0) <= 2;

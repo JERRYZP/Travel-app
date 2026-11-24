@@ -60,7 +60,12 @@ function candidateOf(spot, rule, visitDate, nowTs, supportsMultiRelease = false)
   if (!spot || spot.reservationRequired === false) return { ok: false };
 
   // 无放票规则（如环球影城）：不可行动，不返回
-  const slots = releaseSchedule.slotsForRequest(spot, rule, visitDate, supportsMultiRelease === true);
+  const slots = releaseSchedule.reminderSlotsForRequest(
+    spot,
+    rule,
+    visitDate,
+    supportsMultiRelease === true
+  );
   const releaseAt = slots.length ? slots[0].releaseAt : null;
   if (!releaseAt) return { ok: false };
 

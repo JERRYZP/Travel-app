@@ -30,7 +30,12 @@ function normalizeVisitDates(values) {
 function planOne({ spot, rule, visitDate, nowTs, cartDates, tripDates, supportsMultiRelease }) {
   const existingCart = !!(cartDates && cartDates.has(visitDate));
   const existingTrip = !!(tripDates && tripDates.has(visitDate));
-  const releaseSlots = releaseSchedule.slotsForRequest(spot, rule, visitDate, supportsMultiRelease);
+  const releaseSlots = releaseSchedule.reminderSlotsForRequest(
+    spot,
+    rule,
+    visitDate,
+    supportsMultiRelease
+  );
   const taskSlots = releaseSchedule.taskSlotsForRequest(
     spot,
     rule,

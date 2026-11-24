@@ -10,6 +10,7 @@ const spotsStatic = require('../miniprogram/utils/spots-static.js');
 const builder = require('../scripts/build-spots-snapshot.js');
 
 const FIXED_NOW = new Date('2026-11-02T12:00:00+08:00');
+const TSINGHUA_NOW = new Date('2026-11-24T14:20:00+08:00');
 
 function run() {
   assert.strictEqual(snapshot.schemaVersion, 'spots-snapshot/v1');
@@ -34,6 +35,15 @@ function run() {
   assert.strictEqual(actual.earliestDate, expected.earliestDate);
   assert.strictEqual(actual.closedDaysLabel, expected.closedDaysLabel);
   assert.ok(actual.entries.length > 0);
+
+  const tsinghuaCard = snapshot.cards.find(card => card.spotId === 'tsinghua');
+  const tsinghua = spotsStatic._internal.hydrateDetail(tsinghuaCard, TSINGHUA_NOW);
+  assert.strictEqual(tsinghua.remindable, true, '清华仍有即时预约提醒');
+  assert.strictEqual(tsinghua.earliestDate, '2026-11-29', '可预约至包含抽签窗口');
+  assert.deepStrictEqual(tsinghua.releaseTime, ['08:00'], '提醒文案仍只展示即时预约');
+  assert.deepStrictEqual(tsinghua.tags, ['提前1-7天放票', '每日08:00放票'], '卡片标签不展示抽签');
+  assert.strictEqual(tsinghua.releaseSlots.find(slot => slot.key === 'tsinghua-lottery').statusOnly, true,
+    '抽签在数据中标记为 statusOnly');
 
   return spotsStatic.search('故宫', FIXED_NOW).then(result => {
     assert.strictEqual(result.success, true);

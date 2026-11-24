@@ -4,7 +4,7 @@
  * 只做页面可解释的规则推算，不判断官方真实库存：
  * - 今天是否开放 / 放票
  * - 今日多放票时刻中下一场和已放票状态
- * - 场景卡需要的“按规则推算最早可约日”文案
+ * - 场景卡需要的“按规则推算可预约至”文案
  */
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -99,7 +99,7 @@ function buildSceneSpot(spot, now) {
     ? `提前${spot.advanceDays}天 · ${times.join('、') || '待更新'}放票`
     : (spot.cardDesc || '预约规则以详情为准');
   const earliestText = spot.earliestDate
-    ? `按规则推算，最早可约 ${formatMonthDay(spot.earliestDate)}`
+    ? `按规则推算，可预约至 ${formatMonthDay(spot.earliestDate)}`
     : '暂无固定可约窗口';
   return Object.assign({}, spot, {
     _sceneReleaseText: releaseText,

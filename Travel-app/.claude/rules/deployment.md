@@ -64,6 +64,7 @@ paths:
 
 - 先数据与索引，再业务云函数。
 - 同时影响 `reminder` 与 `notifier` 的改动必须分别确认。
+- 带 `statusOnly` 的规则变更必须先把支持过滤的新 `reminder` 部署到全量，再更新数据库 `release_rules` 或执行 `admin.seed`；旧函数不识别 `statusOnly`，先写数据会把抽签误建成第二条提醒任务。随后再部署 `spots`、上传静态快照并发布客户端。
 - 会员 / 提醒名额上线需部署 `payment`。缺省通道仍是微信支付 API v3，环境变量见 `docs/engineering/payment-v3-runbook.md`；只有设置 `PAYMENT_PROVIDER=VIRTUAL_PAY` 才开放小程序虚拟支付。灰度联调必须同时设置 `PAYMENT_VIRTUAL_PAY_TEST_OPENIDS`，此时非白名单用户继续 API v3；删除该白名单才表示支付全量。两档候选另需 `WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_QUOTA_10`、`WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_TWO_TIER_UNLIMITED`、`WECHAT_VIRTUAL_PAY_PRODUCT_MEMBER_UNLIMITED_UPGRADE`。变量、道具、消息推送和 iOS 限制见 `docs/engineering/payment-virtual-runbook.md`。旧 API v3 代码、配置说明和 Runbook 必须保留，不得在虚拟支付接入时删除。
 - `payment` 的公网回调必须走 CloudBase HTTP 网关：`/payment/notify` 与 `/payment/refund-notify` 分别指向云函数 `payment`，关闭身份认证、跨域和路径透传，并保留原始 body；默认域名只能用于测试，正式回调使用备案自定义域名。
 - 虚拟支付推荐使用云开发「设置 → 其他设置 → 消息推送 → 云函数」，分别把 `xpay_goods_deliver_notify`、`xpay_refund_notify`、`xpay_subscribe_ios_refund_query_notify` 推送到 `payment`。不要只配置 `/payment/virtual-notify` HTTP 兼容路由。

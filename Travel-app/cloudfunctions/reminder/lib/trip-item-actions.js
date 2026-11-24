@@ -279,7 +279,7 @@ async function updateReminder(db, userId, {
   const nowTs = time.now();
   const ctx = await contextOf(db, userId, it);
   const reservationRequired = !ctx.spot || ctx.spot.reservationRequired !== false;
-  const releaseSlots = releaseSchedule.slotsForRequest(
+  const releaseSlots = releaseSchedule.reminderSlotsForRequest(
     ctx.spot,
     ctx.rule,
     it.visitDate,

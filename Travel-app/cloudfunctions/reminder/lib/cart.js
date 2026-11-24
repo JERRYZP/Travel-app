@@ -348,7 +348,7 @@ async function add(db, userId, {
        以前这里直接 `!releaseAt → BAD_PARAM`，用户点「确定」只会看到
        「请检查输入」——挽回线点得开、走不通。别把这道校验改回去：
        用户要的是「换一天再抢」，页面不该为了凑一个参数去重算放票时刻。 */
-    const releaseSlots = releaseSchedule.slotsForRequest(
+    const releaseSlots = releaseSchedule.reminderSlotsForRequest(
       spot,
       rule,
       visitDate,
@@ -495,7 +495,7 @@ async function addBatch(db, userId, tripId, events, scope, scopeKey, options = {
     let releaseTaskCount = 0;
     let remindOn = false;
     if (reservationRequired) {
-      const releaseSlots = releaseSchedule.slotsForRequest(
+      const releaseSlots = releaseSchedule.reminderSlotsForRequest(
         spot,
         rule,
         event.visitDate,
@@ -578,7 +578,7 @@ async function updateRemindOn(db, userId, cartId, remindOn, options = {}) {
   const spot = spotMap[row.spotId];
   const rule = ruleMap[row.spotId] || null;
   const nowTs = time.now();
-  const allSlots = releaseSchedule.slotsForRequest(
+  const allSlots = releaseSchedule.reminderSlotsForRequest(
     spot,
     rule,
     row.visitDate,
@@ -742,7 +742,7 @@ async function list(db, userId, tripId = null, {
     const spot = spotMap[i.spotId];
     const rule = ruleMap[i.spotId] || null;
     const reservationRequired = i.reservationRequired !== false && (!spot || spot.reservationRequired !== false);
-    const releaseSlots = releaseSchedule.slotsForRequest(
+    const releaseSlots = releaseSchedule.reminderSlotsForRequest(
       spot,
       rule,
       i.visitDate,

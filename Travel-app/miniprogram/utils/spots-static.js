@@ -82,6 +82,10 @@ function releaseSlotsOf(card) {
   })).filter(slot => Number.isFinite(slot.advanceDays));
 }
 
+function reminderSlotsOf(card) {
+  return releaseSlotsOf(card).filter(slot => slot.statusOnly !== true);
+}
+
 function isHoliday(card, dateStr) {
   return (card && Array.isArray(card.holidayRanges) ? card.holidayRanges : [])
     .some(range => Array.isArray(range)
@@ -95,7 +99,7 @@ function isHighDemandDate(card, dateStr) {
   return dayName === 'saturday' || dayName === 'sunday' || isHoliday(card, dateStr);
 }
 
-/** 与云端 computeEarliestDate 同口径：不可约时向前回退，不顺延。 */
+/** 与云端 computeEarliestDate 同口径：返回当前预约窗口内的最晚可约日。 */
 function earliestDateOf(card, now) {
   const slots = releaseSlotsOf(card);
   if (!slots.length) return null;
@@ -124,7 +128,7 @@ function earliestDateOf(card, now) {
 
 function advanceLabelOf(card) {
   const days = [];
-  releaseSlotsOf(card).forEach(slot => {
+  reminderSlotsOf(card).forEach(slot => {
     days.push(Number(slot.advanceDays));
     if (slot.weekendAdvanceDays !== undefined && slot.weekendAdvanceDays !== null) {
       days.push(Number(slot.weekendAdvanceDays));
