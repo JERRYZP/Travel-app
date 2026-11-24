@@ -1,3 +1,11 @@
+/* 首页根节点锁定横向拖动。仅锁在 page 根层，不能加到 .page-body：
+   overflow:hidden 的祖先会让日期分段标题的 position:sticky 退化。 */
+page {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 /* ===== 自定义导航栏 ===== */
 .navbar {
   position: fixed;
@@ -23,14 +31,48 @@
   display: flex;
   align-items: center;
   position: relative;
+  padding-left: 30rpx;
+  box-sizing: border-box;
 }
-.navbar-title {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 30rpx;
-  font-weight: 600;
-  color: var(--color-ink);
+/* 2026-11-24：首页导航从居中页面名改为品牌露出「准点游 | 行程·提醒」。
+   横版标识由官方 SVG 按上屏尺寸栅格化，避免 69KB 源文件挤占主包资源额度。 */
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  min-width: 0;
+}
+.navbar-brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  flex: none;
+}
+/* 图形标识与中文字标作为整套组合再缩至 90%。 */
+.navbar-brand-mark {
+  display: block;
+  flex: none;
+  width: 52rpx;
+  height: 57rpx;
+}
+.navbar-brand-wordmark {
+  display: block;
+  flex: none;
+  width: 85rpx;
+  height: 26rpx;
+}
+.navbar-brand-divider {
+  width: 1rpx;
+  height: 28rpx;
+  flex: none;
+  background: #DCC9B1;
+}
+.navbar-page-title {
+  flex: none;
+  color: var(--color-text);
+  font-size: 26rpx;
+  font-weight: 400;
+  line-height: 1.3;
   white-space: nowrap;
 }
 /* 2026-09-20：导航栏双 Tab（提醒任务 / 添加提醒）已随首页行程化移除。
@@ -49,9 +91,15 @@
   padding-bottom: calc(240rpx + env(safe-area-inset-bottom));
   padding-left: 30rpx;
   position: relative;
+  width: 100%;
+  max-width: 100%;
   background: var(--color-page);
   min-height: 100vh;
   box-sizing: border-box;
+  /* 首页正文没有横向滚动手势；只把 pan-y 交给 WebView。
+     这比单纯裁切更靠前：横向拖动不会进入页面滚动状态。 */
+  touch-action: pan-y;
+  overscroll-behavior-x: none;
 }
 
 /* 会员功能更新横幅：复用个人页公告的暖色卡片样式，不打断首页操作。 */
@@ -141,6 +189,63 @@
 .sticky-banner--after-warning { margin-top: 0; }
 .sticky-banner .rb { margin-bottom: 0; }
 
+/* ===== 页面底部品牌收束 =====
+   仅随内容流出现，不固定、不遮挡行程卡与悬浮新增入口。 */
+.home-brand-footer {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  margin-top: 40rpx;
+  padding: 8rpx 0;
+}
+.home-brand-center {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 18rpx;
+}
+.home-brand-rule {
+  flex: 1;
+  height: 1rpx;
+}
+.home-brand-rule--left {
+  background: linear-gradient(90deg, rgba(226,212,192,0) 0%, #E2D4C0 50%, #E2D4C0 100%);
+}
+.home-brand-rule--right {
+  background: linear-gradient(90deg, #E2D4C0 0%, #E2D4C0 50%, rgba(226,212,192,0) 100%);
+}
+.home-brand-logo-lockup {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  flex: none;
+}
+.home-brand-mark {
+  display: block;
+  flex: none;
+  width: 46rpx;
+  height: 50rpx;
+}
+.home-brand-wordmark {
+  display: block;
+  flex: none;
+  width: 77rpx;
+  height: 24rpx;
+}
+.home-brand-divider {
+  width: 1rpx;
+  height: 27rpx;
+  flex: none;
+  background: #E0D9CC;
+}
+.home-brand-slogan {
+  margin-top: 0;
+  color: #CABFA9;
+  font-size: 23rpx;
+  letter-spacing: 4rpx;
+  line-height: 1.3;
+  white-space: nowrap;
+}
 .dev-preview-notice {
   display: flex; align-items: center; justify-content: space-between; gap: 16rpx;
   margin-top: 32rpx; margin-bottom: 0; padding: 18rpx 22rpx;
@@ -528,7 +633,8 @@
 .trip-share-cover-canvas {
   position: fixed;
   top: 0;
-  left: -2000px;
+  left: 0;
+  z-index: -1;
   width: 350px;
   height: 280px;
   pointer-events: none;

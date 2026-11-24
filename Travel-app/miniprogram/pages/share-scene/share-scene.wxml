@@ -13,7 +13,10 @@
 
 <view wx:if="{{scene}}" class="page-body">
   <view class="scene-hero">
-    <text class="scene-title">{{scene.title}}</text>
+    <view class="scene-title-row">
+      <text class="scene-title">{{scene.title}}</text>
+      <text class="scene-title-en">TICKET RELEASE</text>
+    </view>
     <text class="scene-subtitle">{{scene.subtitle}}</text>
   </view>
 

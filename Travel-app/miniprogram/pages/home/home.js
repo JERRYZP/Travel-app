@@ -266,6 +266,7 @@ Page({
     const spotId = options && options.spotId;
     if (spotId) this.openSpotPopup(decodeURIComponent(spotId));
 
+
   },
 
   onShow() {

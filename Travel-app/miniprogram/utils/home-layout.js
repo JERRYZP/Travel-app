@@ -3,7 +3,7 @@
  *
  * 用户已确认的视觉结果：
  * - 正文第一块以微信胶囊实际 bottom 为基准，不再被固定导航块透明区撑高；
- * - 胶囊下方保留 8rpx 呼吸位，再精确追加 2 CSS 像素；
+ * - 胶囊下方保留 8rpx 呼吸位，再精确追加 6 CSS 像素（2026-11-24 用户授权在 2px 基础上增加 4px）；
  * - 无横幅卡片、额度提示或放票横幅共享同一个起点。
  *
  * 修改这里必须同步运行 test/home-top-layout.test.js。
@@ -11,7 +11,7 @@
 
 const NAV_BAR_RPX = 88;
 const PAGE_GAP_RPX = 8;
-const EXTRA_TOP_PX = 2;
+const EXTRA_TOP_PX = 6;
 
 function pageTopOf(statusBarHeight, menuButton, windowWidth) {
   const width = Number(windowWidth) || 375;

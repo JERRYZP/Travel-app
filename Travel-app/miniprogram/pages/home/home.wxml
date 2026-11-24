@@ -1,3 +1,4 @@
+<page-meta page-style="overflow-x: hidden;"></page-meta>
 <wxs module="asset" src="../../utils/cloud-assets.wxs"></wxs>
 <wxs module="u" src="../../utils/format.wxs"></wxs>
 <!-- 自定义导航栏：单形态，不再有双 Tab。
@@ -11,7 +12,14 @@
 <view class="navbar" style="background-color: rgba(248, 243, 234, {{navOpacity}});">
   <view class="navbar-status" style="height: {{statusBarHeight}}px;"></view>
   <view class="navbar-content">
-    <text class="navbar-title">行程·提醒</text>
+    <view class="navbar-brand">
+      <view class="navbar-brand-lockup" aria-label="准点游">
+        <image class="navbar-brand-mark" src="/images/brand/zd-mark.png" mode="aspectFit" />
+        <image class="navbar-brand-wordmark" src="/images/brand/zd-wordmark.png" mode="aspectFit" />
+      </view>
+      <view class="navbar-brand-divider"></view>
+      <text class="navbar-page-title">行程·提醒</text>
+    </view>
   </view>
 </view>
 
@@ -291,6 +299,20 @@
       <van-loading size="40rpx" color="#B8904A" />
     </view>
   </block>
+
+  <!-- 页面收束品牌：只在内容流末尾出现，不做固定广告位；品牌信息不参与业务状态。 -->
+  <view class="home-brand-footer" aria-label="准点游，准点约票，从容出游">
+    <view class="home-brand-rule home-brand-rule--left"></view>
+    <view class="home-brand-center">
+      <view class="home-brand-logo-lockup" aria-label="准点游">
+        <image class="home-brand-mark" src="/images/brand/zd-mark-muted.png" mode="aspectFit" />
+        <image class="home-brand-wordmark" src="/images/brand/zd-wordmark-muted.png" mode="aspectFit" />
+      </view>
+      <view class="home-brand-divider"></view>
+      <text class="home-brand-slogan">准点约票 · 从容出游</text>
+    </view>
+    <view class="home-brand-rule home-brand-rule--right"></view>
+  </view>
 
   <view wx:if="{{previewNewUser}}" class="dev-preview-notice">
     <text>开发预览：当前只是新用户空态，云端数据没有删除</text>
