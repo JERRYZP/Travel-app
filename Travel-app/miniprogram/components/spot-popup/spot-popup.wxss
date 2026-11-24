@@ -184,7 +184,7 @@
   margin-bottom: 16rpx;
 }
 
-/* 今日最早可约：规则推算结果，放在预约方式前作为预约窗口提示。 */
+/* 可预约至：规则推算的窗口截止日，放在预约方式前作为预约提示。 */
 .popup-bookable-window {
   display: flex;
   align-items: center;

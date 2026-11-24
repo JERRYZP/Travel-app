@@ -638,7 +638,7 @@ async function commitCartItems(db, userId, event, cartItems, options = {}) {
   const plans = cartItems.map(cartItem => {
     const spot = spotMap[cartItem.spotId];
     const rule = ruleMap[cartItem.spotId] || null;
-    let releaseSlots = releaseSchedule.slotsForRequest(
+    let releaseSlots = releaseSchedule.reminderSlotsForRequest(
       spot,
       rule,
       cartItem.visitDate,

@@ -98,10 +98,11 @@ eq(computeReleaseStatus(rm.gugong, bj(2026, 9, 15, 21, 0)), 'BOOKABLE', '故宫 
 eq(computeReleaseStatus(rm['renmin-dahuitang'], bj(2026, 9, 14, 18, 0)), 'NOT_RELEASED', '大会堂 周一 → 闭馆不放票');
 eq(computeReleaseStatus(rm['renmin-dahuitang'], bj(2026, 9, 15, 18, 0)), 'BOOKABLE', '大会堂 周二 → 已放票');
 
-console.log('\n--- computeEarliestDate：不可约时向前回退（不顺延） ---');
+console.log('\n--- computeEarliestDate：可预约至（窗口截止日） ---');
 eq(computeEarliestDate(rm['peking-university'], bj(2026, 9, 11, 10, 0)), '2026-09-13', '北大：周五+7=周五(白名单外)→回退至周日 09-13');
-eq(computeEarliestDate(rm.tsinghua, bj(2026, 9, 11, 10, 0)), '2026-09-13', '清华：只保留即时预约后，周五最早可看到周末提前 7 天的 09-13');
-eq(computeEarliestDate(rm.tsinghua, bj(2026, 9, 23, 10, 0)), '2026-09-27', '清华：只保留即时预约后，09-23 最早可看到 09-27');
+eq(computeEarliestDate(rm.tsinghua, bj(2026, 9, 11, 10, 0)), '2026-09-19', '清华：抽签窗口使周五可预约至周末提前 8 天的 09-19');
+eq(computeEarliestDate(rm.tsinghua, bj(2026, 9, 23, 10, 0)), '2026-10-01', '清华：国庆按周末规则，09-23 可预约至 10-01');
+eq(computeEarliestDate(rm.tsinghua, bj(2026, 11, 24, 14, 20)), '2026-11-29', '清华：11-24 可预约至 11-29；11-25 已在窗口内，不能误读成唯一日期');
 eq(computeEarliestDate(rm.gugong, bj(2026, 9, 12, 10, 0)), '2026-09-19', '故宫：周六+7=周六可约');
 eq(computeEarliestDate(rm.gugong, bj(2026, 9, 13, 10, 0)), '2026-09-20', '故宫：周日+7=周日可约');
 // 回归：2026-11-03 周二，纪念堂提前 6 天 → 11-09 周一闭馆，真实可约是 11-08（线上曾显示 11-10）

@@ -2,6 +2,7 @@
 
 > 面向：前端（微信小程序页面开发）
 > 2026-11-20 更新：只读 Web 管理后台 `admin-web` 已移除，`cloudfunctions/admin` 不再提供 `admin.login`、查询和敏感字段接口；函数仅接受受保护的内部分钟/每日维护任务。客户端不应调用 `admin`。
+> 2026-11-24 更新：`releaseSlots[]` 新增可选 `statusOnly`。该时段参与票务状态与 `earliestDate`（页面文案“可预约至”）窗口计算，但不创建提醒任务、不占授权或会员名额。`earliestDate` 字段名兼容保留，语义固定为当前规则窗口内最晚可约日。
 > 2026-11-20 更新：`two-tier-v5` 已是当前会员契约，`membership_pricing.mode=all` 与 `membership_enforcement.mode=all` 只作用于声明该能力的客户端；旧客户端继续 `unlimited-v3` / `legacy-v2`。客服工作台不再展示首页悬浮时钟控制卡，但 `adminSetHomeClockPromo` 保留用于内部维护，默认投放 6 天。
 > 2026-11-19 更新：新增独立 `account` 云函数与 PAGE-012-1 自助注销。`account.preflight` 只读预检，`account.erase` 在服务端二次预检后删除个人业务数据，并将订单/售后/安全审计保留字段与 OpenID 解绑；延迟支付不得把权益发给新账户。
 > 2026-11-19 更新：`home.bootstrap` 的 `trips[]` 与 `history[]` 新增只读展示字段 `displayStartDate` / `displayEndDate`，取该行程全部 `trip_items.visitDate` 的最早/最晚日期（包含已过期日程）。原 `startDate` / `endDate` 语义不变，继续服务分享和行程业务判定；新增提醒日期预填改与首页摘要卡共用展示首尾，字段缺失时回退原日期。历史摘要仍不下发 `items`。
@@ -163,12 +164,13 @@ DifficultyLabel: { key: 'EXTREME', text: '极难约' }
       label: "第1场",
       releaseTime: "08:00",
       advanceDays: 7,
-      weekendAdvanceDays: null          // 可选；周末及法定节假日覆盖 advanceDays
+      weekendAdvanceDays: null,         // 可选；周末及法定节假日覆盖 advanceDays
+      statusOnly: false                 // 可选；true = 只参与状态/可预约窗口，不创建提醒任务
     }],
     holidayRanges: [["2026-10-01", "2026-10-07"]], // 已确认/官方公布的法定节假日范围
     closedDays: ["monday"],
     releaseStatus: "NOT_RELEASED" | "BOOKABLE" | "FULL",
-    earliestDate: "2026-08-12",       // 最早可约日期 = 今天 + advanceDays；该日闭馆则向前回退到最近可约日，不向后顺延
+    earliestDate: "2026-08-12",       // 可预约至：当前规则窗口内最晚可约日；字段名兼容保留，页面文案为“可预约至”
     officialAppid: "wx...",            // 可直跳小程序
     officialPath: "pages/...",
     officialWebUrl: "https://...",

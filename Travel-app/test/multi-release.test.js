@@ -2,7 +2,7 @@
  * 放票时段收敛回归：当前清华、军博每个出行日只创建一条 reminder_task。
  *
  * 覆盖：
- * - 清华只保留即时预约，按工作日/周末/法定节假日分别计算提前天数；
+ * - 清华抽签 statusOnly 只参与状态和窗口，不创建提醒；即时预约仍按工作日/周末/法定节假日计算；
  * - 军博只保留最早的 08:00 放票，不因官方另外两个场次重复占用提醒额度；
  * - 清单/提交按任务数，而非日期数，计算授权与名额需求；
  * - tripItem.updateReminder 重建完整时段集合。
@@ -61,15 +61,24 @@ function slotLabels(slots) {
 }
 
 (async () => {
-  console.log('=== 1. 清华即时预约：工作日/周末/法定节假日提前天数 ===');
+  console.log('=== 1. 清华状态时段与提醒时段分离 ===');
   eq(
     slotLabels(releaseSchedule.slotsForVisitDate(
       spotMap.tsinghua,
       ruleMap.tsinghua,
       '2026-11-11'
     )),
+    '2026-11-09 17:00,2026-11-10 08:00',
+    '工作日状态：抽签提前 2 天 17:00，即时提前 1 天 08:00'
+  );
+  eq(
+    slotLabels(releaseSchedule.reminderSlotsForVisitDate(
+      spotMap.tsinghua,
+      ruleMap.tsinghua,
+      '2026-11-11'
+    )),
     '2026-11-10 08:00',
-    '工作日：只保留即时预约，提前 1 天 08:00'
+    '工作日提醒：只保留即时预约，提前 1 天 08:00'
   );
   eq(
     slotLabels(releaseSchedule.slotsForVisitDate(
@@ -77,8 +86,17 @@ function slotLabels(slots) {
       ruleMap.tsinghua,
       '2026-11-14'
     )),
+    '2026-11-06 17:00,2026-11-07 08:00',
+    '周末状态：抽签提前 8 天 17:00，即时提前 7 天 08:00'
+  );
+  eq(
+    slotLabels(releaseSchedule.reminderSlotsForVisitDate(
+      spotMap.tsinghua,
+      ruleMap.tsinghua,
+      '2026-11-14'
+    )),
     '2026-11-07 08:00',
-    '周末：只保留即时预约，提前 7 天 08:00'
+    '周末提醒：只保留即时预约，提前 7 天 08:00'
   );
   eq(
     slotLabels(releaseSchedule.slotsForVisitDate(
@@ -86,8 +104,17 @@ function slotLabels(slots) {
       ruleMap.tsinghua,
       '2026-10-01'
     )),
+    '2026-09-23 17:00,2026-09-24 08:00',
+    '法定节假日状态：抽签提前 8 天，即时提前 7 天'
+  );
+  eq(
+    slotLabels(releaseSchedule.reminderSlotsForVisitDate(
+      spotMap.tsinghua,
+      ruleMap.tsinghua,
+      '2026-10-01'
+    )),
     '2026-09-24 08:00',
-    '法定节假日（国庆周四）：只保留即时预约，提前 7 天 08:00'
+    '法定节假日提醒：只保留即时预约'
   );
   eq(
     releaseSchedule.isHoliday(ruleMap.tsinghua, '2026-10-07'),
@@ -110,6 +137,54 @@ function slotLabels(slots) {
     '2026-11-08 08:00',
     '军博只计算最早 08:00 这一场'
   );
+
+  console.log('\n=== 2.1 清华抽签开放后状态可抢，但提醒仍只有即时预约 ===');
+  {
+    const item = {
+      _id: 'tsinghua_state_item',
+      tripId: 'trip_tsinghua_state',
+      spotId: 'tsinghua',
+      visitDate: '2026-11-26',
+      result: null,
+      resultAt: null,
+      remindOn: true,
+    };
+    const before = itemDomain.decorateItem({
+      item,
+      spot: spotMap.tsinghua,
+      rule: ruleMap.tsinghua,
+      tasks: [],
+      nowTs: new Date('2026-11-24T16:59:00+08:00'),
+      supportsMultiRelease: true,
+    });
+    eq(before.ticketState, 'PENDING', '抽签开放前仍是待抢票');
+    eq(before.canMark, false, '抽签开放前不显示结果标记');
+    eq(slotLabels(before.releaseSlots), '2026-11-25 08:00', '首页提醒时段仍只有即时预约');
+    eq(before.reminderTaskCount, 1, '状态时段不增加提醒任务数');
+
+    const after = itemDomain.decorateItem({
+      item,
+      spot: spotMap.tsinghua,
+      rule: ruleMap.tsinghua,
+      tasks: [],
+      nowTs: new Date('2026-11-24T17:01:00+08:00'),
+      supportsMultiRelease: true,
+    });
+    eq(after.ticketState, 'BOOKABLE', '抽签开放后立即变为可抢票');
+    eq(after.canMark, true, '抽签开放后允许标记抢到了');
+    eq(slotLabels(after.releaseSlots), '2026-11-25 08:00', '状态变化不把抽签塞进提醒时段');
+    eq(after.reminderTaskCount, 1, '抽签状态不占提醒名额');
+
+    const success = itemDomain.decorateItem({
+      item: { ...item, result: 'SUCCESS', resultAt: new Date('2026-11-24T22:01:00+08:00') },
+      spot: spotMap.tsinghua,
+      rule: ruleMap.tsinghua,
+      tasks: [],
+      nowTs: new Date('2026-11-24T16:59:00+08:00'),
+      supportsMultiRelease: true,
+    });
+    eq(success.ticketState, 'SUCCESS', '人工已约到永远优先于时间态');
+  }
 
   console.log('\n=== 3. 提交军博一天：1 个行程项 + 1 条任务 ===');
   {
@@ -297,6 +372,29 @@ function slotLabels(slots) {
       '2026-09-24 08:00',
       'mock 法定节假日只保留即时预约提前 7 天'
     );
+    const mockItem = {
+      _id: 'mock_tsinghua_state_item',
+      tripId: 'mock_trip_tsinghua_state',
+      spotId: 'tsinghua',
+      visitDate: '2026-11-26',
+      result: null,
+      resultAt: null,
+      remindOn: true,
+    };
+    const mockBefore = mock.__internals.decorateItem(
+      mockItem,
+      new Date('2026-11-24T16:59:00+08:00'),
+      true
+    );
+    const mockAfter = mock.__internals.decorateItem(
+      mockItem,
+      new Date('2026-11-24T17:01:00+08:00'),
+      true
+    );
+    eq(mockBefore.ticketState, 'PENDING', 'mock 抽签开放前待抢票');
+    eq(mockAfter.ticketState, 'BOOKABLE', 'mock 抽签开放后可抢票');
+    eq(slotLabels(mockAfter.releaseSlots), '2026-11-25 08:00', 'mock 状态变化不增加提醒时段');
+    eq(mockAfter.reminderTaskCount, 1, 'mock 抽签不占提醒名额');
     const visitDate = nextDateWhere(
       date => ['saturday', 'sunday'].includes(time.dayNameOf(date)),
       12

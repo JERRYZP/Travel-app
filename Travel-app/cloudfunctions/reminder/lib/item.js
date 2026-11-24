@@ -267,16 +267,25 @@ function decorateItem({
 }) {
   const reservationRequired = !spot || spot.reservationRequired !== false;
   const allTasks = Array.isArray(tasks) ? tasks : (task ? [task] : []);
-  const releaseSlots = releaseSchedule.slotsForRequest(
+  const statusSlots = releaseSchedule.slotsForRequest(
+    spot,
+    rule,
+    item.visitDate,
+    true
+  );
+  const releaseSlots = releaseSchedule.reminderSlotsForRequest(
     spot,
     rule,
     item.visitDate,
     supportsMultiRelease === true
   );
-  const firstReleaseAt = releaseSlots.length ? releaseSlots[0].releaseAt : null;
+  /* 官方预约状态看全部时段（含 statusOnly 抽签），提醒展示只看可提醒时段。
+     两套数据仍来自同一份 releaseSlots，不另造业务真身。 */
+  const firstReleaseAt = statusSlots.length ? statusSlots[0].releaseAt : null;
   const nextSlot = releaseSlots
     .find(slot => slot.releaseAt.getTime() > nowTs.getTime()) || null;
-  const releaseAt = nextSlot ? nextSlot.releaseAt : firstReleaseAt;
+  const firstReminderReleaseAt = releaseSlots.length ? releaseSlots[0].releaseAt : null;
+  const releaseAt = nextSlot ? nextSlot.releaseAt : firstReminderReleaseAt;
   const ticketState = ticketStateOf({ item, reservationRequired, releaseAt: firstReleaseAt, nowTs });
 
   return {

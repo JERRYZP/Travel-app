@@ -105,7 +105,7 @@ function buildEvents(spot, rule, seg, options = {}) {
     // 判定统一走 time.isOpenOn —— openDays 白名单优先，用于北大/清华「仅周末可约」
     if (!time.isOpenOn(rule, time.dayNameOf(visitDate))) continue;
 
-    const releaseSlots = releaseSchedule.slotsForRequest(
+    const releaseSlots = releaseSchedule.reminderSlotsForRequest(
       spot,
       rule,
       visitDate,

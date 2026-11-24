@@ -336,7 +336,7 @@ async function main(event) {
 
       /* ======== 运维 ======== */
       case 'admin.seed':
-        return await seed();
+        return await seed(event);
       case 'admin.runtimeBackfill':
         return await backfillRuntime(event);
       case 'admin.cleanup': {
@@ -807,37 +807,108 @@ async function getSubscribe(userId, templateId) {
 /**
  * admin.seed —— 幂等导入初始数据
  * 读随函数打包的 data/*.json，按 spotId upsert 到 spots / release_rules。
- * 重跑不产生重复，可安全用于数据修正后的重新导入。
+ * 支持 dryRun=true 返回线上备份与逐字段差异，spotIds 可把读写范围收窄到目标景点；
+ * 日常发布必须先 dryRun 核对，避免全量 seed 覆盖无关漂移。
  */
-async function seed() {
+function stripDocId(doc) {
+  if (!doc) return null;
+  const copy = { ...doc };
+  delete copy._id;
+  return copy;
+}
+
+function canonicalValue(value) {
+  if (Array.isArray(value)) return value.map(canonicalValue);
+  if (value && typeof value === 'object' && !(value instanceof Date)) {
+    return Object.keys(value).sort().reduce((out, key) => {
+      out[key] = canonicalValue(value[key]);
+      return out;
+    }, {});
+  }
+  if (value instanceof Date) return value.toISOString();
+  return value;
+}
+
+function seedDiff(expected, actual) {
+  if (!actual) return { missing: true, extraKeys: [], changedKeys: [] };
+  const expectedKeys = Object.keys(expected).sort();
+  const actualKeys = Object.keys(actual).sort();
+  return {
+    missing: false,
+    extraKeys: actualKeys.filter(key => !expectedKeys.includes(key)),
+    changedKeys: expectedKeys.filter(key =>
+      JSON.stringify(canonicalValue(expected[key])) !== JSON.stringify(canonicalValue(actual[key]))),
+  };
+}
+
+async function seed(event = {}) {
   const spotsJson = require('./data/spots.json');
   const rulesJson = require('./data/rules.json');
+  const dryRun = event.dryRun === true;
+  const targetIds = Array.isArray(event.spotIds) && event.spotIds.length
+    ? new Set(event.spotIds.map(String).filter(Boolean))
+    : null;
+  const inScope = row => !targetIds || targetIds.has(String(row.spotId));
 
-  const report = { spots: { inserted: 0, updated: 0 }, rules: { inserted: 0, updated: 0 } };
+  const report = {
+    spots: { inserted: 0, updated: 0, unchanged: 0 },
+    rules: { inserted: 0, updated: 0, unchanged: 0 },
+  };
+  const backup = { spots: [], rules: [] };
+  const differences = [];
 
-  for (const s of spotsJson.spots) {
+  for (const s of spotsJson.spots.filter(inScope)) {
     const exist = await db.collection(COLLECTIONS.SPOTS).where({ spotId: s.spotId }).get();
-    if ((exist.data || []).length) {
-      await db.collection(COLLECTIONS.SPOTS).doc(exist.data[0]._id).update({ data: s });
-      report.spots.updated += 1;
+    const current = (exist.data || [])[0] || null;
+    const actual = stripDocId(current);
+    backup.spots.push(current);
+    const diff = seedDiff(s, actual);
+    const changed = !actual || diff.extraKeys.length > 0 || diff.changedKeys.length > 0;
+    if (!changed) {
+      report.spots.unchanged += 1;
     } else {
-      await db.collection(COLLECTIONS.SPOTS).add({ data: s });
-      report.spots.inserted += 1;
+      differences.push({ collection: COLLECTIONS.SPOTS, spotId: s.spotId, ...diff });
+      if (!dryRun && actual) {
+        await db.collection(COLLECTIONS.SPOTS).doc(current._id).update({ data: s });
+        report.spots.updated += 1;
+      } else if (!dryRun) {
+        await db.collection(COLLECTIONS.SPOTS).add({ data: s });
+        report.spots.inserted += 1;
+      }
     }
   }
 
-  for (const r of rulesJson.rules) {
+  for (const r of rulesJson.rules.filter(inScope)) {
     const exist = await db.collection(COLLECTIONS.RELEASE_RULES).where({ spotId: r.spotId }).get();
-    if ((exist.data || []).length) {
-      await db.collection(COLLECTIONS.RELEASE_RULES).doc(exist.data[0]._id).update({ data: r });
-      report.rules.updated += 1;
+    const current = (exist.data || [])[0] || null;
+    const actual = stripDocId(current);
+    backup.rules.push(current);
+    const diff = seedDiff(r, actual);
+    const changed = !actual || diff.extraKeys.length > 0 || diff.changedKeys.length > 0;
+    if (!changed) {
+      report.rules.unchanged += 1;
     } else {
-      await db.collection(COLLECTIONS.RELEASE_RULES).add({ data: r });
-      report.rules.inserted += 1;
+      differences.push({ collection: COLLECTIONS.RELEASE_RULES, spotId: r.spotId, ...diff });
+      if (!dryRun && actual) {
+        await db.collection(COLLECTIONS.RELEASE_RULES).doc(current._id).update({ data: r });
+        report.rules.updated += 1;
+      } else if (!dryRun) {
+        await db.collection(COLLECTIONS.RELEASE_RULES).add({ data: r });
+        report.rules.inserted += 1;
+      }
     }
   }
 
-  return ok({ report, message: `seed 完成：${report.spots.inserted + report.spots.updated} 景点 / ${report.rules.inserted + report.rules.updated} 规则` });
+  return ok({
+    dryRun,
+    targetSpotIds: targetIds ? [...targetIds] : null,
+    report,
+    backup,
+    differences,
+    message: dryRun
+      ? `seed dry-run：${differences.length} 处差异`
+      : `seed 完成：${report.spots.inserted + report.spots.updated} 景点 / ${report.rules.inserted + report.rules.updated} 规则`,
+  });
 }
 
 /**

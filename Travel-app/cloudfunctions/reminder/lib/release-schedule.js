@@ -3,7 +3,8 @@
  *
  * 一个景点在一个出行日可能对应多个放票时段：
  * - 军博：当前只提醒最早的 08:00，避免同一景点占用多次提醒名额；
- * - 清华：当前只提醒即时预约，且工作日与周末/法定节假日的提前天数不同。
+ * - 清华：即时预约参与提醒；抽签预约标记 statusOnly，只参与票务状态与
+ *   可预约窗口计算，不创建提醒任务。
  *
  * 旧规则没有 releaseSlots 时继续按 advanceDays + releaseTime/releaseTimes 兼容。
  */
@@ -28,6 +29,7 @@ function normalizeSlot(slot, index) {
     releaseTime: String(slot.releaseTime),
     advanceDays,
     weekendAdvanceDays: numberOrNull(slot.weekendAdvanceDays),
+    statusOnly: slot.statusOnly === true,
   };
 }
 
@@ -63,11 +65,12 @@ function slotsOf(rule) {
       releaseTime,
       advanceDays,
       weekendAdvanceDays: null,
+      statusOnly: false,
     }));
 }
 
 function hasSchedule(rule) {
-  return slotsOf(rule).length > 0;
+  return slotsOf(rule).some(slot => slot.statusOnly !== true);
 }
 
 function isHoliday(rule, visitDate) {
@@ -108,8 +111,8 @@ function slotsForVisitDate(spot, rule, visitDate) {
 }
 
 /**
- * 旧客户端兼容：只使用旧的 advanceDays + releaseTime 生成单条任务。
- * 新客户端显式传 supportsMultiRelease=true 后才读取 releaseSlots。
+ * 官方全部时段（含 statusOnly），用于票务状态。旧客户端仍回退到顶层单时段。
+ * 提醒任务必须改用 reminderSlotsForRequest，不能直接消费本函数。
  */
 function slotsForRequest(spot, rule, visitDate, supportsMultiRelease) {
   if (supportsMultiRelease === true) return slotsForVisitDate(spot, rule, visitDate);
@@ -126,6 +129,32 @@ function slotsForRequest(spot, rule, visitDate, supportsMultiRelease) {
   }];
 }
 
+/**
+ * 只参与提醒任务的时段。statusOnly 时段仍属于官方预约规则，但不创建任务、
+ * 不占授权/会员名额，也不进入清单和时间线的提醒文案。
+ */
+function reminderSlotsForVisitDate(spot, rule, visitDate) {
+  return slotsForVisitDate(spot, rule, visitDate)
+    .filter(slot => slot.statusOnly !== true);
+}
+
+function reminderSlotsForRequest(spot, rule, visitDate, supportsMultiRelease) {
+  if (supportsMultiRelease === true) return reminderSlotsForVisitDate(spot, rule, visitDate);
+  if (!visitDate || !rule || !rule.advanceDays || !rule.releaseTime
+    || (spot && spot.reservationRequired === false)) return [];
+  const releaseDateStr = time.addDays(visitDate, -Number(rule.advanceDays));
+  return [{
+    key: 'legacy-release',
+    label: '',
+    releaseTime: String(rule.releaseTime),
+    advanceDays: Number(rule.advanceDays),
+    releaseDateStr,
+    releaseAt: time.parseBeijing(releaseDateStr, String(rule.releaseTime)),
+    statusOnly: false,
+  }];
+}
+
+/** 首个官方时段（含 statusOnly）；用于票务状态与人工结果标记闸门。 */
 function firstReleaseAt(spot, rule, visitDate) {
   const slots = slotsForVisitDate(spot, rule, visitDate);
   return slots.length ? slots[0].releaseAt : null;
@@ -144,13 +173,13 @@ function nextReleaseAt(spot, rule, visitDate, nowTs = time.now()) {
 
 function taskSlotsForVisit(spot, rule, visitDate, nowTs = time.now()) {
   const nowMs = new Date(nowTs).getTime();
-  return slotsForVisitDate(spot, rule, visitDate)
+  return reminderSlotsForVisitDate(spot, rule, visitDate)
     .filter(slot => slot.releaseAt.getTime() > nowMs);
 }
 
 function taskSlotsForRequest(spot, rule, visitDate, nowTs = time.now(), supportsMultiRelease = false) {
   const nowMs = new Date(nowTs).getTime();
-  return slotsForRequest(spot, rule, visitDate, supportsMultiRelease)
+  return reminderSlotsForRequest(spot, rule, visitDate, supportsMultiRelease)
     .filter(slot => slot.releaseAt.getTime() > nowMs);
 }
 
@@ -168,6 +197,8 @@ module.exports = {
   advanceDaysFor,
   slotsForVisitDate,
   slotsForRequest,
+  reminderSlotsForVisitDate,
+  reminderSlotsForRequest,
   firstReleaseAt,
   nextReleaseSlot,
   nextReleaseAt,

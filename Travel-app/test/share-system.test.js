@@ -69,7 +69,7 @@ eq(todayRows.length, 2, '闭馆景点排除');
 eq(todayRows[0].spotId, 'gugong', '未到放票时刻排前');
 eq(todayRows[1].spotId, 'guobo', '已放票景点排后');
 eq(todayRows[0]._sceneStatus, '今日 20:00 放票', '今日状态文案');
-eq(todayRows[1]._sceneEarliestText, '按规则推算，最早可约 10月2日', '最早可约口径');
+eq(todayRows[1]._sceneEarliestText, '可预约至 10月2日', '可预约至口径不重复规则推算说明');
 const closedBackoffRelease = release.releaseAtForVisit({
   advanceDays: 10,
   releaseTime: '20:00',

@@ -51,7 +51,7 @@
   </view>
 
   <view wx:if="{{!loading && !expired && !loadFailed && rows.length}}" class="scene-footnote">
-    <text>“最早可约”仅按放票提前天数推算，不代表官方仍有库存。</text>
+    <text>“可预约至”仅按放票提前天数推算，不代表官方仍有库存。</text>
   </view>
 </view>
 

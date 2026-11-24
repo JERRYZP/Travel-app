@@ -34,7 +34,12 @@ function planOne({ spot, rule, visitDate, nowTs, cartDates, tripDates, supportsM
   const existingCart = !!(cartDates && cartDates.has(visitDate));
   const existingTrip = !!(tripDates && tripDates.has(visitDate));
   const openOnVisitDate = !rule || time.isOpenOn(rule, time.dayNameOf(visitDate));
-  const releaseSlots = releaseSchedule.slotsForRequest(spot, rule, visitDate, supportsMultiRelease);
+  const releaseSlots = releaseSchedule.reminderSlotsForRequest(
+    spot,
+    rule,
+    visitDate,
+    supportsMultiRelease
+  );
   const taskSlots = releaseSchedule.taskSlotsForRequest(
     spot,
     rule,

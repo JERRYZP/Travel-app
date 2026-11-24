@@ -112,9 +112,13 @@ function releaseSlotsOf(rule) {
   }));
 }
 
+function reminderSlotsOf(rule) {
+  return releaseSlotsOf(rule).filter(slot => slot.statusOnly !== true);
+}
+
 function advanceDaysLabelOf(rule) {
   const days = [];
-  releaseSlotsOf(rule).forEach(slot => {
+  reminderSlotsOf(rule).forEach(slot => {
     days.push(Number(slot.advanceDays));
     if (slot.weekendAdvanceDays !== undefined && slot.weekendAdvanceDays !== null) {
       days.push(Number(slot.weekendAdvanceDays));
@@ -140,7 +144,7 @@ function isHighDemandDate(rule, dateStr) {
   return dayName === 'saturday' || dayName === 'sunday' || isHoliday(rule, dateStr);
 }
 
-/** 与云端 computeEarliestDate 同口径：不可约时向前回退，不顺延。 */
+/** 与云端 computeEarliestDate 同口径：返回当前预约窗口内的最晚可约日。 */
 function computeEarliestDate(rule, now) {
   const slots = releaseSlotsOf(rule);
   if (!rule || slots.length === 0) return null;
@@ -238,7 +242,7 @@ function buildEntries(spot) {
 
 function buildCard(spot, rule, now) {
   const remindable = spot.reservationRequired !== false
-    && releaseSlotsOf(rule).length > 0;
+    && reminderSlotsOf(rule).length > 0;
   const weak = spot.reservationRequired !== false
     && spot.strongReminder !== true
     && (spot.difficultyScore || 0) <= 2;
