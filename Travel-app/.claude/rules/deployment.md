@@ -22,7 +22,7 @@ paths:
 - `taskLimit=10000` 只能作为新方案内部兼容投影，禁止让未声明能力的旧客户端消费或展示。
 - 部署前先确认 `membership_pricing` 为 `test`（或配置缺失）且白名单包含验收账号；部署后分别验证新能力白名单命中、新能力普通账号未命中、旧客户端无能力声明三种响应。全量定价必须通过后台独立开关切换。
 - 任何 API 契约、价格权益、默认值或字段语义变更，先按 `docs/engineering/client-version-compatibility.md` 写出旧契约、新契约、能力门禁和发布矩阵；不得依赖等待旧客户端覆盖率归零。
-多放票时段能力必须保留 `supportsMultiRelease` 请求级能力门禁：旧客户端不传时，`reminder` 继续使用顶层 `advanceDays + releaseTime` 创建单任务；新客户端传 `true` 后才读取 `releaseSlots`。当前清华、军博的规则已收敛为每个出行日一条任务，部署时必须一并更新 `data/rules.json`、函数内规则副本和静态快照。更新数据库规则前必须先备份并逐字段比较线上 `release_rules` 与 `spots`：`admin.seed` 会同时 upsert 全部景点和规则，只有两张表都与种子一致或差异均经明确确认时才可执行；存在无关漂移时，只对目标 `spotId` 做精确更新。上线顺序为部署带门禁的 `reminder`、更新规则与快照、核验数据库仅目标数据变化，再发布新客户端；不得只发客户端或只上传函数代码而漏掉规则数据。
+多放票时段能力必须保留 `supportsMultiRelease` 请求级能力门禁：旧客户端不传时，`reminder` 继续使用顶层 `advanceDays + releaseTime` 创建单任务；新客户端传 `true` 后才读取 `releaseSlots`。当前清华、军博的规则已收敛为每个出行日一条任务，部署时必须一并更新 `data/rules.json`、函数内规则副本和静态快照。更新数据库规则前先用 `admin.seed` 的 `dryRun=true` 获取线上 `spots` / `release_rules` 备份与逐字段差异；全量 seed 仅允许在两张表无未确认漂移时执行，存在无关漂移时传 `spotIds` 只精确更新目标景点。上线顺序为部署带门禁的 `reminder`、更新规则与快照、核验数据库仅目标数据变化，再发布新客户端；不得只发客户端或只上传函数代码而漏掉规则数据。
 
 ## 配置一致性
 
