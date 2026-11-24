@@ -16,7 +16,7 @@
 ## 当前状态
 
 - 主分支：`main`。实时分支、HEAD、远端与 dirty 状态以 `git status` 和 `git log` 为准；开发任务从 `main` 创建 `codex/*` 分支，不直接堆在 `main`。
-- 最新正式客户端：`2.3.7`；最新体验版：`2.6.1`（2026-11-20），未提交审核、未发布正式版，真机验收 pending。
+- 最新正式客户端：`2.6.1`；最新体验版：`2.6.2`（2026-11-20），未提交审核、未发布正式版，真机验收 pending。下一候选 `2.7.0-rc.1` 已自动验证，等待单独授权完成最终云函数部署后由用户上传体验版。
 - 云端 `reminder`、`payment`、`notifier`、`account`、`feedback`、`spots` 均为 `Active`；`admin` 已部署为过期事件清理，Web 管理后台及公开 API 已移除。`notifierEveryMinute` 与 `paymentReconcileEveryTwoMinutes` 已核验启用。
 - 运行期 `membership_sales=OPEN`、`membership_enforcement.mode=all`、`membership_pricing.mode=all`；能力门禁仍保护旧客户端。
 - 生产 `notifier` 已部署 2026-11-20 提醒中断修复，并已快进合并到本地 `main`；`origin/main` 尚未同步。下次从其他机器或远端 `main` 部署 `notifier` 前，必须先推送本次合并，否则会回退故障。
