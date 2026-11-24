@@ -295,6 +295,8 @@ try {
   eq(clockComponent.includes('wx.setPageStyle'), true, '拖拽期间临时锁定页面滚动');
   eq(clockComponent.includes('setPageScrollLock(!0)'), true, '拖拽开始锁页面');
   eq(clockComponent.includes('onTouchEnd(){setPageScrollLock(!1)'), true, '拖拽结束恢复页面滚动');
+eq(/overflow:visible;overflow-x:hidden;/.test(clockComponent), true,
+  '拖拽结束恢复纵向滚动时保留首页横向锁');
   eq(clockWxml.includes('bindtap="onClose"'), true, '关闭按钮绑定点击事件');
   eq(clockWxml.includes('fc-collapse-arrow'), true, '关闭按钮使用右箭头收起图标');
   eq(clockWxml.includes('>收起</text>'), true, '关闭按钮显示收起文案');

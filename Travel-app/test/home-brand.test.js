@@ -13,7 +13,8 @@ const homeWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wx
 const homeWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxss'), 'utf8');
 const markPath = path.join(ROOT, 'miniprogram/images/brand/zd-mark.png');
 const wordmarkPath = path.join(ROOT, 'miniprogram/images/brand/zd-wordmark.png');
-const mutedLogoPath = path.join(ROOT, 'miniprogram/images/brand/zd-logo-horizontal-muted.png');
+const mutedMarkPath = path.join(ROOT, 'miniprogram/images/brand/zd-mark-muted.png');
+const mutedWordmarkPath = path.join(ROOT, 'miniprogram/images/brand/zd-wordmark-muted.png');
 const homeJs = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.js'), 'utf8');
 
 let fail = 0;
@@ -38,9 +39,10 @@ eq(homeWxml.includes('class="navbar-title"'), false, '旧居中页面名样式�
 
 console.log('=== 首页底部品牌 ===');
 const footer = (homeWxml.match(/<view class="home-brand-footer"[\s\S]*?<\/view>\n\n  <view wx:if="\{\{previewNewUser\}\}"/) || [])[0] || '';
-eq(footer.includes('class="home-brand-logo"'), true, '底部展示品牌标识');
-eq(footer.includes('src="/images/brand/zd-logo-horizontal-muted.png"'), true, '底部使用暖灰品牌标识');
-eq(footer.includes('准点放票 · 从容出游'), true, '底部展示 slogan');
+eq(footer.includes('class="home-brand-logo-lockup"'), true, '底部展示品牌组合');
+eq(footer.includes('src="/images/brand/zd-mark-muted.png"'), true, '底部使用暖灰图形标识');
+eq(footer.includes('src="/images/brand/zd-wordmark-muted.png"'), true, '底部使用暖灰中文字标');
+eq(footer.includes('准点约票 · 从容出游'), true, '底部展示 slogan');
 eq(footer.includes('微信搜一搜'), false, '底部不再展示微信搜索提示');
 eq(footer.includes('home-brand-center'), true, '底部标识与 slogan 组成单行中间组');
 eq(footer.includes('home-brand-divider'), true, '底部中间使用竖分隔线');
@@ -56,8 +58,10 @@ eq(/\.navbar-brand-wordmark \{[^}]*width:\s*85rpx;[^}]*height:\s*26rpx;/.test(ho
   '中文字标随整组再缩至 90%');
 eq(/\.navbar-page-title \{[^}]*color:\s*var\(--color-text\);[^}]*font-weight:\s*400;/.test(homeWxss), true,
   '页面名不加粗并弱化一阶');
-eq(/\.home-brand-logo \{[^}]*width:\s*136rpx;[^}]*height:\s*56rpx;/.test(homeWxss), true,
-  '底部标识按 85% 锁定');
+eq(/\.home-brand-mark \{[^}]*width:\s*46rpx;[^}]*height:\s*50rpx;/.test(homeWxss), true,
+  '底部图形标识为原尺寸的 90%');
+eq(/\.home-brand-wordmark \{[^}]*width:\s*77rpx;[^}]*height:\s*24rpx;/.test(homeWxss), true,
+  '底部中文字标尺寸保持不变');
 eq(/\.home-brand-footer \{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*margin-top:\s*40rpx;/.test(homeWxss), true,
   '底部品牌单行排列且整体上移 8px');
 eq(/\.home-brand-divider \{[^}]*height:\s*27rpx;[^}]*background:\s*#E0D9CC;/.test(homeWxss), true,
@@ -74,16 +78,20 @@ eq(/showFloatingClockPreview\s*=\s*explicitClockPreview\s*\|\|/.test(homeJs), fa
   '悬浮钟验收区不再随 envVersion 自动出现');
 eq(fs.existsSync(markPath), true, '图形标识 PNG 已加入主包');
 eq(fs.existsSync(wordmarkPath), true, '中文字标 PNG 已加入主包');
-eq(fs.existsSync(mutedLogoPath), true, '暖灰品牌 PNG 已加入主包');
+eq(fs.existsSync(mutedMarkPath), true, '暖灰图形 PNG 已加入主包');
+eq(fs.existsSync(mutedWordmarkPath), true, '暖灰中文字标 PNG 已加入主包');
 const mark = fs.readFileSync(markPath);
 const wordmark = fs.readFileSync(wordmarkPath);
-const mutedLogo = fs.readFileSync(mutedLogoPath);
+const mutedMark = fs.readFileSync(mutedMarkPath);
+const mutedWordmark = fs.readFileSync(mutedWordmarkPath);
 eq(mark.slice(1, 4).toString('ascii'), 'PNG', '图形标识为 PNG');
 eq(wordmark.slice(1, 4).toString('ascii'), 'PNG', '中文字标为 PNG');
-eq(mutedLogo.slice(1, 4).toString('ascii'), 'PNG', '暖灰品牌资源为 PNG');
+eq(mutedMark.slice(1, 4).toString('ascii'), 'PNG', '暖灰图形资源为 PNG');
+eq(mutedWordmark.slice(1, 4).toString('ascii'), 'PNG', '暖灰中文字标资源为 PNG');
 eq(mark.length <= 16 * 1024, true, '图形标识 PNG 不超过 16KB');
 eq(wordmark.length <= 16 * 1024, true, '中文字标 PNG 不超过 16KB');
-eq(mutedLogo.length <= 16 * 1024, true, '暖灰品牌 PNG 不超过 16KB');
+eq(mutedMark.length <= 16 * 1024, true, '暖灰图形 PNG 不超过 16KB');
+eq(mutedWordmark.length <= 16 * 1024, true, '暖灰中文字标 PNG 不超过 16KB');
 
 if (fail) {
   console.error(`\n${fail} assertion(s) failed`);

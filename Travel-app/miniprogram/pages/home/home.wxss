@@ -1,3 +1,11 @@
+/* 首页根节点锁定横向拖动。仅锁在 page 根层，不能加到 .page-body：
+   overflow:hidden 的祖先会让日期分段标题的 position:sticky 退化。 */
+page {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 /* ===== 自定义导航栏 ===== */
 .navbar {
   position: fixed;
@@ -83,9 +91,15 @@
   padding-bottom: calc(240rpx + env(safe-area-inset-bottom));
   padding-left: 30rpx;
   position: relative;
+  width: 100%;
+  max-width: 100%;
   background: var(--color-page);
   min-height: 100vh;
   box-sizing: border-box;
+  /* 首页正文没有横向滚动手势；只把 pan-y 交给 WebView。
+     这比单纯裁切更靠前：横向拖动不会进入页面滚动状态。 */
+  touch-action: pan-y;
+  overscroll-behavior-x: none;
 }
 
 /* 会员功能更新横幅：复用个人页公告的暖色卡片样式，不打断首页操作。 */
@@ -200,11 +214,23 @@
 .home-brand-rule--right {
   background: linear-gradient(90deg, #E2D4C0 0%, #E2D4C0 50%, rgba(226,212,192,0) 100%);
 }
-.home-brand-logo {
+.home-brand-logo-lockup {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  flex: none;
+}
+.home-brand-mark {
   display: block;
   flex: none;
-  width: 136rpx;
-  height: 56rpx;
+  width: 46rpx;
+  height: 50rpx;
+}
+.home-brand-wordmark {
+  display: block;
+  flex: none;
+  width: 77rpx;
+  height: 24rpx;
 }
 .home-brand-divider {
   width: 1rpx;
@@ -607,7 +633,8 @@
 .trip-share-cover-canvas {
   position: fixed;
   top: 0;
-  left: -2000px;
+  left: 0;
+  z-index: -1;
   width: 350px;
   height: 280px;
   pointer-events: none;

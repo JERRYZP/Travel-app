@@ -30,7 +30,7 @@
 - 会员权益是会变化的写后状态，不能只靠页面 5 分钟 TTL 判断新鲜度。支付、补偿到账或退款回收确认后必须递增 `app.globalData.membershipDataVersion`；`setup`、`profile` 等持有会员快照的页面发现版本变化时必须绕过缓存重新拉取服务端状态。禁止各页面自行推断会员是否到账。
 - 注销账户必须先等服务端 `account.erase` 成功，再清本地缓存和全局用户状态；失败时不得提前 `clearStorageSync` 或跳首页。解除阻塞、勾选确认和二次弹窗都只是客户端前置，服务端必须再次预检。
 - PAGE-018 行程只读页必须隐藏微信转发菜单且不实现 `onShareAppMessage` / `onShareTimeline`。接收方页面不得复用带票务状态、提醒 chip、三点菜单或景点点击的 `trip-card`；公开投影白名单之外的字段一律不要渲染。
-- 首页行程分享入口必须等 `tripShare.create/status` 返回令牌后再启用原生 `open-type="share"`。不能在异步 `onShareAppMessage` 中临时生成链接，否则真机可能分享出空路径；右上角菜单仍走原公开首页分享。标题、装饰英文与分享入口必须在摘要卡同一个标题行容器内，英文紧接标题、分享靠最右；入口不能作为卡片下方兄弟节点参与文档流。入口文案始终为「分享行程」，已有链接时由浮层进入管理态。顶部位置只能由 `miniprogram/utils/home-layout.js` 计算：优先使用 `wx.getMenuButtonBoundingClientRect().bottom` 加 `8rpx` 呼吸位，再按当前屏宽精确追加 `2px`；只有拿不到胶囊信息时才回退导航块底边。固定导航块的透明下半段不得继续撑高正文；额度提示或横幅出现时占据该起点并把后续内容向下推。`test/home-top-layout.test.js` 已对 320 / 402 / 440 宽度做数值冻结，禁止在页面重新推导。
+- 首页行程分享入口必须等 `tripShare.create/status` 返回令牌后再启用原生 `open-type="share"`。不能在异步 `onShareAppMessage` 中临时生成链接，否则真机可能分享出空路径；右上角菜单仍走原公开首页分享。标题、装饰英文与分享入口必须在摘要卡同一个标题行容器内，英文紧接标题、分享靠最右；入口不能作为卡片下方兄弟节点参与文档流。入口文案始终为「分享行程」，已有链接时由浮层进入管理态。顶部位置只能由 `miniprogram/utils/home-layout.js` 计算：优先使用 `wx.getMenuButtonBoundingClientRect().bottom` 加 `8rpx` 呼吸位，再按当前屏宽精确追加 `6px`；只有拿不到胶囊信息时才回退导航块底边。固定导航块的透明下半段不得继续撑高正文；额度提示或横幅出现时占据该起点并把后续内容向下推。`test/home-top-layout.test.js` 已对 320 / 402 / 440 宽度做数值冻结，禁止在页面重新推导。
 - 行程分享封面在 `open-type="share"` 打开前生成完毕；Canvas 2D 只重绘公开信息，不能截入票务进度、提醒 chip、菜单或身份字段。Canvas 失败必须回退 `/images/share/home-today.jpg`，封面生成不能阻断链接分享。应用内昵称只用于会话标题；微信不提供读取本人真实微信昵称的接口。
 - tabbar 图标尺寸必须与承载容器使用同一 `rpx` 体系。禁止在 `44rpx` 容器里写固定 `22px` 图标，否则 320px 窄屏会出现图标溢出、视觉变大；当前图标为 `40rpx`，保留 4rpx 容器内边距。
 - 景点/分享/首页“约其他日”轻量入口不得把“授权不足”和“提醒名额不足”拆成两个浮层，也不得从错误分支直接跳会员页。统一使用标题为「设置提醒」、与 PAGE-008 同构的浮层，同时显示授权需求、可用、待发送占用和缺口；`membership.status.enforced=true` 且免费名额不足时才展示唯一会员套餐，`taskLimitUnlimited=true` 时不展示名额付费卡。授权按钮固定为「点击补授权次数」，每次只申请一次。仅授权不足时，补足后启用底部「开启行程放票提醒」并由用户提交；免费名额不足时底部置灰，会员支付到账后直接完成原提醒。
@@ -114,6 +114,7 @@
 
 ## 首页首屏（2026-09-30 三层渲染）
 
+- 首页必须以 `page-meta page-style="overflow-x: hidden;"` 作为首节点，同时由根节点锁定 `overflow-x: hidden`，正文宽度固定为 `100%`，并设置 `touch-action: pan-y` / `overscroll-behavior-x: none` 只允许纵向手势；不得让整页产生横向滚动。不要把 `overflow-x` 加到 `.page-body`，否则会破坏日期分段标题的 `position: sticky`。任何 `wx.setPageStyle` 恢复动作必须返回 `overflow:visible;overflow-x:hidden;`，不能把横向锁一起恢复掉。分享封面画布保持在视口内透明离屏，不要用大额负 `left` 撑开页面。
 - 悬浮时钟验收区只能通过显式 `floatingClockPreview=1` 进入；不得因 `envVersion === 'develop'` 或空环境自动显示。普通开发预览首屏必须直接展示真实首页内容。
 
 - 首页先出内容再原地替换：**缓存层**（`utils/home-cache.js` 回放上次的 bootstrap 返回体）→ **骨架层**（`utils/empty-preview.js` 的本地切片）→ **实况层**（云端返回）。
