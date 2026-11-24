@@ -10,7 +10,7 @@
 
 ## 本地未发布
 
-- 2026-11-24 清华抽签状态候选：抽签时段使用 `releaseSlots.statusOnly=true`，参与票务状态与“可预约至”窗口，但不创建提醒、不占授权或会员名额；即时预约仍是唯一提醒时段。`spots` 云函数、快照生成器、客户端静态镜像与 mock 共用同一过滤口径。景点详情和分享页文案由“最早可约”改为“可预约至”，`earliestDate` 字段名保留兼容。新增清华专项回归覆盖抽签开放前后状态、人工 `SUCCESS` 和单任务/单名额；`npm test`、`npm run check`、`git diff --check` 已通过。**服务端已部署，客户端未上传体验版、未真机验证。**
+- 2026-11-24 清华抽签状态候选：抽签时段使用 `releaseSlots.statusOnly=true`，参与票务状态与“可预约至”窗口，但不创建提醒、不占授权或会员名额；即时预约仍是唯一提醒时段。`spots` 云函数、快照生成器、客户端静态镜像与 mock 共用同一过滤口径。景点详情和分享页文案由“最早可约”改为“可预约至”，场景卡去掉重复的“按规则推算”前缀，`earliestDate` 字段名保留兼容。新增清华专项回归覆盖抽签开放前后状态、人工 `SUCCESS` 和单任务/单名额；`npm test`、`npm run check`、`git diff --check` 已通过。**服务端已部署，用户确认真机验收通过；客户端未上传体验版。**
 
 ## 当前发布基线
 
@@ -62,7 +62,7 @@
 
 ## 最近已关闭事项
 
-- **2026-11-24 清华抽签状态服务端上线**：`reminder@87d93d7` 与 `spots@54ddc5f` 已整包部署并下载回读校验，均为 `Active` / Nodejs16.13。生产 `admin.seed` 先用 `dryRun` 备份 26 个景点与 26 条规则并输出逐字段差异；4 个无关景点的官网/抓取地址漂移未覆盖，只定向更新 `spotId=tsinghua`，随后 dry-run 为 0 差异。远程景点快照已更新为 `13d305867f72ab6521d9`，下载回读与本地 73,053 字节文件一致。云端冒烟确认清华详情 `earliestDate=2026-11-29`、抽签为 `statusOnly`，时间线仅返回即时预约 1 条提醒。**客户端未上传体验版，真机验收 pending。**
+- **2026-11-24 清华抽签状态服务端上线**：`reminder@87d93d7` 与 `spots@54ddc5f` 已整包部署并下载回读校验，均为 `Active` / Nodejs16.13。生产 `admin.seed` 先用 `dryRun` 备份 26 个景点与 26 条规则并输出逐字段差异；4 个无关景点的官网/抓取地址漂移未覆盖，只定向更新 `spotId=tsinghua`，随后 dry-run 为 0 差异。远程景点快照已更新为 `13d305867f72ab6521d9`，下载回读与本地 73,053 字节文件一致。云端冒烟确认清华详情 `earliestDate=2026-11-29`、抽签为 `statusOnly`，时间线仅返回即时预约 1 条提醒；开发者工具刷新后确认“可预约至”文案生效，用户已确认真机验收通过。**客户端未上传体验版。**
 - **2026-11-20 支付售后详情产物漂移**：`payment/index.js` 曾引用未导出的 `afterSales.refundEligibilityForOrder`，并缺少 `adminDirectory` 依赖，导致客服审核工单打开即返回 `1500`。已补齐售后资格聚合与依赖，新增真实 `afterSales.adminDetail` 入口契约、云函数拍平产物 manifest 校验和脏工作区发布门禁；生产 `payment` 已发布标准产物版本 4（`main@8ae725d`）并切 100% 流量，下载云端包与 manifest 的 27 个业务文件逐项一致，两分钟触发器核验存在。`npm test`、`npm run check`、`git diff --check` 通过。
 - **2026-11-20 提醒发送全量中断**：`notifier` 的 `doc().get()` 形状判断错误，导致 223 个到期任务全量跳过并落为 `MISSED`。修复版已于 16:43:48 部署，`notifierEveryMinute` 保持启用；16:54:05 首个真实任务写入 `SEND_SUCCEEDED` / `TASK_TRIGGERED`。完整复盘见 `docs/engineering/reminder-outage-incident-20261120.md`。
 - **2026-11-19 用户自助注销**：`account` 云函数、PAGE-012-1、支付/提醒竞态保护和隐私指引补充文档已落地并部署。
