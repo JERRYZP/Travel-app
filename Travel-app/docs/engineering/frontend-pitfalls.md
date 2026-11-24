@@ -22,6 +22,7 @@
 
 - 全系统业务时间按北京时间 GMT+8；不得混用设备本地时区。
 - 首页摘要卡的日期段与同行倒计时都消费 `home.bootstrap` 的 `displayStartDate/displayEndDate`，其中包含已过期日程；页面不得再从 `startDate/endDate` 或 `items` 自行重算。PAGE-005 日期预填与首页摘要卡共用 `displayStartDate/displayEndDate`，但预填对象仍只允许是未结束的 `primaryTrip`；分享与行程结束判定继续读业务日期。
+- 首页行程墙日期标题的 `【第N天】` 必须从 `trip.displayStartDate || trip.startDate` 起算；直接用业务 `startDate` 会在实际首项晚于业务起始日时显示成「第50天」，与顶部摘要卡矛盾。
 - 摘要卡的行程级倒计时和行程项级倒计时是两套文案，不要合并。
 - 行程项卡倒计时按距放票毫秒数分级，不等于北京时区的自然日差：≥24 小时显示天，1 小时至不足 24 小时显示小时，1 分钟至不足 1 小时显示分钟，不足 1 分钟显示「即将开始」。
 
