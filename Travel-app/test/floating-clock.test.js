@@ -178,7 +178,7 @@ try {
   eq(clock.updateLayout({ xRatio: 2, yRatio: -1, side: 'left' }).xRatio, 1, '横向比例夹紧');
   eq(clock.layout().yRatio, 0, '纵向比例夹紧');
 
-  console.log('=== 6. 真机验收演示入口 ===');
+  console.log('=== 6. 首页真机验收演示入口已移除 ===');
   clock.resetForTest();
   clock.setActivePage('preview-home', true);
   clock.updateLayout({ xRatio: 0.2, yRatio: 0.7, side: 'left' });
@@ -214,7 +214,12 @@ try {
   eq(memberDemo.expanded, true, '会员页示例强制展开');
   clock.stopPreview();
   const homeSource = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.js'), 'utf8');
-  eq(homeSource.includes('floatingClock.startPreview'), true, '首页提供演示触发入口');
+  const homeWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxml'), 'utf8');
+  const homeWxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxss'), 'utf8');
+  eq(homeSource.includes('floatingClock.startPreview'), false, '首页不再提供开发演示触发入口');
+  eq(homeWxml.includes('floating-clock-preview-entry'), false, '首页不再渲染悬浮时钟验收区域');
+  eq(homeWxml.includes('悬浮时钟真机验收'), false, '首页不再展示验收文案');
+  eq(homeWxss.includes('.floating-clock-preview-entry'), false, '验收区域样式同步移除');
   eq(homeSource.includes('onFloatingClockSpotOpen'), true, '首页接入景点详情点击');
   const reminderBootstrapSource = fs.readFileSync(path.join(ROOT, 'cloudfunctions/reminder/index.js'), 'utf8');
   eq(reminderBootstrapSource.includes('planVersion: membership.planVersionFor(userId, event)'), true, '首页会员快照按真实两档方案生成');
@@ -224,15 +229,14 @@ try {
   eq(spotHubSource.includes('this.openDetail(spotId)'), true, '景点 Tab 的时钟景点名复用当前详情浮窗');
   eq(spotHubSource.includes('\n    openDetail('), false, '景点 Tab 不得调用未绑定的详情方法');
   eq(spotHubWxml.includes('<spot-popup'), true, '景点 Tab 使用当前 PAGE-002 浮窗');
-  eq(homeSource.includes('floatingClock.testVibration'), true, '首页提供立即震动入口');
-  eq(homeSource.includes("g.envVersion === 'develop'"), true, '演示入口仅在开发/预览包显示');
+  eq(homeSource.includes('floatingClock.testVibration'), false, '首页不再提供开发用立即震动入口');
   const clockComponent = fs.readFileSync(path.join(ROOT, 'miniprogram/components/floating-clock/floating-clock.js'), 'utf8');
   eq(clockComponent.includes('clock.vibrateCue(30)'), true, '倒计时 30 秒自动强震');
   eq(clockComponent.includes('clock.vibrateCue(10)'), true, '倒计时 10 秒自动强震');
   eq(clockComponent.includes('clock.vibrateCue(0)'), true, '开抢时刻自动长震');
   eq(clockComponent.includes('_vibrationCues'), true, '每个震动节点只触发一次');
-  eq(homeSource.includes('membership?preview=nonmember'), true, '首页提供新会员方案验收入口');
-  eq(homeSource.includes('membership?preview=unlimited'), true, '首页提供 4.9 权益验收入口');
+  eq(homeSource.includes('membership?preview=nonmember'), false, '首页不再提供开发用会员方案入口');
+  eq(homeSource.includes('membership?preview=unlimited'), false, '首页不再提供开发用 4.9 权益入口');
 
   console.log('=== 7. 页面挂载与会员页入口 ===');
   const app = JSON.parse(fs.readFileSync(path.join(ROOT, 'miniprogram/app.json'), 'utf8'));
@@ -244,7 +248,6 @@ try {
     return !wxml.includes('<floating-clock');
   });
   eq(missing.length, 0, '全部正式用户页面挂载组件');
-  const homeWxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/home/home.wxml'), 'utf8');
   eq(homeWxml.includes('id="floatingClock"') && homeWxml.includes('home-page="{{true}}"'), true, '首页声明自动展开');
   excluded.forEach(page => {
     const wxml = fs.readFileSync(path.join(ROOT, 'miniprogram', `${page}.wxml`), 'utf8');
