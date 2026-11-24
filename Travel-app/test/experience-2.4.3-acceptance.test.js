@@ -63,6 +63,17 @@ eq(/scene-date/.test(sceneWxml), false, '顶部卡片不再单独展示带年份
 eq(/return `\$\{p\.month\}月\$\{p\.day\}日 周\$\{weekday\}`/.test(sceneJs), true,
   '主标题使用月、日、星期且不带年份');
 eq(/今日热门景点放票情况/.test(sceneJs), true, '副标题使用「今日热门景点放票情况」');
+eq(/TICKET RELEASE/.test(sceneWxml) && /class="scene-title-en"/.test(sceneWxml), true,
+  '日期右侧展示全大写英文装饰');
+eq(/\.scene-title \{[^}]*font-size:\s*34rpx/.test(sceneWxss), true,
+  '日期主标题字号为 34rpx');
+eq(/\.scene-title-en \{[^}]*font-family:\s*'Times New Roman'/.test(sceneWxss)
+  && /\.scene-title-en \{[^}]*text-align:\s*right/.test(sceneWxss), true,
+  '英文装饰使用衬线字体并靠右');
+eq(/\.scene-title-en \{[^}]*font-size:\s*22rpx/.test(sceneWxss), true,
+  '英文装饰字号增加两号到 22rpx');
+eq(/\.scene-title-en \{[^}]*letter-spacing:\s*\.21em/.test(sceneWxss), true,
+  '英文字符间距为原值的 150%');
 eq(/\.scene-hero\s*\{[\s\S]*?padding:\s*30rpx 28rpx;[\s\S]*?border:\s*1rpx solid #E8D4B0;[\s\S]*?box-shadow:\s*0 4rpx 16rpx rgba\(100, 60, 20, 0\.055\)/.test(sceneWxss), true,
   '顶部卡片保留留白、微弱描边和柔和投影');
 eq(/\.home-float\s*\{[^}]*bottom:\s*calc\(28px \+ env\(safe-area-inset-bottom\)\)/.test(sceneWxss), true,
