@@ -189,8 +189,6 @@ Page({
        两个明确入口，所以要把悬浮新增按钮藏掉，避免同职责入口重复。 */
     isBlank: false,
     previewNewUser: false,
-    showFloatingClockPreview: false,
-    floatingClockPreviewActive: false,
     /* 新用户空态的内容证据：一张真实规则预览 + 3 个近期热门景点放票节点。
        数据来自 home.bootstrap 已返回的 hotSpots，不额外请求接口。 */
     emptyReleaseRows: [],
@@ -268,12 +266,6 @@ Page({
     const spotId = options && options.spotId;
     if (spotId) this.openSpotPopup(decodeURIComponent(spotId));
 
-    const explicitClockPreview = String((options && options.floatingClockPreview) || '') === '1';
-    const showFloatingClockPreview = explicitClockPreview
-      || g.envVersion === 'develop'
-      || g.envVersion === '';
-    this.setData({ showFloatingClockPreview });
-    if (explicitClockPreview) this.onFloatingClockPreview();
   },
 
   onShow() {
@@ -288,28 +280,6 @@ Page({
   onFloatingClockSpotOpen(e) {
     const spotId = e && e.detail && e.detail.spotId;
     if (spotId) this.openSpotPopup(spotId);
-  },
-
-  onFloatingClockPreview() {
-    floatingClock.startPreview({ secondsBefore: 45, spotShort: '故宫', spotName: '故宫博物院' });
-    this.setData({ floatingClockPreviewActive: true });
-    if (wx.showToast) wx.showToast({ title: '45 秒震荡验收已开始', icon: 'none' });
-  },
-
-  onTestFloatingClockVibration() {
-    const ok = floatingClock.testVibration();
-    if (wx.showToast) wx.showToast({
-      title: ok ? '已触发震动' : '当前设备不支持震动',
-      icon: 'none',
-    });
-  },
-
-  onOpenNewMemberPlans() {
-    wx.navigateTo({ url: '/pages/membership/membership?preview=nonmember' });
-  },
-
-  onOpenUnlimitedBenefits() {
-    wx.navigateTo({ url: '/pages/membership/membership?preview=unlimited' });
   },
 
   onPullDownRefresh() {

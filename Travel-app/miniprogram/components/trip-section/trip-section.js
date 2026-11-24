@@ -95,7 +95,11 @@ Component({
         }));
       });
 
-      const start = trip.startDate;
+      /* 日期徽标的「第N天」必须与顶部摘要卡使用同一个展示起点。
+         displayStartDate 是该行程全部 trip_items 的最早出行日（含已过期日程）；
+         trips.startDate 是业务日期，可能早于实际首项，直接用会显示成「第50天」。
+         字段缺失时兼容旧版云函数响应，回退 startDate。 */
+      const displayStart = trip.displayStartDate || trip.startDate;
       const days = [...map.entries()]
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([visitDate, items]) => ({
@@ -105,7 +109,7 @@ Component({
              2026-09-22 按设计稿改为**方括号包裹**（`【第1天】`）：徽标改成了金色底，
              方括号让它在视觉上更明确是「这一段是第几天」的标记，而不是一个可点的标签。
              ⚠️ 数字两侧不加空格（设计稿是 `第1天`，旧实现是 `第 1 天`）。 */
-          badge: '【第' + (util.dayDiff(start, visitDate)) + '天】',
+          badge: '【第' + (util.dayDiff(displayStart, visitDate)) + '天】',
           daysPast: util.pastDaysOf(visitDate),
           items,
           /* 菜单键只认 visitDate：同屏只会展开一趟行程的某一天
