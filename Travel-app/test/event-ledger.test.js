@@ -5,6 +5,7 @@
 const { createDb } = require('./mock-db');
 const { COLLECTIONS, ReminderBackendStatus, ChannelType } = require('../cloudfunctions/reminder/lib/schema');
 const task = require('../cloudfunctions/reminder/lib/task');
+const time = require('../cloudfunctions/reminder/lib/time');
 const events = require('../cloudfunctions/reminder/lib/events');
 const spotsSeed = require('../data/spots.json').spots;
 const rulesSeed = require('../data/rules.json').rules;
@@ -35,10 +36,11 @@ const eq = (a, b, m) => {
   const db = createDb();
   db._seed(COLLECTIONS.SPOTS, spotsSeed);
   db._seed(COLLECTIONS.RELEASE_RULES, rulesSeed);
-  const releaseAt = new Date(Date.now() + 30 * 24 * 3600 * 1000);
+  const visitDate = time.addDays(time.todayStr(), 31);
+  const releaseAt = time.parseBeijing(time.addDays(visitDate, -7), '20:00');
   await db.collection(COLLECTIONS.REMINDER_CART).add({
     data: {
-      userId: 'u1', tripId: '__pending__', spotId: 'gugong', visitDate: '2026-12-01',
+      userId: 'u1', tripId: '__pending__', spotId: 'gugong', visitDate,
       releaseAt, reservationRequired: true, remindOn: true,
     },
   });

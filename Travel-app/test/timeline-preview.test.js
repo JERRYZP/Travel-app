@@ -315,6 +315,9 @@ function digest(res) {
   console.log('=== 4. 重复加入由 cart.add 兜底（按 spotId+visitDate 跨行程查）===');
   {
     const db = freshDb();
+    /* START 会随时间落到周一；故宫周一闭馆时服务端应先返回 1010。
+       这个用例只验证重复项，所以取次日这个确定开放日。 */
+    const duplicateDate = time.addDays(START, 1);
     await db.collection(COLLECTIONS.TRIPS).add({
       data: {
         _id: 'T9', userId: USER, city: '北京', startDate: START, endDate: END, name: '已有行程',
@@ -323,14 +326,14 @@ function digest(res) {
     });
     await db.collection(COLLECTIONS.TRIP_ITEMS).add({
       data: {
-        _id: 'I9', userId: USER, tripId: 'T9', spotId: 'gugong', visitDate: START,
+        _id: 'I9', userId: USER, tripId: 'T9', spotId: 'gugong', visitDate: duplicateDate,
         backupGroupId: 'T9:gugong', remindOn: false, result: null, resultAt: null,
         createdAt: time.now(), updatedAt: time.now(),
       },
     });
     const res = await cart.add(db, USER, {
-      spotId: 'gugong', visitDate: START,
-      releaseAt: time.parseBeijing(time.addDays(START, -7), '20:00'), remindOn: true,
+      spotId: 'gugong', visitDate: duplicateDate,
+      releaseAt: time.parseBeijing(time.addDays(duplicateDate, -7), '20:00'), remindOn: true,
     });
     eq(res.success, false, '已落为行程项的日期不能再进清单');
     eq(res.errorCode, 1002, '错误码 1002（已在清单里啦）');
